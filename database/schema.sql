@@ -1,8 +1,18 @@
 -- ============================================================
---  SCHEMA: Sistema de Puntos Ñandé
+--  SCHEMA COMPLETO: Sistema de Puntos Ñandé
 --  Base de datos: MySQL 8.0
---  Ejecutar en orden. Docker lo corre automáticamente.
+--
+--  USO:
+--    Docker  → se ejecuta automáticamente al primer arranque
+--    phpMyAdmin → Importar este archivo directamente (ya incluye
+--                 CREATE DATABASE y USE)
 -- ============================================================
+
+CREATE DATABASE IF NOT EXISTS nande_puntos
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+USE nande_puntos;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -41,9 +51,9 @@ CREATE TABLE IF NOT EXISTS productos (
     nombre              VARCHAR(150)    NOT NULL,
     descripcion         TEXT            NULL,
     imagen_url          VARCHAR(255)    NULL,
-    categoria           VARCHAR(100)    NULL COMMENT 'Categoría del producto para filtrado en catálogo',
+    categoria           VARCHAR(100)    NULL,
     puntos_requeridos   INT             NOT NULL,
-    puntos_acumulables  INT             NULL COMMENT 'Pts que gana el cliente al comprar este producto en el local. NULL = no mostrar.',
+    puntos_acumulables  INT             NULL,
     activo              TINYINT(1)      NOT NULL DEFAULT 1,
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -93,8 +103,7 @@ CREATE TABLE IF NOT EXISTS usos_codigos (
 -- TABLA: referidos
 -- Registra cada relación invitador → invitado.
 -- invitado_id es UNIQUE: un usuario solo puede haber
---   sido invitado una vez en toda su vida.
--- invitador_id puede repetirse: uno puede invitar a muchos.
+--   sido invitado una vez.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS referidos (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
@@ -119,9 +128,7 @@ CREATE TABLE IF NOT EXISTS referidos (
 --   entregado     → el cliente retiró el producto       (no devuelve puntos)
 --   no_disponible → no había disponibilidad al retirar  (SÍ devuelve puntos)
 --   expirado      → venció el plazo de retiro           (no devuelve puntos)
---   cancelado     → cancelado, notas puede ser null     (SÍ devuelve puntos)
---
--- fecha_limite_retiro se calcula: created_at + dias_limite_retiro (configuracion)
+--   cancelado     → cancelado                           (SÍ devuelve puntos)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS canjes (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
@@ -145,7 +152,6 @@ CREATE TABLE IF NOT EXISTS canjes (
 -- ============================================================
 -- TABLA: movimientos_puntos
 -- Historial completo e inmutable de todos los movimientos.
--- Siempre se inserta una fila aquí antes de tocar puntos_saldo.
 --
 -- Tipos:
 --   asignacion_manual   → admin suma/resta puntos directo
@@ -155,10 +161,6 @@ CREATE TABLE IF NOT EXISTS canjes (
 --   canje_producto      → puntos descontados al pedir un producto
 --   devolucion_canje    → puntos reintegrados (no_disponible/cancelado)
 --   ajuste              → corrección manual sin categoría específica
---
--- referencia_id / referencia_tipo son nullable porque
---   asignaciones manuales y ajustes no tienen objeto asociado.
--- creado_por es nullable para movimientos automáticos del sistema.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS movimientos_puntos (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
@@ -195,12 +197,22 @@ CREATE TABLE IF NOT EXISTS configuracion (
     descripcion         TEXT            NULL
 );
 
-SET FOREIGN_KEY_CHECKS = 1;
+-- ============================================================
+-- TABLA: categorias
+-- Categorías de productos gestionadas desde el panel admin.
+-- El campo categoria en productos referencia el nombre aquí.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS categorias (
+    id                  INT             PRIMARY KEY AUTO_INCREMENT,
+    nombre              VARCHAR(100)    NOT NULL UNIQUE,
+    descripcion         TEXT            NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ============================================================
 -- TABLA: paginas_contenido
 -- Páginas editables desde el panel admin (markdown).
--- slug: identificador único de la página ('sobre-nosotros', 'terminos').
+-- slug: identificador único ('sobre-nosotros', 'terminos').
 -- ============================================================
 CREATE TABLE IF NOT EXISTS paginas_contenido (
     slug        VARCHAR(50)     PRIMARY KEY,
@@ -210,8 +222,10 @@ CREATE TABLE IF NOT EXISTS paginas_contenido (
                                 ON UPDATE CURRENT_TIMESTAMP
 );
 
+SET FOREIGN_KEY_CHECKS = 1;
+
 -- ============================================================
--- DATOS INICIALES
+-- DML: DATOS INICIALES
 -- ============================================================
 
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
@@ -225,12 +239,6 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
         'Longitud del código de invitación generado automáticamente')
 ON DUPLICATE KEY UPDATE clave = clave;
 
--- ============================================================
--- ADMIN POR DEFECTO
--- IMPORTANTE: el hash corresponde a la contraseña "admin123"
---   generado con bcrypt rounds=10.
---   Cambiar la contraseña desde el panel en producción.
--- ============================================================
 INSERT INTO paginas_contenido (slug, titulo, contenido) VALUES
 (
   'sobre-nosotros',
@@ -246,15 +254,14 @@ ON DUPLICATE KEY UPDATE slug = slug;
 
 -- ============================================================
 -- ADMIN POR DEFECTO
--- IMPORTANTE: el hash corresponde a la contraseña "admin123"
---   generado con bcrypt rounds=10.
---   Cambiar la contraseña desde el panel en producción.
+-- Contraseña: admin123 (hash bcrypt rounds=10)
+-- Cambiar desde el panel en producción.
 -- ============================================================
 INSERT INTO usuarios (nombre, email, password_hash, rol, activo)
 VALUES (
     'Administrador',
     'admin@nande.com',
-    '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+    '$2a$10$HEM7Iz0RkrdFwrHLQG0tqONTOohsDZiZnmjDfSIJNOufn0xX/1LlS',
     'admin',
     1
 ) ON DUPLICATE KEY UPDATE email = email;

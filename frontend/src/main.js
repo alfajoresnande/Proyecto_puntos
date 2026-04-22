@@ -17,13 +17,17 @@ import adminHtml         from "./views/admin.html?raw";
 import sobreNosotrosHtml from "./views/sobre-nosotros.html?raw";
 import terminosHtml      from "./views/terminos.html?raw";
 
-// Inyectar todas las vistas en el contenedor (síncrono, antes de Alpine)
-const outlet = document.getElementById("views-outlet");
-if (outlet) {
-  outlet.innerHTML =
-    catalogHtml + loginHtml + registroHtml + clienteHtml +
-    vendedorHtml + adminHtml + sobreNosotrosHtml + terminosHtml;
-}
+// Mapa ruta → HTML: solo se inyecta la vista activa en cada navegación
+const viewMap = {
+  "/":              catalogHtml,
+  "/login":         loginHtml,
+  "/registro":      registroHtml,
+  "/cliente":       clienteHtml,
+  "/vendedor":      vendedorHtml,
+  "/admin":         adminHtml,
+  "/sobre-nosotros": sobreNosotrosHtml,
+  "/terminos":      terminosHtml,
+};
 
 window.Alpine = Alpine;
 
@@ -132,16 +136,19 @@ function scheduleSessionExpiry() {
 // Verificar token al cargar si ya había sesión
 if (Alpine.store("auth").user) scheduleSessionExpiry();
 
+function setView(path) {
+  Alpine.store("router").current = path;
+  const outlet = document.getElementById("views-outlet");
+  if (outlet) outlet.innerHTML = viewMap[path] || "";
+}
+
 function applyRoute() {
   const path = parseHash();
   const user = Alpine.store("auth").user;
 
-  // Rutas públicas sin autenticación
+  // Rutas públicas: no requieren autenticación
   const publicRoutes = ["/", "/sobre-nosotros", "/terminos"];
-  if (publicRoutes.includes(path)) {
-    Alpine.store("router").current = path;
-    return;
-  }
+  if (publicRoutes.includes(path)) { setView(path); return; }
 
   const authOnlyRoutes = ["/login", "/registro"];
   const rolRoutes = {
@@ -154,7 +161,7 @@ function applyRoute() {
   if (user && authOnlyRoutes.includes(path))   return (location.hash = defaultRouteFor(user.rol));
   if (user && !rolRoutes[user.rol]?.includes(path)) return (location.hash = defaultRouteFor(user.rol));
 
-  Alpine.store("router").current = path;
+  setView(path);
 }
 
 window.addEventListener("hashchange", applyRoute);
@@ -289,6 +296,7 @@ Alpine.data("clienteView", () => ({
   formatDate,
 
   async init() {
+    this.loading = true;
     try {
       const [me, movs, canjes] = await Promise.all([
         api.get("/cliente/me"),
@@ -298,7 +306,7 @@ Alpine.data("clienteView", () => ({
       this.me = me;
       this.movs = movs;
       this.canjes = canjes;
-    } finally {
+    } catch {} finally {
       this.loading = false;
     }
   },
@@ -446,7 +454,7 @@ Alpine.data("adminView", () => ({
   codigos: [],
   categorias: [],
   canjes: [],
-  sobreDraft:    { titulo: "", contenido: "", okMsg: "", errMsg: "", saving: false },
+  sobreDraft:    { titulo: "", contenido: "", okMsg: "", errMsg: "", saving: false, imagenUploading: false },
   terminosDraft: { titulo: "", contenido: "", okMsg: "", errMsg: "", saving: false },
   nuevaCategoria: { nombre: "", descripcion: "" },
   nuevoCodigo: { codigo: "", puntos_valor: 0, usos_maximos: 1, fecha_expiracion: "" },
@@ -467,6 +475,9 @@ Alpine.data("adminView", () => ({
   busy: false,
   formatMoney,
   formatDate,
+
+  get sobreHtml()    { return marked(this.sobreDraft.contenido   || ""); },
+  get terminosHtml() { return marked(this.terminosDraft.contenido || ""); },
 
   async init() {
     await this.refresh();
@@ -508,6 +519,22 @@ Alpine.data("adminView", () => ({
       this.terminosDraft.titulo   = t.titulo;
       this.terminosDraft.contenido = t.contenido;
     } catch (_) {}
+  },
+
+  async subirImagenSobre(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    this.sobreDraft.imagenUploading = true;
+    this.sobreDraft.errMsg = "";
+    try {
+      const url = await this.subirImagen(file);
+      this.sobreDraft.contenido += `\n\n![imagen](${url})\n`;
+    } catch (e) {
+      this.sobreDraft.errMsg = "Error al subir imagen.";
+    } finally {
+      this.sobreDraft.imagenUploading = false;
+      event.target.value = "";
+    }
   },
 
   async guardarPaginaSlug(slug, draft) {

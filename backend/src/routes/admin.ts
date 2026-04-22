@@ -299,7 +299,7 @@ router.post("/productos", async (req, res) => {
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
     descripcion:        z.string().max(1000).optional().nullable(),
-    imagen_url:         z.string().url().optional().nullable(),
+    imagen_url:         z.string().min(1).optional().nullable(),
     categoria:          z.string().max(100).optional().nullable(),
     puntos_requeridos:  z.number().int().positive(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),
@@ -320,7 +320,7 @@ router.put("/productos/:id", async (req, res) => {
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
     descripcion:        z.string().max(1000).optional().nullable(),
-    imagen_url:         z.string().url().optional().nullable(),
+    imagen_url:         z.string().min(1).optional().nullable(),
     categoria:          z.string().max(100).optional().nullable(),
     puntos_requeridos:  z.number().int().positive(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),

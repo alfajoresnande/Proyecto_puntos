@@ -11,7 +11,8 @@ export interface TokenPayload {
 const SECRET = process.env.JWT_SECRET || "dev-secret-cambialo";
 
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign(payload, SECRET, { expiresIn: "30m" });
+  const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "30m";
+  return jwt.sign(payload, SECRET, { expiresIn });
 }
 
 declare global {

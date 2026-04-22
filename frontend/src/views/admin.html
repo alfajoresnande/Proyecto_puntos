@@ -57,9 +57,14 @@
         <span>Crear Usuario</span>
       </button>
 
-      <button class="admin-nav-btn" :class="tab==='paginas' && 'active'" @click="tab='paginas'">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
-        <span>Páginas Web</span>
+      <button class="admin-nav-btn" :class="tab==='sobre-nosotros' && 'active'" @click="tab='sobre-nosotros'">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg>
+        <span>Quiénes Somos</span>
+      </button>
+
+      <button class="admin-nav-btn" :class="tab==='terminos' && 'active'" @click="tab='terminos'">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z"/></svg>
+        <span>Términos</span>
       </button>
     </nav>
   </aside>
@@ -756,69 +761,150 @@
       </div>
 
       <!-- ══════════════════════════════
-           TAB: PÁGINAS WEB
+           TAB: QUIÉNES SOMOS
            ══════════════════════════════ -->
-      <div x-show="tab === 'paginas'">
+      <div x-show="tab === 'sobre-nosotros'">
         <div class="admin-section-header">
-          <h2 class="admin-section-title">Páginas de contenido</h2>
+          <h2 class="admin-section-title">Quiénes Somos</h2>
         </div>
 
-        <!-- Dos bloques de notas lado a lado -->
-        <div class="adm-notepads-grid">
+        <div class="adm-page-editor-grid">
 
-          <!-- ── Bloque: Sobre Nosotros ── -->
-          <div class="adm-notepad">
-            <div class="adm-notepad-header">
-              <p class="adm-notepad-header-title">Quiénes Somos</p>
-              <span class="adm-notepad-md-badge">Markdown</span>
-            </div>
-            <div class="adm-notepad-body">
-              <input class="adm-notepad-title-input"
-                     placeholder="Título de la página..."
-                     x-model="sobreDraft.titulo" />
-              <textarea class="adm-notepad-textarea"
-                        placeholder="# Sobre Nosotros&#10;&#10;Escribí el contenido de la página aquí usando Markdown..."
-                        x-model="sobreDraft.contenido"></textarea>
-            </div>
-            <div class="adm-notepad-footer">
-              <span class="adm-notepad-ok" x-show="sobreDraft.okMsg" x-text="sobreDraft.okMsg"></span>
-              <span class="adm-notepad-err" x-show="sobreDraft.errMsg" x-text="sobreDraft.errMsg"></span>
-              <button class="adm-notepad-save"
-                      :disabled="sobreDraft.saving"
-                      @click="guardarPaginaSlug('sobre-nosotros', sobreDraft)">
-                <span x-show="!sobreDraft.saving">Guardar cambios</span>
-                <span x-show="sobreDraft.saving">Guardando…</span>
-              </button>
+          <!-- ── Columna Editor ── -->
+          <div class="adm-page-editor-col">
+            <div class="adm-notepad">
+              <div class="adm-notepad-header">
+                <p class="adm-notepad-header-title">Editor</p>
+                <span class="adm-notepad-md-badge">Markdown</span>
+              </div>
+              <div class="adm-notepad-body">
+
+                <div class="adm-field">
+                  <label class="adm-label">Título de la página</label>
+                  <input class="adm-notepad-title-input"
+                         placeholder="Ej: Quiénes Somos"
+                         x-model="sobreDraft.titulo" />
+                </div>
+
+                <!-- Subir imágenes -->
+                <div class="adm-field">
+                  <label class="adm-label">Imágenes
+                    <span class="adm-tip" data-tip="La imagen se sube al servidor y su URL se inserta al final del contenido como ![imagen](url). Luego podés moverla donde quieras dentro del texto.">?</span>
+                  </label>
+                  <div class="adm-upload" @click="$refs.sobreImg.click()" style="padding:0.75rem 1rem;">
+                    <template x-if="!sobreDraft.imagenUploading">
+                      <div style="display:flex;align-items:center;gap:0.6rem;justify-content:center;">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+                        <span style="font-size:0.8rem;">Subir imagen (JPG, PNG, WEBP · máx 5 MB)</span>
+                      </div>
+                    </template>
+                    <template x-if="sobreDraft.imagenUploading">
+                      <div style="display:flex;align-items:center;gap:0.6rem;justify-content:center;">
+                        <span style="font-size:0.8rem;color:#D4621A;">Subiendo imagen…</span>
+                      </div>
+                    </template>
+                  </div>
+                  <input type="file" x-ref="sobreImg" accept="image/jpeg,image/png,image/webp"
+                         style="display:none" @change="subirImagenSobre($event)" />
+                </div>
+
+                <div class="adm-field">
+                  <label class="adm-label">Contenido (Markdown)</label>
+                  <textarea class="adm-notepad-textarea adm-page-textarea"
+                            placeholder="# Quiénes Somos&#10;&#10;Escribí el contenido de la página aquí usando Markdown..."
+                            x-model="sobreDraft.contenido"></textarea>
+                </div>
+
+              </div>
+              <div class="adm-notepad-footer">
+                <span class="adm-notepad-ok"  x-show="sobreDraft.okMsg"  x-text="sobreDraft.okMsg"></span>
+                <span class="adm-notepad-err" x-show="sobreDraft.errMsg" x-text="sobreDraft.errMsg"></span>
+                <button class="adm-notepad-save"
+                        :disabled="sobreDraft.saving"
+                        @click="guardarPaginaSlug('sobre-nosotros', sobreDraft)">
+                  <span x-show="!sobreDraft.saving">Guardar cambios</span>
+                  <span x-show="sobreDraft.saving">Guardando…</span>
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- ── Bloque: Términos y Condiciones ── -->
-          <div class="adm-notepad">
-            <div class="adm-notepad-header">
-              <p class="adm-notepad-header-title">Términos y Condiciones</p>
-              <span class="adm-notepad-md-badge">Markdown</span>
-            </div>
-            <div class="adm-notepad-body">
-              <input class="adm-notepad-title-input"
-                     placeholder="Título de la página..."
-                     x-model="terminosDraft.titulo" />
-              <textarea class="adm-notepad-textarea"
-                        placeholder="# Términos y Condiciones&#10;&#10;Escribí el contenido de la página aquí usando Markdown..."
-                        x-model="terminosDraft.contenido"></textarea>
-            </div>
-            <div class="adm-notepad-footer">
-              <span class="adm-notepad-ok" x-show="terminosDraft.okMsg" x-text="terminosDraft.okMsg"></span>
-              <span class="adm-notepad-err" x-show="terminosDraft.errMsg" x-text="terminosDraft.errMsg"></span>
-              <button class="adm-notepad-save"
-                      :disabled="terminosDraft.saving"
-                      @click="guardarPaginaSlug('terminos', terminosDraft)">
-                <span x-show="!terminosDraft.saving">Guardar cambios</span>
-                <span x-show="terminosDraft.saving">Guardando…</span>
-              </button>
+          <!-- ── Columna Preview ── -->
+          <div class="adm-page-editor-col">
+            <div class="adm-notepad adm-notepad-preview">
+              <div class="adm-notepad-header">
+                <p class="adm-notepad-header-title">Vista previa</p>
+              </div>
+              <div class="adm-md-preview" x-html="sobreHtml"></div>
             </div>
           </div>
 
-        </div><!-- /adm-notepads-grid -->
+        </div><!-- /adm-page-editor-grid -->
+
+        <p class="adm-md-hint">
+          <strong>Formato Markdown:</strong>
+          <code># Título</code> · <code>## Subtítulo</code> · <code>**negrita**</code> ·
+          <code>*cursiva*</code> · <code>- ítem de lista</code> · <code>[texto](url)</code> para links ·
+          <code>![alt](url)</code> para imágenes.
+          Las imágenes subidas se insertan automáticamente al final — podés moverlas adonde quieras.
+        </p>
+      </div>
+
+      <!-- ══════════════════════════════
+           TAB: TÉRMINOS Y CONDICIONES
+           ══════════════════════════════ -->
+      <div x-show="tab === 'terminos'">
+        <div class="admin-section-header">
+          <h2 class="admin-section-title">Términos y Condiciones</h2>
+        </div>
+
+        <div class="adm-page-editor-grid">
+
+          <!-- ── Columna Editor ── -->
+          <div class="adm-page-editor-col">
+            <div class="adm-notepad">
+              <div class="adm-notepad-header">
+                <p class="adm-notepad-header-title">Editor</p>
+                <span class="adm-notepad-md-badge">Markdown</span>
+              </div>
+              <div class="adm-notepad-body">
+                <div class="adm-field">
+                  <label class="adm-label">Título de la página</label>
+                  <input class="adm-notepad-title-input"
+                         placeholder="Ej: Términos y Condiciones"
+                         x-model="terminosDraft.titulo" />
+                </div>
+                <div class="adm-field">
+                  <label class="adm-label">Contenido (Markdown)</label>
+                  <textarea class="adm-notepad-textarea adm-page-textarea"
+                            placeholder="# Términos y Condiciones&#10;&#10;Escribí el contenido de la página aquí usando Markdown..."
+                            x-model="terminosDraft.contenido"></textarea>
+                </div>
+              </div>
+              <div class="adm-notepad-footer">
+                <span class="adm-notepad-ok"  x-show="terminosDraft.okMsg"  x-text="terminosDraft.okMsg"></span>
+                <span class="adm-notepad-err" x-show="terminosDraft.errMsg" x-text="terminosDraft.errMsg"></span>
+                <button class="adm-notepad-save"
+                        :disabled="terminosDraft.saving"
+                        @click="guardarPaginaSlug('terminos', terminosDraft)">
+                  <span x-show="!terminosDraft.saving">Guardar cambios</span>
+                  <span x-show="terminosDraft.saving">Guardando…</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Columna Preview ── -->
+          <div class="adm-page-editor-col">
+            <div class="adm-notepad adm-notepad-preview">
+              <div class="adm-notepad-header">
+                <p class="adm-notepad-header-title">Vista previa</p>
+              </div>
+              <div class="adm-md-preview" x-html="terminosHtml"></div>
+            </div>
+          </div>
+
+        </div><!-- /adm-page-editor-grid -->
 
         <p class="adm-md-hint">
           <strong>Formato Markdown:</strong>
@@ -826,27 +912,6 @@
           <code>*cursiva*</code> · <code>- ítem de lista</code> · <code>[texto](url)</code> para links.
           Los cambios se muestran en el sitio al instante luego de guardar.
         </p>
-
-        <!-- dummy para que no rompa Alpine (template x-if que se quitó del viejo flow) -->
-        <template x-if="false">
-          <div class="adm-field">
-                <label class="adm-label">
-                  Contenido (Markdown)
-                  <span class="adm-tip" data-tip="Formato Markdown: # Título, ## Subtítulo, **negrita**, *cursiva*, - ítem de lista, [texto](url) para links. Los cambios se previsualizan en tiempo real a la derecha.">?</span>
-                </label>
-                <textarea class="adm-input adm-textarea"
-                          placeholder="# Título&#10;&#10;Escribí el contenido de la página acá..."
-                          x-model="paginaDraft.contenido"></textarea>
-              </div>
-              <div class="adm-field">
-                <label class="adm-label" style="margin-bottom:0.35rem;">
-                  Vista previa
-                </label>
-                <div class="adm-md-preview" x-html="paginaHtml"></div>
-              </div>
-            </div>
-          </div>
-        </template>
       </div>
 
     </div><!-- /admin-content -->
