@@ -8,4 +8,4 @@ frontend/yarn.lock
 backend/node_modules
 backend/dist
 backend/yarn.lock
-database/schema.sql
+
