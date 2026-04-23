@@ -304,71 +304,70 @@ export function Vendedor() {
       <h1 className="ios-title mt-8 mb-4">Cargar puntos</h1>
 
       <p className="ios-label">Cliente</p>
-      <div className="ios-card p-4 space-y-3">
-        <div ref={buscadorClienteRef} style={{ position: "relative" }}>
-          <input
-            className="ios-input"
-            placeholder="Nombre o DNI del cliente..."
-            value={queryCliente}
-            onFocus={() => setMostrarSugerenciasCliente(true)}
-            onChange={(event) => {
-              setError("");
-              setOk("");
-              setQueryCliente(event.target.value);
-              setMostrarSugerenciasCliente(true);
-            }}
-          />
 
-          {mostrarSugerenciasCliente && queryCliente.trim().length >= 2 && resultadosClientes.length > 0 ? (
-            <div className="vendedor-sugerencias-box">
-              {resultadosClientes.map((usuario) => (
-                <button
-                  key={usuario.id}
-                  type="button"
-                  onClick={() => {
-                    setCliente(usuario);
-                    setQueryCliente(usuario.nombre);
-                    setMostrarSugerenciasCliente(false);
-                  }}
-                  className="vendedor-sugerencia-item"
-                >
-                  <span className="font-semibold text-sm" style={{ color: "#3D1A02" }}>
-                    {usuario.nombre}
-                  </span>
-                  <span className="text-xs" style={{ color: "#A08060" }}>
-                    DNI: {usuario.dni} - {usuario.puntos} pts
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+      <div ref={buscadorClienteRef} style={{ position: "relative", marginBottom: "0.5rem" }}>
+        <input
+          className="ios-input"
+          placeholder="Nombre o DNI del cliente..."
+          value={queryCliente}
+          onFocus={() => setMostrarSugerenciasCliente(true)}
+          onChange={(event) => {
+            setError("");
+            setOk("");
+            setQueryCliente(event.target.value);
+            setMostrarSugerenciasCliente(true);
+          }}
+        />
 
-        {cliente ? (
-          <div className="rounded-xl bg-[#FEF3E8] p-4 border border-[#F5C8A8]">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-base font-bold" style={{ color: "#D4621A" }}>
-                  {cliente.nombre}
-                </p>
-                <p className="text-xs" style={{ color: "#A08060" }}>
-                  DNI {cliente.dni} - <span className="font-bold" style={{ color: "#D4621A" }}>{cliente.puntos}</span> puntos
-                </p>
-              </div>
+        {mostrarSugerenciasCliente && queryCliente.trim().length >= 2 && resultadosClientes.length > 0 ? (
+          <div className="vendedor-sugerencias-box">
+            {resultadosClientes.map((usuario) => (
               <button
+                key={usuario.id}
+                type="button"
                 onClick={() => {
-                  setCliente(null);
-                  setQueryCliente("");
+                  setCliente(usuario);
+                  setQueryCliente(usuario.nombre);
                   setMostrarSugerenciasCliente(false);
                 }}
-                className="vendedor-cambiar-btn"
+                className="vendedor-sugerencia-item"
               >
-                Cambiar
+                <span className="font-semibold text-sm" style={{ color: "#3D1A02" }}>
+                  {usuario.nombre}
+                </span>
+                <span className="text-xs" style={{ color: "#A08060" }}>
+                  DNI: {usuario.dni} - {usuario.puntos} pts
+                </span>
               </button>
-            </div>
+            ))}
           </div>
         ) : null}
       </div>
+
+      {cliente ? (
+        <div className="ios-card p-4" style={{ marginBottom: "0.5rem" }}>
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-base font-bold" style={{ color: "#D4621A" }}>
+                {cliente.nombre}
+              </p>
+              <p className="text-xs" style={{ color: "#A08060" }}>
+                DNI {cliente.dni} - <span className="font-bold" style={{ color: "#D4621A" }}>{cliente.puntos}</span> puntos
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setCliente(null);
+                setQueryCliente("");
+                setMostrarSugerenciasCliente(false);
+              }}
+              className="vendedor-cambiar-btn"
+            >
+              Cambiar
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <p className="ios-label mt-6">Catalogo</p>
       <input
