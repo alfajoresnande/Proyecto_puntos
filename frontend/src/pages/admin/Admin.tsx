@@ -136,11 +136,7 @@ type ProductoForm = {
   nombre: string;
   descripcion: string;
   categoria: string;
-<<<<<<< HEAD
   puntos_requeridos: number | null;
-=======
-  puntos_requeridos: number;
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
   puntos_acumulables: number | null;
   imagenes: string[];
 };
@@ -224,11 +220,7 @@ function emptyProductoForm(): ProductoForm {
     nombre: "",
     descripcion: "",
     categoria: "",
-<<<<<<< HEAD
     puntos_requeridos: null,
-=======
-    puntos_requeridos: 0,
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
     puntos_acumulables: null,
     imagenes: [],
   };
@@ -320,7 +312,6 @@ export function Admin() {
   const [adminHint, setAdminHint] = useState("");
 
   const [nuevaCategoria, setNuevaCategoria] = useState({ nombre: "" });
-<<<<<<< HEAD
   const [nuevoCodigo, setNuevoCodigo] = useState<{
     codigo: string;
     puntos_valor: number | null;
@@ -330,12 +321,6 @@ export function Admin() {
     codigo: "",
     puntos_valor: null,
     usos_maximos: null,
-=======
-  const [nuevoCodigo, setNuevoCodigo] = useState({
-    codigo: "",
-    puntos_valor: 0,
-    usos_maximos: 1,
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
     fecha_expiracion: "",
   });
   const [nuevoUsuario, setNuevoUsuario] = useState({
@@ -770,13 +755,10 @@ export function Admin() {
   async function saveEdit(productoId: number) {
     setErrMsg("");
     setOkMsg("");
-<<<<<<< HEAD
     if (!editDraft.puntos_requeridos || editDraft.puntos_requeridos <= 0) {
       setErrMsg("Los puntos requeridos deben ser mayores a 0.");
       return;
     }
-=======
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
     setBusy(true);
     try {
       const imagenes = normalizeImageList(editDraft.imagenes);
@@ -985,19 +967,11 @@ export function Admin() {
         body: {
           codigo: nuevoCodigo.codigo.trim().toUpperCase(),
           puntos_valor: Number(nuevoCodigo.puntos_valor),
-<<<<<<< HEAD
           usos_maximos: nuevoCodigo.usos_maximos !== null && Number(nuevoCodigo.usos_maximos) >= 0 ? Number(nuevoCodigo.usos_maximos) : 1,
           fecha_expiracion: nuevoCodigo.fecha_expiracion ? new Date(nuevoCodigo.fecha_expiracion).toISOString() : null,
         },
       });
       setNuevoCodigo({ codigo: "", puntos_valor: null, usos_maximos: null, fecha_expiracion: "" });
-=======
-          usos_maximos: Number(nuevoCodigo.usos_maximos) >= 0 ? Number(nuevoCodigo.usos_maximos) : 1,
-          fecha_expiracion: nuevoCodigo.fecha_expiracion ? new Date(nuevoCodigo.fecha_expiracion).toISOString() : null,
-        },
-      });
-      setNuevoCodigo({ codigo: "", puntos_valor: 0, usos_maximos: 1, fecha_expiracion: "" });
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
       setOkMsg("Codigo creado.");
       await refreshQueries([["admin", "codigos"], ["admin", "stats"]]);
     } catch (error) {
@@ -1892,11 +1866,7 @@ export function Admin() {
                 <div className="adm-form-grid">
                   <div className="adm-field">
                     <label className="adm-label">Puntos requeridos</label>
-<<<<<<< HEAD
                     <input type="number" min={1} className="adm-input" value={nuevoProducto.puntos_requeridos ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))} />
-=======
-                    <input type="number" className="adm-input" value={nuevoProducto.puntos_requeridos} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: Number(event.target.value) }))} />
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Puntos acumulables</label>
@@ -2015,13 +1985,8 @@ export function Admin() {
                               type="number"
                               min={1}
                               className="adm-input"
-<<<<<<< HEAD
                               value={editDraft.puntos_requeridos ?? ""}
                               onChange={(event) => setEditDraft((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))}
-=======
-                              value={editDraft.puntos_requeridos}
-                              onChange={(event) => setEditDraft((prev) => ({ ...prev, puntos_requeridos: Number(event.target.value) }))}
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
                             />
                           </div>
                           <div className="adm-field">
@@ -2324,21 +2289,13 @@ export function Admin() {
                   </div>
                   <div className="adm-field">
                     <FieldLabel text="Puntos que entrega" tip="Cantidad de puntos que suma al canjear el código." />
-<<<<<<< HEAD
                     <input type="number" min={1} className="adm-input" placeholder="Ej: 500" value={nuevoCodigo.puntos_valor ?? ""} onChange={(event) => setNuevoCodigo((prev) => ({ ...prev, puntos_valor: event.target.value ? Number(event.target.value) : null }))} />
-=======
-                    <input type="number" className="adm-input" placeholder="Ej: 500" value={nuevoCodigo.puntos_valor} onChange={(event) => setNuevoCodigo((prev) => ({ ...prev, puntos_valor: Number(event.target.value) }))} />
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
                   </div>
                 </div>
                 <div className="adm-form-grid">
                   <div className="adm-field">
                     <FieldLabel text="Usos máximos" tip="0 significa ilimitado. Si pones 1, solo se puede usar una vez en total." />
-<<<<<<< HEAD
                     <input type="number" min={0} className="adm-input" placeholder="Ej: 1" value={nuevoCodigo.usos_maximos ?? ""} onChange={(event) => setNuevoCodigo((prev) => ({ ...prev, usos_maximos: event.target.value ? Number(event.target.value) : null }))} />
-=======
-                    <input type="number" className="adm-input" placeholder="Ej: 1" value={nuevoCodigo.usos_maximos} onChange={(event) => setNuevoCodigo((prev) => ({ ...prev, usos_maximos: Number(event.target.value) }))} />
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
                   </div>
                   <div className="adm-field">
                     <FieldLabel text="Fecha de expiración" tip="Opcional. Si lo dejas vacío, el código no vence por fecha." />

@@ -59,13 +59,8 @@ export function Navbar() {
 
           <div className="navbar-links">
             <NavLink to="/" className={({ isActive }) => navClass(isActive)}>Catalogo</NavLink>
-<<<<<<< HEAD
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
-=======
-            <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink>
-            <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink>
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
             {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)}>Puntos</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
             {canSeeAdmin ? <NavLink to="/admin" className={({ isActive }) => navClass(isActive)}>Panel Admin</NavLink> : null}
@@ -139,13 +134,8 @@ export function Navbar() {
       {menuOpen ? (
         <div className="navbar-mobile">
           <NavLink to="/" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Catalogo</NavLink>
-<<<<<<< HEAD
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}
-=======
-          <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink>
-          <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink>
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Cargar Puntos</NavLink> : null}
           {canSeeAdmin ? <NavLink to="/admin" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Panel Admin</NavLink> : null}

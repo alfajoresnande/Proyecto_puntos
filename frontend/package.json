@@ -11,10 +11,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.90.3",
     "marked": "^18.0.2",
-<<<<<<< HEAD
     "proyecto-puntos": "file:..",
-=======
->>>>>>> 767d8cedf0d6e65aa6cfaedf13a0e55bbb3f112d
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.1",
