@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  /* Keep existing body background as requested */
+  background: linear-gradient(135deg, #FDF6EE 0%, #F5E6D3 100%);
+  background-attachment: fixed;
+  color: #111827;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+@layer components {
+  .ios-card {
+    @apply rounded-2xl overflow-hidden;
+    background: #FFF8F0;
+    border: 1px solid #E6D3B8;
+    box-shadow: 0 8px 24px rgba(74, 44, 26, 0.08);
+  }
+
+  .ios-list > * + * {
+    border-top: 0.5px solid rgba(90, 62, 41, 0.16);
+  }
+
+  .ios-row {
+    @apply px-4 py-3 flex items-center justify-between gap-3;
+  }
+
+  .ios-input {
+    @apply w-full rounded-xl px-4 py-3 text-base outline-none border transition;
+    background: #FFFDF8;
+    border-color: #E6D3B8;
+    color: #4A2C1A;
+  }
+
+  .ios-input:focus {
+    border-color: #A86A3D;
+    box-shadow: 0 0 0 3px rgba(107, 62, 38, 0.14);
+  }
+
+  .ios-input::placeholder {
+    color: #9A7A5A;
+  }
+
+  .ios-btn {
+    @apply w-full py-3 rounded-xl font-semibold text-base transition
+      active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;
+  }
+
+  .ios-btn-primary {
+    background: #6B3E26;
+    color: #ffffff;
+    @apply ios-btn;
+  }
+
+  .ios-btn-primary:hover {
+    background: #A86A3D;
+  }
+
+  .ios-btn-secondary {
+    background: #FFF8F0;
+    color: #6B3E26;
+    border: 1.5px solid #6B3E26;
+    @apply ios-btn;
+  }
+
+  .ios-btn-secondary:hover {
+    background: #F3E3D1;
+  }
+
+  .ios-btn-danger {
+    @apply ios-btn bg-ios-red text-white;
+  }
+
+  .ios-label {
+    @apply text-xs uppercase tracking-wider px-4 pb-1;
+    color: #7A5A3C;
+  }
+
+  .ios-title {
+    @apply text-[34px] leading-tight font-bold tracking-tight;
+    color: #3D1A02;
+  }
+
+  .ios-nav {
+    @apply px-4 pt-2 pb-3 flex items-center justify-between;
+  }
+
+  .ios-segmented {
+    @apply flex rounded-xl p-1 gap-1;
+    background: #EFDFCC;
+  }
+
+  .ios-segmented button {
+    @apply flex-1 py-1.5 text-sm font-medium rounded-lg transition;
+    color: #3D1A02;
+  }
+
+  .ios-segmented button.active {
+    @apply bg-white shadow-sm;
+    color: #6B3E26;
+  }
+
+  .admin-upload-area {
+    border: 2px dashed #E6D3B8;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    background: #FFF8F0;
+    transition: border-color 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 56px;
+  }
+
+  .admin-upload-area:hover {
+    border-color: #A86A3D;
+    background: #F7E9D8;
+  }
+
+  .ios-chevron::after {
+    content: "";
+    @apply inline-block w-2 h-2 border-r-2 border-b-2 rotate-[-45deg];
+    border-color: #9A7A5A;
+  }
+}

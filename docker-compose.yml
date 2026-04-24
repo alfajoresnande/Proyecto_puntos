@@ -1,0 +1,63 @@
+version: '3.9'
+
+services:
+
+  # ──────────────────────────────────────────
+  #  MySQL 8.0
+  #  Al iniciar por primera vez ejecuta
+  #  automáticamente database/schema.sql
+  # ──────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: nande_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-nande_puntos}
+      MYSQL_USER: ${MYSQL_USER:-nande_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-nande_password}
+    ports:
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    networks:
+      - nande_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ──────────────────────────────────────────
+  #  phpMyAdmin
+  #  Panel web para gestionar la base de datos
+  #  Acceder en: http://localhost:8080
+  #  Usuario: nande_user / nande_password
+  #  (o root / rootpassword para acceso total)
+  # ──────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: nande_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER:-nande_user}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-nande_password}
+    ports:
+      - "${PMA_PORT:-8080}:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - nande_network
+
+volumes:
+  mysql_data:
+    name: nande_mysql_data
+
+networks:
+  nande_network:
+    name: nande_network
+    driver: bridge

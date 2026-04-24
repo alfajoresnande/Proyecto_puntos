@@ -1,0 +1,1 @@
+- [Stack del Proyecto_puntos](project_stack.md) — Node/Express + React/Vite; SQLite en demo, migrar a Postgres en prod
