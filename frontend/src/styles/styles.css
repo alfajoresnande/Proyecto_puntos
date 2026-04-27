@@ -9,9 +9,7 @@ html, body {
 }
 
 body {
-  /* Keep existing body background as requested */
-  background: linear-gradient(135deg, #FDF6EE 0%, #F5E6D3 100%);
-  background-attachment: fixed;
+  background: #F5E6D3;
   color: #111827;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";

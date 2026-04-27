@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/src/server.js",
-    "gen-secret": "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\""
+    "gen-secret": "node -e \"console.log(require('crypto').randomBytes(48).toString('hex'))\"",
+    "backup:full": "tsx src/scripts/backup-full.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

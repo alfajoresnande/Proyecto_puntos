@@ -93,6 +93,41 @@ async function ensureCanjeRedeemCodeSchema() {
   } catch { /* índice ya existe con otro nombre */ }
 }
 
+async function ensureCanjeItemsSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS canje_items (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      canje_id INT NOT NULL,
+      producto_id INT NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      puntos_unitarios INT NOT NULL,
+      puntos_total INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_canje_items_canje
+        FOREIGN KEY (canje_id) REFERENCES canjes(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_canje_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT uq_canje_items_producto
+        UNIQUE (canje_id, producto_id)
+    )`
+  );
+
+  await pool.query(
+    `INSERT INTO canje_items (canje_id, producto_id, cantidad, puntos_unitarios, puntos_total)
+     SELECT c.id,
+            c.producto_id,
+            1,
+            COALESCE(NULLIF(p.puntos_requeridos, 0), c.puntos_usados),
+            c.puntos_usados
+     FROM canjes c
+     LEFT JOIN productos p ON p.id = c.producto_id
+     LEFT JOIN canje_items ci ON ci.canje_id = c.id
+     WHERE ci.id IS NULL`
+  );
+}
+
 async function ensureProductoImagenesSchema() {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS producto_imagenes (
@@ -211,6 +246,26 @@ async function ensureSucursalesSchema() {
   }
 }
 
+
+async function ensureEventosSeguridadSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS eventos_seguridad (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      evento VARCHAR(120) NOT NULL,
+      ip VARCHAR(64) NOT NULL,
+      metodo VARCHAR(12) NOT NULL,
+      ruta VARCHAR(255) NOT NULL,
+      origen VARCHAR(255) NOT NULL,
+      agente_usuario VARCHAR(255) NOT NULL,
+      detalles_json JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_eventos_seguridad_created_at (created_at),
+      INDEX idx_eventos_seguridad_evento_created_at (evento, created_at),
+      INDEX idx_eventos_seguridad_ip_created_at (ip, created_at)
+    )`
+  );
+}
+
 pool
   .getConnection()
   .then(async (conn) => {
@@ -227,6 +282,11 @@ pool
       console.error("⚠️  Migración códigos de canje:", err.message);
     }
     try {
+      await ensureCanjeItemsSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración detalle de canjes:", err.message);
+    }
+    try {
       await ensureProductoImagenesSchema();
     } catch (err: any) {
       console.error("⚠️  Migración imágenes de productos:", err.message);
@@ -235,6 +295,11 @@ pool
       await ensureSucursalesSchema();
     } catch (err: any) {
       console.error("⚠️  Migración sucursales:", err.message);
+    }
+    try {
+      await ensureEventosSeguridadSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración eventos de seguridad:", err.message);
     }
   })
   .catch((err) => { console.error("❌ MySQL:", err.message); process.exit(1); });
@@ -264,3 +329,5 @@ export async function qRun(
   const [result] = await q.query(sql, params) as [any, any];
   return { insertId: result.insertId ?? 0, affectedRows: result.affectedRows ?? 0 };
 }
+
+

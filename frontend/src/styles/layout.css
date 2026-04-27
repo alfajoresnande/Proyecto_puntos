@@ -398,7 +398,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #FDF6EE;          /* ← color de fondo general de la página */
+  background: #F5E6D3;          /* ← color de fondo general de la página */
 }
 
 /* Dashboard sections constraint (cliente, vendedor, admin) */

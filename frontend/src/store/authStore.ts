@@ -1,7 +1,7 @@
-﻿import { create } from "zustand";
+import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { getCsrfToken } from "../lib/csrf";
 import type { AuthResponse, User } from "../types";
-import { isTokenExpired } from "../lib/auth";
 
 type LoginPayload = {
   email: string;
@@ -22,7 +22,6 @@ type GoogleLoginPayload = {
 
 type AuthStore = {
   user: User | null;
-  token: string | null;
   setSession: (session: AuthResponse) => void;
   logout: () => void;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
@@ -30,7 +29,7 @@ type AuthStore = {
   register: (payload: RegisterPayload) => Promise<AuthResponse>;
   updateUserPoints: (puntos: number) => void;
   updateUser: (patch: Partial<User>) => void;
-  validateSession: () => boolean;
+  restoreSession: () => Promise<void>;
 };
 
 const STORAGE_KEY = "nande-auth";
@@ -46,8 +45,10 @@ function parseErrorMessage(body: unknown, fallback: string): string {
 async function requestAuth(path: string, payload: LoginPayload | RegisterPayload | GoogleLoginPayload): Promise<AuthResponse> {
   const res = await fetch(`/api/auth/${path}`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      "X-CSRF-Token": getCsrfToken(),
     },
     body: JSON.stringify(payload),
   });
@@ -60,35 +61,45 @@ async function requestAuth(path: string, payload: LoginPayload | RegisterPayload
   return body as AuthResponse;
 }
 
+async function requestLogout(): Promise<void> {
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "X-CSRF-Token": getCsrfToken(),
+    },
+  }).catch(() => undefined);
+}
+
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
       user: null,
-      token: null,
 
-      setSession: ({ user, token }) => {
-        set({ user, token });
+      setSession: ({ user }) => {
+        set({ user });
       },
 
       logout: () => {
-        set({ user: null, token: null });
+        set({ user: null });
+        void requestLogout();
       },
 
       login: async (payload) => {
         const session = await requestAuth("login", payload);
-        set({ user: session.user, token: session.token });
+        set({ user: session.user });
         return session;
       },
 
       loginWithGoogle: async (credential) => {
         const session = await requestAuth("google", { credential });
-        set({ user: session.user, token: session.token });
+        set({ user: session.user });
         return session;
       },
 
       register: async (payload) => {
         const session = await requestAuth("register", payload);
-        set({ user: session.user, token: session.token });
+        set({ user: session.user });
         return session;
       },
 
@@ -104,20 +115,30 @@ export const useAuthStore = create<AuthStore>()(
         set({ user: { ...user, ...patch } });
       },
 
-      validateSession: () => {
-        const { token } = get();
-        if (!token) return false;
-        if (isTokenExpired(token)) {
-          set({ user: null, token: null });
-          return false;
+      restoreSession: async () => {
+        const response = await fetch("/api/auth/me", {
+          method: "GET",
+          credentials: "include",
+        }).catch(() => null);
+
+        if (!response || !response.ok) {
+          set({ user: null });
+          return;
         }
-        return true;
+
+        const body = (await response.json().catch(() => null)) as AuthResponse | null;
+        if (!body?.user) {
+          set({ user: null });
+          return;
+        }
+
+        set({ user: body.user });
       },
     }),
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user, token: state.token }),
+      partialize: (state) => ({ user: state.user }),
     },
   ),
 );

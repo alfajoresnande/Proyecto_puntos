@@ -11,7 +11,7 @@ import "./styles/catalog.css";
 import "./styles/admin.css";
 import "./styles/react.css";
 
-useAuthStore.getState().validateSession();
+void useAuthStore.getState().restoreSession();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,7 +25,7 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

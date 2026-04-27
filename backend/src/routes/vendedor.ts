@@ -6,6 +6,55 @@ import { requireAuth, requireRole } from "../auth";
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin"));
 
+type CanjeItemDetalle = {
+  producto_id: number;
+  producto_nombre: string;
+  producto_imagen: string | null;
+  cantidad: number;
+  puntos_unitarios: number;
+  puntos_total: number;
+};
+
+async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
+  const map = new Map<number, CanjeItemDetalle[]>();
+  if (!canjeIds.length) return map;
+
+  const placeholders = canjeIds.map(() => "?").join(", ");
+  const rows = await qAll<{
+    canje_id: number;
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>(
+    pool,
+    `SELECT ci.canje_id, ci.producto_id, p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
+            ci.cantidad, ci.puntos_unitarios, ci.puntos_total
+     FROM canje_items ci
+     JOIN productos p ON p.id = ci.producto_id
+     WHERE ci.canje_id IN (${placeholders})
+     ORDER BY ci.canje_id ASC, ci.id ASC`,
+    canjeIds,
+  );
+
+  for (const row of rows) {
+    const current = map.get(Number(row.canje_id)) ?? [];
+    current.push({
+      producto_id: Number(row.producto_id),
+      producto_nombre: row.producto_nombre,
+      producto_imagen: row.producto_imagen ?? null,
+      cantidad: Number(row.cantidad),
+      puntos_unitarios: Number(row.puntos_unitarios),
+      puntos_total: Number(row.puntos_total),
+    });
+    map.set(Number(row.canje_id), current);
+  }
+
+  return map;
+}
+
 // Buscar cliente por DNI (legacy / individual)
 router.get("/cliente/:dni", async (req, res, next) => {
   try {
@@ -131,7 +180,25 @@ router.get("/canje/:codigo", async (req, res, next) => {
       [codigo]
     );
     if (!canje) { res.status(404).json({ error: "Código de retiro no encontrado" }); return; }
-    res.json(canje);
+    const itemsMap = await getCanjeItemsByCanjeIds([Number(canje.id)]);
+    const fallbackItem: CanjeItemDetalle = {
+      producto_id: 0,
+      producto_nombre: String(canje.producto_nombre),
+      producto_imagen: null,
+      cantidad: 1,
+      puntos_unitarios: Number(canje.puntos_usados),
+      puntos_total: Number(canje.puntos_usados),
+    };
+    const items = itemsMap.get(Number(canje.id)) ?? [fallbackItem];
+    const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad), 0);
+
+    res.json({
+      ...canje,
+      items,
+      total_items: items.length,
+      total_unidades: totalUnidades,
+      productos_detalle: items.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(" | "),
+    });
   } catch (err) {
     next(err);
   }

@@ -12,9 +12,9 @@ type Pagina = {
 
 export function Terminos() {
   useEffect(() => {
-    document.body.classList.add("catalog-background");
+    document.body.classList.add("catalogo-background");
     return () => {
-      document.body.classList.remove("catalog-background");
+      document.body.classList.remove("catalogo-background");
     };
   }, []);
 

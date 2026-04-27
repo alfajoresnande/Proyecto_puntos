@@ -23,6 +23,7 @@ USE nande_puntos;
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS movimientos_puntos;
+DROP TABLE IF EXISTS canje_items;
 DROP TABLE IF EXISTS canjes;
 DROP TABLE IF EXISTS sucursales;
 DROP TABLE IF EXISTS referidos;
@@ -238,6 +239,30 @@ CREATE TABLE IF NOT EXISTS canjes (
     CONSTRAINT fk_canje_sucursal
         FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
         ON DELETE SET NULL
+);
+
+-- ============================================================
+-- TABLA: canje_items
+-- Detalle de productos por canje (soporta carrito con multiples
+-- productos y cantidades en un unico codigo de retiro).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS canje_items (
+    id                  INT             PRIMARY KEY AUTO_INCREMENT,
+    canje_id            INT             NOT NULL,
+    producto_id         INT             NOT NULL,
+    cantidad            INT             NOT NULL DEFAULT 1,
+    puntos_unitarios    INT             NOT NULL,
+    puntos_total        INT             NOT NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_canje_items_canje
+        FOREIGN KEY (canje_id) REFERENCES canjes(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_canje_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_canje_items_producto
+        UNIQUE (canje_id, producto_id)
 );
 
 -- ============================================================

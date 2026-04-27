@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -94,9 +94,9 @@ export function Cliente() {
   }, [movimientos, movimientosPage, movimientosTotalPages]);
 
   useEffect(() => {
-    document.body.classList.add("catalog-background");
+    document.body.classList.add("catalogo-background");
     return () => {
-      document.body.classList.remove("catalog-background");
+      document.body.classList.remove("catalogo-background");
     };
   }, []);
 

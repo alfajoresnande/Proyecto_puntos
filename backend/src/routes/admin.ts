@@ -7,6 +7,10 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
+import { normalizeSafeImageUrl } from "../urlSafety";
+import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
+import { verifyUploadedImageFile } from "../uploadSecurity";
+import { createFullBackupArchive } from "../services/backup";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -78,12 +82,13 @@ async function getInviteCodeLength(): Promise<number> {
 
 function normalizeProductImages(imagenes: string[] | undefined | null, imagenUrlFallback?: string | null): string[] {
   const clean = (imagenes ?? [])
-    .map((url) => url.trim())
-    .filter((url) => url.length > 0)
+    .map((url) => normalizeSafeImageUrl(url))
+    .filter((url): url is string => Boolean(url))
     .slice(0, 3);
 
   if (clean.length > 0) return clean;
-  if (imagenUrlFallback && imagenUrlFallback.trim()) return [imagenUrlFallback.trim()];
+  const fallback = normalizeSafeImageUrl(imagenUrlFallback);
+  if (fallback) return [fallback];
   return [];
 }
 
@@ -96,6 +101,55 @@ async function replaceProductImages(conn: any, productoId: number, imagenes: str
       [productoId, imagenes[index], index + 1]
     );
   }
+}
+
+type CanjeItemDetalle = {
+  producto_id: number;
+  producto_nombre: string;
+  producto_imagen: string | null;
+  cantidad: number;
+  puntos_unitarios: number;
+  puntos_total: number;
+};
+
+async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
+  const map = new Map<number, CanjeItemDetalle[]>();
+  if (!canjeIds.length) return map;
+
+  const placeholders = canjeIds.map(() => "?").join(", ");
+  const rows = await qAll<{
+    canje_id: number;
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>(
+    pool,
+    `SELECT ci.canje_id, ci.producto_id, p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
+            ci.cantidad, ci.puntos_unitarios, ci.puntos_total
+     FROM canje_items ci
+     JOIN productos p ON p.id = ci.producto_id
+     WHERE ci.canje_id IN (${placeholders})
+     ORDER BY ci.canje_id ASC, ci.id ASC`,
+    canjeIds,
+  );
+
+  for (const row of rows) {
+    const current = map.get(Number(row.canje_id)) ?? [];
+    current.push({
+      producto_id: Number(row.producto_id),
+      producto_nombre: row.producto_nombre,
+      producto_imagen: row.producto_imagen ?? null,
+      cantidad: Number(row.cantidad),
+      puntos_unitarios: Number(row.puntos_unitarios),
+      puntos_total: Number(row.puntos_total),
+    });
+    map.set(Number(row.canje_id), current);
+  }
+
+  return map;
 }
 
 // ════════════════════════════════════════════════════════
@@ -117,6 +171,29 @@ router.get("/stats", async (_req, res) => {
     canjes_pendientes: canjesPend?.c        ?? 0,
     puntos_emitidos:   ptsEmitidos?.s       ?? 0,
   });
+});
+
+router.get("/security/monitor", async (req, res) => {
+  const requested = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(requested) ? requested : 50;
+  const snapshot = getSecurityMonitorSnapshot();
+  const persistidos = await getPersistedSecurityEvents(limit);
+  res.json({ ...snapshot, persistidos });
+});
+
+router.post("/backup/full", async (req, res) => {
+  try {
+    const backup = await createFullBackupArchive();
+    recordSecurityEvent("backup_full_generado", req, {
+      archivo: backup.fileName,
+      tamano_bytes: backup.sizeBytes,
+    });
+    res.download(backup.archivePath, backup.fileName);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo generar el backup";
+    recordSecurityEvent("backup_full_error", req, { error: message });
+    res.status(500).json({ error: message });
+  }
 });
 
 // ════════════════════════════════════════════════════════
@@ -333,7 +410,38 @@ router.get("/canjes", async (_req, res) => {
      LEFT JOIN sucursales s ON s.id = c.sucursal_id
      ORDER BY c.created_at DESC`
   );
-  res.json(rows);
+  if (!rows.length) {
+    res.json([]);
+    return;
+  }
+
+  const itemsMap = await getCanjeItemsByCanjeIds(rows.map((row: any) => Number(row.id)));
+  const payload = rows.map((row: any) => {
+    const fallbackItem: CanjeItemDetalle = {
+      producto_id: 0,
+      producto_nombre: String(row.producto_nombre),
+      producto_imagen: null,
+      cantidad: 1,
+      puntos_unitarios: Number(row.puntos_usados),
+      puntos_total: Number(row.puntos_usados),
+    };
+    const items = itemsMap.get(Number(row.id)) ?? [fallbackItem];
+    const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad), 0);
+    const primerItem = items[0];
+    const productoNombreVista =
+      items.length > 1 ? `${primerItem.producto_nombre} +${items.length - 1} mas` : primerItem.producto_nombre;
+
+    return {
+      ...row,
+      producto_nombre: productoNombreVista,
+      items,
+      total_items: items.length,
+      total_unidades: totalUnidades,
+      productos_detalle: items.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(" | "),
+    };
+  });
+
+  res.json(payload);
 });
 
 router.patch("/canjes/:id", async (req, res) => {
@@ -453,9 +561,20 @@ router.get("/productos", async (_req, res) => {
 
 // POST /admin/productos/upload — recibe imagen y devuelve la URL pública
 router.post("/productos/upload", (req, res, next) => {
-  upload.single("imagen")(req, res, (err) => {
+  upload.single("imagen")(req, res, async (err) => {
     if (err) { res.status(400).json({ error: err.message }); return; }
     if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
+
+    const check = await verifyUploadedImageFile(req.file);
+    if (!check.ok) {
+      recordSecurityEvent("upload_bloqueado_firma_invalida", req, {
+        mimeDeclarado: req.file.mimetype,
+        mimeDetectado: check.detectedMime,
+      });
+      res.status(400).json({ error: "Archivo de imagen inválido" });
+      return;
+    }
+
     res.json({ url: `/uploads/${req.file.filename}` });
   });
 });

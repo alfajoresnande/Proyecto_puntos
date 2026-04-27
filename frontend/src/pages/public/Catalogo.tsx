@@ -5,12 +5,22 @@ import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
-type CanjeProductoResponse = {
+type CanjeCarritoResponse = {
   canje_id: number;
   canje_codigo?: string | null;
   codigo_retiro?: string | null;
   nuevo_saldo: number;
   puntos_usados: number;
+  total_items?: number;
+  total_unidades?: number;
+  items?: Array<{
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>;
   dias_limite_retiro?: number;
   fecha_limite_retiro?: string | null;
   sucursal_id?: number | null;
@@ -41,16 +51,11 @@ type CatalogToast = {
   diasLimiteRetiro?: number | null;
 };
 
-type CanjeConfirmState = {
-  producto: Producto;
-  onConfirm?: () => void;
-};
-
 function isLegacyCanjeCode(code?: string | null): boolean {
   return Boolean(code && /^C0{2,}[A-Z0-9]*$/.test(code));
 }
 
-function getCanjeCode(data: CanjeProductoResponse): string | null {
+function getCanjeCode(data: CanjeCarritoResponse): string | null {
   if (data.canje_codigo && !isLegacyCanjeCode(data.canje_codigo)) return data.canje_codigo;
   if (data.codigo_retiro && !isLegacyCanjeCode(data.codigo_retiro)) return data.codigo_retiro;
   return null;
@@ -83,7 +88,8 @@ export function Catalogo() {
   const hasDragged = useRef(false);
   const [toast, setToast] = useState<CatalogToast | null>(null);
   const [sucursalRetiroId, setSucursalRetiroId] = useState("");
-  const [canjeConfirmState, setCanjeConfirmState] = useState<CanjeConfirmState | null>(null);
+  const [canjeCart, setCanjeCart] = useState<Record<number, number>>({});
+  const [canjeConfirmOpen, setCanjeConfirmOpen] = useState(false);
 
   const productosQuery = useQuery({
     queryKey: ["productos"],
@@ -119,9 +125,9 @@ export function Catalogo() {
   }, [puntosMax]);
 
   useEffect(() => {
-    document.body.classList.add("catalog-background");
+    document.body.classList.add("catalogo-background");
     return () => {
-      document.body.classList.remove("catalog-background");
+      document.body.classList.remove("catalogo-background");
     };
   }, []);
 
@@ -155,12 +161,32 @@ export function Catalogo() {
     });
   }, [productos, categoriaActiva, maxPuntos, busquedaProducto]);
 
-  const canjearMutation = useMutation({
-    mutationFn: ({ productoId, sucursalId }: { productoId: number; sucursalId?: number }) =>
-      api.post<CanjeProductoResponse>("/cliente/canjear-producto", {
-        producto_id: productoId,
+  const canjeCartItems = useMemo(() => {
+    return productos
+      .filter((producto) => canjeCart[producto.id])
+      .map((producto) => ({
+        ...producto,
+        cantidad: canjeCart[producto.id],
+        subtotal_puntos: (producto.puntos_requeridos || 0) * canjeCart[producto.id],
+      }));
+  }, [productos, canjeCart]);
+
+  const canjeCartTotalPuntos = useMemo(
+    () => canjeCartItems.reduce((acc, item) => acc + item.subtotal_puntos, 0),
+    [canjeCartItems],
+  );
+
+  const canjeCartTotalUnidades = useMemo(
+    () => canjeCartItems.reduce((acc, item) => acc + item.cantidad, 0),
+    [canjeCartItems],
+  );
+
+  const canjearCarritoMutation = useMutation({
+    mutationFn: ({ items, sucursalId }: { items: Array<{ producto_id: number; cantidad: number }>; sucursalId?: number }) =>
+      api.post<CanjeCarritoResponse>("/cliente/canjear-carrito", {
+        items,
         sucursal_id: sucursalId,
-    }),
+      }),
     onSuccess: (data) => {
       const codigoRetiro = getCanjeCode(data);
       const sucursalElegida =
@@ -172,8 +198,11 @@ export function Catalogo() {
       updateUserPoints(data.nuevo_saldo);
       setToast({
         variant: "redeem_notice",
-        title: "Canje hecho con éxito",
-        msg: "Tu canje se registró correctamente.",
+        title: "Canje de carrito hecho con exito",
+        msg:
+          typeof data.total_unidades === "number" && data.total_unidades > 0
+            ? `Tu canje se registro correctamente con ${data.total_unidades} producto(s).`
+            : "Tu canje se registro correctamente.",
         codigoCanje: codigoRetiro ?? "Disponible en Mis Canjes",
         sucursalDetalle: sucursalElegida ?? null,
         lugarRetiroTexto: lugarRetiro,
@@ -182,6 +211,9 @@ export function Catalogo() {
             ? data.dias_limite_retiro
             : null,
       });
+      setCanjeCart({});
+      setCanjeConfirmOpen(false);
+      setProductoModal(null);
     },
     onError: (error: Error) => {
       const message = error.message.toLowerCase();
@@ -214,7 +246,7 @@ export function Catalogo() {
     setZoomOrigin("50% 50%");
   }
 
-  function prepararCanje(producto: Producto, onConfirm?: () => void) {
+  function agregarProductoAlCarrito(producto: Producto, onAdded?: () => void) {
     if (!user || user.rol !== "cliente") {
       setToast({
         msg: "Solo los clientes pueden canjear productos.",
@@ -223,6 +255,58 @@ export function Catalogo() {
         onAction: () => navigate("/login"),
         dismissLabel: "Cerrar",
         autoHideMs: 7000,
+      });
+      return;
+    }
+
+    if (canjearCarritoMutation.isPending) return;
+
+    setCanjeCart((prev) => ({
+      ...prev,
+      [producto.id]: (prev[producto.id] || 0) + 1,
+    }));
+    onAdded?.();
+  }
+
+  function incrementarCarrito(productoId: number) {
+    setCanjeCart((prev) => ({
+      ...prev,
+      [productoId]: (prev[productoId] || 0) + 1,
+    }));
+  }
+
+  function decrementarCarrito(productoId: number) {
+    setCanjeCart((prev) => {
+      const next = { ...prev };
+      const cantidadActual = next[productoId] || 0;
+      if (cantidadActual <= 1) {
+        delete next[productoId];
+      } else {
+        next[productoId] = cantidadActual - 1;
+      }
+      return next;
+    });
+  }
+
+  function abrirConfirmacionCarrito() {
+    if (!user || user.rol !== "cliente") {
+      setToast({
+        msg: "Solo los clientes pueden canjear productos.",
+        variant: "info",
+        actionLabel: "Ir a login",
+        onAction: () => navigate("/login"),
+        dismissLabel: "Cerrar",
+        autoHideMs: 7000,
+      });
+      return;
+    }
+
+    if (!canjeCartItems.length) {
+      setToast({
+        msg: "Agrega productos al carrito para canjear.",
+        variant: "info",
+        dismissLabel: "Cerrar",
+        autoHideMs: 6000,
       });
       return;
     }
@@ -241,11 +325,11 @@ export function Catalogo() {
       setSucursalRetiroId(String(sucursalesRetiro[0].id));
     }
 
-    setCanjeConfirmState({ producto, onConfirm });
+    setCanjeConfirmOpen(true);
   }
 
-  function confirmarCanjePendiente() {
-    if (!canjeConfirmState) return;
+  function confirmarCanjeCarritoPendiente() {
+    if (!canjeCartItems.length) return;
     const sucursalElegida = sucursalRetiroSeleccionada || sucursalesRetiro[0];
 
     if (sucursalesRetiro.length > 1 && !sucursalElegida) {
@@ -258,12 +342,17 @@ export function Catalogo() {
       return;
     }
 
-    canjearMutation.mutate({
-      productoId: canjeConfirmState.producto.id,
+    canjearCarritoMutation.mutate({
+      items: canjeCartItems.map((item) => ({
+        producto_id: item.id,
+        cantidad: item.cantidad,
+      })),
       sucursalId: sucursalElegida?.id,
     });
-    canjeConfirmState.onConfirm?.();
-    setCanjeConfirmState(null);
+  }
+
+  function vaciarCarritoCanje() {
+    setCanjeCart({});
   }
 
   return (
@@ -346,6 +435,83 @@ export function Catalogo() {
           </div>
         ) : null}
 
+        {isCliente ? (
+          <div
+            className="catalog-redeem-cart-panel"
+            style={{
+              border: "1.5px solid #E6D3B8",
+              borderRadius: "14px",
+              padding: "0.75rem",
+              background: "#FFF8F0",
+              marginBottom: "0.9rem",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+              <p style={{ margin: 0, fontWeight: 700, color: "#4A2C1A" }}>
+                Carrito de canje ({canjeCartTotalUnidades} producto{canjeCartTotalUnidades === 1 ? "" : "s"})
+              </p>
+              <p style={{ margin: 0, fontWeight: 700, color: "#6B3E26" }}>
+                Total: {canjeCartTotalPuntos} pts
+              </p>
+            </div>
+
+            {canjeCartItems.length > 0 ? (
+              <div style={{ marginTop: "0.65rem", display: "grid", gap: "0.45rem" }}>
+                {canjeCartItems.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "0.55rem",
+                      alignItems: "center",
+                      border: "1px solid #E6D3B8",
+                      borderRadius: "10px",
+                      padding: "0.45rem 0.55rem",
+                      background: "#FFFDF8",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, color: "#4A2C1A", fontWeight: 600, fontSize: "0.87rem" }}>{item.nombre}</p>
+                      <p style={{ margin: "0.1rem 0 0", color: "#8B5A30", fontSize: "0.76rem" }}>
+                        {item.subtotal_puntos} pts
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexShrink: 0 }}>
+                      <button className="vendedor-round-btn" onClick={() => decrementarCarrito(item.id)} type="button">-</button>
+                      <span style={{ minWidth: "18px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>{item.cantidad}</span>
+                      <button className="vendedor-round-btn" onClick={() => incrementarCarrito(item.id)} type="button">+</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: "0.6rem 0 0", color: "#8B5A30", fontSize: "0.83rem" }}>
+                Agrega productos para canjearlos juntos con un solo codigo.
+              </p>
+            )}
+
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+              <button
+                className="catalog-float-toast-btn-primary"
+                type="button"
+                disabled={canjearCarritoMutation.isPending || !canjeCartItems.length}
+                onClick={abrirConfirmacionCarrito}
+              >
+                {canjearCarritoMutation.isPending ? "Procesando..." : "Canjear carrito"}
+              </button>
+              <button
+                className="catalog-float-toast-btn-secondary"
+                type="button"
+                disabled={!canjeCartItems.length}
+                onClick={vaciarCarritoCanje}
+              >
+                Vaciar
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="catalog-grid">
             {Array.from({ length: 6 }).map((_, index) => (
@@ -414,10 +580,10 @@ export function Catalogo() {
                     <button
                       className="product-card-btn product-card-btn-canjear"
                       style={{ marginTop: "0.5rem" }}
-                      disabled={canjearMutation.isPending}
-                      onClick={() => prepararCanje(producto)}
+                      disabled={canjearCarritoMutation.isPending}
+                      onClick={() => agregarProductoAlCarrito(producto)}
                     >
-                      Canjear producto
+                      Agregar al carrito
                     </button>
                   ) : (
                     <Link to="/login" className="product-card-btn product-card-btn-login" style={{ marginTop: "0.5rem" }}>
@@ -430,14 +596,22 @@ export function Catalogo() {
           </div>
         )}
       </div>
-      {canjeConfirmState ? (
-        <div className="catalog-confirm-overlay" onClick={() => setCanjeConfirmState(null)}>
+      {canjeConfirmOpen ? (
+        <div className="catalog-confirm-overlay" onClick={() => setCanjeConfirmOpen(false)}>
           <div className="catalog-confirm-card" onClick={(event) => event.stopPropagation()}>
-            <p className="catalog-confirm-title">Confirmar canje</p>
+            <p className="catalog-confirm-title">Confirmar canje de carrito</p>
             <p className="catalog-confirm-msg">
-              Vas a canjear <strong>{canjeConfirmState.producto.nombre}</strong> por{" "}
-              <strong>{canjeConfirmState.producto.puntos_requeridos} pts</strong>.
+              Vas a canjear <strong>{canjeCartTotalUnidades}</strong> producto(s) por{" "}
+              <strong>{canjeCartTotalPuntos} pts</strong>.
             </p>
+
+            <div className="catalog-confirm-branch-detail">
+              {canjeCartItems.map((item) => (
+                <p key={item.id}>
+                  <strong>{item.nombre}</strong> x{item.cantidad} — {item.subtotal_puntos} pts
+                </p>
+              ))}
+            </div>
 
             <div className="catalog-confirm-field">
               <label className="catalog-confirm-label" htmlFor="catalog-confirm-sucursal">
@@ -448,7 +622,7 @@ export function Catalogo() {
                 className="catalog-pickup-select"
                 value={sucursalRetiroId}
                 onChange={(event) => setSucursalRetiroId(event.target.value)}
-                disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length || canjearMutation.isPending}
+                disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length || canjearCarritoMutation.isPending}
               >
                 {sucursalesRetiro.length > 1 ? <option value="">Selecciona una sucursal</option> : null}
                 {sucursalesRetiro.map((sucursal) => (
@@ -474,12 +648,12 @@ export function Catalogo() {
             <div className="catalog-float-toast-actions">
               <button
                 className="catalog-float-toast-btn-primary"
-                onClick={confirmarCanjePendiente}
-                disabled={canjearMutation.isPending || (sucursalesRetiro.length > 1 && !sucursalRetiroSeleccionada)}
+                onClick={confirmarCanjeCarritoPendiente}
+                disabled={canjearCarritoMutation.isPending || !canjeCartItems.length || (sucursalesRetiro.length > 1 && !sucursalRetiroSeleccionada)}
               >
-                {canjearMutation.isPending ? "Procesando..." : "Confirmar canje"}
+                {canjearCarritoMutation.isPending ? "Procesando..." : "Confirmar canje"}
               </button>
-              <button className="catalog-float-toast-btn-secondary" onClick={() => setCanjeConfirmState(null)}>
+              <button className="catalog-float-toast-btn-secondary" onClick={() => setCanjeConfirmOpen(false)}>
                 Cancelar
               </button>
             </div>
@@ -638,10 +812,10 @@ export function Catalogo() {
               {user ? (
                 <button
                   className="product-card-btn product-card-btn-canjear"
-                  disabled={canjearMutation.isPending}
-                  onClick={() => prepararCanje(productoModal, () => setProductoModal(null))}
+                  disabled={canjearCarritoMutation.isPending}
+                  onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null))}
                 >
-                  Canjear producto
+                  Agregar al carrito
                 </button>
               ) : (
                 <Link to="/login" className="product-card-btn product-card-btn-login">

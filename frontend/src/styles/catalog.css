@@ -38,19 +38,19 @@
   box-shadow: 0 8px 24px rgba(61, 26, 2, 0.14);
 }
 
-body.catalog-background {
-  background-image: url("/fondocat.png");
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center center;
-  background-attachment: fixed;
+body.catalog-background,
+body.catalogo-background {
+  background: #F5E6D3;
+  background-image: none;
 }
 
-body.catalog-background .app-main {
+body.catalog-background .app-main,
+body.catalogo-background .app-main {
   background: transparent;
 }
 
-body.catalog-background .pagina-page {
+body.catalog-background .pagina-page,
+body.catalogo-background .pagina-page {
   background: transparent;
 }
 
@@ -1228,7 +1228,7 @@ body.catalog-background .pagina-page {
 
 @media (max-width: 639px) {
   .catalog-page {
-    padding: 1.25rem 1rem 3rem;
+    padding: 1rem 0.7rem 2.7rem;
   }
 
   .catalog-top-shell {
@@ -1237,7 +1237,7 @@ body.catalog-background .pagina-page {
   }
 
   .catalog-products-shell {
-    padding: 0.8rem;
+    padding: 0.65rem;
     border-radius: 14px;
   }
 
@@ -1251,13 +1251,72 @@ body.catalog-background .pagina-page {
   }
 
   .catalog-grid {
-    grid-template-columns: 1fr;
-    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
   }
 
   .product-card-img,
   .product-card-placeholder {
-    height: 165px;
+    height: 108px;
+  }
+
+  .product-card {
+    border-radius: 12px;
+  }
+
+  .product-card-cat {
+    top: 0.45rem;
+    left: 0.45rem;
+    padding: 0.16rem 0.5rem;
+    font-size: 0.62rem;
+  }
+
+  .product-card-body {
+    padding: 0.7rem;
+  }
+
+  .product-card-name {
+    font-size: 0.84rem;
+    line-height: 1.3;
+    margin-bottom: 0.28rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.18em;
+  }
+
+  .product-card-desc {
+    font-size: 0.72rem;
+    line-height: 1.38;
+    margin-bottom: 0.65rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 5.35em;
+  }
+
+  .product-card-points {
+    padding: 0.5rem 0.55rem;
+    margin-bottom: 0.65rem;
+    gap: 0.3rem;
+    border-radius: 9px;
+  }
+
+  .product-card-row {
+    font-size: 0.71rem;
+    line-height: 1.28;
+  }
+
+  .product-card-row .cost {
+    font-size: 0.84rem;
+  }
+
+  .product-card-btn {
+    padding: 0.54rem;
+    border-radius: 9px;
+    font-size: 0.79rem;
   }
 
   .catalog-user-banner {

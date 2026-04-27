@@ -32,6 +32,56 @@ type SucursalRetiro = {
   provincia: string;
 };
 
+type CanjeItemInput = {
+  producto_id: number;
+  cantidad: number;
+};
+
+type CanjeItemDetalle = {
+  producto_id: number;
+  producto_nombre: string;
+  producto_imagen: string | null;
+  cantidad: number;
+  puntos_unitarios: number;
+  puntos_total: number;
+};
+
+type CanjeProductoDB = {
+  id: number;
+  nombre: string;
+  puntos_requeridos: number;
+  imagen_url: string | null;
+};
+
+type ClienteCanjeRow = {
+  id: number;
+  codigo_retiro: string | null;
+  puntos_usados: number;
+  estado: "pendiente" | "entregado" | "no_disponible" | "expirado" | "cancelado";
+  fecha_limite_retiro: string | null;
+  notas: string | null;
+  created_at: string;
+  producto_nombre: string;
+  producto_imagen: string | null;
+  sucursal_id: number | null;
+  sucursal_nombre: string | null;
+  sucursal_direccion: string | null;
+  sucursal_piso: string | null;
+  sucursal_localidad: string | null;
+  sucursal_provincia: string | null;
+};
+
+class HttpError extends Error {
+  status: number;
+  errorCode?: string;
+
+  constructor(status: number, message: string, errorCode?: string) {
+    super(message);
+    this.status = status;
+    this.errorCode = errorCode;
+  }
+}
+
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -92,6 +142,221 @@ async function getInviteCodeLength(conn: Queryable = pool): Promise<number> {
 
 function isValidInviteCode(code: string, length: number): boolean {
   return new RegExp(`^[A-Z0-9]{${length}}$`).test(code);
+}
+
+function normalizeCanjeItems(items: CanjeItemInput[]): CanjeItemInput[] {
+  const grouped = new Map<number, number>();
+  for (const item of items) {
+    const productoId = Number(item.producto_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isInteger(productoId) || productoId <= 0) continue;
+    if (!Number.isInteger(cantidad) || cantidad <= 0) continue;
+    grouped.set(productoId, (grouped.get(productoId) ?? 0) + cantidad);
+  }
+
+  return Array.from(grouped.entries()).map(([producto_id, cantidad]) => ({ producto_id, cantidad }));
+}
+
+function buildLugarRetiro(sucursal: SucursalRetiro): string {
+  return `${sucursal.nombre} - ${sucursal.direccion}${
+    sucursal.piso ? `, Piso ${sucursal.piso}` : ""
+  }, ${sucursal.localidad}, ${sucursal.provincia}`;
+}
+
+async function getCanjeItemsByCanjeIds(conn: Queryable, canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
+  const map = new Map<number, CanjeItemDetalle[]>();
+  if (!canjeIds.length) return map;
+
+  const placeholders = canjeIds.map(() => "?").join(", ");
+  const rows = await qAll<{
+    canje_id: number;
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>(
+    conn,
+    `SELECT ci.canje_id, ci.producto_id, p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
+            ci.cantidad, ci.puntos_unitarios, ci.puntos_total
+     FROM canje_items ci
+     JOIN productos p ON p.id = ci.producto_id
+     WHERE ci.canje_id IN (${placeholders})
+     ORDER BY ci.canje_id ASC, ci.id ASC`,
+    canjeIds,
+  );
+
+  for (const row of rows) {
+    const current = map.get(row.canje_id) ?? [];
+    current.push({
+      producto_id: Number(row.producto_id),
+      producto_nombre: row.producto_nombre,
+      producto_imagen: row.producto_imagen ?? null,
+      cantidad: Number(row.cantidad),
+      puntos_unitarios: Number(row.puntos_unitarios),
+      puntos_total: Number(row.puntos_total),
+    });
+    map.set(row.canje_id, current);
+  }
+
+  return map;
+}
+
+async function crearCanjeCarrito(
+  conn: Queryable,
+  {
+    usuarioId,
+    items,
+    sucursalId,
+  }: {
+    usuarioId: number;
+    items: CanjeItemInput[];
+    sucursalId?: number | null;
+  },
+) {
+  const itemsNormalizados = normalizeCanjeItems(items);
+  if (!itemsNormalizados.length) {
+    throw new HttpError(400, "Debes agregar al menos un producto al carrito.");
+  }
+
+  const productoIds = itemsNormalizados.map((item) => item.producto_id);
+  const placeholders = productoIds.map(() => "?").join(", ");
+  const productos = await qAll<CanjeProductoDB>(
+    conn,
+    `SELECT id, nombre, puntos_requeridos, imagen_url
+     FROM productos
+     WHERE activo = 1 AND id IN (${placeholders})`,
+    productoIds,
+  );
+
+  const productosMap = new Map<number, CanjeProductoDB>();
+  for (const producto of productos) {
+    productosMap.set(Number(producto.id), {
+      id: Number(producto.id),
+      nombre: producto.nombre,
+      puntos_requeridos: Number(producto.puntos_requeridos),
+      imagen_url: producto.imagen_url ?? null,
+    });
+  }
+
+  const faltantes = productoIds.filter((id) => !productosMap.has(id));
+  if (faltantes.length > 0) {
+    throw new HttpError(400, "Algunos productos del carrito no existen o estan inactivos.");
+  }
+
+  const itemsDetalle: CanjeItemDetalle[] = [];
+  let puntosTotales = 0;
+  for (const item of itemsNormalizados) {
+    const producto = productosMap.get(item.producto_id);
+    if (!producto) {
+      throw new HttpError(400, "No se pudo validar el carrito de canje.");
+    }
+    const puntosUnitarios = Number(producto.puntos_requeridos);
+    const puntosTotal = puntosUnitarios * item.cantidad;
+    puntosTotales += puntosTotal;
+    itemsDetalle.push({
+      producto_id: item.producto_id,
+      producto_nombre: producto.nombre,
+      producto_imagen: producto.imagen_url ?? null,
+      cantidad: item.cantidad,
+      puntos_unitarios: puntosUnitarios,
+      puntos_total: puntosTotal,
+    });
+  }
+
+  if (puntosTotales <= 0) {
+    throw new HttpError(400, "El carrito no tiene productos validos para canjear.");
+  }
+
+  const usuario = await qOne<{ puntos_saldo: number }>(
+    conn,
+    "SELECT puntos_saldo FROM usuarios WHERE id = ? FOR UPDATE",
+    [usuarioId],
+  );
+  const saldo = Number(usuario?.puntos_saldo ?? 0);
+  if (saldo < puntosTotales) {
+    throw new HttpError(400, `Puntos insuficientes. Tenes ${saldo}, necesitas ${puntosTotales}`);
+  }
+
+  const diasRow = await qOne<{ valor: string }>(conn, "SELECT valor FROM configuracion WHERE clave = 'dias_limite_retiro'");
+  const dias = Number.parseInt(diasRow?.valor ?? "7", 10);
+  const diasLimite = Number.isFinite(dias) && dias > 0 ? dias : 7;
+
+  const sucursalesActivas = await qAll<SucursalRetiro>(
+    conn,
+    `SELECT id, nombre, direccion, piso, localidad, provincia
+     FROM sucursales
+     WHERE activo = 1
+     ORDER BY nombre ASC, id ASC`,
+  );
+  if (sucursalesActivas.length === 0) {
+    throw new HttpError(400, "No hay sucursales de retiro disponibles. Contacta a la administracion.");
+  }
+
+  let sucursalSeleccionada: SucursalRetiro | undefined;
+  if (sucursalId && Number.isFinite(sucursalId)) {
+    sucursalSeleccionada = sucursalesActivas.find((item) => item.id === Number(sucursalId));
+    if (!sucursalSeleccionada) {
+      throw new HttpError(400, "La sucursal seleccionada no esta disponible.");
+    }
+  } else if (sucursalesActivas.length === 1) {
+    sucursalSeleccionada = sucursalesActivas[0];
+  } else {
+    throw new HttpError(400, "Debes seleccionar una sucursal para retirar el producto.");
+  }
+
+  const fechaLimite = new Date();
+  fechaLimite.setDate(fechaLimite.getDate() + diasLimite);
+  const codigoRetiro = await uniqueRedeemCode(conn);
+  const productoPrincipalId = itemsDetalle[0].producto_id;
+
+  const { insertId: canjeId } = await qRun(
+    conn,
+    `INSERT INTO canjes (usuario_id, producto_id, sucursal_id, codigo_retiro, puntos_usados, estado, fecha_limite_retiro)
+     VALUES (?, ?, ?, ?, ?, 'pendiente', ?)`,
+    [usuarioId, productoPrincipalId, sucursalSeleccionada.id, codigoRetiro, puntosTotales, fechaLimite],
+  );
+
+  for (const item of itemsDetalle) {
+    await qRun(
+      conn,
+      `INSERT INTO canje_items (canje_id, producto_id, cantidad, puntos_unitarios, puntos_total)
+       VALUES (?, ?, ?, ?, ?)`,
+      [canjeId, item.producto_id, item.cantidad, item.puntos_unitarios, item.puntos_total],
+    );
+  }
+
+  const descripcionItems = itemsDetalle.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(", ");
+  const descripcionMovimiento =
+    descripcionItems.length > 210 ? `Canje carrito: ${descripcionItems.slice(0, 207)}...` : `Canje carrito: ${descripcionItems}`;
+
+  await qRun(
+    conn,
+    `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
+     VALUES (?, 'canje_producto', ?, ?, ?, 'canjes')`,
+    [usuarioId, -puntosTotales, descripcionMovimiento, canjeId],
+  );
+  await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo - ? WHERE id = ?", [puntosTotales, usuarioId]);
+
+  const totalUnidades = itemsDetalle.reduce((acc, item) => acc + item.cantidad, 0);
+
+  return {
+    ok: true,
+    canje_id: canjeId,
+    canje_codigo: codigoRetiro,
+    codigo_retiro: codigoRetiro,
+    puntos_usados: puntosTotales,
+    nuevo_saldo: saldo - puntosTotales,
+    dias_limite_retiro: diasLimite,
+    fecha_limite_retiro: fechaLimite,
+    sucursal_id: sucursalSeleccionada.id,
+    sucursal: sucursalSeleccionada,
+    lugar_retiro: buildLugarRetiro(sucursalSeleccionada),
+    total_items: itemsDetalle.length,
+    total_unidades: totalUnidades,
+    items: itemsDetalle,
+  };
 }
 
 router.get("/me", async (req, res) => {
@@ -335,7 +600,7 @@ router.get("/movimientos", async (req, res) => {
 });
 
 router.get("/canjes", async (req, res) => {
-  const rows = await qAll(pool,
+  const rows = await qAll<ClienteCanjeRow>(pool,
     `SELECT c.id, c.codigo_retiro, c.puntos_usados, c.estado, c.fecha_limite_retiro, c.notas, c.created_at,
             p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
             s.id AS sucursal_id, s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
@@ -346,7 +611,41 @@ router.get("/canjes", async (req, res) => {
      WHERE c.usuario_id = ? ORDER BY c.created_at DESC`,
     [req.user!.id]
   );
-  res.json(rows);
+  if (!rows.length) {
+    res.json([]);
+    return;
+  }
+
+  const itemsMap = await getCanjeItemsByCanjeIds(pool, rows.map((row) => Number(row.id)));
+
+  const payload = rows.map((row) => {
+    const fallbackItem: CanjeItemDetalle = {
+      producto_id: 0,
+      producto_nombre: row.producto_nombre,
+      producto_imagen: row.producto_imagen ?? null,
+      cantidad: 1,
+      puntos_unitarios: Number(row.puntos_usados),
+      puntos_total: Number(row.puntos_usados),
+    };
+    const items = itemsMap.get(Number(row.id)) ?? [fallbackItem];
+    const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad), 0);
+    const productosDetalle = items.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(" | ");
+    const primerItem = items[0];
+    const productoNombreVista =
+      items.length > 1 ? `${primerItem.producto_nombre} +${items.length - 1} mas` : primerItem.producto_nombre;
+
+    return {
+      ...row,
+      producto_nombre: productoNombreVista,
+      producto_imagen: primerItem.producto_imagen ?? row.producto_imagen ?? null,
+      items,
+      total_items: items.length,
+      total_unidades: totalUnidades,
+      productos_detalle: productosDetalle,
+    };
+  });
+
+  res.json(payload);
 });
 
 router.get("/sucursales", async (_req, res) => {
@@ -425,13 +724,70 @@ router.post("/canjear-codigo", async (req, res) => {
   }
 });
 
+router.post("/canjear-carrito", async (req, res) => {
+  const schema = z.object({
+    items: z.array(
+      z.object({
+        producto_id: z.number().int().positive(),
+        cantidad: z.number().int().positive().max(100),
+      }),
+    ).min(1).max(40),
+    sucursal_id: z.number().int().positive().optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message || "Carrito de canje invalido" });
+    return;
+  }
+
+  const { items, sucursal_id } = parsed.data;
+  const usuarioId = req.user!.id;
+
+  const faltantes = await validateProfileForRedeem(usuarioId);
+  if (faltantes.length > 0) {
+    res.status(400).json({
+      error: `Completa tus datos obligatorios antes de canjear: ${faltantes.join(", ")}`,
+      error_code: "PERFIL_INCOMPLETO",
+    });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await crearCanjeCarrito(conn, {
+      usuarioId,
+      items,
+      sucursalId: sucursal_id,
+    });
+
+    await conn.commit();
+    res.status(201).json(result);
+  } catch (err: unknown) {
+    await conn.rollback();
+    if (err instanceof HttpError) {
+      res.status(err.status).json({
+        error: err.message,
+        ...(err.errorCode ? { error_code: err.errorCode } : {}),
+      });
+      return;
+    }
+    throw err;
+  } finally {
+    conn.release();
+  }
+});
+
 router.post("/canjear-producto", async (req, res) => {
   const schema = z.object({
     producto_id: z.number().int().positive(),
     sucursal_id: z.number().int().positive().optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: "producto_id requerido" }); return; }
+  if (!parsed.success) {
+    res.status(400).json({ error: "producto_id requerido" });
+    return;
+  }
 
   const { producto_id, sucursal_id } = parsed.data;
   const usuarioId = req.user!.id;
@@ -448,88 +804,22 @@ router.post("/canjear-producto", async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-
-    const prod = await qOne(conn,
-      "SELECT id, nombre, puntos_requeridos FROM productos WHERE id = ? AND activo = 1",
-      [producto_id]
-    );
-    if (!prod) { await conn.rollback(); res.status(404).json({ error: "Producto no encontrado o inactivo" }); return; }
-
-    const userRow = await qOne(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
-    const saldo = userRow?.puntos_saldo ?? 0;
-    if (saldo < prod.puntos_requeridos) {
-      await conn.rollback();
-      res.status(400).json({ error: `Puntos insuficientes. Tenes ${saldo}, necesitas ${prod.puntos_requeridos}` });
-      return;
-    }
-
-    const diasRow = await qOne(conn, "SELECT valor FROM configuracion WHERE clave = 'dias_limite_retiro'");
-    const dias = parseInt(diasRow?.valor ?? "7", 10);
-    const sucursalesActivas = await qAll<SucursalRetiro>(
-      conn,
-      `SELECT id, nombre, direccion, piso, localidad, provincia
-       FROM sucursales
-       WHERE activo = 1
-       ORDER BY nombre ASC, id ASC`,
-    );
-    if (sucursalesActivas.length === 0) {
-      await conn.rollback();
-      res.status(400).json({ error: "No hay sucursales de retiro disponibles. Contacta a la administracion." });
-      return;
-    }
-
-    let sucursalSeleccionada: SucursalRetiro | undefined;
-    if (sucursal_id && Number.isFinite(sucursal_id)) {
-      sucursalSeleccionada = sucursalesActivas.find((item) => item.id === Number(sucursal_id));
-      if (!sucursalSeleccionada) {
-        await conn.rollback();
-        res.status(400).json({ error: "La sucursal seleccionada no esta disponible." });
-        return;
-      }
-    } else if (sucursalesActivas.length === 1) {
-      sucursalSeleccionada = sucursalesActivas[0];
-    } else {
-      await conn.rollback();
-      res.status(400).json({ error: "Debes seleccionar una sucursal para retirar el producto." });
-      return;
-    }
-
-    const fechaLimite = new Date();
-    fechaLimite.setDate(fechaLimite.getDate() + dias);
-    const codigoRetiro = await uniqueRedeemCode(conn);
-
-    const { insertId: canjeId } = await qRun(conn,
-      `INSERT INTO canjes (usuario_id, producto_id, sucursal_id, codigo_retiro, puntos_usados, estado, fecha_limite_retiro)
-       VALUES (?, ?, ?, ?, ?, 'pendiente', ?)`,
-      [usuarioId, producto_id, sucursalSeleccionada.id, codigoRetiro, prod.puntos_requeridos, fechaLimite]
-    );
-
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'canje_producto', ?, ?, ?, 'canjes')`,
-      [usuarioId, -prod.puntos_requeridos, `Canje: ${prod.nombre}`, canjeId]
-    );
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo - ? WHERE id = ?", [prod.puntos_requeridos, usuarioId]);
-
-    await conn.commit();
-
-    res.status(201).json({
-      ok: true,
-      canje_id: canjeId,
-      canje_codigo: codigoRetiro,
-      codigo_retiro: codigoRetiro,
-      puntos_usados: prod.puntos_requeridos,
-      nuevo_saldo: saldo - prod.puntos_requeridos,
-      dias_limite_retiro: dias,
-      fecha_limite_retiro: fechaLimite,
-      sucursal_id: sucursalSeleccionada.id,
-      sucursal: sucursalSeleccionada,
-      lugar_retiro: `${sucursalSeleccionada.nombre} - ${sucursalSeleccionada.direccion}${
-        sucursalSeleccionada.piso ? `, Piso ${sucursalSeleccionada.piso}` : ""
-      }, ${sucursalSeleccionada.localidad}, ${sucursalSeleccionada.provincia}`,
+    const result = await crearCanjeCarrito(conn, {
+      usuarioId,
+      items: [{ producto_id, cantidad: 1 }],
+      sucursalId: sucursal_id,
     });
-  } catch (err) {
+    await conn.commit();
+    res.status(201).json(result);
+  } catch (err: unknown) {
     await conn.rollback();
+    if (err instanceof HttpError) {
+      res.status(err.status).json({
+        error: err.message,
+        ...(err.errorCode ? { error_code: err.errorCode } : {}),
+      });
+      return;
+    }
     throw err;
   } finally {
     conn.release();

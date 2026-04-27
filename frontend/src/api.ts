@@ -1,8 +1,11 @@
-﻿import { useAuthStore } from "./store/authStore";
+import { getCsrfToken } from "./lib/csrf";
+import { useAuthStore } from "./store/authStore";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: BodyInit | Record<string, unknown> | null;
 };
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function isFormData(value: unknown): value is FormData {
   return typeof FormData !== "undefined" && value instanceof FormData;
@@ -17,17 +20,18 @@ function parseErrorMessage(body: unknown, fallback: string): string {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const token = useAuthStore.getState().token;
   const isAuthPath = path.startsWith("/auth/");
   const hasBody = options.body !== undefined && options.body !== null;
   const formDataBody = isFormData(options.body);
+  const method = (options.method || "GET").toUpperCase();
 
   const headers = new Headers(options.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
+  if (!SAFE_METHODS.has(method)) headers.set("X-CSRF-Token", getCsrfToken());
 
   const response = await fetch(`/api${path}`, {
     ...options,
+    credentials: "include",
     headers,
     body:
       hasBody && !formDataBody && typeof options.body === "object"

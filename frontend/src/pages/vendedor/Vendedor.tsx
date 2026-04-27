@@ -28,6 +28,17 @@ type CanjeInfo = {
   cliente_nombre: string;
   cliente_dni: string;
   producto_nombre: string;
+  productos_detalle?: string;
+  total_items?: number;
+  total_unidades?: number;
+  items?: Array<{
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>;
   sucursal_id?: number | null;
   sucursal_nombre?: string | null;
   sucursal_direccion?: string | null;
@@ -256,6 +267,15 @@ export function Vendedor() {
             <p className="text-xs uppercase font-bold tracking-wider mb-2" style={{ color: "#A08060" }}>Detalle del canje</p>
             <div style={{ display: "grid", gap: "0.3rem" }}>
               <p className="text-sm"><strong>Producto:</strong> {canjeInfo.producto_nombre}</p>
+              {canjeInfo.items && canjeInfo.items.length > 1 ? (
+                <div className="text-xs" style={{ color: "#A08060" }}>
+                  {canjeInfo.items.map((item) => (
+                    <p key={`${item.producto_id}-${item.cantidad}`} style={{ margin: "0.1rem 0" }}>
+                      • {item.producto_nombre} x{item.cantidad}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               <p className="text-sm"><strong>Cliente:</strong> {canjeInfo.cliente_nombre} — DNI {canjeInfo.cliente_dni}</p>
               <p className="text-sm"><strong>Puntos:</strong> {canjeInfo.puntos_usados} pts</p>
               {canjeInfo.sucursal_nombre ? (

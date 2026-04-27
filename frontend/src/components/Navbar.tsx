@@ -93,7 +93,7 @@ export function Navbar() {
                             Perfil
                           </Link>
                           <Link
-                            to="/mi-perfil#mis-canjes"
+                            to="/mis-canjes"
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
@@ -157,7 +157,7 @@ export function Navbar() {
                 {user.rol === "cliente" ? (
                   <div className="navbar-mobile-user-links">
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
-                    <Link to="/mi-perfil#mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
+                    <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
                   </div>
                 ) : null}
 

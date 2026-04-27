@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db";
+import { normalizeSafeImageUrl } from "../urlSafety";
 
 const router = Router();
 
@@ -70,9 +71,10 @@ router.get("/", async (req, res) => {
   res.json(
     rows.map((row) => {
       const imagenesRaw = imageMap.get(row.id) ?? [];
-      const imagenes = imagenesRaw.length > 0
-        ? imagenesRaw.slice(0, 3)
-        : (row.imagen_url ? [row.imagen_url] : []);
+      const imagenes = (imagenesRaw.length > 0 ? imagenesRaw : (row.imagen_url ? [row.imagen_url] : []))
+        .map((url) => normalizeSafeImageUrl(url))
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 3);
       return {
         ...row,
         imagenes,

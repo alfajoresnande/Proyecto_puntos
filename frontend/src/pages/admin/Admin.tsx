@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
 import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
+import { getCsrfToken } from "../../lib/csrf";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import type { Producto } from "../../types";
 
@@ -85,6 +86,17 @@ type CanjeAdmin = {
   cliente_email: string;
   cliente_dni: string;
   producto_nombre: string;
+  productos_detalle?: string;
+  total_items?: number;
+  total_unidades?: number;
+  items?: Array<{
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>;
   sucursal_id?: number | null;
   sucursal_nombre?: string | null;
   sucursal_direccion?: string | null;
@@ -177,6 +189,22 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function getDownloadFilename(contentDisposition: string | null, fallback: string): string {
+  if (!contentDisposition) return fallback;
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).replace(/[/\\?%*:|"<>]/g, "_");
+    } catch {
+      return utf8Match[1].replace(/[/\\?%*:|"<>]/g, "_");
+    }
+  }
+
+  const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  if (!asciiMatch?.[1]) return fallback;
+  return asciiMatch[1].replace(/[/\\?%*:|"<>]/g, "_");
 }
 
 function getCanjeCode(canje: Pick<CanjeAdmin, "id" | "codigo_retiro">): string {
@@ -346,6 +374,9 @@ export function Admin() {
   const [configBusy, setConfigBusy] = useState(false);
   const [configMsg, setConfigMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [backupErr, setBackupErr] = useState("");
   const [configDraft, setConfigDraft] = useState<ConfiguracionDraft>({
     dias_limite_retiro: "7",
     puntos_referido_invitador: "50",
@@ -1054,6 +1085,47 @@ export function Admin() {
     });
   }
 
+  async function generarBackupCompleto() {
+    setBackupErr("");
+    setBackupMsg("");
+    setBackupBusy(true);
+
+    try {
+      const response = await fetch("/api/admin/backup/full", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "X-CSRF-Token": getCsrfToken(),
+        },
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || "No se pudo generar el backup completo.");
+      }
+
+      const blob = await response.blob();
+      const fallbackName = `backup-full-${new Date().toISOString().slice(0, 10)}.tar.gz`;
+      const fileName = getDownloadFilename(response.headers.get("content-disposition"), fallbackName);
+
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
+      setBackupMsg(`Backup generado y descargado (${sizeMb} MB).`);
+    } catch (error) {
+      setBackupErr((error as Error).message);
+    } finally {
+      setBackupBusy(false);
+    }
+  }
+
   async function guardarConfiguracionGeneral() {
     setConfigErr("");
     setConfigMsg("");
@@ -1498,6 +1570,22 @@ export function Admin() {
                 <div className="adm-config-actions">
                   <button className="adm-btn-primary adm-btn-inline" onClick={guardarConfiguracionGeneral} disabled={configBusy}>
                     {configBusy ? "Guardando..." : "Guardar configuracion"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="admin-section-header adm-config-header">
+                <h2 className="admin-section-title">Backups de seguridad</h2>
+              </div>
+              <div className="admin-card admin-card-padded adm-config-card">
+                <p className="adm-config-subtitle">
+                  Genera un respaldo completo que incluye base de datos y carpeta de uploads.
+                </p>
+                {backupErr ? <div className="adm-msg-err">{backupErr}</div> : null}
+                {backupMsg ? <div className="adm-msg-ok">{backupMsg}</div> : null}
+                <div className="adm-config-actions">
+                  <button className="adm-btn-primary adm-btn-inline" onClick={generarBackupCompleto} disabled={backupBusy}>
+                    {backupBusy ? "Generando backup..." : "Generar y descargar backup completo"}
                   </button>
                 </div>
               </div>
@@ -2214,7 +2302,16 @@ export function Admin() {
                             <br />
                             <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{canje.cliente_dni}</span>
                           </td>
-                          <td>{canje.producto_nombre}</td>
+                          <td>
+                            <div style={{ display: "grid", gap: "0.2rem" }}>
+                              <span>{canje.producto_nombre}</span>
+                              {canje.total_items && canje.total_items > 1 ? (
+                                <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>
+                                  {canje.productos_detalle}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
                           <td>
                             {canje.sucursal_nombre ? (
                               <>

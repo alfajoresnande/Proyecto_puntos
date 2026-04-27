@@ -1,4 +1,4 @@
-import { MAX_STATIC_PAGE_IMAGES } from "../lib/pageContent";
+import { MAX_STATIC_PAGE_IMAGES, normalizeSafeImageUrl } from "../lib/pageContent";
 
 type StaticPageGalleryProps = {
   images: string[];
@@ -7,8 +7,8 @@ type StaticPageGalleryProps = {
 
 export function StaticPageGallery({ images, className }: StaticPageGalleryProps) {
   const safeImages = images
-    .map((url) => url.trim())
-    .filter(Boolean)
+    .map((url) => normalizeSafeImageUrl(url))
+    .filter((url): url is string => Boolean(url))
     .slice(0, MAX_STATIC_PAGE_IMAGES);
 
   if (!safeImages.length) return null;

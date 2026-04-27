@@ -5,7 +5,7 @@ import rateLimit from "express-rate-limit";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
-import { signToken } from "../auth";
+import { clearAuthCookie, getAuthPayload, setAuthCookie, signToken } from "../auth";
 import { sendPasswordResetEmail } from "../services/email";
 
 const router = Router();
@@ -202,10 +202,9 @@ router.post("/register", async (req, res) => {
       [nuevoId]
     );
 
-    res.status(201).json({
-      token: signToken({ id: u.id, email: u.email, rol: u.rol }),
-      user: u,
-    });
+    const token = signToken({ id: u.id, email: u.email, rol: u.rol });
+    setAuthCookie(res, token);
+    res.status(201).json({ user: u });
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -239,10 +238,9 @@ router.post("/login", loginPairLimiter, async (req, res) => {
   }
 
   const safeUser = publicUser(user);
-  res.json({
-    token: signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol }),
-    user: safeUser,
-  });
+  const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
+  setAuthCookie(res, token);
+  res.json({ user: safeUser });
 });
 
 router.post("/google", async (req, res) => {
@@ -337,16 +335,45 @@ router.post("/google", async (req, res) => {
     await conn.commit();
 
     const safeUser = publicUser(user);
-    res.json({
-      token: signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol }),
-      user: safeUser,
-    });
+    const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
+    setAuthCookie(res, token);
+    res.json({ user: safeUser });
   } catch (err) {
     await conn.rollback();
     throw err;
   } finally {
     conn.release();
   }
+});
+
+router.get("/me", async (req, res) => {
+  const auth = getAuthPayload(req);
+  if (!auth) {
+    clearAuthCookie(res);
+    res.json({ user: null });
+    return;
+  }
+
+  const user = await qOne<any>(
+    pool,
+    `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, activo
+     FROM usuarios
+     WHERE id = ?`,
+    [auth.id]
+  );
+
+  if (!user || !user.activo) {
+    clearAuthCookie(res);
+    res.json({ user: null });
+    return;
+  }
+
+  res.json({ user: publicUser(user) });
+});
+
+router.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  res.json({ ok: true });
 });
 
 router.post("/forgot-password", forgotPairLimiter, async (req, res) => {
