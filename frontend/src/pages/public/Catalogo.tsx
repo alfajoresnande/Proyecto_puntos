@@ -655,7 +655,19 @@ export function Catalogo() {
                       <>
                         <div className="product-card-divider" />
                         <div className="product-card-row">
-                          <span>Puntos que sumas al comprar</span>
+                          <span className="product-card-points-label">
+                            Puntos que sumas al comprar
+                            <button
+                              type="button"
+                              className="product-points-info"
+                              aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
+                            >
+                              i
+                              <span className="product-points-info-bubble">
+                                Estos son los puntos que sumas al comprar el producto en la tienda.
+                              </span>
+                            </button>
+                          </span>
                           <span className="earn">+{producto.puntos_acumulables} pts</span>
                         </div>
                       </>
@@ -974,7 +986,19 @@ export function Catalogo() {
                   <>
                     <div className="product-card-divider" />
                     <div className="product-card-row">
-                      <span>Puntos que sumas al comprar</span>
+                      <span className="product-card-points-label">
+                        Puntos que sumas al comprar
+                        <button
+                          type="button"
+                          className="product-points-info"
+                          aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
+                        >
+                          i
+                          <span className="product-points-info-bubble">
+                            Estos son los puntos que sumas al comprar el producto en la tienda.
+                          </span>
+                        </button>
+                      </span>
                       <span className="earn">+{productoModal.puntos_acumulables} pts</span>
                     </div>
                   </>
