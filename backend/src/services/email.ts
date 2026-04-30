@@ -41,6 +41,9 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
         <a href="${safeLink}" target="_blank" rel="noopener noreferrer" style="color:#D4621A;">${safeLink}</a>
       </p>
       <p style="font-size:13px;color:#8B5A30;">
+        Si no encontr&aacute;s este mail en tu bandeja principal, revis&aacute; Spam o Correo no deseado.
+      </p>
+      <p style="font-size:13px;color:#8B5A30;">
         Si no hiciste esta solicitud, pod&eacute;s ignorar este correo.
       </p>
     </div>
@@ -51,6 +54,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
     `Hola ${input.nombre || "Usuario"},`,
     `Us\u00e1 este enlace para cambiar tu contrase\u00f1a (vence en ${input.expiresMinutes} minutos):`,
     input.resetLink,
+    "Si no encontrás este mail, revisá Spam o Correo no deseado.",
     "Si no hiciste esta solicitud, ignora este correo.",
   ].join("\n");
 

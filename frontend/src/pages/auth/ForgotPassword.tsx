@@ -50,10 +50,10 @@ export function ForgotPassword() {
         </div>
 
         <h1 className="login-heading">Recuperar acceso</h1>
-        <p className="login-subheading">Te enviamos un mail de recuperaciÃ³n</p>
+        <p className="login-subheading">Te enviamos un mail de recuperación</p>
 
         <form onSubmit={submitForm}>
-          <label className="login-field-label">Correo electronico</label>
+          <label className="login-field-label">Correo electrónico</label>
           <div className="login-input-group">
             <span className="login-input-icon">@</span>
             <input
@@ -68,7 +68,11 @@ export function ForgotPassword() {
           </div>
 
           {forgotMutation.error ? <p className="login-error">{forgotMutation.error.message}</p> : null}
-          {forgotMutation.data ? <p className="login-info">{forgotMutation.data.message}</p> : null}
+          {forgotMutation.data ? (
+            <p className="login-info">
+              {forgotMutation.data.message} Si no lo ves en unos minutos, revisá Spam o Correo no deseado.
+            </p>
+          ) : null}
 
           <button type="submit" className="login-btn-primary" disabled={forgotMutation.isPending}>
             {forgotMutation.isPending ? "Enviando..." : "Enviar enlace"}
@@ -76,7 +80,7 @@ export function ForgotPassword() {
         </form>
 
         <p className="login-footer">
-          Ya recordaste tu contrasena? <Link to="/login">Inicia sesion</Link>
+          ¿Ya recordaste tu contraseña? <Link to="/login">Inicia sesión</Link>
         </p>
       </div>
     </section>
