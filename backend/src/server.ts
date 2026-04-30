@@ -3,7 +3,6 @@ import path from "path";
 import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import "./db";
 
 import authRoutes from "./routes/auth";
@@ -147,31 +146,6 @@ const uploadsStatic = express.static(uploadsPath, {
 app.use("/uploads", uploadsStatic);
 app.use("/api/uploads", uploadsStatic);
 
-// Rate limiting: rutas de autenticacion
-// Max 15 intentos por IP cada 15 minutos (anti fuerza bruta)
-const makeRateLimitHandler = (event: string) => {
-  return (req: Request, res: Response, _next: NextFunction, options: any) => {
-    const rate = (req as any).rateLimit;
-    recordSecurityEvent(event, req, {
-      limit: rate?.limit,
-      current: rate?.current,
-      remaining: rate?.remaining,
-      resetTime: rate?.resetTime ? new Date(rate.resetTime).toISOString() : null,
-    });
-    res.status(options?.statusCode ?? 429).json(options?.message ?? { error: "Demasiadas solicitudes" });
-  };
-};
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 15,
-  message: { error: "Demasiados intentos. Espera 15 minutos e intenta de nuevo." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => SAFE_METHODS.has(req.method.toUpperCase()),
-  handler: makeRateLimitHandler("limite_tasa_autenticacion"),
-});
-
 app.use("/api", csrfProtection);
 
 // Rutas
@@ -183,7 +157,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date() }));
 app.use("/diagnostico", diagnosticoRoutes);
 app.use("/api/diagnostico", diagnosticoRoutes);
 
-app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes); // publico (catalogo)
 app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
 app.use("/api/cliente", clienteRoutes);

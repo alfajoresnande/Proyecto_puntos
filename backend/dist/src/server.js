@@ -8,7 +8,6 @@ const path_1 = __importDefault(require("path"));
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 require("./db");
 const auth_1 = __importDefault(require("./routes/auth"));
 const cliente_1 = __importDefault(require("./routes/cliente"));
@@ -131,29 +130,6 @@ const uploadsStatic = express_1.default.static(uploadsPath, {
 });
 app.use("/uploads", uploadsStatic);
 app.use("/api/uploads", uploadsStatic);
-// Rate limiting: rutas de autenticacion
-// Max 15 intentos por IP cada 15 minutos (anti fuerza bruta)
-const makeRateLimitHandler = (event) => {
-    return (req, res, _next, options) => {
-        const rate = req.rateLimit;
-        (0, securityMonitor_1.recordSecurityEvent)(event, req, {
-            limit: rate?.limit,
-            current: rate?.current,
-            remaining: rate?.remaining,
-            resetTime: rate?.resetTime ? new Date(rate.resetTime).toISOString() : null,
-        });
-        res.status(options?.statusCode ?? 429).json(options?.message ?? { error: "Demasiadas solicitudes" });
-    };
-};
-const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 15,
-    message: { error: "Demasiados intentos. Espera 15 minutos e intenta de nuevo." },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: (req) => SAFE_METHODS.has(req.method.toUpperCase()),
-    handler: makeRateLimitHandler("limite_tasa_autenticacion"),
-});
 app.use("/api", csrfProtection);
 // Rutas
 app.get("/", (_req, res) => {
@@ -162,7 +138,7 @@ app.get("/", (_req, res) => {
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date() }));
 app.use("/diagnostico", diagnostico_1.default);
 app.use("/api/diagnostico", diagnostico_1.default);
-app.use("/api/auth", authLimiter, auth_1.default);
+app.use("/api/auth", auth_1.default);
 app.use("/api/productos", productos_1.default); // publico (catalogo)
 app.use("/api/paginas", paginas_1.default); // publico (sobre nosotros, terminos)
 app.use("/api/cliente", cliente_1.default);

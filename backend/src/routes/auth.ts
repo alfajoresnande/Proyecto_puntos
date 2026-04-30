@@ -1,7 +1,6 @@
 ﻿import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import rateLimit from "express-rate-limit";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
@@ -39,11 +38,6 @@ async function uniqueInviteCode(length: number): Promise<string> {
   }
 }
 
-function normalizeEmail(value: unknown): string {
-  if (typeof value !== "string") return "unknown";
-  return value.trim().toLowerCase();
-}
-
 function hashResetToken(rawToken: string): string {
   return crypto.createHash("sha256").update(rawToken).digest("hex");
 }
@@ -77,34 +71,6 @@ function publicUser(user: any) {
   const { password_hash, activo, google_id, ...safeUser } = user;
   return safeUser;
 }
-
-const loginPairLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 8,
-  message: { error: "Demasiados intentos de login. Espera 15 minutos e intenta de nuevo." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,
-  keyGenerator: (req) => `login:${req.ip ?? "unknown"}:${normalizeEmail(req.body?.email)}`,
-});
-
-const forgotPairLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { error: "Demasiadas solicitudes. Espera 15 minutos e intenta de nuevo." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `forgot:${req.ip ?? "unknown"}:${normalizeEmail(req.body?.email)}`,
-});
-
-const resetIpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 8,
-  message: { error: "Demasiados intentos. Espera 15 minutos e intenta de nuevo." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true,
-});
 
 const registerSchema = z.object({
   nombre: z.string().min(1).max(100),
@@ -214,7 +180,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", loginPairLimiter, async (req, res) => {
+router.post("/login", async (req, res) => {
   const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -379,7 +345,7 @@ router.post("/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/forgot-password", forgotPairLimiter, async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   const schema = z.object({ email: z.string().email() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -452,7 +418,7 @@ router.post("/forgot-password", forgotPairLimiter, async (req, res) => {
   res.json(genericResponse);
 });
 
-router.post("/reset-password", resetIpLimiter, async (req, res) => {
+router.post("/reset-password", async (req, res) => {
   const schema = z.object({
     token: z.string().min(40),
     new_password: strongPasswordSchema,

@@ -1,24 +1,13 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const crypto_1 = require("crypto");
 const express_1 = require("express");
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const auth_1 = require("../auth");
 const db_1 = require("../db");
 const securityMonitor_1 = require("../securityMonitor");
 const router = (0, express_1.Router)();
 const DEFAULT_DB_TIMEOUT_MS = 1500;
 const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin"]);
-const accessDeniedLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 60 * 1000,
-    max: 40,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: "Demasiadas solicitudes" },
-});
 function isEnabled(raw) {
     if (!raw)
         return false;
@@ -110,7 +99,7 @@ router.get("/db", async (req, res) => {
     }
     res.json(db);
 });
-router.post("/access-denied", accessDeniedLimiter, async (req, res) => {
+router.post("/access-denied", async (req, res) => {
     const attemptedPathRaw = typeof req.body?.attempted_path === "string" ? req.body.attempted_path.trim() : "";
     const attemptedPath = attemptedPathRaw.slice(0, 180) || req.originalUrl || req.url;
     const requiredRoles = Array.isArray(req.body?.required_roles)

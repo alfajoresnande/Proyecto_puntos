@@ -6,7 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const crypto_1 = __importDefault(require("crypto"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const google_auth_library_1 = require("google-auth-library");
 const zod_1 = require("zod");
 const db_1 = require("../db");
@@ -40,11 +39,6 @@ async function uniqueInviteCode(length) {
             return code;
     }
 }
-function normalizeEmail(value) {
-    if (typeof value !== "string")
-        return "unknown";
-    return value.trim().toLowerCase();
-}
 function hashResetToken(rawToken) {
     return crypto_1.default.createHash("sha256").update(rawToken).digest("hex");
 }
@@ -74,31 +68,6 @@ function publicUser(user) {
     const { password_hash, activo, google_id, ...safeUser } = user;
     return safeUser;
 }
-const loginPairLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 8,
-    message: { error: "Demasiados intentos de login. Espera 15 minutos e intenta de nuevo." },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true,
-    keyGenerator: (req) => `login:${req.ip ?? "unknown"}:${normalizeEmail(req.body?.email)}`,
-});
-const forgotPairLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    message: { error: "Demasiadas solicitudes. Espera 15 minutos e intenta de nuevo." },
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => `forgot:${req.ip ?? "unknown"}:${normalizeEmail(req.body?.email)}`,
-});
-const resetIpLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000,
-    max: 8,
-    message: { error: "Demasiados intentos. Espera 15 minutos e intenta de nuevo." },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skipSuccessfulRequests: true,
-});
 const registerSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(1).max(100),
     email: zod_1.z.string().email(),
@@ -177,7 +146,7 @@ router.post("/register", async (req, res) => {
         conn.release();
     }
 });
-router.post("/login", loginPairLimiter, async (req, res) => {
+router.post("/login", async (req, res) => {
     const schema = zod_1.z.object({ email: zod_1.z.string().email(), password: zod_1.z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -301,7 +270,7 @@ router.post("/logout", (_req, res) => {
     (0, auth_1.clearAuthCookie)(res);
     res.json({ ok: true });
 });
-router.post("/forgot-password", forgotPairLimiter, async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
     const schema = zod_1.z.object({ email: zod_1.z.string().email() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -353,7 +322,7 @@ router.post("/forgot-password", forgotPairLimiter, async (req, res) => {
     }
     res.json(genericResponse);
 });
-router.post("/reset-password", resetIpLimiter, async (req, res) => {
+router.post("/reset-password", async (req, res) => {
     const schema = zod_1.z.object({
         token: zod_1.z.string().min(40),
         new_password: strongPasswordSchema,

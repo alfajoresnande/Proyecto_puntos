@@ -1,6 +1,5 @@
 import { timingSafeEqual } from "crypto";
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import { getAuthPayload } from "../auth";
 import { pool, qOne } from "../db";
 import { recordSecurityEvent } from "../securityMonitor";
@@ -8,13 +7,6 @@ import { recordSecurityEvent } from "../securityMonitor";
 const router = Router();
 const DEFAULT_DB_TIMEOUT_MS = 1500;
 const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin"]);
-const accessDeniedLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 40,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Demasiadas solicitudes" },
-});
 
 function isEnabled(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -120,7 +112,7 @@ router.get("/db", async (req, res) => {
   res.json(db);
 });
 
-router.post("/access-denied", accessDeniedLimiter, async (req, res) => {
+router.post("/access-denied", async (req, res) => {
   const attemptedPathRaw = typeof req.body?.attempted_path === "string" ? req.body.attempted_path.trim() : "";
   const attemptedPath = attemptedPathRaw.slice(0, 180) || req.originalUrl || req.url;
   const requiredRoles = Array.isArray(req.body?.required_roles)
