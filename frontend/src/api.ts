@@ -1,4 +1,5 @@
 import { getCsrfToken } from "./lib/csrf";
+import { apiUrl } from "./lib/apiBase";
 import { useAuthStore } from "./store/authStore";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
@@ -29,7 +30,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
   if (!SAFE_METHODS.has(method)) headers.set("X-CSRF-Token", getCsrfToken());
 
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(apiUrl(`/api${path}`), {
     ...options,
     credentials: "include",
     headers,

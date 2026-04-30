@@ -1,10 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 
 async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-  const res = await fetch("/api/auth/reset-password", {
+  const res = await fetch(apiUrl("/api/auth/reset-password"), {
     method: "POST",
     credentials: "include",
     headers: {

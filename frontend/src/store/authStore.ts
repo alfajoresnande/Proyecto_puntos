@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { apiUrl } from "../lib/apiBase";
 import { getCsrfToken } from "../lib/csrf";
 import type { AuthResponse, User } from "../types";
 
@@ -43,7 +44,7 @@ function parseErrorMessage(body: unknown, fallback: string): string {
 }
 
 async function requestAuth(path: string, payload: LoginPayload | RegisterPayload | GoogleLoginPayload): Promise<AuthResponse> {
-  const res = await fetch(`/api/auth/${path}`, {
+  const res = await fetch(apiUrl(`/api/auth/${path}`), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -62,7 +63,7 @@ async function requestAuth(path: string, payload: LoginPayload | RegisterPayload
 }
 
 async function requestLogout(): Promise<void> {
-  await fetch("/api/auth/logout", {
+  await fetch(apiUrl("/api/auth/logout"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -116,7 +117,7 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       restoreSession: async () => {
-        const response = await fetch("/api/auth/me", {
+        const response = await fetch(apiUrl("/api/auth/me"), {
           method: "GET",
           credentials: "include",
         }).catch(() => null);

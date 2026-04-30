@@ -2,6 +2,7 @@
 import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
 import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
+import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import type { Producto } from "../../types";
@@ -1204,7 +1205,7 @@ export function Admin() {
     setBackupBusy(true);
 
     try {
-      const response = await fetch("/api/admin/backup/full", {
+      const response = await fetch(apiUrl("/api/admin/backup/full"), {
         method: "POST",
         credentials: "include",
         headers: {
