@@ -172,18 +172,7 @@ const authLimiter = rateLimit({
   handler: makeRateLimitHandler("limite_tasa_autenticacion"),
 });
 
-// Rate limiting: API general
-// Max 1000 requests por IP cada 15 minutos.
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { error: "Demasiadas solicitudes. Intenta en unos minutos." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: makeRateLimitHandler("limite_tasa_api"),
-});
-
-app.use("/api", generalLimiter, csrfProtection);
+app.use("/api", csrfProtection);
 
 // Rutas
 app.get("/", (_req, res) => {
