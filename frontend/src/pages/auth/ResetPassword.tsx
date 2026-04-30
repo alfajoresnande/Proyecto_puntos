@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 
@@ -31,6 +31,7 @@ function validatePassword(value: string): string | null {
 }
 
 export function ResetPassword() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
   const [password, setPassword] = useState("");
@@ -48,6 +49,14 @@ export function ResetPassword() {
       document.body.classList.remove("auth-background");
     };
   }, []);
+
+  useEffect(() => {
+    if (!resetMutation.data) return;
+    const timer = window.setTimeout(() => {
+      navigate("/login", { replace: true });
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [navigate, resetMutation.data]);
 
   function submitForm(event: FormEvent) {
     event.preventDefault();
@@ -116,7 +125,9 @@ export function ResetPassword() {
 
           {localError ? <p className="login-error">{localError}</p> : null}
           {resetMutation.error ? <p className="login-error">{resetMutation.error.message}</p> : null}
-          {resetMutation.data ? <p className="login-info">{resetMutation.data.message}</p> : null}
+          {resetMutation.data ? (
+            <p className="login-info">{resetMutation.data.message} Te llevamos al login en 5 segundos.</p>
+          ) : null}
 
           <button type="submit" className="login-btn-primary" disabled={resetMutation.isPending || Boolean(resetMutation.data)}>
             {resetMutation.isPending ? "Actualizando..." : "Actualizar contraseña"}
