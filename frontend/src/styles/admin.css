@@ -382,6 +382,13 @@
 /* ── Formularios ── */
 .adm-field { display: flex; flex-direction: column; gap: 0.35rem; }
 
+.adm-label-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
 .adm-label {
   font-size: 0.78rem;
   font-weight: 600;
@@ -458,11 +465,34 @@
   font-size: 9px;
   font-weight: 800;
   cursor: help;
+  border: 0;
+  padding: 0;
   position: relative;
   flex-shrink: 0;
   user-select: none;
+  font-family: inherit;
 }
 
+.adm-tip:hover,
+.adm-tip:focus-visible,
+.adm-tip[aria-expanded="true"] {
+  background: #6B3E26;
+  color: #FEF0DC;
+  outline: none;
+}
+
+.adm-tip-inline {
+  max-width: min(100%, 380px);
+  background: #2D1200;
+  color: #FEF0DC;
+  border: 1px solid rgba(107,62,38,0.35);
+  border-radius: 9px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.45;
+  box-shadow: 0 10px 24px rgba(74, 44, 26, 0.14);
+}
 /* ── BOTONES ── */
 .adm-btn-primary {
   background: #D4621A;          /* ← fondo botón naranja */

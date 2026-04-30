@@ -328,13 +328,28 @@ function SectionTitle({ title }: { title: string }) {
 }
 
 function FieldLabel({ text, tip }: { text: string; tip: string }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <label className="adm-label">
-      {text}
-      <span className="adm-tip" title={tip} aria-label={tip}>
-        ?
+    <div className="adm-label-wrap">
+      <span className="adm-label">
+        {text}
+        <button
+          type="button"
+          className="adm-tip"
+          aria-label={`Ayuda: ${text}`}
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          ?
+        </button>
       </span>
-    </label>
+      {open ? (
+        <span className="adm-tip-inline" role="tooltip">
+          {tip}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
