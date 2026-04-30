@@ -519,10 +519,10 @@ body.catalogo-background .pagina-page {
 /* ── Filtros del catálogo ───────────────────────────────── */
 .catalog-filters {
   display: grid;
-  grid-template-columns: 220px minmax(260px, 1fr) auto;
+  grid-template-columns: 220px 190px minmax(260px, 1fr) auto;
   grid-template-areas:
-    "search search search"
-    "category range clear";
+    "search search search search"
+    "category order range clear";
   align-items: end;
   column-gap: 1rem;
   row-gap: 0.75rem;
@@ -537,6 +537,10 @@ body.catalogo-background .pagina-page {
 .catalog-filter-dropdown {
   grid-area: category;
   min-width: 0;
+}
+
+.catalog-filter-order {
+  grid-area: order;
 }
 
 .catalog-filter-search {
@@ -585,6 +589,7 @@ body.catalogo-background .pagina-page {
   cursor: pointer;
   font-family: inherit;
   min-width: 150px;
+  width: 100%;
   transition: all 0.15s;
 }
 
@@ -734,6 +739,7 @@ body.catalogo-background .pagina-page {
     grid-template-areas:
       "search"
       "category"
+      "order"
       "range"
       "clear";
     align-items: stretch;

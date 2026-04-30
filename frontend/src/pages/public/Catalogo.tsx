@@ -87,6 +87,7 @@ export function Catalogo() {
   const [categoriaActiva, setCategoriaActiva] = useState("");
   const [maxPuntos, setMaxPuntos] = useState(0);
   const [busquedaProducto, setBusquedaProducto] = useState("");
+  const [ordenProductos, setOrdenProductos] = useState("");
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
   const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
@@ -207,14 +208,24 @@ export function Catalogo() {
 
   const productosFiltrados = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
-    return productos.filter((producto) => {
+    const filtrados = productos.filter((producto) => {
       const coincideCategoria = !categoriaActiva || producto.categoria === categoriaActiva;
       const coincidePuntos = !maxPuntos || producto.puntos_requeridos <= maxPuntos;
       const texto = [producto.nombre, producto.descripcion || "", producto.categoria || ""].join(" ").toLowerCase();
       const coincideBusqueda = !q || texto.includes(q);
       return coincideCategoria && coincidePuntos && coincideBusqueda;
     });
-  }, [productos, categoriaActiva, maxPuntos, busquedaProducto]);
+
+    if (ordenProductos === "puntos-desc") {
+      return [...filtrados].sort((a, b) => (b.puntos_requeridos || 0) - (a.puntos_requeridos || 0));
+    }
+
+    if (ordenProductos === "puntos-asc") {
+      return [...filtrados].sort((a, b) => (a.puntos_requeridos || 0) - (b.puntos_requeridos || 0));
+    }
+
+    return filtrados;
+  }, [productos, categoriaActiva, maxPuntos, busquedaProducto, ordenProductos]);
 
   const canjeCartItems = useMemo(() => {
     return productos
@@ -500,6 +511,19 @@ export function Catalogo() {
               />
             </div>
 
+            <div className="catalog-filter-dropdown catalog-filter-order">
+              <select
+                className="catalog-dropdown-btn"
+                value={ordenProductos}
+                onChange={(event) => setOrdenProductos(event.target.value)}
+                aria-label="Ordenar productos"
+              >
+                <option value="">Orden recomendado</option>
+                <option value="puntos-desc">Mayor puntaje</option>
+                <option value="puntos-asc">Menor puntaje</option>
+              </select>
+            </div>
+
             <div className="catalog-filter-range">
               <div className="catalog-filter-range-header">
                 <label className="catalog-filter-label">Puntos maximos</label>
@@ -522,6 +546,7 @@ export function Catalogo() {
                 setCategoriaActiva("");
                 setMaxPuntos(puntosMax);
                 setBusquedaProducto("");
+                setOrdenProductos("");
               }}
             >
               Limpiar
