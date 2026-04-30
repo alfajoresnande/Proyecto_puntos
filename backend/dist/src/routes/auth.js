@@ -51,6 +51,17 @@ function parseResetTtlMinutes() {
         return 60;
     return Math.max(10, Math.min(raw, 180));
 }
+function normalizeResetPasswordUrl() {
+    const explicitUrl = process.env.FRONTEND_RESET_PASSWORD_URL?.trim();
+    if (explicitUrl)
+        return explicitUrl.replace(/\/+$/, "");
+    const frontendUrl = process.env.FRONTEND_URL
+        ?.split(",")
+        .map((item) => item.trim())
+        .find(Boolean);
+    const baseUrl = frontendUrl || "http://localhost:5173";
+    return `${baseUrl.replace(/\/+$/, "")}/reset-password`;
+}
 function makeRandomPasswordHash() {
     return bcryptjs_1.default.hash(crypto_1.default.randomBytes(32).toString("hex"), 10);
 }
@@ -280,7 +291,7 @@ router.post("/forgot-password", async (req, res) => {
     const email = parsed.data.email.toLowerCase().trim();
     const genericResponse = {
         ok: true,
-        message: "Si el email existe, te enviamos un enlace para restablecer tu contrasena.",
+        message: "Te enviamos un mail de restauración.",
     };
     const user = await (0, db_1.qOne)(db_1.pool, "SELECT id, nombre, email, activo FROM usuarios WHERE email = ?", [email]);
     if (!user || !user.activo) {
@@ -306,8 +317,7 @@ router.post("/forgot-password", async (req, res) => {
     finally {
         conn.release();
     }
-    const frontendBase = process.env.FRONTEND_RESET_PASSWORD_URL ||
-        `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password`;
+    const frontendBase = normalizeResetPasswordUrl();
     const resetLink = `${frontendBase}?token=${encodeURIComponent(rawToken)}`;
     try {
         await (0, email_1.sendPasswordResetEmail)({

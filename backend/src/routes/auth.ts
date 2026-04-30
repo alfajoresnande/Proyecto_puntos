@@ -52,6 +52,19 @@ function parseResetTtlMinutes(): number {
   return Math.max(10, Math.min(raw, 180));
 }
 
+function normalizeResetPasswordUrl(): string {
+  const explicitUrl = process.env.FRONTEND_RESET_PASSWORD_URL?.trim();
+  if (explicitUrl) return explicitUrl.replace(/\/+$/, "");
+
+  const frontendUrl = process.env.FRONTEND_URL
+    ?.split(",")
+    .map((item) => item.trim())
+    .find(Boolean);
+
+  const baseUrl = frontendUrl || "http://localhost:5173";
+  return `${baseUrl.replace(/\/+$/, "")}/reset-password`;
+}
+
 function makeRandomPasswordHash(): Promise<string> {
   return bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
 }
@@ -356,7 +369,7 @@ router.post("/forgot-password", async (req, res) => {
   const email = parsed.data.email.toLowerCase().trim();
   const genericResponse = {
     ok: true,
-    message: "Si el email existe, te enviamos un enlace para restablecer tu contrasena.",
+    message: "Te enviamos un mail de restauración.",
   };
 
   const user = await qOne<{
@@ -399,9 +412,7 @@ router.post("/forgot-password", async (req, res) => {
     conn.release();
   }
 
-  const frontendBase =
-    process.env.FRONTEND_RESET_PASSWORD_URL ||
-    `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password`;
+  const frontendBase = normalizeResetPasswordUrl();
   const resetLink = `${frontendBase}?token=${encodeURIComponent(rawToken)}`;
 
   try {

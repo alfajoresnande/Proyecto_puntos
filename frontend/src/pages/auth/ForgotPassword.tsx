@@ -50,7 +50,7 @@ export function ForgotPassword() {
         </div>
 
         <h1 className="login-heading">Recuperar acceso</h1>
-        <p className="login-subheading">Te enviamos un enlace para crear una nueva contrasena</p>
+        <p className="login-subheading">Te enviamos un mail de restauración</p>
 
         <form onSubmit={submitForm}>
           <label className="login-field-label">Correo electronico</label>

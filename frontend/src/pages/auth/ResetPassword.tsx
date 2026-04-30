@@ -17,16 +17,16 @@ async function resetPassword(token: string, newPassword: string): Promise<{ mess
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof body?.error === "string" ? body.error : "No pudimos actualizar tu contrasena.");
+    throw new Error(typeof body?.error === "string" ? body.error : "No pudimos actualizar tu contraseña.");
   }
 
   return body;
 }
 
 function validatePassword(value: string): string | null {
-  if (value.length < 12) return "La contrasena debe tener al menos 12 caracteres.";
-  if (!/[A-Za-z]/.test(value)) return "La contrasena debe incluir al menos una letra.";
-  if (!/\d/.test(value)) return "La contrasena debe incluir al menos un numero.";
+  if (value.length < 12) return "La contraseña debe tener al menos 12 caracteres.";
+  if (!/[A-Za-z]/.test(value)) return "La contraseña debe incluir al menos una letra.";
+  if (!/\d/.test(value)) return "La contraseña debe incluir al menos un número.";
   return null;
 }
 
@@ -54,7 +54,7 @@ export function ResetPassword() {
     setLocalError("");
 
     if (!token) {
-      setLocalError("El enlace no tiene token de recuperacion.");
+      setLocalError("El enlace no tiene token de recuperación.");
       return;
     }
 
@@ -65,7 +65,7 @@ export function ResetPassword() {
     }
 
     if (password !== confirmPassword) {
-      setLocalError("Las contrasenas no coinciden.");
+      setLocalError("Las contraseñas no coinciden.");
       return;
     }
 
@@ -79,17 +79,17 @@ export function ResetPassword() {
           <img src="/logo.png" alt="Nande" />
         </div>
 
-        <h1 className="login-heading">Nueva contrasena</h1>
+        <h1 className="login-heading">Nueva contraseña</h1>
         <p className="login-subheading">Crea una clave segura para volver a ingresar</p>
 
         <form onSubmit={submitForm}>
-          <label className="login-field-label">Contrasena nueva</label>
+          <label className="login-field-label">Contraseña nueva</label>
           <div className="login-input-group">
             <span className="login-input-icon">*</span>
             <input
               type={showPassword ? "text" : "password"}
               className="login-input login-input-password"
-              placeholder="Minimo 12 caracteres"
+              placeholder="Mínimo 12 caracteres"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -100,13 +100,13 @@ export function ResetPassword() {
             </button>
           </div>
 
-          <label className="login-field-label">Confirmar contrasena</label>
+          <label className="login-field-label">Confirmar contraseña</label>
           <div className="login-input-group">
             <span className="login-input-icon">*</span>
             <input
               type={showPassword ? "text" : "password"}
               className="login-input login-input-password"
-              placeholder="Repeti tu contrasena"
+              placeholder="Repetí tu contraseña"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
@@ -119,7 +119,7 @@ export function ResetPassword() {
           {resetMutation.data ? <p className="login-info">{resetMutation.data.message}</p> : null}
 
           <button type="submit" className="login-btn-primary" disabled={resetMutation.isPending || Boolean(resetMutation.data)}>
-            {resetMutation.isPending ? "Actualizando..." : "Actualizar contrasena"}
+            {resetMutation.isPending ? "Actualizando..." : "Actualizar contraseña"}
           </button>
         </form>
 

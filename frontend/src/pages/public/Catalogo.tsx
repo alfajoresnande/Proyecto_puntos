@@ -644,33 +644,34 @@ export function Catalogo() {
                   ) : (
                     <div className="product-card-placeholder" />
                   )}
-                </button>
+                  </button>
 
-                {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
+                  {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
 
                 <div className="product-card-body">
                   <p className="product-card-name">{producto.nombre}</p>
-                  <p className={`product-card-desc ${descripcionLarga && !descripcionExpandida ? "is-collapsed" : "is-expanded"}`}>
-                    {descripcion}
-                  </p>
-                  {descripcionLarga ? (
-                    <button
-                      type="button"
-                      className="product-card-desc-toggle"
-                      onClick={() =>
-                        setExpandedProductDescriptions((prev) => ({
-                          ...prev,
-                          [producto.id]: !prev[producto.id],
-                        }))
-                      }
-                    >
-                      {descripcionExpandida ? "Ver menos" : "Ver más"}
-                    </button>
-                  ) : null}
+                  <div className="product-card-desc-wrap">
+                    <p className={`product-card-desc ${descripcionLarga && !descripcionExpandida ? "is-collapsed" : "is-expanded"}`}>
+                      {descripcion}
+                    </p>
+                    {descripcionLarga ? (
+                      <button
+                        type="button"
+                        className="product-card-desc-toggle"
+                        onClick={() =>
+                          setExpandedProductDescriptions((prev) => ({
+                            ...prev,
+                            [producto.id]: !prev[producto.id],
+                          }))
+                        }
+                      >
+                        {descripcionExpandida ? "Ver menos" : "Ver más"}
+                      </button>
+                    ) : null}
+                  </div>
 
                   <div className="product-card-points">
                     <div className="product-card-row product-card-points-tile">
-                      <span className="product-points-icon" aria-hidden="true">◇</span>
                       <span className="product-points-copy">
                         <span>Canje:</span>
                         <span className="cost">{producto.puntos_requeridos} pts</span>
@@ -680,7 +681,6 @@ export function Catalogo() {
                       <>
                         <div className="product-card-divider" />
                         <div className="product-card-row product-card-points-tile">
-                          <span className="product-points-icon" aria-hidden="true">☆</span>
                           <span className="product-points-copy">
                             <span className="product-card-points-label">
                               Suma:
