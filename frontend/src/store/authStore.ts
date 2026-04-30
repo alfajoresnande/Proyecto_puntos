@@ -127,24 +127,53 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       restoreSession: async () => {
+        // IMPORTANTE: leer el token ANTES de llamar a set().
+        // set() dispara el middleware persist que sobreescribe localStorage con el estado
+        // actual del store (token: null durante la race condition de hidratación).
+        // Si leemos después del set(), ya perdimos el token de localStorage.
+        let storedToken: string | null = get().token;
+        if (!storedToken) {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+              const parsed = JSON.parse(raw) as { state?: { token?: unknown } };
+              if (typeof parsed?.state?.token === "string") {
+                storedToken = parsed.state.token;
+              }
+            }
+          } catch {
+            // ignore — si falla el parse no tenemos token
+          }
+        }
+
         set({ isRestoringSession: true });
 
-        const storedToken = get().token;
         const headers: Record<string, string> = {};
         if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
 
-        const response = await fetch(apiUrl("/api/auth/me"), {
-          method: "GET",
-          credentials: "include",
-          headers,
-        }).catch(() => null);
+        let response: Response | null = null;
+        try {
+          response = await fetch(apiUrl("/api/auth/me"), {
+            method: "GET",
+            credentials: "include",
+            headers,
+          });
+        } catch {
+          // Error de red (sin señal, CORS, timeout): NO borrar la sesión.
+          // El usuario sigue logueado en localStorage; en el próximo intento se revalida.
+          set({ isRestoringSession: false, hasRestoredSession: true });
+          return;
+        }
 
-        if (!response || !response.ok) {
-          set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
+        // Error de servidor (5xx, etc.): tampoco borrar la sesión.
+        if (!response.ok) {
+          set({ isRestoringSession: false, hasRestoredSession: true });
           return;
         }
 
         const body = (await response.json().catch(() => null)) as AuthResponse | null;
+
+        // El servidor confirmó explícitamente que no hay sesión válida → limpiar todo.
         if (!body?.user) {
           set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
           return;
