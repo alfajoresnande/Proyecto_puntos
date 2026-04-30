@@ -19,6 +19,11 @@ const diagnostico_1 = __importDefault(require("./routes/diagnostico"));
 const securityMonitor_1 = require("./securityMonitor");
 const app = (0, express_1.default)();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const DEFAULT_FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "https://alfajorescorrentinos.com",
+    "https://www.alfajorescorrentinos.com",
+].join(",");
 function parseOrigins(raw, fallback) {
     return (raw ?? fallback)
         .split(",")
@@ -57,8 +62,14 @@ function addLoopbackAliases(origins) {
     }
     return [...expanded];
 }
-const allowedOrigins = addLoopbackAliases(parseOrigins(process.env.FRONTEND_URL, "http://localhost:5173"));
-const trustedCsrfOrigins = new Set(addLoopbackAliases(parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, allowedOrigins.join(","))));
+const allowedOrigins = addLoopbackAliases([
+    ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
+    ...parseOrigins(process.env.FRONTEND_URL, ""),
+]);
+const trustedCsrfOrigins = new Set(addLoopbackAliases([
+    ...allowedOrigins,
+    ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, ""),
+]));
 function csrfProtection(req, res, next) {
     if (SAFE_METHODS.has(req.method.toUpperCase())) {
         next();

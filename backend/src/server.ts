@@ -16,6 +16,11 @@ import { recordSecurityEvent } from "./securityMonitor";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const DEFAULT_FRONTEND_ORIGINS = [
+  "http://localhost:5173",
+  "https://alfajorescorrentinos.com",
+  "https://www.alfajorescorrentinos.com",
+].join(",");
 
 function parseOrigins(raw: string | undefined, fallback: string): string[] {
   return (raw ?? fallback)
@@ -56,9 +61,15 @@ function addLoopbackAliases(origins: string[]): string[] {
   return [...expanded];
 }
 
-const allowedOrigins = addLoopbackAliases(parseOrigins(process.env.FRONTEND_URL, "http://localhost:5173"));
+const allowedOrigins = addLoopbackAliases([
+  ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
+  ...parseOrigins(process.env.FRONTEND_URL, ""),
+]);
 const trustedCsrfOrigins = new Set(
-  addLoopbackAliases(parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, allowedOrigins.join(",")))
+  addLoopbackAliases([
+    ...allowedOrigins,
+    ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, ""),
+  ])
 );
 
 function csrfProtection(req: Request, res: Response, next: NextFunction) {
