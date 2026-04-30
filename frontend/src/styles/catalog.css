@@ -1530,7 +1530,7 @@ body.catalogo-background .pagina-page {
   }
 
   .product-card-btn-ver::after {
-    content: "›";
+    content: ">";
     font-size: 1.5rem;
     line-height: 1;
     position: absolute;
@@ -1558,7 +1558,7 @@ body.catalogo-background .pagina-page {
   }
 
   .product-card-btn-canjear::before {
-    content: "🛒";
+    content: "";
     margin-right: 0.5rem;
   }
 
@@ -1630,7 +1630,7 @@ body.catalogo-background .pagina-page {
 
   .product-card-img,
   .product-card-placeholder {
-    height: 150px;
+    height: 180px;
   }
 }
 
@@ -1641,7 +1641,7 @@ body.catalogo-background .pagina-page {
 
   .product-card-img,
   .product-card-placeholder {
-    height: 140px;
+    height: 175px;
   }
 
   .product-card-body {

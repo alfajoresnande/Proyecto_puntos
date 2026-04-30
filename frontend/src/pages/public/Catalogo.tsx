@@ -947,7 +947,7 @@ export function Catalogo() {
                     onClick={() => cambiarImagenModal(productoModalImageIndex - 1)}
                     aria-label="Ver imagen anterior"
                   >
-                    ‹
+                    &lt;
                   </button>
                   <button
                     type="button"
@@ -955,7 +955,7 @@ export function Catalogo() {
                     onClick={() => cambiarImagenModal(productoModalImageIndex + 1)}
                     aria-label="Ver imagen siguiente"
                   >
-                    ›
+                    &gt;
                   </button>
                   <div className="producto-carousel-count">
                     {productoModalImageIndex + 1} / {productoModalImagenes.length}
