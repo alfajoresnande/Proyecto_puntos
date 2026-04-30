@@ -100,6 +100,7 @@ export function Catalogo() {
   const [canjeConfirmOpen, setCanjeConfirmOpen] = useState(false);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
   const [cantidadModalCanje, setCantidadModalCanje] = useState(1);
+  const [expandedProductDescriptions, setExpandedProductDescriptions] = useState<Record<number, boolean>>({});
   const [codigoCopiado, setCodigoCopiado] = useState(false);
 
   const productosQuery = useQuery({
@@ -625,8 +626,13 @@ export function Catalogo() {
               </div>
             ) : null}
 
-            {productosFiltrados.map((producto) => (
-              <div key={producto.id} className="product-card">
+            {productosFiltrados.map((producto) => {
+              const descripcion = producto.descripcion || "Producto disponible para canje.";
+              const descripcionLarga = descripcion.length > 82;
+              const descripcionExpandida = Boolean(expandedProductDescriptions[producto.id]);
+
+              return (
+              <div key={producto.id} className={`product-card ${descripcionExpandida ? "product-card-expanded" : ""}`}>
                 <button
                   type="button"
                   className="product-card-media-btn"
@@ -644,7 +650,23 @@ export function Catalogo() {
 
                 <div className="product-card-body">
                   <p className="product-card-name">{producto.nombre}</p>
-                  <p className="product-card-desc">{producto.descripcion || "Producto disponible para canje."}</p>
+                  <p className={`product-card-desc ${descripcionLarga && !descripcionExpandida ? "is-collapsed" : "is-expanded"}`}>
+                    {descripcion}
+                  </p>
+                  {descripcionLarga ? (
+                    <button
+                      type="button"
+                      className="product-card-desc-toggle"
+                      onClick={() =>
+                        setExpandedProductDescriptions((prev) => ({
+                          ...prev,
+                          [producto.id]: !prev[producto.id],
+                        }))
+                      }
+                    >
+                      {descripcionExpandida ? "Ver menos" : "Ver más"}
+                    </button>
+                  ) : null}
 
                   <div className="product-card-points">
                     <div className="product-card-row product-card-points-tile">
@@ -736,7 +758,8 @@ export function Catalogo() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

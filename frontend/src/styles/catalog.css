@@ -265,8 +265,35 @@ body.catalogo-background .pagina-page {
   font-size: 0.8rem;
   color: #6b7280;               /* ← color de la descripción del producto */
   line-height: 1.5;
-  margin: 0 0 1rem;
+  margin: 0 0 0.45rem;
   flex: 1;
+}
+
+.product-card-desc.is-collapsed {
+  display: -webkit-box;
+  flex: 0;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.product-card-desc.is-expanded {
+  flex: 0;
+}
+
+.product-card-desc-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  color: #6b3e26;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* Points info box */
@@ -316,8 +343,7 @@ body.catalogo-background .pagina-page {
 }
 
 .product-points-copy {
-  display: grid;
-  gap: 0.12rem;
+  display: contents;
   min-width: 0;
 }
 
@@ -351,29 +377,31 @@ body.catalogo-background .pagina-page {
 .product-points-info-bubble {
   background: #3d1a02;
   border-radius: 10px;
-  bottom: calc(100% + 0.45rem);
   box-shadow: 0 10px 24px rgba(61, 26, 2, 0.2);
   color: #fff8f0;
   font-size: 0.72rem;
   font-weight: 700;
-  left: 50%;
+  left: auto;
   line-height: 1.35;
   opacity: 0;
   padding: 0.45rem 0.55rem;
   pointer-events: none;
   position: absolute;
+  bottom: auto;
   text-align: center;
-  transform: translateX(-50%) translateY(4px);
+  right: 0;
+  top: calc(100% + 0.42rem);
+  transform: translateY(4px);
   transition: opacity 0.15s ease, transform 0.15s ease;
   visibility: hidden;
-  width: min(190px, 62vw);
+  width: 175px;
   z-index: 15;
 }
 
 .product-points-info:hover .product-points-info-bubble,
 .product-points-info:focus-visible .product-points-info-bubble {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translateY(0);
   visibility: visible;
 }
 
@@ -1497,7 +1525,9 @@ body.catalogo-background .pagina-page {
   }
 
   .product-points-copy {
+    display: grid;
     align-content: center;
+    gap: 0.12rem;
   }
 
   .product-card-points-label {
@@ -1510,10 +1540,16 @@ body.catalogo-background .pagina-page {
   }
 
   .product-points-info-bubble {
-    bottom: auto;
-    left: 50%;
+    left: auto;
+    right: -0.35rem;
     top: calc(100% + 0.42rem);
-    width: min(150px, 74vw);
+    transform: translateY(4px);
+    width: 158px;
+  }
+
+  .product-points-info:hover .product-points-info-bubble,
+  .product-points-info:focus-visible .product-points-info-bubble {
+    transform: translateY(0);
   }
 
   .product-card-btn {
