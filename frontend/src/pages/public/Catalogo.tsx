@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
+import { useCartStore } from "../../store/cartStore";
 import type { Producto } from "../../types";
 
 type CanjeCarritoResponse = {
@@ -97,7 +98,12 @@ export function Catalogo() {
   const hasDragged = useRef(false);
   const [toast, setToast] = useState<CatalogToast | null>(null);
   const [sucursalRetiroId, setSucursalRetiroId] = useState("");
-  const [canjeCart, setCanjeCart] = useState<Record<number, number>>({});
+  const canjeCart = useCartStore((state) => state.items);
+  const cartAdd = useCartStore((state) => state.add);
+  const cartIncrement = useCartStore((state) => state.increment);
+  const cartDecrement = useCartStore((state) => state.decrement);
+  const cartClear = useCartStore((state) => state.clear);
+  const carritoRef = useRef<HTMLDivElement | null>(null);
   const [canjeConfirmOpen, setCanjeConfirmOpen] = useState(false);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
   const [cantidadModalCanje, setCantidadModalCanje] = useState(1);
@@ -206,6 +212,14 @@ export function Catalogo() {
     if (!exists) setSucursalRetiroId("");
   }, [isCliente, sucursalRetiroId, sucursalesRetiro]);
 
+  // Scroll al panel del carrito cuando se llega con #carrito (link desde Navbar).
+  useEffect(() => {
+    if (location.hash !== "#carrito") return;
+    window.setTimeout(() => {
+      carritoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }, [location.hash]);
+
   const productosFiltrados = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
     const filtrados = productos.filter((producto) => {
@@ -277,7 +291,7 @@ export function Catalogo() {
             ? data.dias_limite_retiro
             : null,
       });
-      setCanjeCart({});
+      cartClear();
       setCanjeConfirmOpen(false);
       setProductoModal(null);
     },
@@ -329,10 +343,7 @@ export function Catalogo() {
     if (canjearCarritoMutation.isPending) return;
     const cantidadSafe = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
 
-    setCanjeCart((prev) => ({
-      ...prev,
-      [producto.id]: (prev[producto.id] || 0) + cantidadSafe,
-    }));
+    cartAdd(producto.id, cantidadSafe);
     onAdded?.();
   }
 
@@ -361,23 +372,11 @@ export function Catalogo() {
   }
 
   function incrementarCarrito(productoId: number) {
-    setCanjeCart((prev) => ({
-      ...prev,
-      [productoId]: (prev[productoId] || 0) + 1,
-    }));
+    cartIncrement(productoId);
   }
 
   function decrementarCarrito(productoId: number) {
-    setCanjeCart((prev) => {
-      const next = { ...prev };
-      const cantidadActual = next[productoId] || 0;
-      if (cantidadActual <= 1) {
-        delete next[productoId];
-      } else {
-        next[productoId] = cantidadActual - 1;
-      }
-      return next;
-    });
+    cartDecrement(productoId);
   }
 
   function abrirConfirmacionCarrito() {
@@ -444,7 +443,7 @@ export function Catalogo() {
   }
 
   function vaciarCarritoCanje() {
-    setCanjeCart({});
+    cartClear();
   }
 
   function getCantidadSeleccionada(productoId: number): number {
@@ -556,6 +555,8 @@ export function Catalogo() {
 
         {isCliente ? (
           <div
+            ref={carritoRef}
+            id="carrito"
             className="catalog-redeem-cart-panel"
             style={{
               border: "1.5px solid #E6D3B8",
@@ -563,6 +564,7 @@ export function Catalogo() {
               padding: "0.75rem",
               background: "#FFF8F0",
               marginBottom: "0.9rem",
+              scrollMarginTop: "84px",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>

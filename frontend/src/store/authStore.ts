@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { apiUrl } from "../lib/apiBase";
 import { getCsrfToken } from "../lib/csrf";
+import { useCartStore } from "./cartStore";
 import type { AuthResponse, User } from "../types";
 
 type LoginPayload = {
@@ -93,6 +94,9 @@ export const useAuthStore = create<AuthStore>()(
       logout: () => {
         const token = get().token;
         set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
+        // Limpia el carrito para que items del usuario anterior no aparezcan
+        // si otra persona inicia sesión en el mismo navegador.
+        useCartStore.getState().clear();
         void requestLogout(token);
       },
 
