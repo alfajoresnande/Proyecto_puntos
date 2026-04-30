@@ -28,6 +28,12 @@ async function sendPasswordResetEmail(input) {
         </a>
       </p>
       <p style="font-size:13px;color:#8B5A30;">
+        Si el bot&oacute;n no funciona, copi&aacute; y peg&aacute; este enlace en tu navegador:
+      </p>
+      <p style="word-break:break-all;font-size:13px;line-height:1.5;">
+        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" style="color:#D4621A;">${safeLink}</a>
+      </p>
+      <p style="font-size:13px;color:#8B5A30;">
         Si no hiciste esta solicitud, pod&eacute;s ignorar este correo.
       </p>
     </div>
