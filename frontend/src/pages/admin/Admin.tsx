@@ -227,6 +227,7 @@ type StaticPageSlug = "sobre-nosotros" | "terminos";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
+const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
 
 function formatDate(value: string | null): string {
@@ -422,6 +423,7 @@ export function Admin() {
   const [canjesPage, setCanjesPage] = useState(1);
   const [codigosPage, setCodigosPage] = useState(1);
   const [sucursalesPage, setSucursalesPage] = useState(1);
+  const [seguridadPage, setSeguridadPage] = useState(1);
   const [asignacionUsuarioId, setAsignacionUsuarioId] = useState<number | null>(null);
   const [asignacionPuntos, setAsignacionPuntos] = useState("100");
   const [asignacionDescripcion, setAsignacionDescripcion] = useState("");
@@ -613,6 +615,7 @@ export function Admin() {
         .slice(0, 20),
     [securityEvents]
   );
+  const totalSeguridadPages = Math.max(1, Math.ceil(blockedAccessEvents.length / INTENTOS_SEGURIDAD_POR_PAGINA));
   const totalMovimientosInicioPages = Math.max(1, Math.ceil(movimientos.length / MOVIMIENTOS_INICIO_POR_PAGINA));
 
   useEffect(() => {
@@ -694,6 +697,15 @@ export function Admin() {
     setSucursalesPage((prev) => Math.min(prev, totalSucursalesPages));
   }, [totalSucursalesPages]);
 
+  useEffect(() => {
+    setSeguridadPage((prev) => Math.min(prev, totalSeguridadPages));
+  }, [totalSeguridadPages]);
+
+  const blockedAccessEventsPagina = useMemo(() => {
+    const start = (seguridadPage - 1) * INTENTOS_SEGURIDAD_POR_PAGINA;
+    return blockedAccessEvents.slice(start, start + INTENTOS_SEGURIDAD_POR_PAGINA);
+  }, [blockedAccessEvents, seguridadPage]);
+
   const usuariosPagina = useMemo(() => {
     const start = (usuariosPage - 1) * LISTA_POR_PAGINA;
     return usuariosFiltrados.slice(start, start + LISTA_POR_PAGINA);
@@ -750,7 +762,7 @@ export function Admin() {
 
     const currentCount = target === "nuevo" ? nuevoProducto.imagenes.length : editDraft.imagenes.length;
     if (currentCount >= MAX_PRODUCT_IMAGES) {
-      setErrMsg(`Solo puedes cargar hasta ${MAX_PRODUCT_IMAGES} imÃ¡genes por producto.`);
+      setErrMsg(`Solo puedes cargar hasta ${MAX_PRODUCT_IMAGES} imágenes por producto.`);
       return;
     }
 
@@ -783,12 +795,12 @@ export function Admin() {
     const slotsAvailable = Math.max(0, MAX_PRODUCT_IMAGES - current);
     const accepted = files.filter((file) => file.type.startsWith("image/")).slice(0, slotsAvailable);
     if (!accepted.length) {
-      setErrMsg(`Arrastra imÃ¡genes vÃ¡lidas. MÃ¡ximo ${MAX_PRODUCT_IMAGES} por producto.`);
+      setErrMsg(`Arrastra imágenes válidas. Máximo ${MAX_PRODUCT_IMAGES} por producto.`);
       return;
     }
 
     for (const file of accepted) {
-      // Subida secuencial para mantener el orden de las imÃ¡genes.
+      // Subida secuencial para mantener el orden de las imágenes.
       // eslint-disable-next-line no-await-in-loop
       await subirImagenProducto(file, target);
     }
@@ -1137,7 +1149,7 @@ export function Admin() {
       });
       
       const msg = estado === "entregado" 
-        ? "Â¡Canje marcado como entregado!" 
+        ? "¡Canje marcado como entregado!" 
         : "Canje anulado correctamente. Los puntos han sido devueltos al cliente.";
       setOkMsg(msg);
       
@@ -1753,7 +1765,7 @@ export function Admin() {
                     {!securityMonitorQuery.isLoading && blockedAccessEvents.length === 0 ? (
                       <div className="adm-empty">No hay intentos bloqueados recientes.</div>
                     ) : null}
-                    {blockedAccessEvents.map((event) => {
+                    {blockedAccessEventsPagina.map((event) => {
                       const detalles = event.detalles ?? {};
                       const usuarioNombre = typeof detalles.usuario_nombre === "string" ? detalles.usuario_nombre : null;
                       const usuarioEmail = typeof detalles.usuario_email === "string" ? detalles.usuario_email : null;
@@ -1807,7 +1819,7 @@ export function Admin() {
                             </td>
                           </tr>
                         ) : null}
-                        {blockedAccessEvents.map((event) => {
+                        {blockedAccessEventsPagina.map((event) => {
                           const detalles = event.detalles ?? {};
                           const usuarioNombre = typeof detalles.usuario_nombre === "string" ? detalles.usuario_nombre : null;
                           const usuarioEmail = typeof detalles.usuario_email === "string" ? detalles.usuario_email : null;
@@ -1843,6 +1855,12 @@ export function Admin() {
                       </tbody>
                     </table>
                   </div>
+                  <PaginationControls
+                    page={seguridadPage}
+                    totalPages={totalSeguridadPages}
+                    onPrev={() => setSeguridadPage((prev) => Math.max(1, prev - 1))}
+                    onNext={() => setSeguridadPage((prev) => Math.min(totalSeguridadPages, prev + 1))}
+                  />
                 </div>
               ) : null}
 
@@ -2106,7 +2124,7 @@ export function Admin() {
                                     </select>
                                     <input
                                       className="adm-input"
-                                      placeholder="TelÃ©fono (opcional)"
+                                      placeholder="Teléfono (opcional)"
                                       value={editUsuarioDraft.telefono}
                                       onChange={(event) => setEditUsuarioDraft((prev) => ({ ...prev, telefono: event.target.value }))}
                                     />
@@ -2222,7 +2240,7 @@ export function Admin() {
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => void manejarDropImagenesProducto(event, "nuevo")}
                 >
-                  <p className="adm-upload-drop-title">Arrastra fotos aquÃ­ (hasta 3)</p>
+                  <p className="adm-upload-drop-title">Arrastra fotos aquí (hasta 3)</p>
                   <p className="adm-upload-drop-sub">O selecciona desde tu dispositivo</p>
                   <label className="adm-btn-secondary adm-btn-inline" style={{ cursor: "pointer", width: "auto" }}>
                     Cargar imagen
@@ -2239,7 +2257,7 @@ export function Admin() {
                   </label>
                 </div>
 
-                <div className="adm-inline-tip">Puedes cargar hasta 3 imÃ¡genes. La primera se usa como portada del catÃ¡logo.</div>
+                <div className="adm-inline-tip">Puedes cargar hasta 3 imágenes. La primera se usa como portada del catálogo.</div>
                 {nuevoProducto.imagenes.length ? (
                   <div className="adm-product-images-grid">
                     {nuevoProducto.imagenes.map((url, index) => (
@@ -2354,8 +2372,8 @@ export function Admin() {
                           onDragOver={(event) => event.preventDefault()}
                           onDrop={(event) => void manejarDropImagenesProducto(event, "edit")}
                         >
-                          <p className="adm-upload-drop-title">Arrastra fotos aquÃ­ (hasta 3)</p>
-                          <p className="adm-upload-drop-sub">TambiÃ©n puedes reemplazar o agregar imÃ¡genes manualmente</p>
+                          <p className="adm-upload-drop-title">Arrastra fotos aquí (hasta 3)</p>
+                          <p className="adm-upload-drop-sub">También puedes reemplazar o agregar imágenes manualmente</p>
                           <label className="adm-btn-secondary adm-btn-inline" style={{ cursor: "pointer", width: "auto" }}>
                             Agregar imagen
                             <input
@@ -2371,7 +2389,7 @@ export function Admin() {
                           </label>
                         </div>
 
-                        <div className="adm-inline-tip">Ordena tus imÃ¡genes quitando y volviendo a cargar. La primera se muestra como portada.</div>
+                        <div className="adm-inline-tip">Ordena tus imágenes quitando y volviendo a cargar. La primera se muestra como portada.</div>
                         {editDraft.imagenes.length ? (
                           <div className="adm-product-images-grid">
                             {editDraft.imagenes.map((url, index) => (
@@ -2404,7 +2422,7 @@ export function Admin() {
                           <p className="admin-producto-sub">
                             {producto.categoria || "Sin categoria"} - {producto.puntos_requeridos} pts
                           </p>
-                          <p className="admin-producto-sub">ImÃ¡genes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
+                          <p className="admin-producto-sub">Imágenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
                         </div>
                         <div className="admin-producto-actions">
                           <button className="adm-btn-link" onClick={() => startEdit(producto)}>
@@ -2578,12 +2596,12 @@ export function Admin() {
                           </p>
                           {canjeCodigoAdmin.items.map((item) => (
                             <p key={`${item.producto_id}-${item.cantidad}`} style={{ margin: "0.1rem 0" }}>
-                              â€¢ {item.producto_nombre} x{item.cantidad}
+                              - {item.producto_nombre} x{item.cantidad}
                             </p>
                           ))}
                         </div>
                       ) : null}
-                      <p style={{ margin: 0, fontSize: "0.9rem" }}><strong>Cliente:</strong> {canjeCodigoAdmin.cliente_nombre} â€” DNI {canjeCodigoAdmin.cliente_dni}</p>
+                      <p style={{ margin: 0, fontSize: "0.9rem" }}><strong>Cliente:</strong> {canjeCodigoAdmin.cliente_nombre} - DNI {canjeCodigoAdmin.cliente_dni}</p>
                       <p style={{ margin: 0, fontSize: "0.9rem" }}><strong>Puntos:</strong> {canjeCodigoAdmin.puntos_usados} pts</p>
                       {canjeCodigoAdmin.sucursal_nombre ? (
                         <p style={{ margin: 0, fontSize: "0.9rem" }}>
@@ -2868,7 +2886,7 @@ export function Admin() {
                     </div>
                     <div className="adm-notepad-body">
                       <p className="adm-md-hint">
-                        GuÃ­a rÃ¡pida Markdown: <code>#</code> tÃ­tulo grande, <code>##</code> subtÃ­tulo, <code>-</code> listas,
+                        Guía rápida Markdown: <code>#</code> título grande, <code>##</code> subtítulo, <code>-</code> listas,
                         <code> **texto** </code> negrita y <code>[texto](https://url)</code> para enlaces.
                       </p>
                       <input className="adm-notepad-title-input" value={sobreDraft.titulo} onChange={(event) => setSobreDraft((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" />
@@ -2942,7 +2960,7 @@ export function Admin() {
                     </div>
                     <div className="adm-notepad-body">
                       <p className="adm-md-hint">
-                        GuÃ­a rÃ¡pida Markdown: <code>#</code> tÃ­tulo grande, <code>##</code> subtÃ­tulo, <code>-</code> listas,
+                        Guía rápida Markdown: <code>#</code> título grande, <code>##</code> subtítulo, <code>-</code> listas,
                         <code> **texto** </code> negrita y <code>[texto](https://url)</code> para enlaces.
                       </p>
                       <input className="adm-notepad-title-input" value={terminosDraft.titulo} onChange={(event) => setTerminosDraft((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" />
@@ -3006,20 +3024,20 @@ export function Admin() {
         </div>
       </main>
 
-      {/* â”€â”€ MODAL DE CONFIRMACIÃ“N â”€â”€ */}
+      {/* MODAL DE CONFIRMACION */}
       {confirmacion && (
         <div className="adm-modal-overlay">
           <div className="adm-modal">
             <div className={`adm-modal-icon ${confirmacion.estado === 'entregado' ? 'success' : 'warning'}`}>
-              {confirmacion.estado === 'entregado' ? 'âœ…' : 'âš ï¸'}
+              {confirmacion.estado === 'entregado' ? 'OK' : '!'}
             </div>
             <h3 className="adm-modal-title">
-              {confirmacion.estado === 'entregado' ? 'Â¿Confirmar entrega?' : 'Â¿Anular este canje?'}
+              {confirmacion.estado === 'entregado' ? '¿Confirmar entrega?' : '¿Anular este canje?'}
             </h3>
             <p className="adm-modal-desc">
               {confirmacion.estado === 'entregado' 
-                ? `EstÃ¡s por marcar como ENTREGADO el canje de "${confirmacion.producto}" para ${confirmacion.cliente}.`
-                : `Se anularÃ¡ el canje de "${confirmacion.producto}" para ${confirmacion.cliente}. Los puntos se devolverÃ¡n automÃ¡ticamente al saldo del usuario.`
+                ? `Estás por marcar como ENTREGADO el canje de "${confirmacion.producto}" para ${confirmacion.cliente}.`
+                : `Se anulará el canje de "${confirmacion.producto}" para ${confirmacion.cliente}. Los puntos se devolverán automáticamente al saldo del usuario.`
               }
             </p>
             <div className="adm-modal-actions">
@@ -3032,7 +3050,7 @@ export function Admin() {
                 onClick={() => actualizarEstadoCanje(confirmacion.id, confirmacion.estado)}
                 disabled={busy}
               >
-                {busy ? 'Procesando...' : confirmacion.estado === 'entregado' ? 'Confirmar entrega' : 'Confirmar anulaciÃ³n'}
+                {busy ? 'Procesando...' : confirmacion.estado === 'entregado' ? 'Confirmar entrega' : 'Confirmar anulación'}
               </button>
             </div>
           </div>
