@@ -369,7 +369,7 @@ router.post("/forgot-password", async (req, res) => {
   const email = parsed.data.email.toLowerCase().trim();
   const genericResponse = {
     ok: true,
-    message: "Te enviamos un mail de restauración.",
+    message: "Te enviamos un mail de recuperación.",
   };
 
   const user = await qOne<{

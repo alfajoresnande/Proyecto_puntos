@@ -27,11 +27,11 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2D1200;">
       <h2 style="color:#D4621A;">Recuperaci&oacute;n de contrase&ntilde;a</h2>
       <p>Hola ${safeName},</p>
-      <p>Recibimos una solicitud para restablecer tu contrase&ntilde;a.</p>
+      <p>Recibimos una solicitud para cambiar tu contrase&ntilde;a.</p>
       <p>Este enlace vence en <strong>${input.expiresMinutes} minutos</strong>.</p>
       <p>
-        <a href="${safeLink}" style="display:inline-block;background:#D4621A;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
-          Restablecer contrase&ntilde;a
+        <a href="${safeLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#D4621A;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+          Haz click aqu&iacute; para cambiar tu contrase&ntilde;a
         </a>
       </p>
       <p style="font-size:13px;color:#8B5A30;">
@@ -43,7 +43,7 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
   const text = [
     "Recuperaci\u00f3n de contrase\u00f1a",
     `Hola ${input.nombre || "Usuario"},`,
-    `Us\u00e1 este enlace para restablecer tu contrase\u00f1a (vence en ${input.expiresMinutes} minutos):`,
+    `Us\u00e1 este enlace para cambiar tu contrase\u00f1a (vence en ${input.expiresMinutes} minutos):`,
     input.resetLink,
     "Si no hiciste esta solicitud, ignora este correo.",
   ].join("\n");
