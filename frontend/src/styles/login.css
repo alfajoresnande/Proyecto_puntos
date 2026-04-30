@@ -323,6 +323,11 @@ body.auth-background .app-main {
   color: #6b7280;               /* ← color del texto "¿No tienes una cuenta?" */
 }
 
+.login-footer-compact {
+  margin-top: 1rem;
+  margin-bottom: -0.25rem;
+}
+
 .login-footer a {
   color: #D4621A;               /* ← color del link "Regístrate aquí" */
   font-weight: 700;

@@ -161,6 +161,10 @@ export function Login() {
           </button>
         </form>
 
+        <p className="login-footer login-footer-compact">
+          <Link to="/forgot-password">Olvidaste tu contrasena?</Link>
+        </p>
+
         <div className="login-divider">o continua con</div>
 
         {googleClientId ? (

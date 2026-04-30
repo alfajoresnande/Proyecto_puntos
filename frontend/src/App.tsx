@@ -4,8 +4,10 @@ import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Admin } from "./pages/admin/Admin";
+import { ForgotPassword } from "./pages/auth/ForgotPassword";
 import { Login } from "./pages/auth/Login";
 import { Registro } from "./pages/auth/Registro";
+import { ResetPassword } from "./pages/auth/ResetPassword";
 import { Cliente } from "./pages/cliente/Cliente";
 import { MisCanjes } from "./pages/cliente/MisCanjes";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
@@ -25,6 +27,8 @@ export default function App() {
             <Route path="/catalogo" element={<Catalogo />} />
             <Route path="/login" element={<Login />} />
             <Route path="/registro" element={<Registro />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/cliente"
               element={
