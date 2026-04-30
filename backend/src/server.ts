@@ -125,7 +125,12 @@ app.use(
     const origin = req.get("origin");
     // Permitir requests sin origin (Postman, apps moviles, curl)
     if (!origin || allowedOrigins.includes(origin)) {
-      cb(null, { origin: origin || false, credentials: true });
+      cb(null, {
+        origin: origin || false,
+        credentials: true,
+        methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token", "x-csrf-token"],
+      });
       return;
     }
     recordSecurityEvent("cors_bloqueado_origen", req, { origin });
