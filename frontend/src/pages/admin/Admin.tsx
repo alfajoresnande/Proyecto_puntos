@@ -331,7 +331,7 @@ function FieldLabel({ text, tip }: { text: string; tip: string }) {
   return (
     <label className="adm-label">
       {text}
-      <span className="adm-tip" data-tip={tip}>
+      <span className="adm-tip" title={tip} aria-label={tip}>
         ?
       </span>
     </label>
