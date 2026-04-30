@@ -71,6 +71,12 @@ function getProductoImagen(producto: Producto): string | null {
   return producto.imagen_url ?? null;
 }
 
+function getProductoImagenes(producto: Producto): string[] {
+  const imagenes = producto.imagenes?.filter(Boolean) ?? [];
+  if (imagenes.length) return imagenes;
+  return producto.imagen_url ? [producto.imagen_url] : [];
+}
+
 export function Catalogo() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +88,7 @@ export function Catalogo() {
   const [maxPuntos, setMaxPuntos] = useState(0);
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
+  const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
   const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -117,6 +124,9 @@ export function Catalogo() {
   const sucursalRetiroSeleccionada =
     (sucursalRetiroId ? sucursalesRetiro.find((item) => String(item.id) === sucursalRetiroId) : undefined) ||
     (sucursalesRetiro.length === 1 ? sucursalesRetiro[0] : undefined);
+  const productoModalImagenes = productoModal ? getProductoImagenes(productoModal) : [];
+  const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
+  const productoModalTieneCarousel = productoModalImagenes.length > 1;
 
   const puntosMax = useMemo(() => {
     if (!productos.length) return 1000;
@@ -127,6 +137,27 @@ export function Catalogo() {
   useEffect(() => {
     setMaxPuntos(puntosMax);
   }, [puntosMax]);
+
+  useEffect(() => {
+    setProductoModalImageIndex(0);
+    setImgZoomed(false);
+    setPan({ x: 0, y: 0 });
+    setZoomOrigin("50% 50%");
+  }, [productoModal?.id]);
+
+  useEffect(() => {
+    if (!productoModalImagenes.length) return;
+    setProductoModalImageIndex((prev) => Math.min(prev, productoModalImagenes.length - 1));
+  }, [productoModalImagenes.length]);
+
+  function cambiarImagenModal(nextIndex: number) {
+    if (!productoModalImagenes.length) return;
+    const normalizedIndex = (nextIndex + productoModalImagenes.length) % productoModalImagenes.length;
+    setProductoModalImageIndex(normalizedIndex);
+    setImgZoomed(false);
+    setPan({ x: 0, y: 0 });
+    setZoomOrigin("50% 50%");
+  }
 
   useEffect(() => {
     document.body.classList.add("catalogo-background");
@@ -830,10 +861,10 @@ export function Catalogo() {
             <button className="producto-modal-close" onClick={() => setProductoModal(null)}>✕</button>
 
             <div className="producto-modal-img-wrap">
-              {getProductoImagen(productoModal) ? (
+              {productoModalImagenActual ? (
                 <img
-                  src={getProductoImagen(productoModal) as string}
-                  alt={productoModal.nombre}
+                  src={productoModalImagenActual}
+                  alt={`${productoModal.nombre} - imagen ${productoModalImageIndex + 1}`}
                   className="producto-modal-img"
                   style={{
                     transformOrigin: zoomOrigin,
@@ -891,6 +922,40 @@ export function Catalogo() {
               ) : (
                 <div className="product-card-placeholder" style={{ height: "260px" }} />
               )}
+              {productoModalTieneCarousel ? (
+                <>
+                  <button
+                    type="button"
+                    className="producto-carousel-btn producto-carousel-btn-prev"
+                    onClick={() => cambiarImagenModal(productoModalImageIndex - 1)}
+                    aria-label="Ver imagen anterior"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="producto-carousel-btn producto-carousel-btn-next"
+                    onClick={() => cambiarImagenModal(productoModalImageIndex + 1)}
+                    aria-label="Ver imagen siguiente"
+                  >
+                    ›
+                  </button>
+                  <div className="producto-carousel-count">
+                    {productoModalImageIndex + 1} / {productoModalImagenes.length}
+                  </div>
+                  <div className="producto-carousel-dots" aria-label="Selector de imagenes">
+                    {productoModalImagenes.map((imagen, index) => (
+                      <button
+                        key={`${imagen}-${index}`}
+                        type="button"
+                        className={`producto-carousel-dot ${index === productoModalImageIndex ? "active" : ""}`}
+                        onClick={() => cambiarImagenModal(index)}
+                        aria-label={`Ver imagen ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : null}
               {productoModal.categoria ? (
                 <span className="product-card-cat">{productoModal.categoria}</span>
               ) : null}

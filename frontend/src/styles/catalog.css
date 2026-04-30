@@ -1005,6 +1005,78 @@ body.catalogo-background .pagina-page {
   padding: 0;
 }
 
+.producto-carousel-btn {
+  position: absolute;
+  top: 50%;
+  z-index: 7;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid rgba(245, 200, 168, 0.95);
+  border-radius: 999px;
+  background: rgba(255, 248, 240, 0.94);
+  color: #6b3a20;
+  cursor: pointer;
+  display: grid;
+  font-size: 1.9rem;
+  line-height: 1;
+  place-items: center;
+  transform: translateY(-50%);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.producto-carousel-btn:hover {
+  background: #6b3a20;
+  border-color: #6b3a20;
+  color: #fff8f0;
+  transform: translateY(-50%) scale(1.05);
+}
+
+.producto-carousel-btn-prev {
+  left: 0.7rem;
+}
+
+.producto-carousel-btn-next {
+  right: 0.7rem;
+}
+
+.producto-carousel-count {
+  position: absolute;
+  right: 0.8rem;
+  bottom: 0.75rem;
+  z-index: 7;
+  border-radius: 999px;
+  background: rgba(61, 26, 2, 0.78);
+  color: #fff8f0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.28rem 0.55rem;
+}
+
+.producto-carousel-dots {
+  position: absolute;
+  bottom: 0.85rem;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  gap: 0.35rem;
+  transform: translateX(-50%);
+}
+
+.producto-carousel-dot {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(107, 58, 32, 0.35);
+  cursor: pointer;
+  padding: 0;
+}
+
+.producto-carousel-dot.active {
+  background: #6b3a20;
+  transform: scale(1.25);
+}
+
 .producto-modal-body {
   padding: 1.4rem;
   display: flex;
