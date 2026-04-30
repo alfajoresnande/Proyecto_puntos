@@ -29,6 +29,10 @@ function secureEquals(value: string, expected: string): boolean {
 }
 
 function hasDiagnosticsAccess(req: Parameters<typeof getAuthPayload>[0]): boolean {
+  // Por defecto el diagnostico es publico para facilitar puesta en marcha.
+  // Si queres protegerlo, define DIAGNOSTICO_REQUIRE_AUTH=true.
+  if (!isEnabled(process.env.DIAGNOSTICO_REQUIRE_AUTH)) return true;
+
   if (isEnabled(process.env.DIAGNOSTICO_PUBLIC)) return true;
 
   const auth = getAuthPayload(req);

@@ -365,7 +365,10 @@ pool
       console.error("⚠️  Migración eventos de seguridad:", err.message);
     }
   })
-  .catch((err) => { console.error("❌ MySQL:", err.message); process.exit(1); });
+  .catch((err) => {
+    // No detenemos el proceso: permitimos que /diagnostico reporte estado degradado.
+    console.error("❌ MySQL:", err.message);
+  });
 
 export type Queryable = Pool | PoolConnection;
 

@@ -186,6 +186,10 @@ const generalLimiter = rateLimit({
 app.use("/api", generalLimiter, csrfProtection);
 
 // Rutas
+app.get("/", (_req, res) => {
+  res.redirect(302, "/diagnostico");
+});
+
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date() }));
 app.use("/diagnostico", diagnosticoRoutes);
 app.use("/api/diagnostico", diagnosticoRoutes);
