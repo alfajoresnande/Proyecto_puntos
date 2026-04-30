@@ -81,13 +81,6 @@ function csrfProtection(req, res, next) {
         res.status(403).json({ error: "CSRF token faltante o invalido" });
         return;
     }
-    // Browser hint: reject cross-site mutation requests early.
-    const fetchSite = (req.get("sec-fetch-site") || "").toLowerCase();
-    if (fetchSite === "cross-site") {
-        (0, securityMonitor_1.recordSecurityEvent)("csrf_bloqueado_sitio_cruzado", req, { fetchSite });
-        res.status(403).json({ error: "Solicitud bloqueada por politica CSRF" });
-        return;
-    }
     // Validate browser origin when present. Non-browser clients usually omit it.
     const originHeader = req.get("origin");
     const refererHeader = req.get("referer");
@@ -95,6 +88,14 @@ function csrfProtection(req, res, next) {
     if (requestOrigin && !trustedCsrfOrigins.has(requestOrigin)) {
         (0, securityMonitor_1.recordSecurityEvent)("csrf_bloqueado_origen_no_confiable", req, { requestOrigin });
         res.status(403).json({ error: "Origen no permitido para metodos mutables" });
+        return;
+    }
+    // Browser hint: reject cross-site mutation requests only when the origin
+    // was not explicitly trusted above.
+    const fetchSite = (req.get("sec-fetch-site") || "").toLowerCase();
+    if (fetchSite === "cross-site" && !requestOrigin) {
+        (0, securityMonitor_1.recordSecurityEvent)("csrf_bloqueado_sitio_cruzado", req, { fetchSite });
+        res.status(403).json({ error: "Solicitud bloqueada por politica CSRF" });
         return;
     }
     next();
