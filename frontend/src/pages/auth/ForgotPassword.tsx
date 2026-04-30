@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+ï»¿import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/apiBase";
@@ -50,10 +50,10 @@ export function ForgotPassword() {
         </div>
 
         <h1 className="login-heading">Recuperar acceso</h1>
-        <p className="login-subheading">Te enviamos un mail de recuperación</p>
+        <p className="login-subheading">Te enviamos un enlace para crear una nueva contraseÃ±a</p>
 
         <form onSubmit={submitForm}>
-          <label className="login-field-label">Correo electrónico</label>
+          <label className="login-field-label">Correo electrÃ³nico</label>
           <div className="login-input-group">
             <span className="login-input-icon">@</span>
             <input
@@ -69,9 +69,10 @@ export function ForgotPassword() {
 
           {forgotMutation.error ? <p className="login-error">{forgotMutation.error.message}</p> : null}
           {forgotMutation.data ? (
-            <p className="login-info">
-              {forgotMutation.data.message} Si no lo ves en unos minutos, revisá Spam o Correo no deseado.
-            </p>
+            <div className="login-info">
+              <p>{forgotMutation.data.message}</p>
+              <p>Si no lo ves en unos minutos, revisÃ¡ Spam o Correo no deseado.</p>
+            </div>
           ) : null}
 
           <button type="submit" className="login-btn-primary" disabled={forgotMutation.isPending}>
@@ -80,7 +81,7 @@ export function ForgotPassword() {
         </form>
 
         <p className="login-footer">
-          ¿Ya recordaste tu contraseña? <Link to="/login">Inicia sesión</Link>
+          Â¿Ya recordaste tu contraseÃ±a? <Link to="/login">Inicia sesiÃ³n</Link>
         </p>
       </div>
     </section>

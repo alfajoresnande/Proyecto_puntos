@@ -300,6 +300,10 @@ body.auth-background .app-main {
   text-align: center;
 }
 
+.login-info p {
+  margin: 0.15rem 0;
+}
+
 .auth-floating-toast {
   position: fixed;
   top: 84px;
