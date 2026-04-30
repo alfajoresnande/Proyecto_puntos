@@ -14,6 +14,7 @@ export type User = {
 
 export type AuthResponse = {
   user: User;
+  token?: string;
 };
 
 export type Producto = {

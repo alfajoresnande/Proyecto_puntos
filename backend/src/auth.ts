@@ -74,7 +74,7 @@ function getTokenFromRequest(req: Request): string | null {
 export const JWT_SECRET = loadJwtSecret();
 
 export function signToken(payload: TokenPayload): string {
-  const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "1h";
+  const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "7d";
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
 
@@ -91,7 +91,7 @@ export function getAuthPayload(req: Request): TokenPayload | null {
 export function setAuthCookie(res: Response, token: string) {
   const sameSite = normalizeSameSite(process.env.AUTH_COOKIE_SAMESITE);
   const secure = shouldUseSecureCookies();
-  const maxAgeMs = process.env.AUTH_COOKIE_MAX_AGE_MS ? Number(process.env.AUTH_COOKIE_MAX_AGE_MS) : 24 * 60 * 60 * 1000;
+  const maxAgeMs = process.env.AUTH_COOKIE_MAX_AGE_MS ? Number(process.env.AUTH_COOKIE_MAX_AGE_MS) : 7 * 24 * 60 * 60 * 1000;
 
   res.cookie(AUTH_COOKIE_NAME, token, {
     httpOnly: true,

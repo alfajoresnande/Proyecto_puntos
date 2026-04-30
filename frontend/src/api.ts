@@ -30,6 +30,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
   if (!SAFE_METHODS.has(method)) headers.set("X-CSRF-Token", getCsrfToken());
 
+  const token = useAuthStore.getState().token;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
   const response = await fetch(apiUrl(`/api${path}`), {
     ...options,
     credentials: "include",

@@ -23,6 +23,7 @@ type GoogleLoginPayload = {
 
 type AuthStore = {
   user: User | null;
+  token: string | null;
   isRestoringSession: boolean;
   hasRestoredSession: boolean;
   setSession: (session: AuthResponse) => void;
@@ -64,13 +65,16 @@ async function requestAuth(path: string, payload: LoginPayload | RegisterPayload
   return body as AuthResponse;
 }
 
-async function requestLogout(): Promise<void> {
+async function requestLogout(token: string | null): Promise<void> {
+  const headers: Record<string, string> = {
+    "X-CSRF-Token": getCsrfToken(),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   await fetch(apiUrl("/api/auth/logout"), {
     method: "POST",
     credentials: "include",
-    headers: {
-      "X-CSRF-Token": getCsrfToken(),
-    },
+    headers,
   }).catch(() => undefined);
 }
 
@@ -78,33 +82,35 @@ export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       isRestoringSession: true,
       hasRestoredSession: false,
 
-      setSession: ({ user }) => {
-        set({ user, isRestoringSession: false, hasRestoredSession: true });
+      setSession: ({ user, token }) => {
+        set({ user, token: token ?? get().token, isRestoringSession: false, hasRestoredSession: true });
       },
 
       logout: () => {
-        set({ user: null, isRestoringSession: false, hasRestoredSession: true });
-        void requestLogout();
+        const token = get().token;
+        set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
+        void requestLogout(token);
       },
 
       login: async (payload) => {
         const session = await requestAuth("login", payload);
-        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
+        set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       loginWithGoogle: async (credential) => {
         const session = await requestAuth("google", { credential });
-        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
+        set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       register: async (payload) => {
         const session = await requestAuth("register", payload);
-        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
+        set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
@@ -123,19 +129,24 @@ export const useAuthStore = create<AuthStore>()(
       restoreSession: async () => {
         set({ isRestoringSession: true });
 
+        const storedToken = get().token;
+        const headers: Record<string, string> = {};
+        if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+
         const response = await fetch(apiUrl("/api/auth/me"), {
           method: "GET",
           credentials: "include",
+          headers,
         }).catch(() => null);
 
         if (!response || !response.ok) {
-          set({ user: null, isRestoringSession: false, hasRestoredSession: true });
+          set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
           return;
         }
 
         const body = (await response.json().catch(() => null)) as AuthResponse | null;
         if (!body?.user) {
-          set({ user: null, isRestoringSession: false, hasRestoredSession: true });
+          set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
           return;
         }
 
@@ -145,7 +156,7 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ user: state.user }),
+      partialize: (state) => ({ user: state.user, token: state.token }),
     },
   ),
 );

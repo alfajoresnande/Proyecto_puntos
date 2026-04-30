@@ -184,7 +184,7 @@ router.post("/register", async (req, res) => {
 
     const token = signToken({ id: u.id, email: u.email, rol: u.rol });
     setAuthCookie(res, token);
-    res.status(201).json({ user: u });
+    res.status(201).json({ user: u, token });
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -222,7 +222,7 @@ router.post("/login", async (req, res) => {
   const safeUser = publicUser(user);
   const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
   setAuthCookie(res, token);
-  res.json({ user: safeUser });
+  res.json({ user: safeUser, token });
 });
 
 router.post("/google", async (req, res) => {
@@ -319,7 +319,7 @@ router.post("/google", async (req, res) => {
     const safeUser = publicUser(user);
     const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
     setAuthCookie(res, token);
-    res.json({ user: safeUser });
+    res.json({ user: safeUser, token });
   } catch (err) {
     await conn.rollback();
     throw err;
