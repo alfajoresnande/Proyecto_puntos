@@ -1,25 +1,3 @@
--- ============================================================
---  SCHEMA COMPLETO: Sistema de Puntos Ñandé
---  Base de datos: MySQL 8.0
---
---  USO:
---    Docker  → se ejecuta automáticamente al primer arranque
---    phpMyAdmin → Importar este archivo directamente
---
---  Para reset completo: ejecutar primero la sección DOWN,
---  luego la sección UP (o importar este archivo entero).
--- ============================================================
-
-CREATE DATABASE IF NOT EXISTS nande_puntos
-    CHARACTER SET utf8mb4
-    COLLATE utf8mb4_unicode_ci;
-
-USE nande_puntos;
-
--- ============================================================
--- DOWN — elimina todo en orden inverso de dependencias
--- ============================================================
-
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS movimientos_puntos;
@@ -375,15 +353,6 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
         'Longitud del código de invitación generado automáticamente')
 ON DUPLICATE KEY UPDATE valor = VALUES(valor);
 
-INSERT INTO sucursales (nombre, direccion, piso, localidad, provincia, activo)
-SELECT
-  'Sucursal principal',
-  'Corrientes 1234',
-  NULL,
-  'Corrientes',
-  'Corrientes',
-  1
-WHERE NOT EXISTS (SELECT 1 FROM sucursales);
 
 -- ============================================================
 -- SEED: páginas de contenido
