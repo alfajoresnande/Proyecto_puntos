@@ -1,26 +1,6 @@
-SET FOREIGN_KEY_CHECKS = 0;
-
-DROP TABLE IF EXISTS movimientos_puntos;
-DROP TABLE IF EXISTS eventos_seguridad;
-DROP TABLE IF EXISTS canje_items;
-DROP TABLE IF EXISTS canjes;
-DROP TABLE IF EXISTS sucursales;
-DROP TABLE IF EXISTS referidos;
-DROP TABLE IF EXISTS usos_codigos;
-DROP TABLE IF EXISTS codigos_puntos;
-DROP TABLE IF EXISTS password_reset_tokens;
-DROP TABLE IF EXISTS categorias;
-DROP TABLE IF EXISTS paginas_contenido;
-DROP TABLE IF EXISTS configuracion;
-DROP TABLE IF EXISTS producto_imagenes;
-DROP TABLE IF EXISTS productos;
-DROP TABLE IF EXISTS usuarios;
-
-SET FOREIGN_KEY_CHECKS = 1;
-
 -- ============================================================
--- UP — crea todas las tablas
--- ============================================================
+--  SCHEMA COMPLETO: Sistema de Puntos Ñandé
+--  Base de datos: MySQL 8.0
 
 -- ============================================================
 -- TABLA: usuarios
@@ -355,7 +335,7 @@ ON DUPLICATE KEY UPDATE valor = VALUES(valor);
 
 
 -- ============================================================
--- SEED: páginas de contenido
+-- SEED: páginas de contenido para pushear
 -- ============================================================
 
 INSERT INTO paginas_contenido (slug, titulo, contenido) VALUES
