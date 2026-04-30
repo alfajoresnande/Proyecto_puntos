@@ -647,33 +647,38 @@ export function Catalogo() {
                   <p className="product-card-desc">{producto.descripcion || "Producto disponible para canje."}</p>
 
                   <div className="product-card-points">
-                    <div className="product-card-row">
-                      <span>Puntos para canjear</span>
-                      <span className="cost">{producto.puntos_requeridos} pts</span>
+                    <div className="product-card-row product-card-points-tile">
+                      <span className="product-points-icon" aria-hidden="true">◇</span>
+                      <span className="product-points-copy">
+                        <span>Canje:</span>
+                        <span className="cost">{producto.puntos_requeridos} pts</span>
+                      </span>
                     </div>
                     {producto.puntos_acumulables ? (
                       <>
                         <div className="product-card-divider" />
-                        <div className="product-card-row">
-                          <span className="product-card-points-label">
-                            Puntos que sumas al comprar
-                            <button
-                              type="button"
-                              className="product-points-info"
-                              aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
-                            >
-                              i
-                              <span className="product-points-info-bubble">
-                                Estos son los puntos que sumas al comprar el producto en la tienda.
-                              </span>
-                            </button>
+                        <div className="product-card-row product-card-points-tile">
+                          <span className="product-points-icon" aria-hidden="true">☆</span>
+                          <span className="product-points-copy">
+                            <span className="product-card-points-label">
+                              Suma:
+                              <button
+                                type="button"
+                                className="product-points-info"
+                                aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
+                              >
+                                i
+                                <span className="product-points-info-bubble">
+                                  Estos son los puntos que sumas al comprar el producto en la tienda.
+                                </span>
+                              </button>
+                            </span>
+                            <span className="earn">+{producto.puntos_acumulables} pts</span>
                           </span>
-                          <span className="earn">+{producto.puntos_acumulables} pts</span>
                         </div>
                       </>
                     ) : null}
                   </div>
-
                   <button
                     className="product-card-btn product-card-btn-ver"
                     onClick={() => abrirProducto(producto)}
@@ -683,7 +688,7 @@ export function Catalogo() {
 
                   {user ? (
                     <>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem", marginTop: "0.5rem" }}>
+                      <div className="product-card-qty">
                         <button
                           type="button"
                           className="vendedor-round-btn"
