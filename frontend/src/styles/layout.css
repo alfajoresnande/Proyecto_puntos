@@ -11,6 +11,16 @@
    ============================== */
 
 /* ---- NAVBAR ---- */
+.session-loading {
+  display: grid;
+  min-height: 45vh;
+  place-items: center;
+  color: #6f3b21;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .navbar {
   position: fixed;
   top: 0;

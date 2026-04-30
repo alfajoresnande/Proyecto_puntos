@@ -7,6 +7,8 @@ import { useAuthStore } from "../../store/authStore";
 export function Login() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
+  const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
   const login = useAuthStore((state) => state.login);
   const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
@@ -99,6 +101,16 @@ export function Login() {
       script.onerror = null;
     };
   }, [googleClientId, user]);
+
+  if (isRestoringSession || !hasRestoredSession) {
+    return (
+      <section className="login-page">
+        <div className="session-loading" aria-live="polite">
+          Verificando sesion...
+        </div>
+      </section>
+    );
+  }
 
   if (user) {
     return <Navigate to={defaultRouteForRole(user.rol)} replace />;

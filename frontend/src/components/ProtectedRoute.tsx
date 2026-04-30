@@ -51,13 +51,27 @@ function BlockedRouteRedirect({ to, navigateState, attemptedPath, requiredRoles,
   return null;
 }
 
+function SessionLoading() {
+  return (
+    <section className="session-loading" aria-live="polite">
+      Verificando sesion...
+    </section>
+  );
+}
+
 export function ProtectedRoute({ rol, children }: ProtectedRouteProps) {
   const user = useAuthStore((state) => state.user);
+  const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
+  const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
   const location = useLocation();
   const allowedRoles = Array.isArray(rol) ? rol : [rol];
 
   const isRestrictedPanelPath =
     location.pathname.startsWith("/admin") || location.pathname.startsWith("/vendedor");
+
+  if (isRestoringSession || !hasRestoredSession) {
+    return <SessionLoading />;
+  }
 
   if (!user) {
     if (isRestrictedPanelPath) {

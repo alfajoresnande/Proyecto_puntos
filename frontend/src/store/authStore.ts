@@ -23,6 +23,8 @@ type GoogleLoginPayload = {
 
 type AuthStore = {
   user: User | null;
+  isRestoringSession: boolean;
+  hasRestoredSession: boolean;
   setSession: (session: AuthResponse) => void;
   logout: () => void;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
@@ -76,31 +78,33 @@ export const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
       user: null,
+      isRestoringSession: true,
+      hasRestoredSession: false,
 
       setSession: ({ user }) => {
-        set({ user });
+        set({ user, isRestoringSession: false, hasRestoredSession: true });
       },
 
       logout: () => {
-        set({ user: null });
+        set({ user: null, isRestoringSession: false, hasRestoredSession: true });
         void requestLogout();
       },
 
       login: async (payload) => {
         const session = await requestAuth("login", payload);
-        set({ user: session.user });
+        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       loginWithGoogle: async (credential) => {
         const session = await requestAuth("google", { credential });
-        set({ user: session.user });
+        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       register: async (payload) => {
         const session = await requestAuth("register", payload);
-        set({ user: session.user });
+        set({ user: session.user, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
@@ -117,23 +121,25 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       restoreSession: async () => {
+        set({ isRestoringSession: true });
+
         const response = await fetch(apiUrl("/api/auth/me"), {
           method: "GET",
           credentials: "include",
         }).catch(() => null);
 
         if (!response || !response.ok) {
-          set({ user: null });
+          set({ user: null, isRestoringSession: false, hasRestoredSession: true });
           return;
         }
 
         const body = (await response.json().catch(() => null)) as AuthResponse | null;
         if (!body?.user) {
-          set({ user: null });
+          set({ user: null, isRestoringSession: false, hasRestoredSession: true });
           return;
         }
 
-        set({ user: body.user });
+        set({ user: body.user, isRestoringSession: false, hasRestoredSession: true });
       },
     }),
     {
