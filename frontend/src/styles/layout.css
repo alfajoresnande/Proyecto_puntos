@@ -691,6 +691,10 @@
     width: 26px;
     height: 26px;
   }
+
+  body.carrito-canjes-view .floating-whatsapp {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
 }
 
 /* NAVBAR OVERRIDE: BROWN + LOGO HIGHLIGHT */

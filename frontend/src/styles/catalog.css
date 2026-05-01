@@ -1817,6 +1817,14 @@ body.catalogo-background .pagina-page {
     min-width: 0;
   }
 
+  .catalog-canje-page {
+    padding-bottom: calc(5.2rem + env(safe-area-inset-bottom));
+  }
+
+  .catalog-canje-page .catalog-canje-actions {
+    padding-bottom: calc(0.3rem + env(safe-area-inset-bottom));
+  }
+
   .pagina-page {
     padding: 1.25rem 0.85rem 2.5rem;
   }
