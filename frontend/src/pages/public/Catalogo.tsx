@@ -105,6 +105,10 @@ export function Catalogo() {
   const [rangoPuntosId, setRangoPuntosId] = useState<RangoPuntosId>("all");
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [ordenProductos, setOrdenProductos] = useState("");
+  const [filtrosOpen, setFiltrosOpen] = useState(false);
+  const filtrosTriggerRef = useRef<HTMLButtonElement>(null);
+  const filtrosPanelRef = useRef<HTMLDivElement>(null);
+  const filtrosWasOpen = useRef(false);
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
   const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
@@ -205,6 +209,31 @@ export function Catalogo() {
     }, {});
   }, [productos, rangosPuntos, categoriaActiva, busquedaProducto]);
 
+  const conteosPorCategoria = useMemo(() => {
+    const q = busquedaProducto.trim().toLowerCase();
+    const rangoSel = rangosPuntos.find((r) => r.id === rangoPuntosId) ?? rangosPuntos[0];
+    const base = productos.filter((p) => {
+      const txt = [p.nombre, p.descripcion || "", p.categoria || ""].join(" ").toLowerCase();
+      const matchSearch = !q || txt.includes(q);
+      const matchRange = rangoSel ? rangoSel.match(p.puntos_requeridos || 0) : true;
+      return matchSearch && matchRange;
+    });
+    const acc: Record<string, number> = { __all: base.length };
+    for (const p of base) {
+      const cat = p.categoria || "";
+      if (cat) acc[cat] = (acc[cat] ?? 0) + 1;
+    }
+    return acc;
+  }, [productos, rangosPuntos, rangoPuntosId, busquedaProducto]);
+
+  const filtrosActivos = useMemo(() => {
+    let n = 0;
+    if (categoriaActiva) n += 1;
+    if (rangoPuntosId !== "all") n += 1;
+    if (ordenProductos) n += 1;
+    return n;
+  }, [categoriaActiva, rangoPuntosId, ordenProductos]);
+
   useEffect(() => {
     setProductoModalImageIndex(0);
     setImgZoomed(false);
@@ -232,6 +261,53 @@ export function Catalogo() {
       document.body.classList.remove("catalogo-background");
     };
   }, []);
+
+  useEffect(() => {
+    if (!filtrosOpen) {
+      if (filtrosWasOpen.current) {
+        filtrosWasOpen.current = false;
+        filtrosTriggerRef.current?.focus();
+      }
+      return;
+    }
+    filtrosWasOpen.current = true;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusId = window.setTimeout(() => filtrosPanelRef.current?.focus(), 0);
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setFiltrosOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const panel = filtrosPanelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      const visibles = Array.from(focusables).filter((el) => !el.hasAttribute("disabled"));
+      if (!visibles.length) return;
+      const first = visibles[0];
+      const last = visibles[visibles.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (event.shiftKey && (active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusId);
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [filtrosOpen]);
 
   useEffect(() => {
     if (!toast?.autoHideMs) return;
@@ -544,109 +620,250 @@ export function Catalogo() {
       <div className="catalog-products-shell">
         {!loading ? (
           <div className="catalog-filters">
-            <div className="catalog-filter-dropdown" style={{ position: "relative" }}>
-              <select
-                className="catalog-dropdown-btn"
-                value={categoriaActiva}
-                onChange={(event) => setCategoriaActiva(event.target.value)}
-              >
-                <option value="">Todas las categorias</option>
-                {categorias.map((categoria) => (
-                  <option key={categoria} value={categoria}>
-                    {categoria}
-                  </option>
-                ))}
-              </select>
-            </div>
-
             <div className="catalog-filter-search">
               <input
                 className="catalog-filter-search-input"
                 placeholder="Buscar producto..."
                 value={busquedaProducto}
                 onChange={(event) => setBusquedaProducto(event.target.value)}
+                aria-label="Buscar producto"
               />
             </div>
 
-            <div className="catalog-filter-dropdown catalog-filter-order">
-              <select
-                className="catalog-dropdown-btn"
-                value={ordenProductos}
-                onChange={(event) => setOrdenProductos(event.target.value)}
-                aria-label="Ordenar productos"
+            <div className="catalog-filters-bar">
+              <button
+                ref={filtrosTriggerRef}
+                type="button"
+                className={`catalog-filters-trigger${filtrosActivos > 0 ? " has-active" : ""}`}
+                aria-haspopup="dialog"
+                aria-expanded={filtrosOpen}
+                aria-controls="catalog-filters-panel"
+                onClick={() => setFiltrosOpen(true)}
               >
-                <option value="">Orden recomendado</option>
-                <option value="puntos-desc">Mayor puntaje</option>
-                <option value="puntos-asc">Menor puntaje</option>
-              </select>
-            </div>
-
-            <div className="catalog-filter-range">
-              <div className="catalog-filter-range-header">
-                <span className="catalog-filter-label" id="catalog-rango-label">
-                  Rango de puntos
-                </span>
-                <span
-                  className="catalog-filter-results"
-                  role="status"
-                  aria-live="polite"
-                  aria-atomic="true"
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
                 >
-                  {productosFiltrados.length}{" "}
-                  {productosFiltrados.length === 1 ? "producto" : "productos"}
-                </span>
-              </div>
-              <div
-                className="catalog-filter-chips"
-                role="radiogroup"
-                aria-labelledby="catalog-rango-label"
-              >
-                {rangosPuntos.map((rango) => {
-                  const count = conteosPorRango[rango.id] ?? 0;
-                  const checked = rangoPuntosId === rango.id;
-                  const isEmpty = count === 0 && !checked;
-                  return (
-                    <label
-                      key={rango.id}
-                      className={`catalog-filter-chip${checked ? " is-active" : ""}${
-                        rango.emphasize ? " is-emphasis" : ""
-                      }${isEmpty ? " is-empty" : ""}`}
-                    >
-                      <input
-                        type="radio"
-                        name="catalog-rango-puntos"
-                        className="catalog-filter-chip-input"
-                        value={rango.id}
-                        checked={checked}
-                        onChange={() => setRangoPuntosId(rango.id)}
-                        aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
-                      />
-                      {rango.emphasize ? (
-                        <span className="catalog-filter-chip-icon" aria-hidden="true">
-                          ★
-                        </span>
-                      ) : null}
-                      <span className="catalog-filter-chip-label">{rango.label}</span>
-                      <span className="catalog-filter-chip-count" aria-hidden="true">
-                        {count}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <circle cx="9" cy="6" r="2" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <circle cx="15" cy="12" r="2" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                  <circle cx="9" cy="18" r="2" />
+                </svg>
+                <span>Filtros</span>
+                {filtrosActivos > 0 ? (
+                  <span
+                    className="catalog-filters-trigger-badge"
+                    aria-label={`${filtrosActivos} filtros activos`}
+                  >
+                    {filtrosActivos}
+                  </span>
+                ) : null}
+              </button>
 
-            <button
-              className="catalog-filter-clear"
-              onClick={() => {
-                setCategoriaActiva("");
-                setRangoPuntosId("all");
-                setBusquedaProducto("");
-                setOrdenProductos("");
-              }}
+              <span
+                className="catalog-filter-results"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {productosFiltrados.length}{" "}
+                {productosFiltrados.length === 1 ? "producto" : "productos"}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {filtrosOpen ? (
+          <div
+            className="catalog-filters-overlay"
+            onClick={() => setFiltrosOpen(false)}
+          >
+            <div
+              ref={filtrosPanelRef}
+              id="catalog-filters-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="catalog-filters-title"
+              tabIndex={-1}
+              className="catalog-filters-panel"
+              onClick={(event) => event.stopPropagation()}
             >
-              Limpiar
-            </button>
+              <header className="catalog-filters-panel-header">
+                <h2 id="catalog-filters-title" className="catalog-filters-panel-title">
+                  Filtros
+                </h2>
+                <button
+                  type="button"
+                  className="catalog-filters-panel-close"
+                  aria-label="Cerrar filtros"
+                  onClick={() => setFiltrosOpen(false)}
+                >
+                  ✕
+                </button>
+              </header>
+
+              <div className="catalog-filters-panel-body">
+                <section className="catalog-filters-section">
+                  <h3 className="catalog-filters-section-title" id="catalog-cat-label">
+                    Categoría
+                  </h3>
+                  <div
+                    className="catalog-filter-chips"
+                    role="radiogroup"
+                    aria-labelledby="catalog-cat-label"
+                  >
+                    {[
+                      { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
+                      ...categorias.map((c) => ({
+                        value: c,
+                        label: c,
+                        count: conteosPorCategoria[c] ?? 0,
+                      })),
+                    ].map((opt) => {
+                      const checked = categoriaActiva === opt.value;
+                      const isEmpty = opt.count === 0 && !checked;
+                      return (
+                        <label
+                          key={opt.value || "__all"}
+                          className={`catalog-filter-chip${checked ? " is-active" : ""}${
+                            isEmpty ? " is-empty" : ""
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="catalog-categoria"
+                            className="catalog-filter-chip-input"
+                            value={opt.value}
+                            checked={checked}
+                            onChange={() => setCategoriaActiva(opt.value)}
+                            aria-label={`${opt.label}, ${opt.count} ${
+                              opt.count === 1 ? "producto" : "productos"
+                            }`}
+                          />
+                          <span className="catalog-filter-chip-label">{opt.label}</span>
+                          <span className="catalog-filter-chip-count" aria-hidden="true">
+                            {opt.count}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="catalog-filters-section">
+                  <h3 className="catalog-filters-section-title" id="catalog-orden-label">
+                    Ordenar por
+                  </h3>
+                  <div
+                    className="catalog-filter-chips"
+                    role="radiogroup"
+                    aria-labelledby="catalog-orden-label"
+                  >
+                    {[
+                      { value: "", label: "Recomendado" },
+                      { value: "puntos-asc", label: "Menor puntaje" },
+                      { value: "puntos-desc", label: "Mayor puntaje" },
+                    ].map((opt) => {
+                      const checked = ordenProductos === opt.value;
+                      return (
+                        <label
+                          key={opt.value || "__rec"}
+                          className={`catalog-filter-chip${checked ? " is-active" : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="catalog-orden"
+                            className="catalog-filter-chip-input"
+                            value={opt.value}
+                            checked={checked}
+                            onChange={() => setOrdenProductos(opt.value)}
+                          />
+                          <span className="catalog-filter-chip-label">{opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <section className="catalog-filters-section">
+                  <h3 className="catalog-filters-section-title" id="catalog-rango-label">
+                    Rango de puntos
+                  </h3>
+                  <div
+                    className="catalog-filter-chips"
+                    role="radiogroup"
+                    aria-labelledby="catalog-rango-label"
+                  >
+                    {rangosPuntos.map((rango) => {
+                      const count = conteosPorRango[rango.id] ?? 0;
+                      const checked = rangoPuntosId === rango.id;
+                      const isEmpty = count === 0 && !checked;
+                      return (
+                        <label
+                          key={rango.id}
+                          className={`catalog-filter-chip${checked ? " is-active" : ""}${
+                            rango.emphasize ? " is-emphasis" : ""
+                          }${isEmpty ? " is-empty" : ""}`}
+                        >
+                          <input
+                            type="radio"
+                            name="catalog-rango-puntos"
+                            className="catalog-filter-chip-input"
+                            value={rango.id}
+                            checked={checked}
+                            onChange={() => setRangoPuntosId(rango.id)}
+                            aria-label={`${rango.label}, ${count} ${
+                              count === 1 ? "producto" : "productos"
+                            }`}
+                          />
+                          {rango.emphasize ? (
+                            <span className="catalog-filter-chip-icon" aria-hidden="true">
+                              ★
+                            </span>
+                          ) : null}
+                          <span className="catalog-filter-chip-label">{rango.label}</span>
+                          <span className="catalog-filter-chip-count" aria-hidden="true">
+                            {count}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
+
+              <footer className="catalog-filters-panel-footer">
+                <button
+                  type="button"
+                  className="catalog-filter-clear"
+                  onClick={() => {
+                    setCategoriaActiva("");
+                    setRangoPuntosId("all");
+                    setOrdenProductos("");
+                  }}
+                  disabled={filtrosActivos === 0}
+                >
+                  Limpiar todo
+                </button>
+                <button
+                  type="button"
+                  className="catalog-filters-panel-apply"
+                  onClick={() => setFiltrosOpen(false)}
+                >
+                  Ver {productosFiltrados.length}{" "}
+                  {productosFiltrados.length === 1 ? "producto" : "productos"}
+                </button>
+              </footer>
+            </div>
           </div>
         ) : null}
 
