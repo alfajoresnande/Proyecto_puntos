@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -59,13 +59,6 @@ export function ConfirmarCanje() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false);
   const [canjeConfirmado, setCanjeConfirmado] = useState<ConfirmadoData | null>(null);
-
-  useEffect(() => {
-    document.body.classList.add("carrito-canjes-view");
-    return () => {
-      document.body.classList.remove("carrito-canjes-view");
-    };
-  }, []);
 
   const sucursalesQuery = useQuery({
     queryKey: ["cliente", "sucursales-retiro"],

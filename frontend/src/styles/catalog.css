@@ -108,10 +108,9 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.22rem 0.3rem;
-  border-radius: 999px;
-  border: 1px solid #E6D3B8;
-  background: #fff;
+  padding: 0;
+  border: 0;
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -1796,13 +1795,14 @@ body.catalogo-background .pagina-page {
   }
 
   .catalog-canje-item {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.45rem;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.65rem;
   }
 
   .catalog-canje-item-qty {
-    align-self: flex-end;
+    align-self: auto;
+    margin-left: auto;
   }
 
   .catalog-canje-page .catalog-canje-actions {
@@ -1818,7 +1818,7 @@ body.catalogo-background .pagina-page {
   }
 
   .catalog-canje-page {
-    padding-bottom: calc(5.2rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(7rem + env(safe-area-inset-bottom));
   }
 
   .catalog-canje-page .catalog-canje-actions {
