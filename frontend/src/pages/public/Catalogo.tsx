@@ -78,6 +78,22 @@ function getProductoImagenes(producto: Producto): string[] {
   return producto.imagen_url ? [producto.imagen_url] : [];
 }
 
+type RangoPuntosId = "afford" | "all" | "low" | "mid-low" | "mid-high" | "high";
+
+type RangoPuntos = {
+  id: RangoPuntosId;
+  label: string;
+  match: (puntos: number) => boolean;
+  emphasize?: boolean;
+};
+
+function niceRoundPuntos(n: number): number {
+  if (n < 100) return Math.max(25, Math.round(n / 25) * 25);
+  if (n < 1000) return Math.round(n / 50) * 50;
+  if (n < 5000) return Math.round(n / 100) * 100;
+  return Math.round(n / 500) * 500;
+}
+
 export function Catalogo() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,7 +102,7 @@ export function Catalogo() {
   const isCliente = user?.rol === "cliente";
 
   const [categoriaActiva, setCategoriaActiva] = useState("");
-  const [maxPuntos, setMaxPuntos] = useState(0);
+  const [rangoPuntosId, setRangoPuntosId] = useState<RangoPuntosId>("all");
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [ordenProductos, setOrdenProductos] = useState("");
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
@@ -141,9 +157,53 @@ export function Catalogo() {
     return Math.max(50, Math.ceil(maxRaw / 50) * 50);
   }, [productos]);
 
+  const saldoUsuario = isCliente ? user?.puntos_saldo ?? 0 : 0;
+
+  const rangosPuntos = useMemo<RangoPuntos[]>(() => {
+    const out: RangoPuntos[] = [];
+
+    if (isCliente && saldoUsuario > 0) {
+      out.push({
+        id: "afford",
+        label: "Lo que puedo canjear",
+        match: (p) => p <= saldoUsuario,
+        emphasize: true,
+      });
+    }
+
+    out.push({ id: "all", label: "Todos", match: () => true });
+
+    const q = Math.max(100, puntosMax) / 4;
+    const t1 = niceRoundPuntos(q);
+    const t2 = Math.max(t1 + 25, niceRoundPuntos(q * 2));
+    const t3 = Math.max(t2 + 25, niceRoundPuntos(q * 3));
+
+    out.push({ id: "low", label: `Hasta ${t1} pts`, match: (p) => p <= t1 });
+    out.push({ id: "mid-low", label: `${t1}–${t2} pts`, match: (p) => p > t1 && p <= t2 });
+    out.push({ id: "mid-high", label: `${t2}–${t3} pts`, match: (p) => p > t2 && p <= t3 });
+    out.push({ id: "high", label: `Más de ${t3} pts`, match: (p) => p > t3 });
+
+    return out;
+  }, [puntosMax, isCliente, saldoUsuario]);
+
   useEffect(() => {
-    setMaxPuntos(puntosMax);
-  }, [puntosMax]);
+    if (!rangosPuntos.some((r) => r.id === rangoPuntosId)) {
+      setRangoPuntosId("all");
+    }
+  }, [rangosPuntos, rangoPuntosId]);
+
+  const conteosPorRango = useMemo(() => {
+    const q = busquedaProducto.trim().toLowerCase();
+    const base = productos.filter((p) => {
+      const cat = !categoriaActiva || p.categoria === categoriaActiva;
+      const txt = [p.nombre, p.descripcion || "", p.categoria || ""].join(" ").toLowerCase();
+      return cat && (!q || txt.includes(q));
+    });
+    return rangosPuntos.reduce<Record<string, number>>((acc, r) => {
+      acc[r.id] = base.filter((p) => r.match(p.puntos_requeridos || 0)).length;
+      return acc;
+    }, {});
+  }, [productos, rangosPuntos, categoriaActiva, busquedaProducto]);
 
   useEffect(() => {
     setProductoModalImageIndex(0);
@@ -222,9 +282,10 @@ export function Catalogo() {
 
   const productosFiltrados = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
+    const rangoSel = rangosPuntos.find((r) => r.id === rangoPuntosId) ?? rangosPuntos[0];
     const filtrados = productos.filter((producto) => {
       const coincideCategoria = !categoriaActiva || producto.categoria === categoriaActiva;
-      const coincidePuntos = !maxPuntos || producto.puntos_requeridos <= maxPuntos;
+      const coincidePuntos = rangoSel ? rangoSel.match(producto.puntos_requeridos || 0) : true;
       const texto = [producto.nombre, producto.descripcion || "", producto.categoria || ""].join(" ").toLowerCase();
       const coincideBusqueda = !q || texto.includes(q);
       return coincideCategoria && coincidePuntos && coincideBusqueda;
@@ -239,7 +300,7 @@ export function Catalogo() {
     }
 
     return filtrados;
-  }, [productos, categoriaActiva, maxPuntos, busquedaProducto, ordenProductos]);
+  }, [productos, categoriaActiva, rangoPuntosId, rangosPuntos, busquedaProducto, ordenProductos]);
 
   const canjeCartItems = useMemo(() => {
     return Object.values(canjeCart).map((item) => ({
@@ -522,25 +583,64 @@ export function Catalogo() {
 
             <div className="catalog-filter-range">
               <div className="catalog-filter-range-header">
-                <label className="catalog-filter-label">Puntos maximos</label>
-                <span className="catalog-filter-range-val">{maxPuntos} pts</span>
+                <span className="catalog-filter-label" id="catalog-rango-label">
+                  Rango de puntos
+                </span>
+                <span
+                  className="catalog-filter-results"
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  {productosFiltrados.length}{" "}
+                  {productosFiltrados.length === 1 ? "producto" : "productos"}
+                </span>
               </div>
-              <input
-                type="range"
-                className="catalog-range-slider"
-                min={0}
-                max={puntosMax}
-                step={50}
-                value={maxPuntos}
-                onChange={(event) => setMaxPuntos(Number(event.target.value))}
-              />
+              <div
+                className="catalog-filter-chips"
+                role="radiogroup"
+                aria-labelledby="catalog-rango-label"
+              >
+                {rangosPuntos.map((rango) => {
+                  const count = conteosPorRango[rango.id] ?? 0;
+                  const checked = rangoPuntosId === rango.id;
+                  const isEmpty = count === 0 && !checked;
+                  return (
+                    <label
+                      key={rango.id}
+                      className={`catalog-filter-chip${checked ? " is-active" : ""}${
+                        rango.emphasize ? " is-emphasis" : ""
+                      }${isEmpty ? " is-empty" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="catalog-rango-puntos"
+                        className="catalog-filter-chip-input"
+                        value={rango.id}
+                        checked={checked}
+                        onChange={() => setRangoPuntosId(rango.id)}
+                        aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
+                      />
+                      {rango.emphasize ? (
+                        <span className="catalog-filter-chip-icon" aria-hidden="true">
+                          ★
+                        </span>
+                      ) : null}
+                      <span className="catalog-filter-chip-label">{rango.label}</span>
+                      <span className="catalog-filter-chip-count" aria-hidden="true">
+                        {count}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
             <button
               className="catalog-filter-clear"
               onClick={() => {
                 setCategoriaActiva("");
-                setMaxPuntos(puntosMax);
+                setRangoPuntosId("all");
                 setBusquedaProducto("");
                 setOrdenProductos("");
               }}

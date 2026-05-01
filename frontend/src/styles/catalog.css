@@ -658,13 +658,14 @@ body.catalogo-background .pagina-page {
 /* ── Filtros del catálogo ───────────────────────────────── */
 .catalog-filters {
   display: grid;
-  grid-template-columns: 220px 190px minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(180px, 220px) minmax(150px, 190px) 1fr auto;
   grid-template-areas:
-    "search search search search"
-    "category order range clear";
+    "search   search   search   search"
+    "category order    .        clear"
+    "range    range    range    range";
   align-items: end;
   column-gap: 1rem;
-  row-gap: 0.75rem;
+  row-gap: 0.85rem;
   margin-bottom: 1.5rem;
   padding: 0;
   background: transparent;
@@ -780,20 +781,21 @@ body.catalogo-background .pagina-page {
   font-weight: 700;
 }
 
-/* ── Range slider de puntos ── */
+/* ── Filtro de rango de puntos (chips) ── */
 .catalog-filter-range {
   grid-area: range;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  flex: 0 0 auto;
-  min-width: 180px;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .catalog-filter-range-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .catalog-filter-label {
@@ -804,50 +806,134 @@ body.catalogo-background .pagina-page {
   text-transform: uppercase;
 }
 
-.catalog-filter-range-val {
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #D4621A;                    /* ← color del valor actual del slider */
+.catalog-filter-results {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #A08060;
 }
 
-/* Range slider naranja */
-.catalog-range-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 5px;
+.catalog-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.catalog-filter-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.95rem;
+  min-height: 40px;
+  border: 1.5px solid #F5C8A8;
   border-radius: 999px;
-  background: #F5C8A8;              /* ← color de la pista del slider */
-  outline: none;
+  background: #ffffff;
+  color: #6F4B35;
+  font-size: 0.83rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.1;
   cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s, transform 0.08s;
 }
 
-.catalog-range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 20px;
+.catalog-filter-chip:hover {
+  border-color: #D4621A;
+  color: #D4621A;
+  background: #FEF3E8;
+}
+
+.catalog-filter-chip.is-active {
+  background: #D4621A;
+  border-color: #D4621A;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(212, 98, 26, 0.25);
+}
+
+.catalog-filter-chip.is-active:hover {
+  background: #B8551A;
+  border-color: #B8551A;
+}
+
+.catalog-filter-chip:active {
+  transform: translateY(1px);
+}
+
+.catalog-filter-chip.is-empty {
+  opacity: 0.5;
+}
+
+.catalog-filter-chip-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.catalog-filter-chip:focus-within {
+  outline: 3px solid rgba(212, 98, 26, 0.45);
+  outline-offset: 2px;
+}
+
+.catalog-filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 0.4rem;
   height: 20px;
-  border-radius: 50%;
-  background: #D4621A;              /* ← color del thumb del slider */
-  cursor: pointer;
-  border: 3px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(212, 98, 26, 0.4); /* ← sombra del thumb */
-  transition: transform 0.15s, box-shadow 0.15s;
+  border-radius: 999px;
+  background: rgba(212, 98, 26, 0.12);
+  color: #D4621A;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
-.catalog-range-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: 0 3px 12px rgba(212, 98, 26, 0.5);
+.catalog-filter-chip.is-active .catalog-filter-chip-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
 }
 
-.catalog-range-slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: #D4621A;              /* ← color del thumb en Firefox */
-  cursor: pointer;
-  border: 3px solid #ffffff;
-  box-shadow: 0 2px 8px rgba(212, 98, 26, 0.4);
+.catalog-filter-chip.is-emphasis {
+  border-color: #4A2C1A;
+  color: #4A2C1A;
+  background: linear-gradient(135deg, #FFF8F0 0%, #FEF3E8 100%);
+}
+
+.catalog-filter-chip.is-emphasis:hover {
+  border-color: #D4621A;
+  color: #D4621A;
+  background: #FEF3E8;
+}
+
+.catalog-filter-chip.is-emphasis.is-active {
+  background: linear-gradient(135deg, #4A2C1A, #D4621A);
+  border-color: #4A2C1A;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(74, 44, 26, 0.28);
+}
+
+.catalog-filter-chip-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog-filter-chip {
+    transition: none;
+  }
+  .catalog-filter-chip:active {
+    transform: none;
+  }
 }
 
 .catalog-filter-clear {
@@ -870,6 +956,18 @@ body.catalogo-background .pagina-page {
   background: #FEF3E8;               /* ← fondo hover del botón "Limpiar" */
   color: #D4621A;                    /* ← color hover del botón "Limpiar" */
   border-color: #D4621A;
+}
+
+@media (max-width: 900px) {
+  .catalog-filters {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "search   search"
+      "category order"
+      "range    range"
+      "clear    clear";
+    row-gap: 0.75rem;
+  }
 }
 
 @media (max-width: 639px) {
@@ -897,13 +995,24 @@ body.catalogo-background .pagina-page {
     min-width: 0;
   }
 
-  .catalog-filter-range {
-    flex: 0 0 auto;
-    min-width: 0;
-  }
-
   .catalog-filter-clear {
     width: 100%;
+  }
+
+  .catalog-filter-chips {
+    gap: 0.45rem;
+  }
+
+  .catalog-filter-chip {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
+    min-height: 44px;
+    font-size: 0.85rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .catalog-filter-chip.is-emphasis {
+    flex-basis: 100%;
   }
 }
 
@@ -1957,7 +2066,7 @@ body.catalogo-background .pagina-page {
 }
 
 .catalog-filter-label,
-.catalog-filter-range-val,
+.catalog-filter-results,
 .catalog-filter-clear,
 .catalog-alert-close {
   color: #6B3E26;
@@ -1993,13 +2102,61 @@ body.catalogo-background .pagina-page {
   background: #A86A3D;
 }
 
-.catalog-range-slider {
-  background: #DCC4A6;
+.catalog-filter-chip {
+  background: #FFFDF8;
+  border-color: #E6D3B8;
+  color: #4A2C1A;
 }
 
-.catalog-range-slider::-webkit-slider-thumb,
-.catalog-range-slider::-moz-range-thumb {
+.catalog-filter-chip:hover {
+  border-color: #A86A3D;
+  color: #6B3E26;
+  background: #F3E3D1;
+}
+
+.catalog-filter-chip.is-active {
   background: #6B3E26;
+  border-color: #6B3E26;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(107, 62, 38, 0.25);
+}
+
+.catalog-filter-chip.is-active:hover {
+  background: #A86A3D;
+  border-color: #A86A3D;
+}
+
+.catalog-filter-chip:focus-within {
+  outline-color: rgba(107, 62, 38, 0.45);
+}
+
+.catalog-filter-chip-count {
+  background: rgba(107, 62, 38, 0.12);
+  color: #6B3E26;
+}
+
+.catalog-filter-chip.is-active .catalog-filter-chip-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.catalog-filter-chip.is-emphasis {
+  border-color: #4A2C1A;
+  color: #4A2C1A;
+  background: linear-gradient(135deg, #FFFDF8 0%, #F3E3D1 100%);
+}
+
+.catalog-filter-chip.is-emphasis:hover {
+  border-color: #A86A3D;
+  color: #6B3E26;
+  background: #F3E3D1;
+}
+
+.catalog-filter-chip.is-emphasis.is-active {
+  background: linear-gradient(135deg, #4A2C1A, #6B3E26);
+  border-color: #4A2C1A;
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(74, 44, 26, 0.28);
 }
 
 .catalog-confirm-overlay,
