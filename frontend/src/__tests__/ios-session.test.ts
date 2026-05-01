@@ -308,4 +308,56 @@ describe("api — Authorization: Bearer en requests (fix cross-domain iOS)", () 
     expect(headers.get("X-CSRF-Token")).toBe("mock-csrf-token-16chars");
     expect(headers.get("Authorization")).toBe("Bearer csrf.test.token");
   });
+
+  it("api lee token de localStorage como fallback si no está en el store (race condition)", async () => {
+    useAuthStore.setState({ token: null });
+    writeTokenToLocalStorage("token.solo.en.localstorage");
+    global.fetch = stubFetch({ data: "ok" });
+
+    await api.get("/cliente/perfil");
+
+    expect(capturedFetchHeaders().get("Authorization")).toBe("Bearer token.solo.en.localstorage");
+  });
+});
+
+// ── 6. api.ts — manejo defensivo de 401 (fix iOS auto-logout) ─────────────────
+
+describe("api — manejo defensivo de 401 (evita auto-logout agresivo)", () => {
+  it("401 con token enviado → ejecuta logout (token rechazado por el server)", async () => {
+    useAuthStore.setState({ token: "token.invalido", user: mockUser });
+    global.fetch = stubFetch({ error: "Token invalido" }, 401);
+
+    await expect(api.get("/cliente/perfil")).rejects.toThrow();
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().token).toBeNull();
+  });
+
+  it("401 SIN token enviado → NO ejecuta logout (preserva sesión persistida)", async () => {
+    // Simula: store no hidratado (token null), localStorage también vacío,
+    // pero por algún motivo se hace una llamada que devuelve 401.
+    useAuthStore.setState({ token: null, user: mockUser });
+    global.fetch = stubFetch({ error: "Token requerido" }, 401);
+
+    await expect(api.get("/cliente/perfil")).rejects.toThrow();
+
+    // Sesión preservada — no se destruye sin razón
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+  });
+
+  it("401 NO hace window.location.assign (evita hard reload)", async () => {
+    useAuthStore.setState({ token: "token.invalido", user: mockUser });
+    global.fetch = stubFetch({ error: "expired" }, 401);
+
+    // Spy sobre window.location.assign
+    const assignSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      value: { ...window.location, assign: assignSpy, pathname: "/cliente" },
+      writable: true,
+    });
+
+    await expect(api.get("/cliente/perfil")).rejects.toThrow();
+
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
 });

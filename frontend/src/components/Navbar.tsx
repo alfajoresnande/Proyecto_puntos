@@ -78,7 +78,7 @@ export function Navbar() {
   }, [location.pathname, location.hash]);
 
   const cartButton = canSeeCliente ? (
-    <div ref={cartMenuRef} style={{ position: "relative" }}>
+    <div ref={cartMenuRef} style={{ position: "relative", marginRight: "0.4rem" }}>
       <button
         type="button"
         onClick={() => setCartMenuOpen((prev) => !prev)}
@@ -91,19 +91,21 @@ export function Navbar() {
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: "40px",
-          height: "40px",
-          borderRadius: "10px",
-          color: "#4A2C1A",
-          background: cartMenuOpen ? "#FFF1DC" : "transparent",
+          width: "42px",
+          height: "42px",
+          borderRadius: "50%",
+          color: "#ffffff",
+          background: cartMenuOpen ? "#B5521A" : "#D4621A",
           border: "none",
           cursor: "pointer",
           padding: 0,
+          boxShadow: "0 2px 8px rgba(212, 98, 26, 0.45)",
+          transition: "background 0.15s ease, transform 0.15s ease",
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="9" cy="21" r="1.5" />
-          <circle cx="18" cy="21" r="1.5" />
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="9" cy="21" r="1.6" />
+          <circle cx="18" cy="21" r="1.6" />
           <path d="M2.5 3h2.4l2.7 12.3a2 2 0 0 0 2 1.7h8.5a2 2 0 0 0 2-1.6L21.5 7H6" />
         </svg>
         {cartCount > 0 ? (
@@ -111,21 +113,21 @@ export function Navbar() {
             aria-hidden="true"
             style={{
               position: "absolute",
-              top: "0px",
-              right: "0px",
-              minWidth: "18px",
-              height: "18px",
+              top: "-3px",
+              right: "-3px",
+              minWidth: "20px",
+              height: "20px",
               padding: "0 5px",
               borderRadius: "999px",
-              background: "#D4621A",
-              color: "#fff",
-              fontSize: "0.7rem",
-              fontWeight: 700,
+              background: "#ffffff",
+              color: "#D4621A",
+              fontSize: "0.72rem",
+              fontWeight: 800,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
               lineHeight: 1,
-              boxShadow: "0 0 0 2px #fff",
+              boxShadow: "0 0 0 2px #D4621A",
             }}
           >
             {cartCount > 99 ? "99+" : cartCount}

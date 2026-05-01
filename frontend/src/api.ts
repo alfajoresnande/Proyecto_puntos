@@ -7,6 +7,7 @@ type RequestOptions = Omit<RequestInit, "body"> & {
 };
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const AUTH_STORAGE_KEY = "nande-auth";
 
 function isFormData(value: unknown): value is FormData {
   return typeof FormData !== "undefined" && value instanceof FormData;
@@ -20,6 +21,23 @@ function parseErrorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+// Lee el token primero del store de Zustand. Si no hay (race condition de
+// hidratación al inicializar), cae a leer directo de localStorage. Esto blinda
+// el caso donde main.tsx dispara llamadas antes que persist termine de hidratar.
+function getStoredToken(): string | null {
+  const fromStore = useAuthStore.getState().token;
+  if (fromStore) return fromStore;
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { token?: unknown } };
+    if (typeof parsed?.state?.token === "string") return parsed.state.token;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const isAuthPath = path.startsWith("/auth/");
   const hasBody = options.body !== undefined && options.body !== null;
@@ -30,7 +48,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
   if (!SAFE_METHODS.has(method)) headers.set("X-CSRF-Token", getCsrfToken());
 
-  const token = useAuthStore.getState().token;
+  const token = getStoredToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const response = await fetch(apiUrl(`/api${path}`), {
@@ -49,17 +67,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     .catch(() => null);
 
   if (response.status === 401) {
-    if (!isAuthPath) {
-      useAuthStore.getState().logout();
-      if (window.location.pathname !== "/login") {
-        window.location.assign("/login");
-      }
+    if (isAuthPath) {
+      throw new Error(parseErrorMessage(body, "Credenciales invalidas."));
     }
 
-    const authFallback = isAuthPath
-      ? "Credenciales invalidas."
-      : "Sesion expirada. Inicia sesion nuevamente.";
-    throw new Error(parseErrorMessage(body, authFallback));
+    // Auto-logout SOLO si efectivamente enviamos un token y el server lo rechazó.
+    // Si no había token (caso edge: store no hidratado, llamada prematura, etc.)
+    // no destruimos la sesión persistida — solo lanzamos el error y dejamos que
+    // ProtectedRoute / restoreSession resuelvan el flujo.
+    //
+    // Tampoco hacemos window.location.assign(): el hard reload destruye la
+    // sesión recién guardada antes de que React lea el localStorage hidratado.
+    if (token) {
+      useAuthStore.getState().logout();
+    }
+
+    throw new Error(parseErrorMessage(body, "Sesion expirada. Inicia sesion nuevamente."));
   }
 
   if (!response.ok) {
