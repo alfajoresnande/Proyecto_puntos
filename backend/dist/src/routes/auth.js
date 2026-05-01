@@ -147,7 +147,7 @@ router.post("/register", async (req, res) => {
         const u = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?", [nuevoId]);
         const token = (0, auth_1.signToken)({ id: u.id, email: u.email, rol: u.rol });
         (0, auth_1.setAuthCookie)(res, token);
-        res.status(201).json({ user: u });
+        res.status(201).json({ user: u, token });
     }
     catch (err) {
         await conn.rollback();
@@ -180,7 +180,7 @@ router.post("/login", async (req, res) => {
     const safeUser = publicUser(user);
     const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
     (0, auth_1.setAuthCookie)(res, token);
-    res.json({ user: safeUser });
+    res.json({ user: safeUser, token });
 });
 router.post("/google", async (req, res) => {
     const schema = zod_1.z.object({ credential: zod_1.z.string().min(20) });
@@ -250,7 +250,7 @@ router.post("/google", async (req, res) => {
         const safeUser = publicUser(user);
         const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
         (0, auth_1.setAuthCookie)(res, token);
-        res.json({ user: safeUser });
+        res.json({ user: safeUser, token });
     }
     catch (err) {
         await conn.rollback();

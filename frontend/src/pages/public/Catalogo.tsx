@@ -212,11 +212,11 @@ export function Catalogo() {
   }, [isCliente, sucursalRetiroId, sucursalesRetiro]);
 
   // Cuando el navbar (u otro componente) pide canjear vía cartStore.requestCanje(),
-  // abrimos el modal de confirmación acá (que es donde vive la lógica de sucursales).
+  // redirigimos a la pantalla dedicada de confirmación de canje.
   useEffect(() => {
     if (!pendingCanje) return;
-    abrirConfirmacionCarrito();
     consumePendingCanje();
+    navigate("/carrito-canjes");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCanje]);
 

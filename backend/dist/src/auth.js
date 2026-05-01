@@ -72,7 +72,7 @@ function getTokenFromRequest(req) {
 }
 exports.JWT_SECRET = loadJwtSecret();
 function signToken(payload) {
-    const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "1h";
+    const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "7d";
     return jsonwebtoken_1.default.sign(payload, exports.JWT_SECRET, { expiresIn });
 }
 function getAuthPayload(req) {
@@ -89,7 +89,7 @@ function getAuthPayload(req) {
 function setAuthCookie(res, token) {
     const sameSite = normalizeSameSite(process.env.AUTH_COOKIE_SAMESITE);
     const secure = shouldUseSecureCookies();
-    const maxAgeMs = process.env.AUTH_COOKIE_MAX_AGE_MS ? Number(process.env.AUTH_COOKIE_MAX_AGE_MS) : 24 * 60 * 60 * 1000;
+    const maxAgeMs = process.env.AUTH_COOKIE_MAX_AGE_MS ? Number(process.env.AUTH_COOKIE_MAX_AGE_MS) : 7 * 24 * 60 * 60 * 1000;
     res.cookie(AUTH_COOKIE_NAME, token, {
         httpOnly: true,
         secure,

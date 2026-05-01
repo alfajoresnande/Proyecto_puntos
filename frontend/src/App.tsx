@@ -9,6 +9,7 @@ import { Login } from "./pages/auth/Login";
 import { Registro } from "./pages/auth/Registro";
 import { ResetPassword } from "./pages/auth/ResetPassword";
 import { Cliente } from "./pages/cliente/Cliente";
+import { ConfirmarCanje } from "./pages/cliente/ConfirmarCanje";
 import { MisCanjes } from "./pages/cliente/MisCanjes";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
 import { Catalogo } from "./pages/public/Catalogo";
@@ -53,6 +54,15 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/carrito-canjes"
+              element={
+                <ProtectedRoute rol="cliente">
+                  <ConfirmarCanje />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/confirmar-canje" element={<Navigate to="/carrito-canjes" replace />} />
             <Route
               path="/vendedor"
               element={

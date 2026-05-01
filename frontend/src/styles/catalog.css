@@ -38,6 +38,146 @@
   box-shadow: 0 8px 24px rgba(61, 26, 2, 0.14);
 }
 
+.catalog-canje-page {
+  max-width: 860px;
+}
+
+.catalog-canje-page .catalog-products-shell {
+  padding: 1.55rem 1.6rem 1.3rem;
+  border-radius: 22px;
+  background: #FFFBF7;
+  border: 1px solid #EED9C3;
+}
+
+.catalog-canje-page .catalog-header {
+  margin-bottom: 1.15rem;
+  text-align: center;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid #ECD7C2;
+}
+
+.catalog-canje-page .catalog-title {
+  color: #3D1A02;
+  text-shadow: none;
+  margin-bottom: 0.2rem;
+}
+
+.catalog-canje-page .catalog-subtitle {
+  color: #8B5A30;
+  text-shadow: none;
+  margin: 0;
+}
+
+.catalog-canje-page .catalog-canje-block {
+  background: #FFF7EE;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+}
+
+.catalog-canje-page .catalog-canje-list {
+  background: #FFFDF9;
+}
+
+.catalog-canje-page .catalog-canje-summary {
+  background: transparent;
+  padding: 0.25rem 0.1rem;
+}
+
+.catalog-canje-page .catalog-canje-branch {
+  background: #FFFBF6;
+}
+
+.catalog-canje-page .catalog-canje-confirmed {
+  background: #FFF8F2;
+}
+
+.catalog-canje-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.catalog-canje-list .catalog-canje-item + .catalog-canje-item {
+  margin-top: 0.72rem;
+  padding-top: 0.72rem;
+  border-top: 1px solid #ECD8C4;
+}
+
+.catalog-canje-item-qty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.22rem 0.3rem;
+  border-radius: 999px;
+  border: 1px solid #E6D3B8;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.catalog-canje-item-qty button {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid #E6D3B8;
+  background: #fff;
+  color: #4A2C1A;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.catalog-canje-item-qty button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.catalog-canje-item-qty span {
+  min-width: 22px;
+  text-align: center;
+  color: #4A2C1A;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.catalog-canje-page .catalog-canje-pickup {
+  margin: 0.95rem 0 0.55rem;
+  gap: 0.45rem;
+}
+
+.catalog-canje-page .catalog-pickup-select {
+  border-radius: 12px;
+  border-color: #DEBFA1;
+  background: #fff;
+  padding: 0.72rem 0.95rem;
+}
+
+.catalog-canje-page .catalog-confirm-branch-detail {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.38rem;
+  background: transparent;
+}
+
+.catalog-canje-page .catalog-confirm-branch-detail p {
+  font-size: 0.97rem;
+  line-height: 1.5;
+}
+
+.catalog-canje-page .catalog-canje-actions {
+  margin-top: 0.75rem;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.catalog-canje-page .catalog-canje-actions .catalog-float-toast-btn-primary,
+.catalog-canje-page .catalog-canje-actions .catalog-float-toast-btn-secondary,
+.catalog-canje-page .catalog-canje-actions .product-card-btn {
+  min-width: 148px;
+}
+
 body.catalog-background,
 body.catalogo-background {
   background: #F5E6D3;
@@ -1634,6 +1774,47 @@ body.catalogo-background .pagina-page {
   .catalog-confirm-msg,
   .catalog-confirm-branch-detail p {
     font-size: 0.84rem;
+  }
+
+  .catalog-canje-page {
+    max-width: 100%;
+  }
+
+  .catalog-canje-page .catalog-products-shell {
+    padding: 1.05rem 0.88rem 1rem;
+    border-radius: 18px;
+  }
+
+  .catalog-canje-page .catalog-header {
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.62rem;
+  }
+
+  .catalog-canje-page .catalog-canje-block {
+    padding: 0.78rem 0.82rem;
+    border-radius: 12px;
+  }
+
+  .catalog-canje-item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .catalog-canje-item-qty {
+    align-self: flex-end;
+  }
+
+  .catalog-canje-page .catalog-canje-actions {
+    justify-content: stretch;
+    gap: 0.5rem;
+  }
+
+  .catalog-canje-page .catalog-canje-actions .catalog-float-toast-btn-primary,
+  .catalog-canje-page .catalog-canje-actions .catalog-float-toast-btn-secondary,
+  .catalog-canje-page .catalog-canje-actions .product-card-btn {
+    width: 100%;
+    min-width: 0;
   }
 
   .pagina-page {
