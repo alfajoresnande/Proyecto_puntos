@@ -105,6 +105,35 @@ async function ensureUsuarioTelefonoSchema() {
   }
 }
 
+async function ensureUsuarioDemographicsSchema() {
+  const [fechaRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'fecha_nacimiento'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!fechaRows.length) {
+    await pool.query("ALTER TABLE usuarios ADD COLUMN fecha_nacimiento DATE NULL AFTER telefono");
+  }
+
+  const [localidadRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'localidad'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!localidadRows.length) {
+    await pool.query("ALTER TABLE usuarios ADD COLUMN localidad VARCHAR(120) NULL AFTER fecha_nacimiento");
+  }
+
+  const [provinciaRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'provincia'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!provinciaRows.length) {
+    await pool.query("ALTER TABLE usuarios ADD COLUMN provincia VARCHAR(120) NULL AFTER localidad");
+  }
+}
+
 async function ensureCanjeRedeemCodeSchema() {
   // Agrega la columna si no existe, o expande a VARCHAR(50) para que quepan los updates
   const [colRows] = await pool.query(
@@ -309,6 +338,341 @@ async function ensureSucursalesSchema() {
   }
 }
 
+async function ensureProductosEcommerceSchema() {
+  const [tipoColRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'tipo_producto'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!tipoColRows.length) {
+    await pool.query(
+      "ALTER TABLE productos ADD COLUMN tipo_producto ENUM('canje','venta','mixto') NOT NULL DEFAULT 'canje' AFTER categoria"
+    );
+  }
+
+  const [precioDineroRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'precio_dinero'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!precioDineroRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN precio_dinero DECIMAL(10,2) NULL AFTER puntos_acumulables");
+  }
+
+  const [precioPuntosRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'precio_puntos'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!precioPuntosRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN precio_puntos INT NULL AFTER precio_dinero");
+  }
+
+  const [stockRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'stock_disponible'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!stockRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN stock_disponible INT NOT NULL DEFAULT 0 AFTER precio_puntos");
+  }
+
+  const [stockReservadoRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'stock_reservado'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!stockReservadoRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN stock_reservado INT NOT NULL DEFAULT 0 AFTER stock_disponible");
+  }
+
+  const [trackRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'track_stock'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!trackRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN track_stock TINYINT(1) NOT NULL DEFAULT 1 AFTER stock_reservado");
+  }
+
+  const [permiteEnvioRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'permite_envio'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!permiteEnvioRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN permite_envio TINYINT(1) NOT NULL DEFAULT 0 AFTER track_stock");
+  }
+
+  const [permiteRetiroRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'permite_retiro_local'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!permiteRetiroRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN permite_retiro_local TINYINT(1) NOT NULL DEFAULT 1 AFTER permite_envio");
+  }
+
+  const [skuRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'sku'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!skuRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN sku VARCHAR(64) NULL AFTER nombre");
+  }
+
+  const [updatedRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'updated_at'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!updatedRows.length) {
+    await pool.query(
+      "ALTER TABLE productos ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at"
+    );
+  }
+
+  await pool.query("UPDATE productos SET precio_puntos = puntos_requeridos WHERE precio_puntos IS NULL");
+
+  const [puntosCanjearRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'puntos_para_canjear'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!puntosCanjearRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN puntos_para_canjear INT NULL AFTER precio_puntos");
+  }
+
+  const [puntajeComprarRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'puntaje_al_comprar'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!puntajeComprarRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN puntaje_al_comprar INT NULL AFTER puntos_para_canjear");
+  }
+
+  await pool.query(
+    "UPDATE productos SET puntos_para_canjear = COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos)"
+  );
+  await pool.query(
+    "UPDATE productos SET puntaje_al_comprar = COALESCE(puntaje_al_comprar, puntos_acumulables)"
+  );
+
+  try {
+    const [skuIdxRows] = await pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos'
+         AND INDEX_NAME = 'uq_productos_sku' LIMIT 1`
+    ) as [any[], any[]];
+    if (!skuIdxRows.length) {
+      await pool.query("ALTER TABLE productos ADD UNIQUE INDEX uq_productos_sku (sku)");
+    }
+  } catch {
+    // No-op
+  }
+}
+
+async function ensureInventarioSucursalSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS inventario_sucursal (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      producto_id INT NOT NULL,
+      sucursal_id INT NOT NULL,
+      stock_disponible INT NOT NULL DEFAULT 0,
+      stock_reservado INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_inventario_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_inventario_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE CASCADE,
+      CONSTRAINT uq_inventario_producto_sucursal
+        UNIQUE (producto_id, sucursal_id)
+    )`
+  );
+}
+
+async function ensureOrderCoreSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS carritos (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      estado ENUM('activo','convertido','abandonado') NOT NULL DEFAULT 'activo',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_carrito_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      INDEX idx_carritos_usuario_estado (usuario_id, estado, updated_at)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS carrito_items (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      carrito_id BIGINT UNSIGNED NOT NULL,
+      producto_id INT NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      modo_compra ENUM('dinero','puntos') NOT NULL,
+      precio_dinero_unit DECIMAL(10,2) NULL,
+      precio_puntos_unit INT NULL,
+      subtotal_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
+      subtotal_puntos INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_carrito_items_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_carrito_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT uq_carrito_item_producto_modo
+        UNIQUE (carrito_id, producto_id, modo_compra)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS ordenes (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      carrito_id BIGINT UNSIGNED NULL,
+      canal ENUM('web','admin','vendedor') NOT NULL DEFAULT 'web',
+      tipo_orden ENUM('canje','venta','mixta') NOT NULL DEFAULT 'canje',
+      estado ENUM('borrador','pendiente_pago','pagada','preparada','entregada','cancelada','expirada')
+        NOT NULL DEFAULT 'borrador',
+      moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
+      total_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
+      total_puntos INT NOT NULL DEFAULT 0,
+      direccion_envio_json JSON NULL,
+      sucursal_retiro_id INT NULL,
+      notas TEXT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_orden_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_orden_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_orden_sucursal
+        FOREIGN KEY (sucursal_retiro_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+      INDEX idx_ordenes_usuario_created_at (usuario_id, created_at),
+      INDEX idx_ordenes_estado_created_at (estado, created_at)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS orden_items (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      orden_id BIGINT UNSIGNED NOT NULL,
+      producto_id INT NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      modo_compra ENUM('dinero','puntos') NOT NULL,
+      precio_dinero_unit DECIMAL(10,2) NULL,
+      precio_puntos_unit INT NULL,
+      subtotal_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
+      subtotal_puntos INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_orden_items_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_orden_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT uq_orden_item_producto_modo
+        UNIQUE (orden_id, producto_id, modo_compra)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS pagos (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      orden_id BIGINT UNSIGNED NOT NULL,
+      proveedor VARCHAR(40) NOT NULL,
+      estado ENUM('iniciado','aprobado','rechazado','reembolsado') NOT NULL DEFAULT 'iniciado',
+      monto DECIMAL(10,2) NOT NULL,
+      moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
+      provider_payment_id VARCHAR(120) NULL,
+      payload_json JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_pagos_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE CASCADE,
+      INDEX idx_pagos_orden_estado (orden_id, estado),
+      INDEX idx_pagos_provider_id (provider_payment_id)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS movimientos_stock (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      producto_id INT NOT NULL,
+      sucursal_id INT NULL,
+      orden_id BIGINT UNSIGNED NULL,
+      tipo ENUM('ingreso','reserva','liberacion','descuento','ajuste') NOT NULL,
+      origen ENUM('compra','canje','admin','devolucion') NOT NULL,
+      cantidad INT NOT NULL,
+      descripcion VARCHAR(255) NULL,
+      creado_por INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_mov_stock_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_mov_stock_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_mov_stock_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_mov_stock_creado_por
+        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      INDEX idx_mov_stock_producto_fecha (producto_id, created_at),
+      INDEX idx_mov_stock_orden (orden_id)
+    )`
+  );
+}
+
+async function ensurePagosCheckoutSchema() {
+  const [methodRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'metodo'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!methodRows.length) {
+    await pool.query("ALTER TABLE pagos ADD COLUMN metodo VARCHAR(40) NULL AFTER proveedor");
+  }
+
+  const [checkoutUrlRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'checkout_url'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!checkoutUrlRows.length) {
+    await pool.query("ALTER TABLE pagos ADD COLUMN checkout_url VARCHAR(500) NULL AFTER provider_payment_id");
+  }
+
+  try {
+    const [idxRows] = await pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos'
+         AND INDEX_NAME = 'idx_pagos_proveedor_metodo'
+       LIMIT 1`
+    ) as [any[], any[]];
+    if (!idxRows.length) {
+      await pool.query("ALTER TABLE pagos ADD INDEX idx_pagos_proveedor_metodo (proveedor, metodo)");
+    }
+  } catch {
+    // No-op
+  }
+}
+
 
 async function ensureEventosSeguridadSchema() {
   await pool.query(
@@ -340,6 +704,11 @@ pool
       console.error("Migracion telefono:", err.message);
     }
     try {
+      await ensureUsuarioDemographicsSchema();
+    } catch (err: any) {
+      console.error("Migracion datos demograficos de usuarios:", err.message);
+    }
+    try {
       await ensureCanjeRedeemCodeSchema();
     } catch (err: any) {
       console.error("⚠️  Migración códigos de canje:", err.message);
@@ -358,6 +727,26 @@ pool
       await ensureSucursalesSchema();
     } catch (err: any) {
       console.error("⚠️  Migración sucursales:", err.message);
+    }
+    try {
+      await ensureProductosEcommerceSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración productos e-commerce:", err.message);
+    }
+    try {
+      await ensureInventarioSucursalSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración inventario por sucursal:", err.message);
+    }
+    try {
+      await ensureOrderCoreSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración carrito/ordenes/pagos:", err.message);
+    }
+    try {
+      await ensurePagosCheckoutSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración columnas de pagos checkout:", err.message);
     }
     try {
       await ensureEventosSeguridadSchema();

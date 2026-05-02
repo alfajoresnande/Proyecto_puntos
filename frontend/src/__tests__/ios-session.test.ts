@@ -100,7 +100,6 @@ describe("authStore — token almacenado después de autenticación", () => {
 
     await useAuthStore.getState().register({
       nombre: "Test",
-      dni: "12345678",
       email: "test@test.com",
       password: "pass123456789",
     });

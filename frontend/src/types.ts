@@ -7,6 +7,9 @@ export type User = {
   rol: Rol;
   dni: string | null;
   telefono?: string | null;
+  fecha_nacimiento?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
   puntos_saldo: number;
   codigo_invitacion: string | null;
   referido_por?: number | null;

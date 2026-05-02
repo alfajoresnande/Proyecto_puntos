@@ -6,13 +6,9 @@ import { useAuthStore } from "../../store/authStore";
 
 function passwordValidationErrors(value: string): string[] {
   const errors: string[] = [];
-  if (value.length < 8) errors.push("Minimo 8 caracteres");
-  if (!(value.match(/\d/g)?.length && value.match(/\d/g)!.length >= 3)) {
-    errors.push("Al menos 3 numeros");
-  }
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(value)) {
-    errors.push("Al menos 1 caracter especial");
-  }
+  if (value.length < 12) errors.push("Minimo 12 caracteres");
+  if (!/[A-Za-z]/.test(value)) errors.push("Al menos 1 letra");
+  if (!/\d/.test(value)) errors.push("Al menos 1 numero");
   return errors;
 }
 
@@ -22,7 +18,6 @@ export function Registro() {
   const register = useAuthStore((state) => state.register);
 
   const [nombre, setNombre] = useState("");
-  const [dni, setDni] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -38,7 +33,6 @@ export function Registro() {
     mutationFn: () =>
       register({
         nombre: nombre.trim(),
-        dni: dni.trim(),
         email: email.trim(),
         password,
         codigo_invitacion_usado: codigoInvitacion.trim() ? codigoInvitacion.trim().toUpperCase() : null,
@@ -80,10 +74,6 @@ export function Registro() {
       setLocalError("El nombre es obligatorio.");
       return;
     }
-    if (!dni.trim() || dni.trim().length < 6) {
-      setLocalError("El DNI debe tener al menos 6 digitos.");
-      return;
-    }
     if (passwordErrors.length > 0) {
       setLocalError(`Contrasena invalida: ${passwordErrors.join(", ")}.`);
       return;
@@ -105,7 +95,9 @@ export function Registro() {
         </div>
 
         <h1 className="login-heading" style={{ fontSize: "1.6rem", marginBottom: "0.2rem" }}>Crear cuenta</h1>
-        <p className="login-subheading" style={{ marginBottom: "1.25rem" }}>Registrate como cliente para acumular puntos</p>
+        <p className="login-subheading" style={{ marginBottom: "1.25rem" }}>
+          Registrate en 1 paso. Los datos para comprar online se completan despues en tu perfil.
+        </p>
 
         <form onSubmit={submitForm}>
           <label className="login-field-label">Nombre completo</label>
@@ -116,20 +108,6 @@ export function Registro() {
               placeholder="Ingresa tu nombre completo"
               value={nombre}
               onChange={(event) => setNombre(event.target.value)}
-              required
-            />
-          </div>
-
-          <label className="login-field-label">DNI</label>
-          <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
-            <input
-              type="text"
-              inputMode="numeric"
-              className="login-input login-input-noicon register-input-sm"
-              placeholder="Ingresa tu DNI"
-              value={dni}
-              onChange={(event) => setDni(event.target.value.replace(/\D/g, ""))}
-              maxLength={15}
               required
             />
           </div>
@@ -161,7 +139,7 @@ export function Registro() {
               {showPassword ? "Ocultar" : "Ver"}
             </button>
           </div>
-          <p className="register-pass-hint">Minimo 8 caracteres, 3 numeros y 1 caracter especial.</p>
+          <p className="register-pass-hint">Minimo 12 caracteres, con al menos 1 letra y 1 numero.</p>
 
           <label className="login-field-label">Confirmar contrasena</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>

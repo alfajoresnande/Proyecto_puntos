@@ -9,7 +9,7 @@ const router = Router();
 //   ?categoria=alfajores   → filtra por categoría (exacto, case-insensitive)
 //   ?max_puntos=500        → filtra productos con puntos_requeridos <= N
 router.get("/", async (req, res) => {
-  const { categoria, max_puntos } = req.query;
+  const { categoria, max_puntos, modo } = req.query;
 
   const conditions: string[] = ["activo = 1"];
   const params: (string | number)[] = [];
@@ -19,20 +19,32 @@ router.get("/", async (req, res) => {
     params.push(categoria.trim());
   }
 
+  const modoParam = typeof modo === "string" ? modo.trim().toLowerCase() : "canje";
+  if (modoParam === "canje") {
+    conditions.push("tipo_producto IN ('canje','mixto')");
+  } else if (modoParam === "venta") {
+    conditions.push("tipo_producto IN ('venta','mixto')");
+  } else if (modoParam === "mixto") {
+    conditions.push("tipo_producto = 'mixto'");
+  }
+
   if (max_puntos) {
     const pts = parseInt(String(max_puntos), 10);
     if (!isNaN(pts) && pts > 0) {
-      conditions.push("puntos_requeridos <= ?");
+      conditions.push("COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) <= ?");
       params.push(pts);
     }
   }
 
   const where = conditions.join(" AND ");
   const [rowsRaw] = await pool.query(
-    `SELECT id, nombre, descripcion, imagen_url, categoria, puntos_requeridos, puntos_acumulables
+    `SELECT id, nombre, descripcion, imagen_url, categoria,
+            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
+            precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
+            track_stock, permite_envio, permite_retiro_local
      FROM productos
      WHERE ${where}
-     ORDER BY puntos_requeridos ASC, nombre ASC`,
+     ORDER BY nombre ASC`,
     params
   );
   const rows = rowsRaw as Array<{
@@ -43,6 +55,16 @@ router.get("/", async (req, res) => {
     categoria: string | null;
     puntos_requeridos: number;
     puntos_acumulables: number | null;
+    puntaje_al_comprar: number | null;
+    tipo_producto: "canje" | "venta" | "mixto";
+    precio_dinero: number | null;
+    precio_puntos: number | null;
+    puntos_para_canjear: number | null;
+    stock_disponible: number;
+    stock_reservado: number;
+    track_stock: number;
+    permite_envio: number;
+    permite_retiro_local: number;
   }>;
 
   if (!rows.length) {
@@ -79,6 +101,9 @@ router.get("/", async (req, res) => {
         ...row,
         imagenes,
         imagen_url: imagenes[0] ?? null,
+        track_stock: Boolean(row.track_stock),
+        permite_envio: Boolean(row.permite_envio),
+        permite_retiro_local: Boolean(row.permite_retiro_local),
       };
     })
   );

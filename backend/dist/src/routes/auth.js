@@ -17,6 +17,7 @@ const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
 const DUMMY_PASSWORD_HASH = bcryptjs_1.default.hashSync(crypto_1.default.randomBytes(24).toString("hex"), 10);
+const MINIMUM_ALLOWED_AGE_YEARS = 13;
 // Política:
 // - Mínimo 12 caracteres (priorizamos longitud sobre "complejidad" artificial).
 // - Al menos una letra y un número (filtro mínimo contra "aaaaaaaaaaaa" y "123456789012").
@@ -79,11 +80,31 @@ function publicUser(user) {
     const { password_hash, activo, google_id, ...safeUser } = user;
     return safeUser;
 }
+function parseBirthDate(raw) {
+    const text = (raw || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text))
+        return null;
+    const dt = new Date(`${text}T00:00:00.000Z`);
+    if (Number.isNaN(dt.getTime()))
+        return null;
+    const [y, m, d] = text.split("-").map((x) => Number(x));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d)
+        return null;
+    return dt;
+}
+function isAtLeastAge(date, minYears) {
+    const today = new Date();
+    const limit = new Date(Date.UTC(today.getUTCFullYear() - minYears, today.getUTCMonth(), today.getUTCDate()));
+    return date.getTime() <= limit.getTime();
+}
 const registerSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(1).max(100),
     email: zod_1.z.string().email(),
     password: strongPasswordSchema,
-    dni: zod_1.z.string().regex(/^\d{6,15}$/, "El DNI debe contener solo numeros (6 a 15 digitos)"),
+    dni: zod_1.z.string().regex(/^\d{6,15}$/, "El DNI debe contener solo numeros (6 a 15 digitos)").optional().nullable(),
+    fecha_nacimiento: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha_nacimiento debe tener formato YYYY-MM-DD").optional().nullable(),
+    localidad: zod_1.z.string().min(2).max(120).optional().nullable(),
+    provincia: zod_1.z.string().min(2).max(120).optional().nullable(),
     codigo_invitacion_usado: zod_1.z.string().optional().nullable(),
 });
 router.post("/register", async (req, res) => {
@@ -92,12 +113,25 @@ router.post("/register", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, email, password, dni, codigo_invitacion_usado } = parsed.data;
+    const { nombre, email, password, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion_usado } = parsed.data;
     const codigoInvitacionNormalizado = codigo_invitacion_usado?.trim().toUpperCase() || null;
+    const dniNormalized = dni?.trim() || null;
+    const fechaNacimiento = fecha_nacimiento?.trim() || null;
+    const localidadValue = localidad?.trim() || null;
+    const provinciaValue = provincia?.trim() || null;
+    if (fechaNacimiento) {
+        const birthDate = parseBirthDate(fechaNacimiento);
+        if (!birthDate || !isAtLeastAge(birthDate, MINIMUM_ALLOWED_AGE_YEARS)) {
+            res.status(400).json({ error: `Debes tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años para registrarte.` });
+            return;
+        }
+    }
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        const dup = await (0, db_1.qOne)(conn, "SELECT id FROM usuarios WHERE email = ? OR dni = ?", [email, dni]);
+        const dup = dniNormalized
+            ? await (0, db_1.qOne)(conn, "SELECT id FROM usuarios WHERE email = ? OR dni = ?", [email, dniNormalized])
+            : await (0, db_1.qOne)(conn, "SELECT id FROM usuarios WHERE email = ?", [email]);
         if (dup) {
             res.status(409).json({ error: "El email o DNI ya esta registrado" });
             return;
@@ -124,8 +158,8 @@ router.post("/register", async (req, res) => {
                 return;
             }
         }
-        const { insertId: nuevoId } = await (0, db_1.qRun)(conn, `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, codigo_invitacion, referido_por)
-       VALUES (?, ?, ?, 'cliente', ?, ?, ?)`, [nombre, email, hash, dni, codigoPropio, referidoPor]);
+        const { insertId: nuevoId } = await (0, db_1.qRun)(conn, `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion, referido_por)
+       VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?)`, [nombre, email, hash, dniNormalized, fechaNacimiento, localidadValue, provinciaValue, codigoPropio, referidoPor]);
         if (invitador) {
             const cfgRows = await (0, db_1.qOne)(conn, `SELECT
            MAX(CASE WHEN clave='puntos_referido_invitador' THEN CAST(valor AS UNSIGNED) END) AS inv,
@@ -144,7 +178,7 @@ router.post("/register", async (req, res) => {
             await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [ptsNuev, nuevoId]);
         }
         await conn.commit();
-        const u = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?", [nuevoId]);
+        const u = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?", [nuevoId]);
         const token = (0, auth_1.signToken)({ id: u.id, email: u.email, rol: u.rol });
         (0, auth_1.setAuthCookie)(res, token);
         res.status(201).json({ user: u, token });
@@ -165,7 +199,7 @@ router.post("/login", async (req, res) => {
         return;
     }
     const { email, password } = parsed.data;
-    const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, password_hash, activo
+    const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, password_hash, activo
      FROM usuarios WHERE email = ?`, [email]);
     const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
     const validPassword = await bcryptjs_1.default.compare(password, passwordHash);
@@ -183,7 +217,12 @@ router.post("/login", async (req, res) => {
     res.json({ user: safeUser, token });
 });
 router.post("/google", async (req, res) => {
-    const schema = zod_1.z.object({ credential: zod_1.z.string().min(20) });
+    const schema = zod_1.z.object({
+        credential: zod_1.z.string().min(20),
+        fecha_nacimiento: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+        localidad: zod_1.z.string().min(2).max(120).optional().nullable(),
+        provincia: zod_1.z.string().min(2).max(120).optional().nullable(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: "Token de Google requerido" });
@@ -217,10 +256,10 @@ router.post("/google", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        let user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
-       FROM usuarios WHERE google_id = ?`, [googleId]);
+        let user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
+        FROM usuarios WHERE google_id = ?`, [googleId]);
         if (!user) {
-            user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
+            user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
          FROM usuarios WHERE email = ?`, [email]);
             if (user?.google_id && user.google_id !== googleId) {
                 await conn.rollback();
@@ -238,12 +277,23 @@ router.post("/google", async (req, res) => {
             return;
         }
         if (!user) {
+            const fechaNacimiento = parsed.data.fecha_nacimiento?.trim() || null;
+            const localidad = parsed.data.localidad?.trim() || null;
+            const provincia = parsed.data.provincia?.trim() || null;
+            if (fechaNacimiento) {
+                const birthDate = parseBirthDate(fechaNacimiento);
+                if (!birthDate || !isAtLeastAge(birthDate, MINIMUM_ALLOWED_AGE_YEARS)) {
+                    await conn.rollback();
+                    res.status(400).json({ error: `Debes tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años para registrarte.` });
+                    return;
+                }
+            }
             const longitud = await getInviteCodeLength(conn);
             const codigoPropio = await uniqueInviteCode(longitud);
             const hash = await makeRandomPasswordHash();
-            const { insertId: nuevoId } = await (0, db_1.qRun)(conn, `INSERT INTO usuarios (nombre, email, google_id, password_hash, rol, dni, codigo_invitacion)
-         VALUES (?, ?, ?, ?, 'cliente', NULL, ?)`, [nombre, email, googleId, hash, codigoPropio]);
-            user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
+            const { insertId: nuevoId } = await (0, db_1.qRun)(conn, `INSERT INTO usuarios (nombre, email, google_id, password_hash, rol, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+         VALUES (?, ?, ?, ?, 'cliente', NULL, ?, ?, ?, ?)`, [nombre, email, googleId, hash, fechaNacimiento, localidad, provincia, codigoPropio]);
+            user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
          FROM usuarios WHERE id = ?`, [nuevoId]);
         }
         await conn.commit();
@@ -267,7 +317,7 @@ router.get("/me", async (req, res) => {
         res.json({ user: null });
         return;
     }
-    const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, activo
+    const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo
      FROM usuarios
      WHERE id = ?`, [auth.id]);
     if (!user || !user.activo) {

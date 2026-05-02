@@ -13,6 +13,7 @@ const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 10);
+const MINIMUM_ALLOWED_AGE_YEARS = 13;
 
 // Política:
 // - Mínimo 12 caracteres (priorizamos longitud sobre "complejidad" artificial).
@@ -85,11 +86,30 @@ function publicUser(user: any) {
   return safeUser;
 }
 
+function parseBirthDate(raw: string): Date | null {
+  const text = (raw || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const dt = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const [y, m, d] = text.split("-").map((x) => Number(x));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+  return dt;
+}
+
+function isAtLeastAge(date: Date, minYears: number): boolean {
+  const today = new Date();
+  const limit = new Date(Date.UTC(today.getUTCFullYear() - minYears, today.getUTCMonth(), today.getUTCDate()));
+  return date.getTime() <= limit.getTime();
+}
+
 const registerSchema = z.object({
   nombre: z.string().min(1).max(100),
   email: z.string().email(),
   password: strongPasswordSchema,
-  dni: z.string().regex(/^\d{6,15}$/, "El DNI debe contener solo numeros (6 a 15 digitos)"),
+  dni: z.string().regex(/^\d{6,15}$/, "El DNI debe contener solo numeros (6 a 15 digitos)").optional().nullable(),
+  fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha_nacimiento debe tener formato YYYY-MM-DD").optional().nullable(),
+  localidad: z.string().min(2).max(120).optional().nullable(),
+  provincia: z.string().min(2).max(120).optional().nullable(),
   codigo_invitacion_usado: z.string().optional().nullable(),
 });
 
@@ -99,14 +119,27 @@ router.post("/register", async (req, res) => {
     res.status(400).json({ error: parsed.error.errors[0].message });
     return;
   }
-  const { nombre, email, password, dni, codigo_invitacion_usado } = parsed.data;
+  const { nombre, email, password, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion_usado } = parsed.data;
   const codigoInvitacionNormalizado = codigo_invitacion_usado?.trim().toUpperCase() || null;
+  const dniNormalized = dni?.trim() || null;
+  const fechaNacimiento = fecha_nacimiento?.trim() || null;
+  const localidadValue = localidad?.trim() || null;
+  const provinciaValue = provincia?.trim() || null;
+  if (fechaNacimiento) {
+    const birthDate = parseBirthDate(fechaNacimiento);
+    if (!birthDate || !isAtLeastAge(birthDate, MINIMUM_ALLOWED_AGE_YEARS)) {
+      res.status(400).json({ error: `Debes tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años para registrarte.` });
+      return;
+    }
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const dup = await qOne(conn, "SELECT id FROM usuarios WHERE email = ? OR dni = ?", [email, dni]);
+    const dup = dniNormalized
+      ? await qOne(conn, "SELECT id FROM usuarios WHERE email = ? OR dni = ?", [email, dniNormalized])
+      : await qOne(conn, "SELECT id FROM usuarios WHERE email = ?", [email]);
     if (dup) {
       res.status(409).json({ error: "El email o DNI ya esta registrado" });
       return;
@@ -138,9 +171,9 @@ router.post("/register", async (req, res) => {
     }
 
     const { insertId: nuevoId } = await qRun(conn,
-      `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, codigo_invitacion, referido_por)
-       VALUES (?, ?, ?, 'cliente', ?, ?, ?)`,
-      [nombre, email, hash, dni, codigoPropio, referidoPor]
+      `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion, referido_por)
+       VALUES (?, ?, ?, 'cliente', ?, ?, ?, ?, ?, ?)`,
+      [nombre, email, hash, dniNormalized, fechaNacimiento, localidadValue, provinciaValue, codigoPropio, referidoPor]
     );
 
     if (invitador) {
@@ -178,7 +211,7 @@ router.post("/register", async (req, res) => {
     await conn.commit();
 
     const u = await qOne(conn,
-      "SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?",
+      "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?",
       [nuevoId]
     );
 
@@ -203,7 +236,7 @@ router.post("/login", async (req, res) => {
   const { email, password } = parsed.data;
 
   const user = await qOne<any>(pool,
-    `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, password_hash, activo
+    `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, password_hash, activo
      FROM usuarios WHERE email = ?`,
     [email]
   );
@@ -226,7 +259,12 @@ router.post("/login", async (req, res) => {
 });
 
 router.post("/google", async (req, res) => {
-  const schema = z.object({ credential: z.string().min(20) });
+  const schema = z.object({
+    credential: z.string().min(20),
+    fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    localidad: z.string().min(2).max(120).optional().nullable(),
+    provincia: z.string().min(2).max(120).optional().nullable(),
+  });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Token de Google requerido" });
@@ -266,14 +304,14 @@ router.post("/google", async (req, res) => {
     await conn.beginTransaction();
 
     let user = await qOne<any>(conn,
-      `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
-       FROM usuarios WHERE google_id = ?`,
+       `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
+        FROM usuarios WHERE google_id = ?`,
       [googleId]
     );
 
     if (!user) {
       user = await qOne<any>(conn,
-        `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
+        `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
          FROM usuarios WHERE email = ?`,
         [email]
       );
@@ -297,18 +335,30 @@ router.post("/google", async (req, res) => {
     }
 
     if (!user) {
+      const fechaNacimiento = parsed.data.fecha_nacimiento?.trim() || null;
+      const localidad = parsed.data.localidad?.trim() || null;
+      const provincia = parsed.data.provincia?.trim() || null;
+      if (fechaNacimiento) {
+        const birthDate = parseBirthDate(fechaNacimiento);
+        if (!birthDate || !isAtLeastAge(birthDate, MINIMUM_ALLOWED_AGE_YEARS)) {
+          await conn.rollback();
+          res.status(400).json({ error: `Debes tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años para registrarte.` });
+          return;
+        }
+      }
+
       const longitud = await getInviteCodeLength(conn);
       const codigoPropio = await uniqueInviteCode(longitud);
       const hash = await makeRandomPasswordHash();
 
       const { insertId: nuevoId } = await qRun(conn,
-        `INSERT INTO usuarios (nombre, email, google_id, password_hash, rol, dni, codigo_invitacion)
-         VALUES (?, ?, ?, ?, 'cliente', NULL, ?)`,
-        [nombre, email, googleId, hash, codigoPropio]
+        `INSERT INTO usuarios (nombre, email, google_id, password_hash, rol, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+         VALUES (?, ?, ?, ?, 'cliente', NULL, ?, ?, ?, ?)`,
+        [nombre, email, googleId, hash, fechaNacimiento, localidad, provincia, codigoPropio]
       );
 
       user = await qOne<any>(conn,
-        `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, google_id, activo
+        `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, google_id, activo
          FROM usuarios WHERE id = ?`,
         [nuevoId]
       );
@@ -338,7 +388,7 @@ router.get("/me", async (req, res) => {
 
   const user = await qOne<any>(
     pool,
-    `SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, activo
+    `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo
      FROM usuarios
      WHERE id = ?`,
     [auth.id]

@@ -12,7 +12,6 @@ type LoginPayload = {
 
 type RegisterPayload = {
   nombre: string;
-  dni: string;
   email: string;
   password: string;
   codigo_invitacion_usado?: string | null;

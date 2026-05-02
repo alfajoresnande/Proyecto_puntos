@@ -11,9 +11,34 @@ import { normalizeSafeImageUrl } from "../urlSafety";
 import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
 import { verifyUploadedImageFile } from "../uploadSecurity";
 import { createFullBackupArchive } from "../services/backup";
+import {
+  adjustStockBySucursal,
+  finalizeStockForCheckoutItems,
+  finalizeReservedStockForCanje,
+  getCanjeItemsStock,
+  releaseStockForCheckoutItems,
+  releaseReservedStockForCanje,
+} from "../services/stock";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
+const MINIMUM_ALLOWED_AGE_YEARS = 13;
+
+function parseBirthDate(raw: string): Date | null {
+  const text = (raw || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const dt = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const [y, m, d] = text.split("-").map((x) => Number(x));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+  return dt;
+}
+
+function isAtLeastAge(date: Date, minYears: number): boolean {
+  const today = new Date();
+  const limit = new Date(Date.UTC(today.getUTCFullYear() - minYears, today.getUTCMonth(), today.getUTCDate()));
+  return date.getTime() <= limit.getTime();
+}
 
 // ── Configuración de multer para subida de imágenes ──────
 const MIME_TO_EXT: Record<string, string> = {
@@ -112,6 +137,18 @@ type CanjeItemDetalle = {
   puntos_total: number;
 };
 
+type OrdenItemAdminRow = {
+  id: number;
+  orden_id: number;
+  producto_id: number;
+  cantidad: number;
+  modo_compra: "dinero" | "puntos";
+  subtotal_dinero: number;
+  subtotal_puntos: number;
+  nombre: string;
+  track_stock: number;
+};
+
 async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
   const map = new Map<number, CanjeItemDetalle[]>();
   if (!canjeIds.length) return map;
@@ -147,6 +184,56 @@ async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, 
       puntos_total: Number(row.puntos_total),
     });
     map.set(Number(row.canje_id), current);
+  }
+
+  return map;
+}
+
+async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, OrdenItemAdminRow[]>> {
+  const map = new Map<number, OrdenItemAdminRow[]>();
+  if (!orderIds.length) return map;
+
+  const placeholders = orderIds.map(() => "?").join(", ");
+  const rows = await qAll<OrdenItemAdminRow>(
+    pool,
+    `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+            oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
+     FROM orden_items oi
+     JOIN productos p ON p.id = oi.producto_id
+     WHERE oi.orden_id IN (${placeholders})
+     ORDER BY oi.orden_id ASC, oi.id ASC`,
+    orderIds,
+  );
+const MINIMUM_ALLOWED_AGE_YEARS = 13;
+
+function parseBirthDate(raw: string): Date | null {
+  const text = (raw || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const dt = new Date(`${text}T00:00:00.000Z`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const [y, m, d] = text.split("-").map((x) => Number(x));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
+  return dt;
+}
+
+function isAtLeastAge(date: Date, minYears: number): boolean {
+  const today = new Date();
+  const limit = new Date(Date.UTC(today.getUTCFullYear() - minYears, today.getUTCMonth(), today.getUTCDate()));
+  return date.getTime() <= limit.getTime();
+}
+
+  for (const row of rows) {
+    const list = map.get(Number(row.orden_id)) ?? [];
+    list.push({
+      ...row,
+      orden_id: Number(row.orden_id),
+      producto_id: Number(row.producto_id),
+      cantidad: Number(row.cantidad),
+      subtotal_dinero: Number(row.subtotal_dinero),
+      subtotal_puntos: Number(row.subtotal_puntos),
+      track_stock: Number(row.track_stock ?? 0),
+    });
+    map.set(Number(row.orden_id), list);
   }
 
   return map;
@@ -202,7 +289,7 @@ router.post("/backup/full", async (req, res) => {
 
 router.get("/usuarios", async (_req, res) => {
   const rows = await qAll(pool,
-    "SELECT id, nombre, email, rol, dni, telefono, puntos_saldo, codigo_invitacion, activo, created_at FROM usuarios ORDER BY created_at DESC"
+    "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo, created_at FROM usuarios ORDER BY created_at DESC"
   );
   res.json(rows);
 });
@@ -214,12 +301,22 @@ router.post("/usuarios", async (req, res) => {
     password: strongPasswordSchema,
     rol:      z.enum(["cliente", "vendedor", "admin"]),
     dni:      z.string().min(6).optional(),
+    fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    localidad: z.string().min(2).max(120).optional().nullable(),
+    provincia: z.string().min(2).max(120).optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
-  const { nombre, email, password, rol, dni } = parsed.data;
+  const { nombre, email, password, rol, dni, fecha_nacimiento, localidad, provincia } = parsed.data;
 
   if (rol === "cliente" && !dni) { res.status(400).json({ error: "DNI requerido para clientes" }); return; }
+  if (rol === "cliente" && fecha_nacimiento) {
+    const dt = parseBirthDate(fecha_nacimiento);
+    if (!dt || !isAtLeastAge(dt, MINIMUM_ALLOWED_AGE_YEARS)) {
+      res.status(400).json({ error: `Cliente debe tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años.` });
+      return;
+    }
+  }
 
   try {
     const hash = await bcrypt.hash(password, 10);
@@ -229,8 +326,9 @@ router.post("/usuarios", async (req, res) => {
       codigo = await uniqueInviteCode(longitud);
     }
     const { insertId } = await qRun(pool,
-      `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, codigo_invitacion) VALUES (?, ?, ?, ?, ?, ?)`,
-      [nombre, email, hash, rol, dni ?? null, codigo]
+      `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
+      [nombre, email, hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]
     );
     res.status(201).json({ id: insertId });
   } catch (err: any) {
@@ -252,6 +350,9 @@ router.put("/usuarios/:id", async (req, res) => {
     rol: z.enum(["cliente", "vendedor", "admin"]),
     dni: z.string().min(6).max(20).optional().nullable(),
     telefono: z.string().max(25).optional().nullable(),
+    fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+    localidad: z.string().min(2).max(120).optional().nullable(),
+    provincia: z.string().min(2).max(120).optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -259,19 +360,36 @@ router.put("/usuarios/:id", async (req, res) => {
     return;
   }
 
-  const { nombre, email, rol, dni, telefono } = parsed.data;
+  const { nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia } = parsed.data;
   if (rol === "cliente" && !dni?.trim()) {
     res.status(400).json({ error: "DNI requerido para clientes" });
     return;
+  }
+  if (rol === "cliente" && fecha_nacimiento) {
+    const dt = parseBirthDate(fecha_nacimiento);
+    if (!dt || !isAtLeastAge(dt, MINIMUM_ALLOWED_AGE_YEARS)) {
+      res.status(400).json({ error: `Cliente debe tener al menos ${MINIMUM_ALLOWED_AGE_YEARS} años.` });
+      return;
+    }
   }
 
   try {
     const { affectedRows } = await qRun(
       pool,
-      `UPDATE usuarios
-       SET nombre = ?, email = ?, rol = ?, dni = ?, telefono = ?
-       WHERE id = ?`,
-      [nombre.trim(), email.trim().toLowerCase(), rol, dni?.trim() || null, telefono?.trim() || null, id]
+       `UPDATE usuarios
+       SET nombre = ?, email = ?, rol = ?, dni = ?, telefono = ?, fecha_nacimiento = ?, localidad = ?, provincia = ?
+        WHERE id = ?`,
+      [
+        nombre.trim(),
+        email.trim().toLowerCase(),
+        rol,
+        dni?.trim() || null,
+        telefono?.trim() || null,
+        fecha_nacimiento ?? null,
+        localidad?.trim() || null,
+        provincia?.trim() || null,
+        id,
+      ]
     );
     if (affectedRows === 0) {
       res.status(404).json({ error: "Usuario no encontrado" });
@@ -464,7 +582,7 @@ router.patch("/canjes/:id", async (req, res) => {
   const id = Number(req.params.id);
   const schema = z.object({
     estado: z.enum(["pendiente", "entregado", "no_disponible", "expirado", "cancelado"]),
-    notas:  z.string().max(1000).optional().nullable(),
+    notas: z.string().max(1000).optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
@@ -474,24 +592,70 @@ router.patch("/canjes/:id", async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const canje = await qOne(conn, "SELECT id, usuario_id, puntos_usados, estado FROM canjes WHERE id = ?", [id]);
+    const canje = await qOne<{
+      id: number;
+      usuario_id: number;
+      puntos_usados: number;
+      estado: "pendiente" | "entregado" | "no_disponible" | "expirado" | "cancelado";
+      sucursal_id: number | null;
+      producto_id: number;
+    }>(
+      conn,
+      "SELECT id, usuario_id, puntos_usados, estado, sucursal_id, producto_id FROM canjes WHERE id = ? FOR UPDATE",
+      [id],
+    );
     if (!canje) { res.status(404).json({ error: "Canje no encontrado" }); return; }
-    if (canje.estado === "entregado" || canje.estado === "cancelado") {
-      res.status(400).json({ error: `El canje ya está en estado '${canje.estado}'` }); return;
+
+    if (canje.estado === estado) {
+      await conn.commit();
+      res.json({ ok: true, unchanged: true });
+      return;
+    }
+    if (canje.estado !== "pendiente") {
+      res.status(400).json({ error: `No se puede modificar un canje en estado '${canje.estado}'` });
+      return;
+    }
+
+    const canjeItems = await getCanjeItemsStock(conn, id);
+    const itemsForStock = canjeItems.length
+      ? canjeItems
+      : [{ producto_id: Number(canje.producto_id), cantidad: 1 }];
+
+    if (Number(canje.sucursal_id) > 0) {
+      if (estado === "entregado") {
+        await finalizeReservedStockForCanje(conn, {
+          sucursalId: Number(canje.sucursal_id),
+          items: itemsForStock,
+          canjeId: id,
+          creadoPor: req.user!.id,
+        });
+      } else if (estado === "no_disponible" || estado === "cancelado" || estado === "expirado") {
+        await releaseReservedStockForCanje(conn, {
+          sucursalId: Number(canje.sucursal_id),
+          items: itemsForStock,
+          canjeId: id,
+          strict: false,
+          creadoPor: req.user!.id,
+        });
+      }
     }
 
     await qRun(conn, "UPDATE canjes SET estado = ?, notas = ? WHERE id = ?", [estado, notas ?? null, id]);
 
     if (estado === "no_disponible" || estado === "cancelado") {
       const motivo = estado === "cancelado" ? "cancelado" : "no disponible";
-      await qRun(conn,
+      await qRun(
+        conn,
         `INSERT INTO movimientos_puntos
            (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`,
-        [canje.usuario_id, canje.puntos_usados, `Devolución por canje ${motivo}`, id, req.user!.id]
+        [canje.usuario_id, canje.puntos_usados, `Devolucion por canje ${motivo}`, id, req.user!.id],
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?",
-        [canje.puntos_usados, canje.usuario_id]);
+      await qRun(
+        conn,
+        "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?",
+        [canje.puntos_usados, canje.usuario_id],
+      );
     }
 
     await conn.commit();
@@ -507,6 +671,209 @@ router.patch("/canjes/:id", async (req, res) => {
 // ════════════════════════════════════════════════════════
 //  MOVIMIENTOS (historial global)
 // ════════════════════════════════════════════════════════
+
+router.get("/ordenes", async (_req, res) => {
+  const rows = await qAll<{
+    id: number;
+    usuario_id: number;
+    cliente_nombre: string;
+    cliente_email: string;
+    estado: string;
+    tipo_orden: string;
+    total_dinero: number;
+    total_puntos: number;
+    moneda: string;
+    sucursal_retiro_id: number | null;
+    sucursal_nombre: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    pool,
+    `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
+            o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+            o.sucursal_retiro_id, s.nombre AS sucursal_nombre, o.created_at, o.updated_at
+     FROM ordenes o
+     JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
+     ORDER BY o.created_at DESC, o.id DESC`,
+  );
+
+  const orderIds = rows.map((row) => Number(row.id));
+  const itemMap = await getOrdenItemsByOrdenIds(orderIds);
+  const payments = orderIds.length
+    ? await qAll<{ orden_id: number; estado: string; proveedor: string; metodo: string | null; monto: number; moneda: string }>(
+        pool,
+        `SELECT p.orden_id, p.estado, p.proveedor, p.metodo, p.monto, p.moneda
+         FROM pagos p
+         JOIN (
+            SELECT orden_id, MAX(id) AS last_id
+            FROM pagos
+            WHERE orden_id IN (${orderIds.map(() => "?").join(", ")})
+            GROUP BY orden_id
+          ) latest ON latest.last_id = p.id`,
+        orderIds,
+      )
+    : [];
+  const payMap = new Map<number, { estado: string; proveedor: string; metodo: string | null; monto: number; moneda: string }>();
+  for (const payment of payments) {
+    payMap.set(Number(payment.orden_id), {
+      estado: payment.estado,
+      proveedor: payment.proveedor,
+      metodo: payment.metodo ?? null,
+      monto: Number(payment.monto ?? 0),
+      moneda: payment.moneda,
+    });
+  }
+
+  res.json(
+    rows.map((row) => {
+      const items = itemMap.get(Number(row.id)) ?? [];
+      return {
+        ...row,
+        total_dinero: Number(row.total_dinero ?? 0),
+        total_puntos: Number(row.total_puntos ?? 0),
+        total_items: items.length,
+        total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
+        pago: payMap.get(Number(row.id)) ?? null,
+      };
+    }),
+  );
+});
+
+router.patch("/ordenes/:id", async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido" });
+    return;
+  }
+
+  const schema = z.object({
+    estado: z.enum(["pendiente_pago", "pagada", "preparada", "entregada", "cancelada", "expirada"]),
+    notas: z.string().max(1000).optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+  const { estado, notas } = parsed.data;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const orden = await qOne<{
+      id: number;
+      usuario_id: number;
+      estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "entregada" | "cancelada" | "expirada";
+      total_puntos: number;
+      sucursal_retiro_id: number | null;
+      total_dinero: number;
+    }>(
+      conn,
+      `SELECT id, usuario_id, estado, total_puntos, sucursal_retiro_id, total_dinero
+       FROM ordenes
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    if (!orden) {
+      res.status(404).json({ error: "Orden no encontrada" });
+      return;
+    }
+    if (orden.estado === estado) {
+      await conn.commit();
+      res.json({ ok: true, unchanged: true });
+      return;
+    }
+    if (orden.estado === "entregada" || orden.estado === "cancelada" || orden.estado === "expirada") {
+      res.status(400).json({ error: `No se puede modificar una orden en estado '${orden.estado}'.` });
+      return;
+    }
+
+    const itemsByOrder = await qAll<OrdenItemAdminRow>(
+      conn,
+      `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+              oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
+       FROM orden_items oi
+       JOIN productos p ON p.id = oi.producto_id
+       WHERE oi.orden_id = ?
+       ORDER BY oi.id ASC`,
+      [orderId],
+    );
+
+    if (orden.sucursal_retiro_id) {
+      const stockItems = itemsByOrder
+        .filter((item) => Number(item.track_stock ?? 0) === 1)
+        .map((item) => ({
+          producto_id: Number(item.producto_id),
+          cantidad: Number(item.cantidad),
+          origen: item.modo_compra === "dinero" ? ("compra" as const) : ("canje" as const),
+          descripcion: `Orden #${orderId} -> ${estado}`,
+        }));
+
+      if (stockItems.length) {
+        if (estado === "entregada") {
+          await finalizeStockForCheckoutItems(conn, {
+            sucursalId: Number(orden.sucursal_retiro_id),
+            items: stockItems,
+            referencia: `orden #${orderId}`,
+            creadoPor: req.user!.id,
+          });
+        } else if (estado === "cancelada" || estado === "expirada") {
+          await releaseStockForCheckoutItems(conn, {
+            sucursalId: Number(orden.sucursal_retiro_id),
+            items: stockItems,
+            referencia: `orden #${orderId}`,
+            creadoPor: req.user!.id,
+          });
+        }
+      }
+    }
+
+    if ((estado === "cancelada" || estado === "expirada") && Number(orden.total_puntos ?? 0) > 0) {
+      await qRun(
+        conn,
+        `INSERT INTO movimientos_puntos
+          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
+         VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`,
+        [
+          Number(orden.usuario_id),
+          Number(orden.total_puntos),
+          `Devolucion puntos por ${estado} orden #${orderId}`,
+          orderId,
+          req.user!.id,
+        ],
+      );
+      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
+        Number(orden.total_puntos),
+        Number(orden.usuario_id),
+      ]);
+    }
+
+    await qRun(conn, "UPDATE ordenes SET estado = ?, notas = COALESCE(?, notas) WHERE id = ?", [
+      estado,
+      notas ?? null,
+      orderId,
+    ]);
+
+    if (Number(orden.total_dinero ?? 0) > 0) {
+      if (estado === "pagada") {
+        await qRun(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+      } else if (estado === "cancelada" || estado === "expirada") {
+        await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+      }
+    }
+
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo actualizar la orden." });
+  } finally {
+    conn.release();
+  }
+});
 
 router.get("/movimientos", async (_req, res) => {
   const rows = await qAll(pool,
@@ -529,15 +896,31 @@ router.get("/productos", async (_req, res) => {
   const rows = await qAll<{
     id: number;
     nombre: string;
+    sku: string | null;
     descripcion: string | null;
     imagen_url: string | null;
     categoria: string | null;
+    tipo_producto: "canje" | "venta" | "mixto";
+    precio_dinero: number | null;
+    precio_puntos: number | null;
+    puntos_para_canjear: number | null;
+    stock_disponible: number;
+    stock_reservado: number;
+    track_stock: number;
+    permite_envio: number;
+    permite_retiro_local: number;
     puntos_requeridos: number;
     puntos_acumulables: number | null;
+    puntaje_al_comprar: number | null;
     activo: number;
     created_at: string;
   }>(pool,
-    "SELECT id, nombre, descripcion, imagen_url, categoria, puntos_requeridos, puntos_acumulables, activo, created_at FROM productos ORDER BY created_at DESC"
+    `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
+            precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
+            track_stock, permite_envio, permite_retiro_local,
+            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, activo, created_at
+     FROM productos
+     ORDER BY created_at DESC`
   );
   if (!rows.length) {
     res.json([]);
@@ -568,6 +951,9 @@ router.get("/productos", async (_req, res) => {
       return {
         ...row,
         activo: Boolean(row.activo),
+        track_stock: Boolean(row.track_stock),
+        permite_envio: Boolean(row.permite_envio),
+        permite_retiro_local: Boolean(row.permite_retiro_local),
         imagenes,
         imagen_url: imagenes[0] ?? null,
       };
@@ -598,25 +984,74 @@ router.post("/productos/upload", (req, res, next) => {
 router.post("/productos", async (req, res) => {
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
+    sku:                z.string().max(64).optional().nullable(),
     descripcion:        z.string().max(1000).optional().nullable(),
     imagen_url:         z.string().min(1).optional().nullable(),
     imagenes:           z.array(z.string().min(1)).max(3).optional().nullable(),
     categoria:          z.string().max(100).optional().nullable(),
-    puntos_requeridos:  z.number().int().positive(),
+    tipo_producto:      z.enum(["canje", "venta", "mixto"]).optional(),
+    precio_dinero:      z.number().positive().optional().nullable(),
+    precio_puntos:      z.number().int().positive().optional().nullable(),
+    puntos_para_canjear: z.number().int().positive().optional().nullable(),
+    puntos_requeridos:  z.number().int().min(0).optional().nullable(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),
+    puntaje_al_comprar: z.number().int().positive().optional().nullable(),
+    stock_disponible:   z.number().int().min(0).optional(),
+    track_stock:        z.boolean().optional(),
+    permite_envio:      z.boolean().optional(),
+    permite_retiro_local: z.boolean().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
-  const { nombre, descripcion, imagen_url, imagenes, categoria, puntos_requeridos, puntos_acumulables } = parsed.data;
+  const {
+    nombre, sku, descripcion, imagen_url, imagenes, categoria,
+    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+    stock_disponible, track_stock, permite_envio, permite_retiro_local,
+  } = parsed.data;
   const imageUrls = normalizeProductImages(imagenes, imagen_url);
+  const tipoProducto = tipo_producto ?? "canje";
+  const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
+  const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
+  const precioDineroFinal = precio_dinero ?? null;
+  const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+
+  if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
+    res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
+    return;
+  }
+  if ((tipoProducto === "venta" || tipoProducto === "mixto") && (!precioDineroFinal || precioDineroFinal <= 0)) {
+    res.status(400).json({ error: "Debes indicar un precio en dinero valido para venta/mixto." });
+    return;
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
     const { insertId } = await qRun(conn,
-      "INSERT INTO productos (nombre, descripcion, imagen_url, categoria, puntos_requeridos, puntos_acumulables) VALUES (?, ?, ?, ?, ?, ?)",
-      [nombre, descripcion ?? null, imageUrls[0] ?? null, categoria ?? null, puntos_requeridos, puntos_acumulables ?? null]
+      `INSERT INTO productos
+        (nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
+         precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+         stock_disponible, stock_reservado, track_stock, permite_envio, permite_retiro_local)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      [
+        nombre,
+        sku?.trim() || null,
+        descripcion ?? null,
+        imageUrls[0] ?? null,
+        categoria ?? null,
+        tipoProducto,
+        precioDineroFinal,
+        precioPuntosFinal,
+        precioPuntosFinal,
+        puntosRequeridosLegacy,
+        puntos_acumulables ?? null,
+        puntajeComprarFinal,
+        stock_disponible ?? 0,
+        track_stock === undefined ? 1 : (track_stock ? 1 : 0),
+        permite_envio ? 1 : 0,
+        permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
+      ]
     );
     await replaceProductImages(conn, insertId, imageUrls);
 
@@ -634,25 +1069,75 @@ router.put("/productos/:id", async (req, res) => {
   const id = Number(req.params.id);
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
+    sku:                z.string().max(64).optional().nullable(),
     descripcion:        z.string().max(1000).optional().nullable(),
     imagen_url:         z.string().min(1).optional().nullable(),
     imagenes:           z.array(z.string().min(1)).max(3).optional().nullable(),
     categoria:          z.string().max(100).optional().nullable(),
-    puntos_requeridos:  z.number().int().positive(),
+    tipo_producto:      z.enum(["canje", "venta", "mixto"]).optional(),
+    precio_dinero:      z.number().positive().optional().nullable(),
+    precio_puntos:      z.number().int().positive().optional().nullable(),
+    puntos_para_canjear: z.number().int().positive().optional().nullable(),
+    puntos_requeridos:  z.number().int().min(0).optional().nullable(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),
+    puntaje_al_comprar: z.number().int().positive().optional().nullable(),
+    stock_disponible:   z.number().int().min(0).optional(),
+    track_stock:        z.boolean().optional(),
+    permite_envio:      z.boolean().optional(),
+    permite_retiro_local: z.boolean().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
-  const { nombre, descripcion, imagen_url, imagenes, categoria, puntos_requeridos, puntos_acumulables } = parsed.data;
+  const {
+    nombre, sku, descripcion, imagen_url, imagenes, categoria,
+    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+    stock_disponible, track_stock, permite_envio, permite_retiro_local,
+  } = parsed.data;
   const imageUrls = normalizeProductImages(imagenes, imagen_url);
+  const tipoProducto = tipo_producto ?? "canje";
+  const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
+  const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
+  const precioDineroFinal = precio_dinero ?? null;
+  const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+
+  if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
+    res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
+    return;
+  }
+  if ((tipoProducto === "venta" || tipoProducto === "mixto") && (!precioDineroFinal || precioDineroFinal <= 0)) {
+    res.status(400).json({ error: "Debes indicar un precio en dinero valido para venta/mixto." });
+    return;
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
     const { affectedRows } = await qRun(conn,
-      "UPDATE productos SET nombre=?, descripcion=?, imagen_url=?, categoria=?, puntos_requeridos=?, puntos_acumulables=? WHERE id=?",
-      [nombre, descripcion ?? null, imageUrls[0] ?? null, categoria ?? null, puntos_requeridos, puntos_acumulables ?? null, id]
+      `UPDATE productos
+       SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?,
+           precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?,
+           stock_disponible=?, track_stock=?, permite_envio=?, permite_retiro_local=?
+       WHERE id=?`,
+      [
+        nombre,
+        sku?.trim() || null,
+        descripcion ?? null,
+        imageUrls[0] ?? null,
+        categoria ?? null,
+        tipoProducto,
+        precioDineroFinal,
+        precioPuntosFinal,
+        precioPuntosFinal,
+        puntosRequeridosLegacy,
+        puntos_acumulables ?? null,
+        puntajeComprarFinal,
+        stock_disponible ?? 0,
+        track_stock === undefined ? 1 : (track_stock ? 1 : 0),
+        permite_envio ? 1 : 0,
+        permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
+        id,
+      ]
     );
     if (affectedRows === 0) {
       await conn.rollback();
@@ -806,6 +1291,71 @@ router.patch("/sucursales/:id/activo", async (req, res) => {
     return;
   }
   res.json({ ok: true });
+});
+
+router.get("/inventario", async (req, res) => {
+  const productoId = Number(req.query.producto_id ?? 0);
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+
+  const conditions: string[] = [];
+  const params: number[] = [];
+  if (Number.isFinite(productoId) && productoId > 0) {
+    conditions.push("i.producto_id = ?");
+    params.push(productoId);
+  }
+  if (Number.isFinite(sucursalId) && sucursalId > 0) {
+    conditions.push("i.sucursal_id = ?");
+    params.push(sucursalId);
+  }
+  const whereSql = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const rows = await qAll(
+    pool,
+    `SELECT i.id, i.producto_id, p.nombre AS producto_nombre, p.sku, p.tipo_producto,
+            i.sucursal_id, s.nombre AS sucursal_nombre,
+            i.stock_disponible, i.stock_reservado, i.updated_at
+     FROM inventario_sucursal i
+     JOIN productos p ON p.id = i.producto_id
+     JOIN sucursales s ON s.id = i.sucursal_id
+     ${whereSql}
+     ORDER BY p.nombre ASC, s.nombre ASC`,
+    params,
+  );
+  res.json(rows);
+});
+
+router.patch("/inventario/ajuste", async (req, res) => {
+  const schema = z.object({
+    producto_id: z.number().int().positive(),
+    sucursal_id: z.number().int().positive(),
+    nuevo_stock_disponible: z.number().int().min(0),
+    descripcion: z.string().max(255).optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const { producto_id, sucursal_id, nuevo_stock_disponible, descripcion } = parsed.data;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await adjustStockBySucursal(conn, {
+      productoId: producto_id,
+      sucursalId: sucursal_id,
+      nuevoStockDisponible: nuevo_stock_disponible,
+      descripcion: descripcion ?? null,
+      creadoPor: req.user!.id,
+    });
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo ajustar el inventario." });
+  } finally {
+    conn.release();
+  }
 });
 
 router.get("/configuracion", async (_req, res) => {

@@ -10,6 +10,9 @@ type ClienteMe = {
   email: string;
   dni: string | null;
   telefono?: string | null;
+  fecha_nacimiento?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
   puntos_saldo: number;
   codigo_invitacion: string | null;
   referido_por: number | null;
@@ -29,6 +32,9 @@ type PerfilResponse = {
     rol: "cliente" | "vendedor" | "admin";
     dni: string | null;
     telefono?: string | null;
+    fecha_nacimiento?: string | null;
+    localidad?: string | null;
+    provincia?: string | null;
     puntos_saldo: number;
     codigo_invitacion: string | null;
     referido_por: number | null;
@@ -58,6 +64,9 @@ export function MiPerfil() {
   const [nombre, setNombre] = useState("");
   const [dni, setDni] = useState("");
   const [telefono, setTelefono] = useState("");
+  const [fechaNacimiento, setFechaNacimiento] = useState("");
+  const [localidad, setLocalidad] = useState("");
+  const [provincia, setProvincia] = useState("");
   const [codigoInvitacionInput, setCodigoInvitacionInput] = useState("");
   const [perfilOk, setPerfilOk] = useState("");
   const [perfilErr, setPerfilErr] = useState("");
@@ -81,6 +90,9 @@ export function MiPerfil() {
     setNombre(me.nombre || "");
     setDni(me.dni || "");
     setTelefono(me.telefono || "");
+    setFechaNacimiento(me.fecha_nacimiento || "");
+    setLocalidad(me.localidad || "");
+    setProvincia(me.provincia || "");
   }, [meQuery.data]);
 
   useEffect(() => {
@@ -93,7 +105,14 @@ export function MiPerfil() {
   }, []);
 
   const guardarPerfilMutation = useMutation({
-    mutationFn: (payload: { nombre?: string; dni?: string; telefono?: string }) =>
+    mutationFn: (payload: {
+      nombre?: string;
+      dni?: string;
+      telefono?: string;
+      fecha_nacimiento?: string;
+      localidad?: string;
+      provincia?: string;
+    }) =>
       api.patch<PerfilResponse>("/cliente/perfil", payload),
     onSuccess: async (result) => {
       setPerfilErr("");
@@ -102,6 +121,9 @@ export function MiPerfil() {
         nombre: result.user.nombre,
         dni: result.user.dni,
         telefono: result.user.telefono || null,
+        fecha_nacimiento: result.user.fecha_nacimiento || null,
+        localidad: result.user.localidad || null,
+        provincia: result.user.provincia || null,
       });
       await queryClient.invalidateQueries({ queryKey: ["cliente", "me"] });
     },
@@ -147,14 +169,36 @@ export function MiPerfil() {
     const nombreLimpio = nombre.trim();
     const dniLimpio = cleanDni(dni.trim());
     const telefonoLimpio = cleanTelefono(telefono.trim());
-    const payload: { nombre?: string; dni?: string; telefono?: string } = {};
+    const fechaNacimientoLimpia = fechaNacimiento.trim();
+    const localidadLimpia = localidad.trim();
+    const provinciaLimpia = provincia.trim();
+    const payload: {
+      nombre?: string;
+      dni?: string;
+      telefono?: string;
+      fecha_nacimiento?: string;
+      localidad?: string;
+      provincia?: string;
+    } = {};
 
     if (!nombreLimpio) {
       setPerfilErr("El nombre no puede quedar vacio.");
       return;
     }
-    if (!/^\d{6,15}$/.test(dniLimpio)) {
+    if (dniLimpio && !/^\d{6,15}$/.test(dniLimpio)) {
       setPerfilErr("El DNI debe contener solo numeros (6 a 15 digitos).");
+      return;
+    }
+    if (fechaNacimientoLimpia && !/^\d{4}-\d{2}-\d{2}$/.test(fechaNacimientoLimpia)) {
+      setPerfilErr("La fecha de nacimiento debe tener formato YYYY-MM-DD.");
+      return;
+    }
+    if (localidadLimpia && localidadLimpia.length < 2) {
+      setPerfilErr("La localidad debe tener al menos 2 caracteres.");
+      return;
+    }
+    if (provinciaLimpia && provinciaLimpia.length < 2) {
+      setPerfilErr("La provincia debe tener al menos 2 caracteres.");
       return;
     }
     if (telefonoLimpio && !/^[0-9+\-()\s]{7,25}$/.test(telefonoLimpio)) {
@@ -163,10 +207,22 @@ export function MiPerfil() {
     }
 
     if (nombreLimpio !== (me.nombre || "")) payload.nombre = nombreLimpio;
-    if (dniLimpio !== (me.dni || "")) payload.dni = dniLimpio;
+    if (dniLimpio && dniLimpio !== (me.dni || "")) payload.dni = dniLimpio;
     if (telefonoLimpio !== (me.telefono || "")) payload.telefono = telefonoLimpio;
+    if (fechaNacimientoLimpia && fechaNacimientoLimpia !== (me.fecha_nacimiento || "")) {
+      payload.fecha_nacimiento = fechaNacimientoLimpia;
+    }
+    if (localidadLimpia && localidadLimpia !== (me.localidad || "")) payload.localidad = localidadLimpia;
+    if (provinciaLimpia && provinciaLimpia !== (me.provincia || "")) payload.provincia = provinciaLimpia;
 
-    if (!payload.nombre && !payload.dni && payload.telefono === undefined) {
+    if (
+      !payload.nombre &&
+      !payload.dni &&
+      payload.telefono === undefined &&
+      payload.fecha_nacimiento === undefined &&
+      payload.localidad === undefined &&
+      payload.provincia === undefined
+    ) {
       setPerfilOk("No hay cambios para guardar.");
       return;
     }
@@ -188,7 +244,10 @@ export function MiPerfil() {
 
       <div className="perfil-top-grid">
         <div className="ios-card p-5" style={{ borderLeft: "4px solid #D4621A" }}>
-          <p className="ios-label" style={{ paddingLeft: 0 }}>Datos obligatorios</p>
+          <p className="ios-label" style={{ paddingLeft: 0 }}>Datos para completar compra online</p>
+          <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0.8rem" }}>
+            Puedes registrarte sin estos datos, pero se validan al confirmar un checkout.
+          </p>
 
           <div style={{ display: "grid", gap: "0.75rem" }}>
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Nombre</label>
@@ -204,7 +263,7 @@ export function MiPerfil() {
             <input className="ios-input" value={me?.email || ""} disabled />
 
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>
-              DNI (requerido para canjear)
+              DNI
             </label>
             <input
               className="ios-input"
@@ -213,6 +272,32 @@ export function MiPerfil() {
               inputMode="numeric"
               maxLength={15}
               placeholder="Ej: 35111222"
+            />
+
+            <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Fecha de nacimiento</label>
+            <input
+              className="ios-input"
+              type="date"
+              value={fechaNacimiento}
+              onChange={(event) => setFechaNacimiento(event.target.value)}
+            />
+
+            <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Localidad</label>
+            <input
+              className="ios-input"
+              value={localidad}
+              onChange={(event) => setLocalidad(event.target.value)}
+              maxLength={120}
+              placeholder="Ej: Corrientes"
+            />
+
+            <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Provincia</label>
+            <input
+              className="ios-input"
+              value={provincia}
+              onChange={(event) => setProvincia(event.target.value)}
+              maxLength={120}
+              placeholder="Ej: Corrientes"
             />
 
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Telefono</label>

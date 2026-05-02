@@ -9,25 +9,38 @@ const router = (0, express_1.Router)();
 //   ?categoria=alfajores   → filtra por categoría (exacto, case-insensitive)
 //   ?max_puntos=500        → filtra productos con puntos_requeridos <= N
 router.get("/", async (req, res) => {
-    const { categoria, max_puntos } = req.query;
+    const { categoria, max_puntos, modo } = req.query;
     const conditions = ["activo = 1"];
     const params = [];
     if (categoria && typeof categoria === "string") {
         conditions.push("LOWER(categoria) = LOWER(?)");
         params.push(categoria.trim());
     }
+    const modoParam = typeof modo === "string" ? modo.trim().toLowerCase() : "canje";
+    if (modoParam === "canje") {
+        conditions.push("tipo_producto IN ('canje','mixto')");
+    }
+    else if (modoParam === "venta") {
+        conditions.push("tipo_producto IN ('venta','mixto')");
+    }
+    else if (modoParam === "mixto") {
+        conditions.push("tipo_producto = 'mixto'");
+    }
     if (max_puntos) {
         const pts = parseInt(String(max_puntos), 10);
         if (!isNaN(pts) && pts > 0) {
-            conditions.push("puntos_requeridos <= ?");
+            conditions.push("COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) <= ?");
             params.push(pts);
         }
     }
     const where = conditions.join(" AND ");
-    const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria, puntos_requeridos, puntos_acumulables
+    const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria,
+            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
+            precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
+            track_stock, permite_envio, permite_retiro_local
      FROM productos
      WHERE ${where}
-     ORDER BY puntos_requeridos ASC, nombre ASC`, params);
+     ORDER BY nombre ASC`, params);
     const rows = rowsRaw;
     if (!rows.length) {
         res.json([]);
@@ -56,6 +69,9 @@ router.get("/", async (req, res) => {
             ...row,
             imagenes,
             imagen_url: imagenes[0] ?? null,
+            track_stock: Boolean(row.track_stock),
+            permite_envio: Boolean(row.permite_envio),
+            permite_retiro_local: Boolean(row.permite_retiro_local),
         };
     }));
 });
