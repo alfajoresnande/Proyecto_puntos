@@ -1,0 +1,179 @@
+[2m02:29:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/me[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:11[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:13[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:13[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:29:14[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:06[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:08[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/diagnostico/access-denied[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:08[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/diagnostico/access-denied[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:08[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:30:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:31:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m02:31:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:31:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:31:35[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:24[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:31[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:33:31[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:34:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:34:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:34:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:14[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:15[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:17[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:17[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/paginas/sobre-nosotros[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/paginas/terminos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:27[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:30[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:30[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:31[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos?modo=venta[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:34[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:36:34[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:45:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/me[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:45:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m02:45:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/productos/categorias[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)

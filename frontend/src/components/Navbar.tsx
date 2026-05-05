@@ -130,7 +130,8 @@ export function Navbar() {
           </Link>
 
           <div className="navbar-links">
-            <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Catalogo</NavLink>
+            <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)}>Tienda Online</NavLink>
+            <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
             {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)}>Puntos</NavLink> : null}
@@ -171,6 +172,13 @@ export function Navbar() {
                           >
                             Mis Canjes
                           </Link>
+                          <Link
+                            to="/mis-pedidos"
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Mis Pedidos
+                          </Link>
                         </>
                       ) : null}
                       <button
@@ -207,7 +215,8 @@ export function Navbar() {
 
       {menuOpen ? (
         <div className="navbar-mobile">
-          <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Catalogo</NavLink>
+          <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Tienda Online</NavLink>
+          <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
@@ -232,6 +241,7 @@ export function Navbar() {
                   <div className="navbar-mobile-user-links">
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
+                    <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>Mis Pedidos</Link>
                   </div>
                 ) : null}
 

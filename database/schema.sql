@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
     rol                 ENUM('admin','vendedor','cliente') NOT NULL DEFAULT 'cliente',
     dni                 VARCHAR(20)     NULL,
     telefono            VARCHAR(25)     NULL,
+    fecha_nacimiento    DATE            NULL,
+    localidad           VARCHAR(120)    NULL,
+    provincia           VARCHAR(120)    NULL,
     puntos_saldo        INT             NOT NULL DEFAULT 0,
     codigo_invitacion   VARCHAR(20)     NULL UNIQUE,
     referido_por        INT             NULL,
@@ -60,13 +63,27 @@ CREATE INDEX idx_pwd_reset_usuario_estado
 CREATE TABLE IF NOT EXISTS productos (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
     nombre              VARCHAR(150)    NOT NULL,
+    sku                 VARCHAR(64)     NULL UNIQUE,
     descripcion         TEXT            NULL,
     imagen_url          VARCHAR(255)    NULL,
     categoria           VARCHAR(100)    NULL,
+    tipo_producto       ENUM('canje','venta','mixto')
+                                        NOT NULL DEFAULT 'canje',
     puntos_requeridos   INT             NOT NULL,
     puntos_acumulables  INT             NULL,
+    precio_dinero       DECIMAL(10,2)   NULL,
+    precio_puntos       INT             NULL,
+    puntos_para_canjear INT             NULL,
+    puntaje_al_comprar  INT             NULL,
+    stock_disponible    INT             NOT NULL DEFAULT 0,
+    stock_reservado     INT             NOT NULL DEFAULT 0,
+    track_stock         TINYINT(1)      NOT NULL DEFAULT 1,
+    permite_envio       TINYINT(1)      NOT NULL DEFAULT 0,
+    permite_retiro_local TINYINT(1)     NOT NULL DEFAULT 1,
     activo              TINYINT(1)      NOT NULL DEFAULT 1,
-    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================
@@ -222,6 +239,180 @@ CREATE TABLE IF NOT EXISTS canje_items (
         ON DELETE RESTRICT,
     CONSTRAINT uq_canje_items_producto
         UNIQUE (canje_id, producto_id)
+);
+
+-- ============================================================
+-- TABLA: inventario_sucursal
+-- Stock disponible y reservado por sucursal/local.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS inventario_sucursal (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    producto_id         INT             NOT NULL,
+    sucursal_id         INT             NOT NULL,
+    stock_disponible    INT             NOT NULL DEFAULT 0,
+    stock_reservado     INT             NOT NULL DEFAULT 0,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_inventario_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_inventario_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE CASCADE,
+    CONSTRAINT uq_inventario_producto_sucursal
+        UNIQUE (producto_id, sucursal_id)
+);
+
+-- ============================================================
+-- TABLAS: carrito / ordenes / pagos
+-- Soportan compra online con dinero, canje por puntos y ordenes mixtas.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS carritos (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    usuario_id          INT             NOT NULL,
+    estado              ENUM('activo','convertido','abandonado')
+                                        NOT NULL DEFAULT 'activo',
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_carrito_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+    INDEX idx_carritos_usuario_estado (usuario_id, estado, updated_at)
+);
+
+CREATE TABLE IF NOT EXISTS carrito_items (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    carrito_id          BIGINT UNSIGNED NOT NULL,
+    producto_id         INT             NOT NULL,
+    cantidad            INT             NOT NULL DEFAULT 1,
+    modo_compra         ENUM('dinero','puntos') NOT NULL,
+    precio_dinero_unit  DECIMAL(10,2)   NULL,
+    precio_puntos_unit  INT             NULL,
+    subtotal_dinero     DECIMAL(10,2)   NOT NULL DEFAULT 0,
+    subtotal_puntos     INT             NOT NULL DEFAULT 0,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_carrito_items_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_carrito_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_carrito_item_producto_modo
+        UNIQUE (carrito_id, producto_id, modo_compra)
+);
+
+CREATE TABLE IF NOT EXISTS ordenes (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    usuario_id          INT             NOT NULL,
+    carrito_id          BIGINT UNSIGNED NULL,
+    canal               ENUM('web','admin','vendedor') NOT NULL DEFAULT 'web',
+    tipo_orden          ENUM('canje','venta','mixta') NOT NULL DEFAULT 'canje',
+    estado              ENUM('borrador','pendiente_pago','pagada','preparada','entregada','cancelada','expirada')
+                                        NOT NULL DEFAULT 'borrador',
+    moneda              VARCHAR(8)      NOT NULL DEFAULT 'ARS',
+    total_dinero        DECIMAL(10,2)   NOT NULL DEFAULT 0,
+    total_puntos        INT             NOT NULL DEFAULT 0,
+    direccion_envio_json JSON           NULL,
+    sucursal_retiro_id  INT             NULL,
+    notas               TEXT            NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_orden_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_orden_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_orden_sucursal
+        FOREIGN KEY (sucursal_retiro_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+    INDEX idx_ordenes_usuario_created_at (usuario_id, created_at),
+    INDEX idx_ordenes_estado_created_at (estado, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS orden_items (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    orden_id            BIGINT UNSIGNED NOT NULL,
+    producto_id         INT             NOT NULL,
+    cantidad            INT             NOT NULL DEFAULT 1,
+    modo_compra         ENUM('dinero','puntos') NOT NULL,
+    precio_dinero_unit  DECIMAL(10,2)   NULL,
+    precio_puntos_unit  INT             NULL,
+    subtotal_dinero     DECIMAL(10,2)   NOT NULL DEFAULT 0,
+    subtotal_puntos     INT             NOT NULL DEFAULT 0,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_orden_items_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_orden_items_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+    CONSTRAINT uq_orden_item_producto_modo
+        UNIQUE (orden_id, producto_id, modo_compra)
+);
+
+CREATE TABLE IF NOT EXISTS pagos (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    orden_id            BIGINT UNSIGNED NOT NULL,
+    proveedor           VARCHAR(40)     NOT NULL,
+    metodo              VARCHAR(40)     NULL,
+    estado              ENUM('iniciado','aprobado','rechazado','reembolsado')
+                                        NOT NULL DEFAULT 'iniciado',
+    monto               DECIMAL(10,2)   NOT NULL,
+    moneda              VARCHAR(8)      NOT NULL DEFAULT 'ARS',
+    provider_payment_id VARCHAR(120)    NULL,
+    checkout_url        VARCHAR(500)    NULL,
+    payload_json        JSON            NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_pagos_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE CASCADE,
+    INDEX idx_pagos_orden_estado (orden_id, estado),
+    INDEX idx_pagos_provider_id (provider_payment_id),
+    INDEX idx_pagos_proveedor_metodo (proveedor, metodo)
+);
+
+CREATE TABLE IF NOT EXISTS movimientos_stock (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    producto_id         INT             NOT NULL,
+    sucursal_id         INT             NULL,
+    orden_id            BIGINT UNSIGNED NULL,
+    tipo                ENUM('ingreso','reserva','liberacion','descuento','ajuste')
+                                        NOT NULL,
+    origen              ENUM('compra','canje','admin','devolucion')
+                                        NOT NULL,
+    cantidad            INT             NOT NULL,
+    descripcion         VARCHAR(255)    NULL,
+    creado_por          INT             NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_mov_stock_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_mov_stock_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_mov_stock_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_mov_stock_creado_por
+        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+    INDEX idx_mov_stock_producto_fecha (producto_id, created_at),
+    INDEX idx_mov_stock_orden (orden_id)
 );
 
 -- ============================================================

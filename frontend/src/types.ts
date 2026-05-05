@@ -29,5 +29,14 @@ export type Producto = {
   categoria: string | null;
   puntos_requeridos: number;
   puntos_acumulables: number | null;
+  tipo_producto?: "canje" | "venta" | "mixto";
+  precio_dinero?: number | string | null;
+  precio_puntos?: number | null;
+  puntos_para_canjear?: number | null;
+  stock_disponible?: number;
+  stock_reservado?: number;
+  track_stock?: boolean;
+  permite_envio?: boolean;
+  permite_retiro_local?: boolean;
   activo?: boolean;
 };
