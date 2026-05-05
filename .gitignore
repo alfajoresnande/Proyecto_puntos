@@ -6,4 +6,9 @@ frontend/dist
 frontend/yarn.lock
 backend/node_modules
 backend/yarn.lock
+# Logs locales generados al levantar servidores dev desde Codex/terminal.
+/backend-dev.log
+/backend-dev.err.log
+/frontend-dev.log
+/frontend-dev.err.log
 
