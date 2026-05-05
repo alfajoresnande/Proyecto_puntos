@@ -183,8 +183,14 @@
 
 .store-head {
   align-items: center;
-  flex-direction: row;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+}
+
+.store-head .catalog-header {
+  grid-column: 2;
+  justify-self: center;
+  min-width: 0;
 }
 
 .store-actions {
@@ -192,6 +198,8 @@
   flex-wrap: wrap;
   gap: 0.55rem;
   justify-content: flex-end;
+  grid-column: 3;
+  justify-self: end;
 }
 
 .store-category-select {
@@ -2152,10 +2160,18 @@ body.catalogo-background .pagina-page {
 
   .store-head {
     align-items: stretch;
+    display: flex;
     flex-direction: column;
   }
 
+  .store-head .catalog-header {
+    grid-column: auto;
+    justify-self: auto;
+  }
+
   .store-actions {
+    grid-column: auto;
+    justify-self: stretch;
     justify-content: stretch;
   }
 
