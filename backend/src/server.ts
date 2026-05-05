@@ -12,7 +12,9 @@ import adminRoutes from "./routes/admin";
 import productosRoutes from "./routes/productos";
 import paginasRoutes from "./routes/paginas";
 import diagnosticoRoutes from "./routes/diagnostico";
+import pagosRoutes from "./routes/pagos";
 import { recordSecurityEvent } from "./securityMonitor";
+import { startReservationExpirationWorker } from "./services/expirations";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -74,6 +76,11 @@ const trustedCsrfOrigins = new Set(
 
 function csrfProtection(req: Request, res: Response, next: NextFunction) {
   if (SAFE_METHODS.has(req.method.toUpperCase())) {
+    next();
+    return;
+  }
+
+  if (req.path.startsWith("/pagos/webhook/")) {
     next();
     return;
   }
@@ -180,6 +187,7 @@ app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
 app.use("/api/cliente", clienteRoutes);
 app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/pagos", pagosRoutes);
 
 // Manejo global de errores
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
@@ -195,4 +203,7 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 });
 
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, () => console.log(`API en http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`API en http://localhost:${PORT}`);
+  startReservationExpirationWorker();
+});

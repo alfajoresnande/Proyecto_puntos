@@ -943,21 +943,6 @@ router.post("/checkout/confirm", async (req, res) => {
                 throw new HttpError(400, availability.reason || "Medio de pago no disponible.");
             }
         }
-        if (sucursalSeleccionada) {
-            await (0, stock_1.reserveStockForCheckoutItems)(conn, {
-                sucursalId: sucursalSeleccionada.id,
-                items: itemsNormalizados
-                    .filter((item) => item.track_stock === 1)
-                    .map((item) => ({
-                    producto_id: item.producto_id,
-                    cantidad: item.cantidad,
-                    origen: item.modo_compra === "dinero" ? "compra" : "canje",
-                    descripcion: `Reserva checkout cliente #${req.user.id}`,
-                })),
-                referencia: `checkout carrito #${carritoId}`,
-                creadoPor: req.user.id,
-            });
-        }
         const tipoOrden = totalDinero > 0 && totalPuntos > 0 ? "mixta"
             : totalDinero > 0 ? "venta"
                 : "canje";
@@ -974,6 +959,22 @@ router.post("/checkout/confirm", async (req, res) => {
             sucursalSeleccionada?.id ?? null,
             parsed.data.notas ?? null,
         ]);
+        if (sucursalSeleccionada) {
+            await (0, stock_1.reserveStockForCheckoutItems)(conn, {
+                sucursalId: sucursalSeleccionada.id,
+                items: itemsNormalizados
+                    .filter((item) => item.track_stock === 1)
+                    .map((item) => ({
+                    producto_id: item.producto_id,
+                    cantidad: item.cantidad,
+                    origen: item.modo_compra === "dinero" ? "compra" : "canje",
+                    descripcion: `Reserva orden #${ordenId}`,
+                })),
+                referencia: `orden #${ordenId}`,
+                creadoPor: req.user.id,
+                ordenId: Number(ordenId),
+            });
+        }
         for (const item of itemsNormalizados) {
             await (0, db_1.qRun)(conn, `INSERT INTO orden_items
           (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos)
@@ -1205,6 +1206,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
                 })),
                 referencia: `cancelación orden #${ordenId}`,
                 creadoPor: req.user.id,
+                ordenId,
             });
         }
         const totalPuntos = Number(orden.total_puntos ?? 0);

@@ -16,7 +16,9 @@ const admin_1 = __importDefault(require("./routes/admin"));
 const productos_1 = __importDefault(require("./routes/productos"));
 const paginas_1 = __importDefault(require("./routes/paginas"));
 const diagnostico_1 = __importDefault(require("./routes/diagnostico"));
+const pagos_1 = __importDefault(require("./routes/pagos"));
 const securityMonitor_1 = require("./securityMonitor");
+const expirations_1 = require("./services/expirations");
 const app = (0, express_1.default)();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DEFAULT_FRONTEND_ORIGINS = [
@@ -72,6 +74,10 @@ const trustedCsrfOrigins = new Set(addLoopbackAliases([
 ]));
 function csrfProtection(req, res, next) {
     if (SAFE_METHODS.has(req.method.toUpperCase())) {
+        next();
+        return;
+    }
+    if (req.path.startsWith("/pagos/webhook/")) {
         next();
         return;
     }
@@ -161,6 +167,7 @@ app.use("/api/paginas", paginas_1.default); // publico (sobre nosotros, terminos
 app.use("/api/cliente", cliente_1.default);
 app.use("/api/vendedor", vendedor_1.default);
 app.use("/api/admin", admin_1.default);
+app.use("/api/pagos", pagos_1.default);
 // Manejo global de errores
 app.use((err, req, res, _next) => {
     if (err instanceof Error && err.message === "CORS no permitido para este origen") {
@@ -174,4 +181,7 @@ app.use((err, req, res, _next) => {
     res.status(500).json({ error: "Error interno del servidor" });
 });
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, () => console.log(`API en http://localhost:${PORT}`));
+app.listen(PORT, () => {
+    console.log(`API en http://localhost:${PORT}`);
+    (0, expirations_1.startReservationExpirationWorker)();
+});

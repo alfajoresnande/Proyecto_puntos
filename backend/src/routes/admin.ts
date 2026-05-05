@@ -16,9 +16,11 @@ import {
   finalizeStockForCheckoutItems,
   finalizeReservedStockForCanje,
   getCanjeItemsStock,
+  initializeInventoryForProduct,
   releaseStockForCheckoutItems,
   releaseReservedStockForCanje,
 } from "../services/stock";
+import { runReservationExpirations } from "../services/expirations";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -813,19 +815,28 @@ router.patch("/ordenes/:id", async (req, res) => {
         }));
 
       if (stockItems.length) {
-        if (estado === "entregada") {
+        const shouldFinalizeStock =
+          (estado === "pagada" && Number(orden.total_dinero ?? 0) > 0) ||
+          (estado === "entregada" && orden.estado !== "pagada");
+        const shouldReleaseReservedStock =
+          (estado === "cancelada" || estado === "expirada") &&
+          (orden.estado === "pendiente_pago" || orden.estado === "preparada");
+
+        if (shouldFinalizeStock) {
           await finalizeStockForCheckoutItems(conn, {
             sucursalId: Number(orden.sucursal_retiro_id),
             items: stockItems,
             referencia: `orden #${orderId}`,
             creadoPor: req.user!.id,
+            ordenId: orderId,
           });
-        } else if (estado === "cancelada" || estado === "expirada") {
+        } else if (shouldReleaseReservedStock) {
           await releaseStockForCheckoutItems(conn, {
             sucursalId: Number(orden.sucursal_retiro_id),
             items: stockItems,
             referencia: `orden #${orderId}`,
             creadoPor: req.user!.id,
+            ordenId: orderId,
           });
         }
       }
@@ -982,6 +993,10 @@ router.post("/productos/upload", (req, res, next) => {
 });
 
 router.post("/productos", async (req, res) => {
+  const inventarioSucursalSchema = z.object({
+    sucursal_id: z.number().int().positive(),
+    stock_disponible: z.number().int().min(0),
+  });
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
     sku:                z.string().max(64).optional().nullable(),
@@ -1000,14 +1015,19 @@ router.post("/productos", async (req, res) => {
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
     permite_retiro_local: z.boolean().optional(),
+    inventario_sucursales: z.array(inventarioSucursalSchema).optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
   const {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
     tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
-    stock_disponible, track_stock, permite_envio, permite_retiro_local,
+    stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
+  const inventarioPorSucursal = inventario_sucursales ?? [];
+  const stockDisponibleFinal = inventarioPorSucursal.length
+    ? inventarioPorSucursal.reduce((acc, item) => acc + item.stock_disponible, 0)
+    : stock_disponible ?? 0;
   const imageUrls = normalizeProductImages(imagenes, imagen_url);
   const tipoProducto = tipo_producto ?? "canje";
   const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
@@ -1047,13 +1067,28 @@ router.post("/productos", async (req, res) => {
         puntosRequeridosLegacy,
         puntos_acumulables ?? null,
         puntajeComprarFinal,
-        stock_disponible ?? 0,
+        stockDisponibleFinal,
         track_stock === undefined ? 1 : (track_stock ? 1 : 0),
         permite_envio ? 1 : 0,
         permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
       ]
     );
     await replaceProductImages(conn, insertId, imageUrls);
+    await initializeInventoryForProduct(conn, {
+      productoId: insertId,
+      stockDisponibleInicial: inventarioPorSucursal.length ? 0 : stockDisponibleFinal,
+    });
+    if ((track_stock ?? true) && inventarioPorSucursal.length) {
+      for (const inventario of inventarioPorSucursal) {
+        await adjustStockBySucursal(conn, {
+          productoId: insertId,
+          sucursalId: inventario.sucursal_id,
+          nuevoStockDisponible: inventario.stock_disponible,
+          descripcion: "Stock inicial por sucursal",
+          creadoPor: req.user!.id,
+        });
+      }
+    }
 
     await conn.commit();
     res.status(201).json({ id: insertId });
@@ -1067,6 +1102,10 @@ router.post("/productos", async (req, res) => {
 
 router.put("/productos/:id", async (req, res) => {
   const id = Number(req.params.id);
+  const inventarioSucursalSchema = z.object({
+    sucursal_id: z.number().int().positive(),
+    stock_disponible: z.number().int().min(0),
+  });
   const schema = z.object({
     nombre:             z.string().min(1).max(150),
     sku:                z.string().max(64).optional().nullable(),
@@ -1085,14 +1124,16 @@ router.put("/productos/:id", async (req, res) => {
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
     permite_retiro_local: z.boolean().optional(),
+    inventario_sucursales: z.array(inventarioSucursalSchema).optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
   const {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
     tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
-    stock_disponible, track_stock, permite_envio, permite_retiro_local,
+    stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
+  const inventarioPorSucursal = inventario_sucursales ?? [];
   const imageUrls = normalizeProductImages(imagenes, imagen_url);
   const tipoProducto = tipo_producto ?? "canje";
   const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
@@ -1113,6 +1154,21 @@ router.put("/productos/:id", async (req, res) => {
   try {
     await conn.beginTransaction();
 
+    const current = await qOne<{ id: number; stock_disponible: number; track_stock: number }>(
+      conn,
+      "SELECT id, stock_disponible, track_stock FROM productos WHERE id = ? FOR UPDATE",
+      [id],
+    );
+    if (!current) {
+      await conn.rollback();
+      res.status(404).json({ error: "Producto no encontrado" });
+      return;
+    }
+    const stockDisponibleFinal = inventarioPorSucursal.length
+      ? inventarioPorSucursal.reduce((acc, item) => acc + item.stock_disponible, 0)
+      : stock_disponible ?? Number(current.stock_disponible ?? 0);
+    const trackStockFinal = track_stock === undefined ? Number(current.track_stock ?? 1) === 1 : track_stock;
+
     const { affectedRows } = await qRun(conn,
       `UPDATE productos
        SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?,
@@ -1132,8 +1188,8 @@ router.put("/productos/:id", async (req, res) => {
         puntosRequeridosLegacy,
         puntos_acumulables ?? null,
         puntajeComprarFinal,
-        stock_disponible ?? 0,
-        track_stock === undefined ? 1 : (track_stock ? 1 : 0),
+        stockDisponibleFinal,
+        trackStockFinal ? 1 : 0,
         permite_envio ? 1 : 0,
         permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
         id,
@@ -1146,6 +1202,17 @@ router.put("/productos/:id", async (req, res) => {
     }
 
     await replaceProductImages(conn, id, imageUrls);
+    if (trackStockFinal && inventarioPorSucursal.length) {
+      for (const inventario of inventarioPorSucursal) {
+        await adjustStockBySucursal(conn, {
+          productoId: id,
+          sucursalId: inventario.sucursal_id,
+          nuevoStockDisponible: inventario.stock_disponible,
+          descripcion: "Ajuste desde ficha de producto",
+          creadoPor: req.user!.id,
+        });
+      }
+    }
     await conn.commit();
     res.json({ ok: true });
   } catch (error) {
@@ -1322,6 +1389,50 @@ router.get("/inventario", async (req, res) => {
     params,
   );
   res.json(rows);
+});
+
+router.get("/movimientos-stock", async (req, res) => {
+  const productoId = Number(req.query.producto_id ?? 0);
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  const ordenId = Number(req.query.orden_id ?? 0);
+
+  const conditions: string[] = [];
+  const params: number[] = [];
+  if (Number.isFinite(productoId) && productoId > 0) {
+    conditions.push("m.producto_id = ?");
+    params.push(productoId);
+  }
+  if (Number.isFinite(sucursalId) && sucursalId > 0) {
+    conditions.push("m.sucursal_id = ?");
+    params.push(sucursalId);
+  }
+  if (Number.isFinite(ordenId) && ordenId > 0) {
+    conditions.push("m.orden_id = ?");
+    params.push(ordenId);
+  }
+  const whereSql = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const rows = await qAll(
+    pool,
+    `SELECT m.id, m.producto_id, p.nombre AS producto_nombre, p.sku,
+            m.sucursal_id, s.nombre AS sucursal_nombre, m.orden_id,
+            m.tipo, m.origen, m.cantidad, m.descripcion,
+            m.creado_por, u.nombre AS creado_por_nombre, m.created_at
+     FROM movimientos_stock m
+     JOIN productos p ON p.id = m.producto_id
+     LEFT JOIN sucursales s ON s.id = m.sucursal_id
+     LEFT JOIN usuarios u ON u.id = m.creado_por
+     ${whereSql}
+     ORDER BY m.created_at DESC, m.id DESC
+     LIMIT 500`,
+    params,
+  );
+  res.json(rows);
+});
+
+router.post("/reservas/expirar", async (_req, res) => {
+  const result = await runReservationExpirations();
+  res.json({ ok: true, ...result });
 });
 
 router.patch("/inventario/ajuste", async (req, res) => {

@@ -494,6 +494,35 @@ async function ensureInventarioSucursalSchema() {
         UNIQUE (producto_id, sucursal_id)
     )`
   );
+
+  const [products] = await pool.query(
+    `SELECT p.id, p.stock_disponible, p.stock_reservado
+     FROM productos p
+     LEFT JOIN inventario_sucursal i ON i.producto_id = p.id
+     WHERE i.id IS NULL`
+  ) as [Array<{ id: number; stock_disponible: number; stock_reservado: number }>, any[]];
+  if (!products.length) return;
+
+  const [branches] = await pool.query(
+    "SELECT id FROM sucursales WHERE activo = 1 ORDER BY id ASC"
+  ) as [Array<{ id: number }>, any[]];
+  if (!branches.length) return;
+
+  for (const product of products) {
+    for (let index = 0; index < branches.length; index += 1) {
+      await pool.query(
+        `INSERT INTO inventario_sucursal (producto_id, sucursal_id, stock_disponible, stock_reservado)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
+        [
+          product.id,
+          branches[index].id,
+          index === 0 ? Number(product.stock_disponible ?? 0) : 0,
+          index === 0 ? Number(product.stock_reservado ?? 0) : 0,
+        ]
+      );
+    }
+  }
 }
 
 async function ensureOrderCoreSchema() {

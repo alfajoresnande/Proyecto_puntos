@@ -425,6 +425,46 @@
 
 .adm-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
 
+.adm-product-options,
+.adm-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.adm-check-row {
+  align-items: center;
+  background: #FFF8F0;
+  border: 1px solid rgba(180,84,20,0.22);
+  border-radius: 10px;
+  color: #5C2D0E;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.adm-check-row input {
+  accent-color: #D4621A;
+}
+
+.adm-inventory-editor {
+  border: 1px solid rgba(180,84,20,0.18);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  background: #FFFCF8;
+}
+
+.adm-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
 .adm-config-header {
   margin-top: 1.4rem;
 }
@@ -1280,6 +1320,7 @@
   .admin-stats   { grid-template-columns: repeat(2, 1fr); }
   .adm-form-grid { grid-template-columns: 1fr; }
   .adm-config-grid { grid-template-columns: 1fr; }
+  .adm-inventory-grid { grid-template-columns: 1fr; }
   .adm-inline-points-grid { grid-template-columns: 1fr; }
   .adm-inline-points-actions { justify-content: stretch; }
   .adm-btn-inline { width: 100%; }

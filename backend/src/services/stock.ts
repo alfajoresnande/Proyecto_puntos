@@ -145,9 +145,11 @@ async function recordStockMovement(
     cantidad,
     descripcion,
     creadoPor,
+    ordenId,
   }: {
     productoId: number;
     sucursalId: number | null;
+    ordenId?: number | null;
     tipo: "ingreso" | "reserva" | "liberacion" | "descuento" | "ajuste";
     origen: "compra" | "canje" | "admin" | "devolucion";
     cantidad: number;
@@ -160,8 +162,8 @@ async function recordStockMovement(
     conn,
     `INSERT INTO movimientos_stock
       (producto_id, sucursal_id, orden_id, tipo, origen, cantidad, descripcion, creado_por)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`,
-    [productoId, sucursalId, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null],
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [productoId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null],
   );
 }
 
@@ -374,6 +376,42 @@ export async function adjustStockBySucursal(
   await syncProductoGlobalStock(conn, productoId);
 }
 
+export async function initializeInventoryForProduct(
+  conn: Queryable,
+  {
+    productoId,
+    stockDisponibleInicial,
+  }: {
+    productoId: number;
+    stockDisponibleInicial: number;
+  },
+) {
+  const sucursales = await qAll<{ id: number }>(
+    conn,
+    "SELECT id FROM sucursales WHERE activo = 1 ORDER BY id ASC",
+  );
+  if (!sucursales.length) return;
+
+  const hasInventory = await qOne<{ c: number }>(
+    conn,
+    "SELECT COUNT(*) AS c FROM inventario_sucursal WHERE producto_id = ?",
+    [productoId],
+  );
+  if (Number(hasInventory?.c ?? 0) > 0) return;
+
+  const initialStock = Math.max(0, Number(stockDisponibleInicial) || 0);
+  for (let index = 0; index < sucursales.length; index += 1) {
+    await qRun(
+      conn,
+      `INSERT INTO inventario_sucursal (producto_id, sucursal_id, stock_disponible, stock_reservado)
+       VALUES (?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
+      [productoId, Number(sucursales[index].id), index === 0 ? initialStock : 0],
+    );
+  }
+  await syncProductoGlobalStock(conn, productoId);
+}
+
 export async function getCanjeItemsStock(conn: Queryable, canjeId: number): Promise<CanjeStockItem[]> {
   const rows = await qAll<{ producto_id: number; cantidad: number }>(
     conn,
@@ -395,11 +433,13 @@ export async function reserveStockForCheckoutItems(
     items,
     referencia,
     creadoPor = null,
+    ordenId = null,
   }: {
     sucursalId: number;
     items: CheckoutStockItem[];
     referencia?: string;
     creadoPor?: number | null;
+    ordenId?: number | null;
   },
 ) {
   for (const item of items) {
@@ -429,6 +469,7 @@ export async function reserveStockForCheckoutItems(
       cantidad,
       descripcion: item.descripcion ?? (referencia ? `Reserva ${referencia}` : "Reserva de checkout"),
       creadoPor,
+      ordenId,
     });
     await syncProductoGlobalStock(conn, productoId);
   }
@@ -441,11 +482,13 @@ export async function releaseStockForCheckoutItems(
     items,
     referencia,
     creadoPor = null,
+    ordenId = null,
   }: {
     sucursalId: number;
     items: CheckoutStockItem[];
     referencia?: string;
     creadoPor?: number | null;
+    ordenId?: number | null;
   },
 ) {
   for (const item of items) {
@@ -475,6 +518,7 @@ export async function releaseStockForCheckoutItems(
       cantidad: qtyToRelease,
       descripcion: item.descripcion ?? (referencia ? `Liberación ${referencia}` : "Liberación de checkout"),
       creadoPor,
+      ordenId,
     });
     await syncProductoGlobalStock(conn, productoId);
   }
@@ -487,11 +531,13 @@ export async function finalizeStockForCheckoutItems(
     items,
     referencia,
     creadoPor = null,
+    ordenId = null,
   }: {
     sucursalId: number;
     items: CheckoutStockItem[];
     referencia?: string;
     creadoPor?: number | null;
+    ordenId?: number | null;
   },
 ) {
   for (const item of items) {
@@ -529,6 +575,7 @@ export async function finalizeStockForCheckoutItems(
         cantidad: reservedUsed,
         descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (desde reserva)` : "Entrega desde reserva"),
         creadoPor,
+        ordenId,
       });
     }
 
@@ -542,6 +589,7 @@ export async function finalizeStockForCheckoutItems(
         descripcion:
           item.descripcion ?? (referencia ? `Entrega ${referencia} (sin reserva previa)` : "Entrega sin reserva previa"),
         creadoPor,
+        ordenId,
       });
     }
 

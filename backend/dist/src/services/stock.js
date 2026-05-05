@@ -4,6 +4,7 @@ exports.reserveStockForCanje = reserveStockForCanje;
 exports.releaseReservedStockForCanje = releaseReservedStockForCanje;
 exports.finalizeReservedStockForCanje = finalizeReservedStockForCanje;
 exports.adjustStockBySucursal = adjustStockBySucursal;
+exports.initializeInventoryForProduct = initializeInventoryForProduct;
 exports.getCanjeItemsStock = getCanjeItemsStock;
 exports.reserveStockForCheckoutItems = reserveStockForCheckoutItems;
 exports.releaseStockForCheckoutItems = releaseStockForCheckoutItems;
@@ -69,12 +70,12 @@ async function syncProductoGlobalStock(conn, productoId) {
      SET stock_disponible = ?, stock_reservado = ?
      WHERE id = ?`, [Number(sum?.disponible ?? 0), Number(sum?.reservado ?? 0), productoId]);
 }
-async function recordStockMovement(conn, { productoId, sucursalId, tipo, origen, cantidad, descripcion, creadoPor, }) {
+async function recordStockMovement(conn, { productoId, sucursalId, tipo, origen, cantidad, descripcion, creadoPor, ordenId, }) {
     if (!cantidad)
         return;
     await (0, db_1.qRun)(conn, `INSERT INTO movimientos_stock
       (producto_id, sucursal_id, orden_id, tipo, origen, cantidad, descripcion, creado_por)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`, [productoId, sucursalId, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null]);
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [productoId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null]);
 }
 async function reserveStockForCanje(conn, { sucursalId, items, canjeId, }) {
     for (const item of items) {
@@ -201,6 +202,21 @@ async function adjustStockBySucursal(conn, { productoId, sucursalId, nuevoStockD
     }
     await syncProductoGlobalStock(conn, productoId);
 }
+async function initializeInventoryForProduct(conn, { productoId, stockDisponibleInicial, }) {
+    const sucursales = await (0, db_1.qAll)(conn, "SELECT id FROM sucursales WHERE activo = 1 ORDER BY id ASC");
+    if (!sucursales.length)
+        return;
+    const hasInventory = await (0, db_1.qOne)(conn, "SELECT COUNT(*) AS c FROM inventario_sucursal WHERE producto_id = ?", [productoId]);
+    if (Number(hasInventory?.c ?? 0) > 0)
+        return;
+    const initialStock = Math.max(0, Number(stockDisponibleInicial) || 0);
+    for (let index = 0; index < sucursales.length; index += 1) {
+        await (0, db_1.qRun)(conn, `INSERT INTO inventario_sucursal (producto_id, sucursal_id, stock_disponible, stock_reservado)
+       VALUES (?, ?, ?, 0)
+       ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`, [productoId, Number(sucursales[index].id), index === 0 ? initialStock : 0]);
+    }
+    await syncProductoGlobalStock(conn, productoId);
+}
 async function getCanjeItemsStock(conn, canjeId) {
     const rows = await (0, db_1.qAll)(conn, `SELECT producto_id, cantidad
      FROM canje_items
@@ -210,7 +226,7 @@ async function getCanjeItemsStock(conn, canjeId) {
         cantidad: Number(row.cantidad),
     }));
 }
-async function reserveStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, }) {
+async function reserveStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
     for (const item of items) {
         const productoId = Number(item.producto_id);
         const cantidad = Number(item.cantidad);
@@ -235,11 +251,12 @@ async function reserveStockForCheckoutItems(conn, { sucursalId, items, referenci
             cantidad,
             descripcion: item.descripcion ?? (referencia ? `Reserva ${referencia}` : "Reserva de checkout"),
             creadoPor,
+            ordenId,
         });
         await syncProductoGlobalStock(conn, productoId);
     }
 }
-async function releaseStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, }) {
+async function releaseStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
     for (const item of items) {
         const productoId = Number(item.producto_id);
         const cantidad = Number(item.cantidad);
@@ -261,11 +278,12 @@ async function releaseStockForCheckoutItems(conn, { sucursalId, items, referenci
             cantidad: qtyToRelease,
             descripcion: item.descripcion ?? (referencia ? `Liberación ${referencia}` : "Liberación de checkout"),
             creadoPor,
+            ordenId,
         });
         await syncProductoGlobalStock(conn, productoId);
     }
 }
-async function finalizeStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, }) {
+async function finalizeStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
     for (const item of items) {
         const productoId = Number(item.producto_id);
         const cantidad = Number(item.cantidad);
@@ -290,6 +308,7 @@ async function finalizeStockForCheckoutItems(conn, { sucursalId, items, referenc
                 cantidad: reservedUsed,
                 descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (desde reserva)` : "Entrega desde reserva"),
                 creadoPor,
+                ordenId,
             });
         }
         if (missingFromDisponible > 0) {
@@ -301,6 +320,7 @@ async function finalizeStockForCheckoutItems(conn, { sucursalId, items, referenc
                 cantidad: missingFromDisponible,
                 descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (sin reserva previa)` : "Entrega sin reserva previa"),
                 creadoPor,
+                ordenId,
             });
         }
         await syncProductoGlobalStock(conn, productoId);

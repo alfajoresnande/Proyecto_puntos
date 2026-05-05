@@ -1,0 +1,143 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getOrderForLifecycle = getOrderForLifecycle;
+exports.approvePaidOrder = approvePaidOrder;
+exports.rejectOrExpirePendingOrder = rejectOrExpirePendingOrder;
+const db_1 = require("../db");
+const stock_1 = require("./stock");
+function checkoutStockItems(items, descripcion) {
+    return items
+        .filter((item) => Number(item.track_stock ?? 0) === 1)
+        .map((item) => ({
+        producto_id: Number(item.producto_id),
+        cantidad: Number(item.cantidad),
+        origen: item.modo_compra === "dinero" ? "compra" : "canje",
+        descripcion,
+    }));
+}
+async function getOrderForLifecycle(conn, orderId) {
+    const order = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado, total_puntos, total_dinero, sucursal_retiro_id
+     FROM ordenes
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`, [orderId]);
+    if (!order)
+        return undefined;
+    return {
+        ...order,
+        id: Number(order.id),
+        usuario_id: Number(order.usuario_id),
+        total_puntos: Number(order.total_puntos ?? 0),
+        total_dinero: Number(order.total_dinero ?? 0),
+        sucursal_retiro_id: order.sucursal_retiro_id === null ? null : Number(order.sucursal_retiro_id),
+    };
+}
+async function getOrderStockItems(conn, orderId) {
+    const rows = await (0, db_1.qAll)(conn, `SELECT oi.producto_id, oi.cantidad, oi.modo_compra, p.track_stock
+     FROM orden_items oi
+     JOIN productos p ON p.id = oi.producto_id
+     WHERE oi.orden_id = ?
+     ORDER BY oi.id ASC`, [orderId]);
+    return rows.map((row) => ({
+        ...row,
+        producto_id: Number(row.producto_id),
+        cantidad: Number(row.cantidad),
+        track_stock: Number(row.track_stock ?? 0),
+    }));
+}
+async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado, payload, }) {
+    const payloadJson = payload === undefined ? null : JSON.stringify(payload);
+    const params = [estado];
+    const setParts = ["estado = ?"];
+    if (providerPaymentId) {
+        setParts.push("provider_payment_id = COALESCE(provider_payment_id, ?)");
+        params.push(providerPaymentId);
+    }
+    if (payloadJson) {
+        setParts.push("payload_json = ?");
+        params.push(payloadJson);
+    }
+    params.push(orderId);
+    const whereParts = ["orden_id = ?"];
+    if (provider) {
+        whereParts.push("proveedor = ?");
+        params.push(provider);
+    }
+    if (providerPaymentId) {
+        whereParts.push("(provider_payment_id = ? OR provider_payment_id IS NULL)");
+        params.push(providerPaymentId);
+    }
+    const result = await (0, db_1.qRun)(conn, `UPDATE pagos
+     SET ${setParts.join(", ")}
+     WHERE ${whereParts.join(" AND ")}
+       AND estado = 'iniciado'`, params);
+    if (result.affectedRows === 0 && provider && providerPaymentId) {
+        await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
+       SELECT id, ?, NULL, ?, total_dinero, moneda, ?, ?
+       FROM ordenes
+       WHERE id = ?`, [provider, estado, providerPaymentId, payloadJson, orderId]);
+    }
+}
+async function refundOrderPointsIfReserved(conn, order, descripcion, creadoPor) {
+    if (Number(order.total_puntos ?? 0) <= 0)
+        return;
+    if (!(order.estado === "pendiente_pago" || order.estado === "preparada"))
+        return;
+    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
+      (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
+     VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`, [order.usuario_id, order.total_puntos, descripcion, order.id, creadoPor]);
+    await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
+        order.total_puntos,
+        order.usuario_id,
+    ]);
+}
+async function approvePaidOrder(conn, { orderId, provider, providerPaymentId, payload, }) {
+    const order = await getOrderForLifecycle(conn, orderId);
+    if (!order) {
+        throw new Error("Orden no encontrada.");
+    }
+    if (order.estado !== "pendiente_pago") {
+        await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
+        return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
+    }
+    if (order.sucursal_retiro_id) {
+        const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `Pago aprobado orden #${orderId}`);
+        if (items.length) {
+            await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
+                sucursalId: order.sucursal_retiro_id,
+                items,
+                referencia: `orden #${orderId}`,
+                ordenId: orderId,
+            });
+        }
+    }
+    await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
+    await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = 'pagada' WHERE id = ?", [orderId]);
+    return { ok: true, orderId, previousState: order.estado, state: "pagada", changed: true };
+}
+async function rejectOrExpirePendingOrder(conn, { orderId, nextState, provider, providerPaymentId, payload, creadoPor = null, }) {
+    const order = await getOrderForLifecycle(conn, orderId);
+    if (!order) {
+        throw new Error("Orden no encontrada.");
+    }
+    if (!(order.estado === "pendiente_pago" || order.estado === "preparada")) {
+        await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
+        return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
+    }
+    if (order.sucursal_retiro_id) {
+        const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `${nextState} orden #${orderId}`);
+        if (items.length) {
+            await (0, stock_1.releaseStockForCheckoutItems)(conn, {
+                sucursalId: order.sucursal_retiro_id,
+                items,
+                referencia: `${nextState} orden #${orderId}`,
+                creadoPor,
+                ordenId: orderId,
+            });
+        }
+    }
+    await refundOrderPointsIfReserved(conn, order, `Devolucion puntos por ${nextState} orden #${orderId}`, creadoPor);
+    await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
+    await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [nextState, orderId]);
+    return { ok: true, orderId, previousState: order.estado, state: nextState, changed: true };
+}

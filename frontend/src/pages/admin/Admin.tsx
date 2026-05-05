@@ -11,6 +11,8 @@ type AdminTab =
   | "inicio"
   | "usuarios"
   | "productos"
+  | "inventario"
+  | "ordenes"
   | "categorias"
   | "transacciones"
   | "canjes"
@@ -72,7 +74,63 @@ type Movimiento = {
 
 type ProductoAdmin = Producto & {
   activo: boolean;
+  sku?: string | null;
+  puntaje_al_comprar?: number | null;
   created_at: string;
+};
+
+type InventarioSucursal = {
+  id: number;
+  producto_id: number;
+  producto_nombre: string;
+  sku: string | null;
+  tipo_producto: "canje" | "venta" | "mixto";
+  sucursal_id: number;
+  sucursal_nombre: string;
+  stock_disponible: number;
+  stock_reservado: number;
+  updated_at: string;
+};
+
+type MovimientoStock = {
+  id: number;
+  producto_id: number;
+  producto_nombre: string;
+  sku: string | null;
+  sucursal_id: number | null;
+  sucursal_nombre: string | null;
+  orden_id: number | null;
+  tipo: string;
+  origen: string;
+  cantidad: number;
+  descripcion: string | null;
+  creado_por_nombre: string | null;
+  created_at: string;
+};
+
+type OrdenAdmin = {
+  id: number;
+  usuario_id: number;
+  cliente_nombre: string;
+  cliente_email: string;
+  estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "entregada" | "cancelada" | "expirada";
+  tipo_orden: "canje" | "venta" | "mixta";
+  total_dinero: number;
+  total_puntos: number;
+  moneda: string;
+  sucursal_retiro_id: number | null;
+  sucursal_nombre: string | null;
+  total_items: number;
+  total_unidades: number;
+  pago: {
+    estado: string;
+    proveedor: string;
+    metodo: string | null;
+    monto: number;
+    moneda: string;
+  } | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type Categoria = {
@@ -193,10 +251,18 @@ type ConfirmacionCanje = {
 
 type ProductoForm = {
   nombre: string;
+  sku: string;
   descripcion: string;
   categoria: string;
+  tipo_producto: "canje" | "venta" | "mixto";
+  precio_dinero: number | null;
   puntos_requeridos: number | null;
   puntos_acumulables: number | null;
+  puntaje_al_comprar: number | null;
+  track_stock: boolean;
+  permite_envio: boolean;
+  permite_retiro_local: boolean;
+  inventario_sucursales: Record<string, number | null>;
   imagenes: string[];
 };
 
@@ -294,12 +360,45 @@ function formatEstadoCanje(estado: string): string {
 function emptyProductoForm(): ProductoForm {
   return {
     nombre: "",
+    sku: "",
     descripcion: "",
     categoria: "",
+    tipo_producto: "canje",
+    precio_dinero: null,
     puntos_requeridos: null,
     puntos_acumulables: null,
+    puntaje_al_comprar: null,
+    track_stock: true,
+    permite_envio: false,
+    permite_retiro_local: true,
+    inventario_sucursales: {},
     imagenes: [],
   };
+}
+
+function formatMoney(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n);
+}
+
+function formatTipoProducto(tipo?: ProductoAdmin["tipo_producto"]): string {
+  if (tipo === "venta") return "Venta";
+  if (tipo === "mixto") return "Mixto";
+  return "Canje";
+}
+
+function formatEstadoOrden(estado: string): string {
+  const labels: Record<string, string> = {
+    borrador: "Borrador",
+    pendiente_pago: "Pendiente pago",
+    pagada: "Pagada",
+    preparada: "Preparada",
+    entregada: "Entregada",
+    cancelada: "Cancelada",
+    expirada: "Expirada",
+  };
+  return labels[estado] ?? estado.replace(/_/g, " ");
 }
 
 function normalizeImageList(urls: string[]): string[] {
@@ -307,6 +406,25 @@ function normalizeImageList(urls: string[]): string[] {
     .map((url) => url.trim())
     .filter((url) => Boolean(url))
     .slice(0, MAX_PRODUCT_IMAGES);
+}
+
+function productoInventoryPayload(producto: ProductoForm, sucursales: SucursalAdmin[]) {
+  if (!producto.track_stock) return [];
+  return sucursales
+    .filter((sucursal) => sucursal.activo)
+    .map((sucursal) => ({
+      sucursal_id: sucursal.id,
+      stock_disponible: Math.max(0, Number(producto.inventario_sucursales[String(sucursal.id)] ?? 0) || 0),
+    }));
+}
+
+function inventoryDraftFromRows(rows: InventarioSucursal[] | undefined, sucursales: SucursalAdmin[]): Record<string, number | null> {
+  const draft: Record<string, number | null> = {};
+  for (const sucursal of sucursales) {
+    const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
+    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : 0;
+  }
+  return draft;
 }
 
 function emptySucursalForm(): SucursalForm {
@@ -433,12 +551,19 @@ export function Admin() {
   const [movimientosInicioPage, setMovimientosInicioPage] = useState(1);
   const [usuariosPage, setUsuariosPage] = useState(1);
   const [productosPage, setProductosPage] = useState(1);
+  const [inventarioPage, setInventarioPage] = useState(1);
+  const [ordenesPage, setOrdenesPage] = useState(1);
   const [categoriasPage, setCategoriasPage] = useState(1);
   const [transaccionesPage, setTransaccionesPage] = useState(1);
   const [canjesPage, setCanjesPage] = useState(1);
   const [codigosPage, setCodigosPage] = useState(1);
   const [sucursalesPage, setSucursalesPage] = useState(1);
   const [seguridadPage, setSeguridadPage] = useState(1);
+  const [busquedaInventario, setBusquedaInventario] = useState("");
+  const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
+  const [inventarioDraft, setInventarioDraft] = useState<Record<string, string>>({});
+  const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
+  const [inventarioFiltroProducto, setInventarioFiltroProducto] = useState("");
   const [asignacionUsuarioId, setAsignacionUsuarioId] = useState<number | null>(null);
   const [asignacionPuntos, setAsignacionPuntos] = useState("100");
   const [asignacionDescripcion, setAsignacionDescripcion] = useState("");
@@ -498,6 +623,21 @@ export function Admin() {
   const productosQuery = useQuery({
     queryKey: ["admin", "productos"],
     queryFn: () => api.get<ProductoAdmin[]>("/admin/productos"),
+  });
+
+  const inventarioQuery = useQuery({
+    queryKey: ["admin", "inventario"],
+    queryFn: () => api.get<InventarioSucursal[]>("/admin/inventario"),
+  });
+
+  const movimientosStockQuery = useQuery({
+    queryKey: ["admin", "movimientos-stock"],
+    queryFn: () => api.get<MovimientoStock[]>("/admin/movimientos-stock"),
+  });
+
+  const ordenesQuery = useQuery({
+    queryKey: ["admin", "ordenes"],
+    queryFn: () => api.get<OrdenAdmin[]>("/admin/ordenes"),
   });
 
   const categoriasQuery = useQuery({
@@ -616,6 +756,9 @@ export function Admin() {
   }
 
   const productos = productosQuery.data ?? [];
+  const inventario = inventarioQuery.data ?? [];
+  const movimientosStock = movimientosStockQuery.data ?? [];
+  const ordenes = ordenesQuery.data ?? [];
   const usuarios = usuariosQuery.data ?? [];
   const movimientos = movimientosQuery.data ?? [];
   const categorias = categoriasQuery.data ?? [];
@@ -632,6 +775,15 @@ export function Admin() {
   );
   const totalSeguridadPages = Math.max(1, Math.ceil(blockedAccessEvents.length / INTENTOS_SEGURIDAD_POR_PAGINA));
   const totalMovimientosInicioPages = Math.max(1, Math.ceil(movimientos.length / MOVIMIENTOS_INICIO_POR_PAGINA));
+  const inventarioPorProducto = useMemo(() => {
+    const map = new Map<number, InventarioSucursal[]>();
+    for (const row of inventario) {
+      const current = map.get(Number(row.producto_id)) ?? [];
+      current.push(row);
+      map.set(Number(row.producto_id), current);
+    }
+    return map;
+  }, [inventario]);
 
   useEffect(() => {
     setMovimientosInicioPage((prev) => Math.min(prev, totalMovimientosInicioPages));
@@ -665,9 +817,12 @@ export function Admin() {
     return productos.filter((producto) => {
       const haystack = [
         producto.nombre,
+        producto.sku || "",
+        producto.tipo_producto || "",
         producto.descripcion || "",
         producto.categoria || "",
         String(producto.puntos_requeridos),
+        String(producto.precio_dinero ?? ""),
         String(producto.puntos_acumulables ?? ""),
       ]
         .join(" ")
@@ -676,8 +831,47 @@ export function Admin() {
     });
   }, [productos, busquedaProductos]);
 
+  const inventarioFiltrado = useMemo(() => {
+    const q = busquedaInventario.trim().toLowerCase();
+    return inventario.filter((row) => {
+      const sucursalOk = !inventarioFiltroSucursal || Number(row.sucursal_id) === Number(inventarioFiltroSucursal);
+      const productoOk = !inventarioFiltroProducto || Number(row.producto_id) === Number(inventarioFiltroProducto);
+      if (!sucursalOk || !productoOk) return false;
+      if (!q) return true;
+      const haystack = [
+        row.producto_nombre,
+        row.sku || "",
+        row.tipo_producto,
+        row.sucursal_nombre,
+        String(row.stock_disponible),
+        String(row.stock_reservado),
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [busquedaInventario, inventario, inventarioFiltroProducto, inventarioFiltroSucursal]);
+
+  const ordenesFiltradas = useMemo(() => {
+    const q = busquedaOrdenes.trim().toLowerCase();
+    if (!q) return ordenes;
+    return ordenes.filter((orden) => {
+      const haystack = [
+        String(orden.id),
+        orden.cliente_nombre,
+        orden.cliente_email,
+        orden.estado,
+        orden.tipo_orden,
+        orden.sucursal_nombre || "",
+        orden.pago?.estado || "",
+        orden.pago?.proveedor || "",
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [busquedaOrdenes, ordenes]);
+
   const totalUsuariosPages = Math.max(1, Math.ceil(usuariosFiltrados.length / LISTA_POR_PAGINA));
   const totalProductosPages = Math.max(1, Math.ceil(productosFiltrados.length / LISTA_POR_PAGINA));
+  const totalInventarioPages = Math.max(1, Math.ceil(inventarioFiltrado.length / LISTA_POR_PAGINA));
+  const totalOrdenesPages = Math.max(1, Math.ceil(ordenesFiltradas.length / LISTA_POR_PAGINA));
   const totalCategoriasPages = Math.max(1, Math.ceil(categorias.length / LISTA_POR_PAGINA));
   const totalTransaccionesPages = Math.max(1, Math.ceil(movimientos.length / LISTA_POR_PAGINA));
   const totalCanjesPages = Math.max(1, Math.ceil(canjes.length / LISTA_POR_PAGINA));
@@ -691,6 +885,14 @@ export function Admin() {
   useEffect(() => {
     setProductosPage((prev) => Math.min(prev, totalProductosPages));
   }, [totalProductosPages]);
+
+  useEffect(() => {
+    setInventarioPage((prev) => Math.min(prev, totalInventarioPages));
+  }, [totalInventarioPages]);
+
+  useEffect(() => {
+    setOrdenesPage((prev) => Math.min(prev, totalOrdenesPages));
+  }, [totalOrdenesPages]);
 
   useEffect(() => {
     setCategoriasPage((prev) => Math.min(prev, totalCategoriasPages));
@@ -730,6 +932,16 @@ export function Admin() {
     const start = (productosPage - 1) * LISTA_POR_PAGINA;
     return productosFiltrados.slice(start, start + LISTA_POR_PAGINA);
   }, [productosFiltrados, productosPage]);
+
+  const inventarioPagina = useMemo(() => {
+    const start = (inventarioPage - 1) * LISTA_POR_PAGINA;
+    return inventarioFiltrado.slice(start, start + LISTA_POR_PAGINA);
+  }, [inventarioFiltrado, inventarioPage]);
+
+  const ordenesPagina = useMemo(() => {
+    const start = (ordenesPage - 1) * LISTA_POR_PAGINA;
+    return ordenesFiltradas.slice(start, start + LISTA_POR_PAGINA);
+  }, [ordenesFiltradas, ordenesPage]);
 
   const categoriasPagina = useMemo(() => {
     const start = (categoriasPage - 1) * LISTA_POR_PAGINA;
@@ -837,8 +1049,13 @@ export function Admin() {
       return;
     }
 
-    if (!nuevoProducto.puntos_requeridos || nuevoProducto.puntos_requeridos <= 0) {
-      setErrMsg("Los puntos requeridos deben ser mayores a 0.");
+    if ((nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto") && (!nuevoProducto.puntos_requeridos || nuevoProducto.puntos_requeridos <= 0)) {
+      setErrMsg("Los puntos para canjear deben ser mayores a 0.");
+      return;
+    }
+
+    if ((nuevoProducto.tipo_producto === "venta" || nuevoProducto.tipo_producto === "mixto") && (!nuevoProducto.precio_dinero || nuevoProducto.precio_dinero <= 0)) {
+      setErrMsg("El precio de venta debe ser mayor a 0.");
       return;
     }
 
@@ -852,10 +1069,19 @@ export function Admin() {
         path: "/admin/productos",
         body: {
           nombre: nuevoProducto.nombre.trim(),
+          sku: nuevoProducto.sku.trim() || null,
           descripcion: nuevoProducto.descripcion || null,
           categoria: nuevoProducto.categoria || null,
+          tipo_producto: nuevoProducto.tipo_producto,
+          precio_dinero: nuevoProducto.tipo_producto === "venta" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.precio_dinero) : null,
           puntos_requeridos: Number(nuevoProducto.puntos_requeridos),
+          puntos_para_canjear: nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.puntos_requeridos) : null,
           puntos_acumulables: nuevoProducto.puntos_acumulables ? Number(nuevoProducto.puntos_acumulables) : null,
+          puntaje_al_comprar: nuevoProducto.puntaje_al_comprar ? Number(nuevoProducto.puntaje_al_comprar) : null,
+          track_stock: nuevoProducto.track_stock,
+          permite_envio: nuevoProducto.permite_envio,
+          permite_retiro_local: nuevoProducto.permite_retiro_local,
+          inventario_sucursales: productoInventoryPayload(nuevoProducto, sucursales),
           imagenes,
           imagen_url: imagenUrl,
         },
@@ -863,7 +1089,7 @@ export function Admin() {
 
       setNuevoProducto(emptyProductoForm());
       setOkMsg("Producto creado correctamente.");
-      await refreshQueries([["admin", "productos"], ["admin", "stats"]]);
+      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -875,10 +1101,18 @@ export function Admin() {
     setEditId(producto.id);
     setEditDraft({
       nombre: producto.nombre,
+      sku: producto.sku || "",
       descripcion: producto.descripcion || "",
       categoria: producto.categoria || "",
-      puntos_requeridos: producto.puntos_requeridos,
+      tipo_producto: producto.tipo_producto ?? "canje",
+      precio_dinero: producto.precio_dinero === null || producto.precio_dinero === undefined ? null : Number(producto.precio_dinero),
+      puntos_requeridos: producto.puntos_para_canjear ?? producto.precio_puntos ?? producto.puntos_requeridos,
       puntos_acumulables: producto.puntos_acumulables,
+      puntaje_al_comprar: producto.puntaje_al_comprar ?? null,
+      track_stock: producto.track_stock ?? true,
+      permite_envio: producto.permite_envio ?? false,
+      permite_retiro_local: producto.permite_retiro_local ?? true,
+      inventario_sucursales: inventoryDraftFromRows(inventarioPorProducto.get(producto.id), sucursales),
       imagenes: normalizeImageList(producto.imagenes ?? (producto.imagen_url ? [producto.imagen_url] : [])),
     });
   }
@@ -886,8 +1120,12 @@ export function Admin() {
   async function saveEdit(productoId: number) {
     setErrMsg("");
     setOkMsg("");
-    if (!editDraft.puntos_requeridos || editDraft.puntos_requeridos <= 0) {
-      setErrMsg("Los puntos requeridos deben ser mayores a 0.");
+    if ((editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto") && (!editDraft.puntos_requeridos || editDraft.puntos_requeridos <= 0)) {
+      setErrMsg("Los puntos para canjear deben ser mayores a 0.");
+      return;
+    }
+    if ((editDraft.tipo_producto === "venta" || editDraft.tipo_producto === "mixto") && (!editDraft.precio_dinero || editDraft.precio_dinero <= 0)) {
+      setErrMsg("El precio de venta debe ser mayor a 0.");
       return;
     }
     setBusy(true);
@@ -900,10 +1138,19 @@ export function Admin() {
         path: `/admin/productos/${productoId}`,
         body: {
           nombre: editDraft.nombre.trim(),
+          sku: editDraft.sku.trim() || null,
           descripcion: editDraft.descripcion || null,
           categoria: editDraft.categoria || null,
+          tipo_producto: editDraft.tipo_producto,
+          precio_dinero: editDraft.tipo_producto === "venta" || editDraft.tipo_producto === "mixto" ? Number(editDraft.precio_dinero) : null,
           puntos_requeridos: Number(editDraft.puntos_requeridos),
+          puntos_para_canjear: editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto" ? Number(editDraft.puntos_requeridos) : null,
           puntos_acumulables: editDraft.puntos_acumulables ? Number(editDraft.puntos_acumulables) : null,
+          puntaje_al_comprar: editDraft.puntaje_al_comprar ? Number(editDraft.puntaje_al_comprar) : null,
+          track_stock: editDraft.track_stock,
+          permite_envio: editDraft.permite_envio,
+          permite_retiro_local: editDraft.permite_retiro_local,
+          inventario_sucursales: productoInventoryPayload(editDraft, sucursales),
           imagenes,
           imagen_url: imagenUrl,
         },
@@ -911,7 +1158,7 @@ export function Admin() {
 
       setEditId(null);
       setOkMsg("Producto actualizado.");
-      await refreshQueries([["admin", "productos"]]);
+      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -930,6 +1177,72 @@ export function Admin() {
       await refreshQueries([["admin", "productos"], ["admin", "stats"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
+    }
+  }
+
+  async function guardarAjusteInventario(row: InventarioSucursal) {
+    const key = `${row.producto_id}:${row.sucursal_id}`;
+    const raw = inventarioDraft[key] ?? String(row.stock_disponible);
+    const nuevoStock = Number(raw);
+    if (!Number.isInteger(nuevoStock) || nuevoStock < 0) {
+      setErrMsg("El stock disponible debe ser un entero mayor o igual a 0.");
+      return;
+    }
+
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      await commandMutation.mutateAsync({
+        method: "patch",
+        path: "/admin/inventario/ajuste",
+        body: {
+          producto_id: row.producto_id,
+          sucursal_id: row.sucursal_id,
+          nuevo_stock_disponible: nuevoStock,
+          descripcion: "Ajuste desde panel de inventario",
+        },
+      });
+      setOkMsg("Inventario actualizado.");
+      await refreshQueries([["admin", "inventario"], ["admin", "productos"], ["admin", "movimientos-stock"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function actualizarEstadoOrden(id: number, estado: OrdenAdmin["estado"]) {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      await commandMutation.mutateAsync({
+        method: "patch",
+        path: `/admin/ordenes/${id}`,
+        body: { estado },
+      });
+      setOkMsg(`Orden #${id} actualizada a ${formatEstadoOrden(estado)}.`);
+      await refreshQueries([["admin", "ordenes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function expirarReservas() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      const result = await api.post<{ ok: boolean; ordenes_expiradas: number; canjes_expirados: number }>("/admin/reservas/expirar");
+      setOkMsg(`Reservas revisadas. Ordenes expiradas: ${result.ordenes_expiradas}. Canjes expirados: ${result.canjes_expirados}.`);
+      await refreshQueries([["admin", "ordenes"], ["admin", "canjes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1168,7 +1481,7 @@ export function Admin() {
         : "Canje anulado correctamente. Los puntos han sido devueltos al cliente.";
       setOkMsg(msg);
       
-      await refreshQueries([["admin", "canjes"], ["admin", "stats"]]);
+      await refreshQueries([["admin", "canjes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -1209,7 +1522,7 @@ export function Admin() {
           ? "Canje marcado como no disponible. Puntos devueltos al cliente."
           : "Canje cancelado. Puntos devueltos al cliente."
       );
-      await refreshQueries([["admin", "canjes"], ["admin", "stats"]]);
+      await refreshQueries([["admin", "canjes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"]]);
     } catch (error) {
       setCanjeCodigoAdminErr((error as Error).message);
     } finally {
@@ -1554,6 +1867,12 @@ export function Admin() {
           </button>
           <button className={`admin-nav-btn ${tab === "productos" ? "active" : ""}`} onClick={() => setTab("productos")}>
             Productos
+          </button>
+          <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => setTab("inventario")}>
+            Inventario
+          </button>
+          <button className={`admin-nav-btn ${tab === "ordenes" ? "active" : ""}`} onClick={() => setTab("ordenes")}>
+            Compras
           </button>
           <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
             Categorias
@@ -2226,10 +2545,22 @@ export function Admin() {
                     <input className="adm-input" value={nuevoProducto.nombre} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, nombre: event.target.value }))} />
                   </div>
                   <div className="adm-field">
+                    <label className="adm-label">SKU</label>
+                    <input className="adm-input" placeholder="Opcional" value={nuevoProducto.sku} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, sku: event.target.value }))} />
+                  </div>
+                  <div className="adm-field">
                     <label className="adm-label">Categoria</label>
                     <select className="adm-input" value={nuevoProducto.categoria} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, categoria: event.target.value }))}>
                       <option value="">Sin categoria</option>
                       {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Tipo de producto</label>
+                    <select className="adm-input" value={nuevoProducto.tipo_producto} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, tipo_producto: event.target.value as ProductoForm["tipo_producto"] }))}>
+                      <option value="canje">Solo canje</option>
+                      <option value="venta">Solo venta online</option>
+                      <option value="mixto">Venta y canje</option>
                     </select>
                   </div>
                 </div>
@@ -2240,15 +2571,64 @@ export function Admin() {
                 </div>
 
                 <div className="adm-form-grid">
+                  {(nuevoProducto.tipo_producto === "venta" || nuevoProducto.tipo_producto === "mixto") ? (
+                    <div className="adm-field">
+                      <label className="adm-label">Precio venta</label>
+                      <input type="number" min={1} className="adm-input" value={nuevoProducto.precio_dinero ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, precio_dinero: event.target.value ? Number(event.target.value) : null }))} />
+                    </div>
+                  ) : null}
                   <div className="adm-field">
-                    <label className="adm-label">Puntos requeridos</label>
+                    <label className="adm-label">Puntos para canjear</label>
                     <input type="number" min={1} className="adm-input" value={nuevoProducto.puntos_requeridos ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))} />
                   </div>
                   <div className="adm-field">
-                    <label className="adm-label">Puntos acumulables</label>
-                    <input type="number" className="adm-input" value={nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
+                    <label className="adm-label">Puntos que suma al comprar</label>
+                    <input type="number" className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
                   </div>
                 </div>
+
+                <div className="adm-product-options">
+                  <label className="adm-check-row">
+                    <input type="checkbox" checked={nuevoProducto.track_stock} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, track_stock: event.target.checked }))} />
+                    Controlar stock
+                  </label>
+                  <label className="adm-check-row">
+                    <input type="checkbox" checked={nuevoProducto.permite_retiro_local} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, permite_retiro_local: event.target.checked }))} />
+                    Retiro en sucursal
+                  </label>
+                  <label className="adm-check-row">
+                    <input type="checkbox" checked={nuevoProducto.permite_envio} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, permite_envio: event.target.checked }))} />
+                    Permite envio
+                  </label>
+                </div>
+
+                {nuevoProducto.track_stock ? (
+                  <div className="adm-inventory-editor">
+                    <p className="adm-inline-tip">Carga el stock disponible por sucursal. El stock reservado lo maneja el sistema al confirmar compras o canjes.</p>
+                    <div className="adm-inventory-grid">
+                      {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                        <div className="adm-field" key={sucursal.id}>
+                          <label className="adm-label">{sucursal.nombre}</label>
+                          <input
+                            type="number"
+                            min={0}
+                            className="adm-input"
+                            value={nuevoProducto.inventario_sucursales[String(sucursal.id)] ?? ""}
+                            onChange={(event) =>
+                              setNuevoProducto((prev) => ({
+                                ...prev,
+                                inventario_sucursales: {
+                                  ...prev.inventario_sucursales,
+                                  [String(sucursal.id)]: event.target.value ? Number(event.target.value) : 0,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div
                   className="adm-upload adm-upload-dropzone"
@@ -2323,6 +2703,15 @@ export function Admin() {
                             />
                           </div>
                           <div className="adm-field">
+                            <FieldLabel text="SKU" tip="Codigo interno opcional para identificar producto y reportes." />
+                            <input
+                              className="adm-input"
+                              value={editDraft.sku}
+                              onChange={(event) => setEditDraft((prev) => ({ ...prev, sku: event.target.value }))}
+                              placeholder="SKU opcional"
+                            />
+                          </div>
+                          <div className="adm-field">
                             <FieldLabel
                               text="Categoria"
                               tip="Categoria del producto para filtros. Si no aplica, deja Sin categoria."
@@ -2334,6 +2723,18 @@ export function Admin() {
                             >
                               <option value="">Sin categoria</option>
                               {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                            </select>
+                          </div>
+                          <div className="adm-field">
+                            <FieldLabel text="Tipo de producto" tip="Define si aparece en canjes, tienda online o en ambas experiencias." />
+                            <select
+                              className="adm-input"
+                              value={editDraft.tipo_producto}
+                              onChange={(event) => setEditDraft((prev) => ({ ...prev, tipo_producto: event.target.value as ProductoForm["tipo_producto"] }))}
+                            >
+                              <option value="canje">Solo canje</option>
+                              <option value="venta">Solo venta online</option>
+                              <option value="mixto">Venta y canje</option>
                             </select>
                           </div>
                         </div>
@@ -2352,6 +2753,18 @@ export function Admin() {
                         </div>
 
                         <div className="adm-form-grid">
+                          {(editDraft.tipo_producto === "venta" || editDraft.tipo_producto === "mixto") ? (
+                            <div className="adm-field">
+                              <FieldLabel text="Precio venta" tip="Precio en pesos para Tienda Online." />
+                              <input
+                                type="number"
+                                min={1}
+                                className="adm-input"
+                                value={editDraft.precio_dinero ?? ""}
+                                onChange={(event) => setEditDraft((prev) => ({ ...prev, precio_dinero: event.target.value ? Number(event.target.value) : null }))}
+                              />
+                            </div>
+                          ) : null}
                           <div className="adm-field">
                             <FieldLabel
                               text="Puntos para canjear"
@@ -2374,13 +2787,56 @@ export function Admin() {
                               type="number"
                               min={0}
                               className="adm-input"
-                              value={editDraft.puntos_acumulables ?? ""}
+                              value={editDraft.puntaje_al_comprar ?? editDraft.puntos_acumulables ?? ""}
                               onChange={(event) =>
-                                setEditDraft((prev) => ({ ...prev, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))
+                                setEditDraft((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))
                               }
                             />
                           </div>
                         </div>
+
+                        <div className="adm-product-options">
+                          <label className="adm-check-row">
+                            <input type="checkbox" checked={editDraft.track_stock} onChange={(event) => setEditDraft((prev) => ({ ...prev, track_stock: event.target.checked }))} />
+                            Controlar stock
+                          </label>
+                          <label className="adm-check-row">
+                            <input type="checkbox" checked={editDraft.permite_retiro_local} onChange={(event) => setEditDraft((prev) => ({ ...prev, permite_retiro_local: event.target.checked }))} />
+                            Retiro en sucursal
+                          </label>
+                          <label className="adm-check-row">
+                            <input type="checkbox" checked={editDraft.permite_envio} onChange={(event) => setEditDraft((prev) => ({ ...prev, permite_envio: event.target.checked }))} />
+                            Permite envio
+                          </label>
+                        </div>
+
+                        {editDraft.track_stock ? (
+                          <div className="adm-inventory-editor">
+                            <p className="adm-inline-tip">Ajusta stock disponible por sucursal. No edites el reservado: se mueve solo con compras, canjes y expiraciones.</p>
+                            <div className="adm-inventory-grid">
+                              {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                                <div className="adm-field" key={sucursal.id}>
+                                  <label className="adm-label">{sucursal.nombre}</label>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    className="adm-input"
+                                    value={editDraft.inventario_sucursales[String(sucursal.id)] ?? ""}
+                                    onChange={(event) =>
+                                      setEditDraft((prev) => ({
+                                        ...prev,
+                                        inventario_sucursales: {
+                                          ...prev.inventario_sucursales,
+                                          [String(sucursal.id)]: event.target.value ? Number(event.target.value) : 0,
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
 
                         <div
                           className="adm-upload adm-upload-dropzone"
@@ -2435,7 +2891,12 @@ export function Admin() {
                         <div>
                           <p className="admin-producto-title">{producto.nombre}</p>
                           <p className="admin-producto-sub">
-                            {producto.categoria || "Sin categoria"} - {producto.puntos_requeridos} pts
+                            {formatTipoProducto(producto.tipo_producto)} - {producto.categoria || "Sin categoria"}
+                            {producto.tipo_producto === "venta" || producto.tipo_producto === "mixto" ? ` - ${formatMoney(producto.precio_dinero)}` : ""}
+                            {producto.tipo_producto === "canje" || producto.tipo_producto === "mixto" || !producto.tipo_producto ? ` - ${producto.puntos_para_canjear ?? producto.precio_puntos ?? producto.puntos_requeridos} pts` : ""}
+                          </p>
+                          <p className="admin-producto-sub">
+                            Stock: {producto.track_stock === false ? "Sin control" : `${producto.stock_disponible ?? 0} disp. / ${producto.stock_reservado ?? 0} reservado`}
                           </p>
                           <p className="admin-producto-sub">Imágenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
                         </div>
@@ -2456,6 +2917,201 @@ export function Admin() {
                   totalPages={totalProductosPages}
                   onPrev={() => setProductosPage((prev) => Math.max(1, prev - 1))}
                   onNext={() => setProductosPage((prev) => Math.min(totalProductosPages, prev + 1))}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "inventario" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Inventario por sucursal" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                <div className="adm-form-grid">
+                  <input className="adm-input" placeholder="Buscar producto, SKU o sucursal..." value={busquedaInventario} onChange={(event) => setBusquedaInventario(event.target.value)} />
+                  <select className="adm-input" value={inventarioFiltroSucursal} onChange={(event) => setInventarioFiltroSucursal(event.target.value)}>
+                    <option value="">Todas las sucursales</option>
+                    {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
+                  </select>
+                  <select className="adm-input" value={inventarioFiltroProducto} onChange={(event) => setInventarioFiltroProducto(event.target.value)}>
+                    <option value="">Todos los productos</option>
+                    {productos.map((producto) => <option key={producto.id} value={producto.id}>{producto.nombre}</option>)}
+                  </select>
+                  <button className="adm-btn-secondary" onClick={() => void expirarReservas()} disabled={busy}>
+                    Revisar reservas vencidas
+                  </button>
+                </div>
+                <p className="adm-inline-tip">Disponible se puede ajustar manualmente. Reservado cambia con compras, canjes, cancelaciones y expiraciones.</p>
+              </div>
+
+              <div className="admin-card">
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Sucursal</th>
+                        <th>Tipo</th>
+                        <th>Disponible</th>
+                        <th>Reservado</th>
+                        <th>Actualizar</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inventarioPagina.length === 0 ? (
+                        <tr><td colSpan={6}><div className="adm-empty">No hay inventario para mostrar.</div></td></tr>
+                      ) : null}
+                      {inventarioPagina.map((row) => {
+                        const key = `${row.producto_id}:${row.sucursal_id}`;
+                        return (
+                          <tr key={row.id}>
+                            <td>
+                              {row.producto_nombre}
+                              <br />
+                              <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{row.sku || "Sin SKU"}</span>
+                            </td>
+                            <td>{row.sucursal_nombre}</td>
+                            <td>{formatTipoProducto(row.tipo_producto)}</td>
+                            <td style={{ minWidth: 120 }}>
+                              <input
+                                type="number"
+                                min={0}
+                                className="adm-input"
+                                value={inventarioDraft[key] ?? String(row.stock_disponible)}
+                                onChange={(event) => setInventarioDraft((prev) => ({ ...prev, [key]: event.target.value }))}
+                              />
+                            </td>
+                            <td><strong>{row.stock_reservado}</strong></td>
+                            <td>
+                              <button className="adm-btn-link" onClick={() => void guardarAjusteInventario(row)} disabled={busy}>
+                                Guardar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControls
+                  page={inventarioPage}
+                  totalPages={totalInventarioPages}
+                  onPrev={() => setInventarioPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setInventarioPage((prev) => Math.min(totalInventarioPages, prev + 1))}
+                />
+              </div>
+
+              <SectionTitle title="Kardex de stock" />
+              <div className="admin-card">
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Producto</th>
+                        <th>Sucursal</th>
+                        <th>Orden</th>
+                        <th>Movimiento</th>
+                        <th>Cantidad</th>
+                        <th>Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimientosStock.slice(0, 12).length === 0 ? (
+                        <tr><td colSpan={7}><div className="adm-empty">Aun no hay movimientos de stock.</div></td></tr>
+                      ) : null}
+                      {movimientosStock.slice(0, 12).map((mov) => (
+                        <tr key={mov.id}>
+                          <td>{formatDate(mov.created_at)}</td>
+                          <td>{mov.producto_nombre}</td>
+                          <td>{mov.sucursal_nombre || "-"}</td>
+                          <td>{mov.orden_id ? `#${mov.orden_id}` : "-"}</td>
+                          <td>{mov.tipo} / {mov.origen}</td>
+                          <td className={mov.tipo === "liberacion" || mov.tipo === "ingreso" ? "adm-pts-pos" : "adm-pts-neg"}>{mov.cantidad}</td>
+                          <td>{mov.descripcion || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "ordenes" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Compras y reservas" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                <div className="adm-form-grid">
+                  <input className="adm-input" placeholder="Buscar por cliente, orden, estado o pago..." value={busquedaOrdenes} onChange={(event) => setBusquedaOrdenes(event.target.value)} />
+                  <button className="adm-btn-secondary" onClick={() => void expirarReservas()} disabled={busy}>
+                    Expirar reservas vencidas
+                  </button>
+                </div>
+                <p className="adm-inline-tip">Pagada descuenta definitivamente la reserva. Cancelada o expirada libera stock y devuelve puntos si la orden los habia usado.</p>
+              </div>
+
+              <div className="admin-card">
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Orden</th>
+                        <th>Cliente</th>
+                        <th>Tipo</th>
+                        <th>Total</th>
+                        <th>Sucursal</th>
+                        <th>Pago</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordenesPagina.length === 0 ? (
+                        <tr><td colSpan={8}><div className="adm-empty">No hay compras para mostrar.</div></td></tr>
+                      ) : null}
+                      {ordenesPagina.map((orden) => (
+                        <tr key={orden.id}>
+                          <td>
+                            #{orden.id}
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{formatDate(orden.created_at)}</span>
+                          </td>
+                          <td>
+                            {orden.cliente_nombre}
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.cliente_email}</span>
+                          </td>
+                          <td>{orden.tipo_orden} ({orden.total_unidades} u.)</td>
+                          <td>
+                            {formatMoney(orden.total_dinero)}
+                            {orden.total_puntos > 0 ? <><br /><span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.total_puntos} pts</span></> : null}
+                          </td>
+                          <td>{orden.sucursal_nombre || "-"}</td>
+                          <td>{orden.pago ? `${orden.pago.proveedor} / ${orden.pago.estado}` : "-"}</td>
+                          <td>{formatEstadoOrden(orden.estado)}</td>
+                          <td>
+                            <div className="adm-row-actions">
+                              {orden.estado === "pendiente_pago" ? (
+                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>
+                              ) : null}
+                              {(orden.estado === "pagada" || orden.estado === "preparada") ? (
+                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
+                              ) : null}
+                              {(orden.estado === "pendiente_pago" || orden.estado === "preparada") ? (
+                                <button className="adm-btn-danger" onClick={() => void actualizarEstadoOrden(orden.id, "cancelada")} disabled={busy}>Cancelar</button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControls
+                  page={ordenesPage}
+                  totalPages={totalOrdenesPages}
+                  onPrev={() => setOrdenesPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setOrdenesPage((prev) => Math.min(totalOrdenesPages, prev + 1))}
                 />
               </div>
             </div>
