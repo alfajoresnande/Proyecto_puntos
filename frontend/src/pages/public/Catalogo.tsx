@@ -641,42 +641,43 @@ export function Catalogo() {
 
   return (
     <section className="catalog-page">
-      <div className="catalog-top-shell">
+      <div className="catalog-top-shell store-head">
         <div className="catalog-header">
           <h1 className="catalog-title">Catalogo de productos</h1>
           <p className="catalog-subtitle">Canjea tus puntos por productos exclusivos Nande</p>
         </div>
 
-        {isCliente ? (
-          <div className="catalog-user-banner">
-            <div>
-              <p>
-                Hola, <strong>{user.nombre}</strong>
-              </p>
-              <p style={{ fontSize: "0.8rem", color: "#A08060", marginTop: "0.15rem" }}>Tus puntos disponibles</p>
+        <div className="store-actions">
+          {isCliente ? (
+            <div className="catalog-user-banner">
+              <div>
+                <p>
+                  Hola, <strong>{user.nombre}</strong>
+                </p>
+                <p style={{ fontSize: "0.8rem", color: "#A08060", marginTop: "0.15rem" }}>Tus puntos disponibles</p>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
+                <p className="banner-pts-label">puntos</p>
+              </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
-              <p className="banner-pts-label">puntos</p>
-            </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <label className="catalog-branch-select">
-          <span>Sucursal para ver stock</span>
-          <select
-            value={sucursalRetiroId}
-            onChange={(event) => setSucursalRetiroId(event.target.value)}
-            disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length}
-          >
-            {sucursalesRetiro.map((sucursal) => (
-              <option key={sucursal.id} value={sucursal.id}>
-                {sucursal.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-
+          <label className="catalog-branch-select">
+            <span>Sucursal para ver stock</span>
+            <select
+              value={sucursalRetiroId}
+              onChange={(event) => setSucursalRetiroId(event.target.value)}
+              disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length}
+            >
+              {sucursalesRetiro.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
       <div className="catalog-products-shell">
         {!loading ? (

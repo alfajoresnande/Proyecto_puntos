@@ -2545,8 +2545,9 @@ export function Admin() {
                     <input className="adm-input" value={nuevoProducto.nombre} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, nombre: event.target.value }))} />
                   </div>
                   <div className="adm-field">
-                    <label className="adm-label">SKU</label>
-                    <input className="adm-input" placeholder="Opcional" value={nuevoProducto.sku} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, sku: event.target.value }))} />
+                    <label className="adm-label">Codigo interno (SKU)</label>
+                    <input className="adm-input" placeholder="Ej: REM-001 (opcional)" value={nuevoProducto.sku} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, sku: event.target.value }))} />
+                    <p className="adm-field-help">Es un codigo propio para identificar productos en stock, reportes o busquedas. Puede quedar vacio.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Categoria</label>
@@ -2703,12 +2704,12 @@ export function Admin() {
                             />
                           </div>
                           <div className="adm-field">
-                            <FieldLabel text="SKU" tip="Codigo interno opcional para identificar producto y reportes." />
+                            <FieldLabel text="Codigo interno (SKU)" tip="SKU significa Stock Keeping Unit: un codigo propio opcional para identificar este producto en stock, reportes y busquedas." />
                             <input
                               className="adm-input"
                               value={editDraft.sku}
                               onChange={(event) => setEditDraft((prev) => ({ ...prev, sku: event.target.value }))}
-                              placeholder="SKU opcional"
+                              placeholder="Ej: REM-001 (opcional)"
                             />
                           </div>
                           <div className="adm-field">
@@ -2927,7 +2928,7 @@ export function Admin() {
               <SectionTitle title="Inventario por sucursal" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
                 <div className="adm-form-grid">
-                  <input className="adm-input" placeholder="Buscar producto, SKU o sucursal..." value={busquedaInventario} onChange={(event) => setBusquedaInventario(event.target.value)} />
+                  <input className="adm-input" placeholder="Buscar producto, codigo interno o sucursal..." value={busquedaInventario} onChange={(event) => setBusquedaInventario(event.target.value)} />
                   <select className="adm-input" value={inventarioFiltroSucursal} onChange={(event) => setInventarioFiltroSucursal(event.target.value)}>
                     <option value="">Todas las sucursales</option>
                     {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
@@ -2967,7 +2968,7 @@ export function Admin() {
                             <td>
                               {row.producto_nombre}
                               <br />
-                              <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{row.sku || "Sin SKU"}</span>
+                              <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{row.sku ? `Codigo: ${row.sku}` : "Sin codigo interno"}</span>
                             </td>
                             <td>{row.sucursal_nombre}</td>
                             <td>{formatTipoProducto(row.tipo_producto)}</td>

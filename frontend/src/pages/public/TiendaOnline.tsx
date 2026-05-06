@@ -33,6 +33,27 @@ type SucursalRetiro = {
   provincia: string;
 };
 
+type OnlineCartItem = {
+  id: number;
+  producto_id: number;
+  cantidad: number;
+  modo_compra: "dinero" | "puntos";
+  precio_dinero_unit: number | null;
+  subtotal_dinero: number;
+  nombre: string;
+  imagen_url: string | null;
+};
+
+type OnlineCartResponse = {
+  items: OnlineCartItem[];
+  resumen: {
+    total_items: number;
+    total_unidades: number;
+    total_dinero: number;
+    total_puntos: number;
+  };
+};
+
 function productPrice(producto: Producto): number {
   const n = Number(producto.precio_dinero ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -62,6 +83,7 @@ export function TiendaOnline() {
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
   const filtrosWasOpen = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
   const [sucursalId, setSucursalId] = useState(() =>
     typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
   );
@@ -80,9 +102,22 @@ export function TiendaOnline() {
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
   });
 
+  const onlineCartQuery = useQuery({
+    queryKey: ["cliente", "carrito-online"],
+    queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
+    enabled: user?.rol === "cliente",
+  });
+
   const productos = productosQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
   const sucursalSeleccionada = sucursalId ? sucursales.find((sucursal) => String(sucursal.id) === sucursalId) : undefined;
+  const onlineCartTotalUnidades = useMemo(
+    () =>
+      (onlineCartQuery.data?.items ?? [])
+        .filter((item) => item.modo_compra === "dinero")
+        .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
+    [onlineCartQuery.data?.items],
+  );
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -254,27 +289,114 @@ export function TiendaOnline() {
     return filtrados;
   }, [baseSearch, categoriaActiva, ordenProductos, rangosPrecio, rangoPrecioId, stockFilterId]);
 
+  function getCantidadSeleccionada(productoId: number): number {
+    const value = cantidadesSeleccionadas[productoId];
+    return Number.isInteger(value) && value > 0 ? value : 1;
+  }
+
+  function ajustarCantidadSeleccionada(producto: Producto, delta: number) {
+    setCantidadesSeleccionadas((prev) => {
+      const actual = Number.isInteger(prev[producto.id]) && prev[producto.id] > 0 ? prev[producto.id] : 1;
+      const stock = Number(producto.stock_disponible ?? 0);
+      const max = producto.track_stock === false ? 100 : Math.max(1, stock);
+      const next = Math.max(1, Math.min(max, actual + delta));
+      return { ...prev, [producto.id]: next };
+    });
+  }
+
   const addMutation = useMutation({
-    mutationFn: (productoId: number) =>
+    mutationFn: ({ productoId, cantidad }: { productoId: number; cantidad: number }) =>
       api.post<{ ok: true }>("/cliente/carrito/items", {
         producto_id: productoId,
-        cantidad: 1,
+        cantidad,
         modo_compra: "dinero",
       }),
-    onSuccess: async () => {
+    onMutate: async ({ productoId, cantidad }) => {
+      await queryClient.cancelQueries({ queryKey: ["cliente", "carrito-online"] });
+      const previousCart = queryClient.getQueryData<OnlineCartResponse>(["cliente", "carrito-online"]);
+      const producto = productos.find((item) => item.id === productoId);
+      if (producto) {
+        queryClient.setQueryData<OnlineCartResponse>(["cliente", "carrito-online"], (current) => {
+          const base = current ?? {
+            items: [],
+            resumen: { total_items: 0, total_unidades: 0, total_dinero: 0, total_puntos: 0 },
+          };
+          const existingIndex = base.items.findIndex((item) => item.producto_id === productoId && item.modo_compra === "dinero");
+          const precio = productPrice(producto);
+          const items = [...base.items];
+          if (existingIndex >= 0) {
+            const existing = items[existingIndex];
+            const nuevaCantidad = existing.cantidad + cantidad;
+            items[existingIndex] = {
+              ...existing,
+              cantidad: nuevaCantidad,
+              subtotal_dinero: precio * nuevaCantidad,
+            };
+          } else {
+            items.push({
+              id: -productoId,
+              producto_id: productoId,
+              cantidad,
+              modo_compra: "dinero",
+              precio_dinero_unit: precio,
+              subtotal_dinero: precio * cantidad,
+              nombre: producto.nombre,
+              imagen_url: productImage(producto),
+            });
+          }
+          const totalUnidades = items
+            .filter((item) => item.modo_compra === "dinero")
+            .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0);
+          const totalDinero = items
+            .filter((item) => item.modo_compra === "dinero")
+            .reduce((acc, item) => acc + Number(item.subtotal_dinero ?? 0), 0);
+          return {
+            items,
+            resumen: {
+              ...base.resumen,
+              total_items: items.length,
+              total_unidades: totalUnidades,
+              total_dinero: totalDinero,
+            },
+          };
+        });
+      }
+      return { previousCart };
+    },
+    onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
-      setToast("Producto agregado al carrito.");
+      setCantidadesSeleccionadas((prev) => {
+        const next = { ...prev };
+        delete next[variables.productoId];
+        return next;
+      });
+      setToast(
+        variables.cantidad > 1
+          ? `${variables.cantidad} productos agregados al carrito.`
+          : "Producto agregado al carrito.",
+      );
       window.setTimeout(() => setToast(null), 2600);
     },
-    onError: (error: Error) => setToast(error.message),
+    onError: (error: Error, _variables, context) => {
+      if (context?.previousCart) {
+        queryClient.setQueryData(["cliente", "carrito-online"], context.previousCart);
+      }
+      setToast(error.message);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
   });
 
-  function agregar(producto: Producto) {
+  function agregar(producto: Producto, cantidad: number) {
     if (!user || user.rol !== "cliente") {
       navigate("/login");
       return;
     }
-    addMutation.mutate(producto.id);
+    const stock = Number(producto.stock_disponible ?? 0);
+    if (producto.track_stock !== false && cantidad > stock) {
+      setToast(`Stock insuficiente en la sucursal seleccionada. Disponible: ${stock}.`);
+      return;
+    }
+    addMutation.mutate({ productoId: producto.id, cantidad });
   }
 
   return (
@@ -299,7 +421,14 @@ export function TiendaOnline() {
               ))}
             </select>
           </label>
-          <Link className="catalog-float-toast-btn-secondary" to="/carrito-tienda">Ver carrito</Link>
+          <Link className="catalog-float-toast-btn-secondary catalog-cart-link" to="/carrito-tienda">
+            Ver carrito
+            {onlineCartTotalUnidades > 0 ? (
+              <span className="catalog-cart-badge" aria-label={`${onlineCartTotalUnidades} productos en carrito`}>
+                {onlineCartTotalUnidades > 99 ? "99+" : onlineCartTotalUnidades}
+              </span>
+            ) : null}
+          </Link>
           {user?.rol === "cliente" ? <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link> : null}
         </div>
       </div>
@@ -565,6 +694,7 @@ export function TiendaOnline() {
               const img = productImage(producto);
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = producto.track_stock !== false && stock <= 0;
+              const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
               return (
                 <article key={producto.id} className="product-card store-product-card">
                   {img ? (
@@ -587,12 +717,39 @@ export function TiendaOnline() {
                         <span className={sinStock ? "store-stock-empty" : "earn"}>{producto.track_stock === false ? "Consultar" : stock}</span>
                       </div>
                     </div>
+                    {user ? (
+                      <div className="product-card-qty">
+                        <button
+                          type="button"
+                          className="vendedor-round-btn"
+                          disabled={addMutation.isPending || cantidadSeleccionada <= 1}
+                          onClick={() => ajustarCantidadSeleccionada(producto, -1)}
+                        >
+                          -
+                        </button>
+                        <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
+                          {cantidadSeleccionada}
+                        </span>
+                        <button
+                          type="button"
+                          className="vendedor-round-btn"
+                          disabled={addMutation.isPending || (producto.track_stock !== false && cantidadSeleccionada >= stock)}
+                          onClick={() => ajustarCantidadSeleccionada(producto, +1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    ) : null}
                     <button
                       className="product-card-btn product-card-btn-canjear"
                       disabled={addMutation.isPending || sinStock}
-                      onClick={() => agregar(producto)}
+                      onClick={() => agregar(producto, cantidadSeleccionada)}
                     >
-                      {sinStock ? "Sin stock" : addMutation.isPending ? "Agregando..." : "Agregar al carrito"}
+                      {sinStock
+                        ? "Sin stock"
+                        : addMutation.isPending
+                          ? "Agregando..."
+                          : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito` : "al carrito"}`}
                     </button>
                   </div>
                 </article>
