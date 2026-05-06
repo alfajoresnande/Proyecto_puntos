@@ -10,6 +10,8 @@ const router = Router();
 //   ?max_puntos=500        → filtra productos con puntos_requeridos <= N
 router.get("/", async (req, res) => {
   const { categoria, max_puntos, modo } = req.query;
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  const hasSucursalFilter = Number.isFinite(sucursalId) && sucursalId > 0;
 
   const conditions: string[] = ["activo = 1"];
   const params: (string | number)[] = [];
@@ -41,11 +43,21 @@ router.get("/", async (req, res) => {
     `SELECT id, nombre, descripcion, imagen_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
+            ${
+              hasSucursalFilter
+                ? "COALESCE((SELECT i.stock_disponible FROM inventario_sucursal i WHERE i.producto_id = productos.id AND i.sucursal_id = ? LIMIT 1), 0)"
+                : "stock_disponible"
+            } AS stock_disponible_sucursal,
+            ${
+              hasSucursalFilter
+                ? "COALESCE((SELECT i.stock_reservado FROM inventario_sucursal i WHERE i.producto_id = productos.id AND i.sucursal_id = ? LIMIT 1), 0)"
+                : "stock_reservado"
+            } AS stock_reservado_sucursal,
             track_stock, permite_envio, permite_retiro_local
      FROM productos
      WHERE ${where}
      ORDER BY nombre ASC`,
-    params
+    hasSucursalFilter ? [sucursalId, sucursalId, ...params] : params
   );
   const rows = rowsRaw as Array<{
     id: number;
@@ -62,6 +74,8 @@ router.get("/", async (req, res) => {
     puntos_para_canjear: number | null;
     stock_disponible: number;
     stock_reservado: number;
+    stock_disponible_sucursal: number;
+    stock_reservado_sucursal: number;
     track_stock: number;
     permite_envio: number;
     permite_retiro_local: number;
@@ -90,6 +104,30 @@ router.get("/", async (req, res) => {
     imageMap.set(image.producto_id, current);
   }
 
+  const [inventoryRowsRaw] = await pool.query(
+    `SELECT i.producto_id, i.sucursal_id, s.nombre AS sucursal_nombre,
+            i.stock_disponible, i.stock_reservado
+     FROM inventario_sucursal i
+     JOIN sucursales s ON s.id = i.sucursal_id
+     WHERE i.producto_id IN (${placeholders}) AND s.activo = 1
+     ORDER BY i.producto_id ASC, s.nombre ASC, s.id ASC`,
+    ids
+  );
+  const inventoryRows = inventoryRowsRaw as Array<{
+    producto_id: number;
+    sucursal_id: number;
+    sucursal_nombre: string;
+    stock_disponible: number;
+    stock_reservado: number;
+  }>;
+
+  const inventoryMap = new Map<number, typeof inventoryRows>();
+  for (const inventory of inventoryRows) {
+    const current = inventoryMap.get(inventory.producto_id) ?? [];
+    current.push(inventory);
+    inventoryMap.set(inventory.producto_id, current);
+  }
+
   res.json(
     rows.map((row) => {
       const imagenesRaw = imageMap.get(row.id) ?? [];
@@ -99,6 +137,17 @@ router.get("/", async (req, res) => {
         .slice(0, 3);
       return {
         ...row,
+        stock_disponible: Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0),
+        stock_reservado: Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0),
+        stock_total_disponible: Number(row.stock_disponible ?? 0),
+        stock_total_reservado: Number(row.stock_reservado ?? 0),
+        stock_sucursal_id: hasSucursalFilter ? sucursalId : null,
+        inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
+          sucursal_id: Number(item.sucursal_id),
+          sucursal_nombre: item.sucursal_nombre,
+          stock_disponible: Number(item.stock_disponible ?? 0),
+          stock_reservado: Number(item.stock_reservado ?? 0),
+        })),
         imagenes,
         imagen_url: imagenes[0] ?? null,
         track_stock: Boolean(row.track_stock),
@@ -110,6 +159,16 @@ router.get("/", async (req, res) => {
 });
 
 // GET /productos/categorias — lista las categorías disponibles
+router.get("/sucursales", async (_req, res) => {
+  const [rows] = await pool.query(
+    `SELECT id, nombre, direccion, piso, localidad, provincia
+     FROM sucursales
+     WHERE activo = 1
+     ORDER BY nombre ASC, id ASC`
+  );
+  res.json(rows);
+});
+
 router.get("/categorias", async (_req, res) => {
   const [rows] = await pool.query(
     "SELECT DISTINCT categoria FROM productos WHERE activo = 1 AND categoria IS NOT NULL ORDER BY categoria ASC"

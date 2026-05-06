@@ -197,9 +197,33 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
+  align-items: center;
   justify-content: flex-end;
   grid-column: 3;
   justify-self: end;
+}
+
+.catalog-branch-select {
+  align-items: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  color: #6F4B35;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.catalog-branch-select select {
+  min-width: 190px;
+  max-width: 100%;
+  border: 1px solid #E6D3B8;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #4A2C1A;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 0.55rem 0.7rem;
 }
 
 .store-category-select {
@@ -2173,6 +2197,11 @@ body.catalogo-background .pagina-page {
     grid-column: auto;
     justify-self: stretch;
     justify-content: stretch;
+  }
+
+  .catalog-branch-select,
+  .catalog-branch-select select {
+    width: 100%;
   }
 
   .store-actions .catalog-float-toast-btn-secondary {

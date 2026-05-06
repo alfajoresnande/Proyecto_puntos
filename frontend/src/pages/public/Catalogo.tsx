@@ -78,6 +78,10 @@ function getProductoImagenes(producto: Producto): string[] {
   return producto.imagen_url ? [producto.imagen_url] : [];
 }
 
+function productHasStock(producto: Producto): boolean {
+  return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
+}
+
 type RangoPuntosId = "afford" | "all" | "low" | "mid-low" | "mid-high" | "high";
 
 type RangoPuntos = {
@@ -117,7 +121,9 @@ export function Catalogo() {
   const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const hasDragged = useRef(false);
   const [toast, setToast] = useState<CatalogToast | null>(null);
-  const [sucursalRetiroId, setSucursalRetiroId] = useState("");
+  const [sucursalRetiroId, setSucursalRetiroId] = useState(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
+  );
   const canjeCart = useCartStore((state) => state.items);
   const cartAdd = useCartStore((state) => state.add);
   const cartClear = useCartStore((state) => state.clear);
@@ -130,8 +136,13 @@ export function Catalogo() {
   const [codigoCopiado, setCodigoCopiado] = useState(false);
 
   const productosQuery = useQuery({
-    queryKey: ["productos"],
-    queryFn: () => api.get<Producto[]>("/productos"),
+    queryKey: ["productos", "canje", sucursalRetiroId],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (sucursalRetiroId) qs.set("sucursal_id", sucursalRetiroId);
+      const suffix = qs.toString();
+      return api.get<Producto[]>(suffix ? `/productos?${suffix}` : "/productos");
+    },
   });
 
   const categoriasQuery = useQuery({
@@ -140,9 +151,8 @@ export function Catalogo() {
   });
 
   const sucursalesQuery = useQuery({
-    queryKey: ["cliente", "sucursales-retiro"],
-    queryFn: () => api.get<SucursalRetiro[]>("/cliente/sucursales"),
-    enabled: isCliente,
+    queryKey: ["productos", "sucursales"],
+    queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
   });
 
   const productos = productosQuery.data ?? [];
@@ -162,6 +172,19 @@ export function Catalogo() {
   }, [productos]);
 
   const saldoUsuario = isCliente ? user?.puntos_saldo ?? 0 : 0;
+
+  useEffect(() => {
+    if (!sucursalesRetiro.length) return;
+    if (!sucursalRetiroId || !sucursalesRetiro.some((item) => String(item.id) === sucursalRetiroId)) {
+      setSucursalRetiroId(String(sucursalesRetiro[0].id));
+    }
+  }, [sucursalRetiroId, sucursalesRetiro]);
+
+  useEffect(() => {
+    if (sucursalRetiroId && typeof window !== "undefined") {
+      window.localStorage.setItem("sucursal_retiro_id", sucursalRetiroId);
+    }
+  }, [sucursalRetiroId]);
 
   const rangosPuntos = useMemo<RangoPuntos[]>(() => {
     const out: RangoPuntos[] = [];
@@ -480,6 +503,25 @@ export function Catalogo() {
 
     if (canjearCarritoMutation.isPending) return;
     const cantidadSafe = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
+    const stock = Number(producto.stock_disponible ?? 0);
+    if (producto.track_stock !== false && stock <= 0) {
+      setToast({
+        msg: "No hay stock disponible en la sucursal seleccionada.",
+        variant: "error",
+        dismissLabel: "Cerrar",
+        autoHideMs: 7000,
+      });
+      return;
+    }
+    if (producto.track_stock !== false && cantidadSafe > stock) {
+      setToast({
+        msg: `Stock insuficiente en la sucursal seleccionada. Disponible: ${stock}.`,
+        variant: "error",
+        dismissLabel: "Cerrar",
+        autoHideMs: 7000,
+      });
+      return;
+    }
 
     cartAdd(
       {
@@ -593,6 +635,10 @@ export function Catalogo() {
     });
   }
 
+  const productoModalStock = Number(productoModal?.stock_disponible ?? 0);
+  const productoModalSinStock = productoModal ? !productHasStock(productoModal) : false;
+  const productoModalCantidadMaxima = productoModal?.track_stock === false ? 100 : Math.max(1, productoModalStock);
+
   return (
     <section className="catalog-page">
       <div className="catalog-top-shell">
@@ -615,6 +661,21 @@ export function Catalogo() {
             </div>
           </div>
         ) : null}
+
+        <label className="catalog-branch-select">
+          <span>Sucursal para ver stock</span>
+          <select
+            value={sucursalRetiroId}
+            onChange={(event) => setSucursalRetiroId(event.target.value)}
+            disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length}
+          >
+            {sucursalesRetiro.map((sucursal) => (
+              <option key={sucursal.id} value={sucursal.id}>
+                {sucursal.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
 
       </div>
       <div className="catalog-products-shell">
@@ -891,6 +952,10 @@ export function Catalogo() {
               const descripcion = producto.descripcion || "Producto disponible para canje.";
               const descripcionLarga = descripcion.length > 82;
               const descripcionExpandida = Boolean(expandedProductDescriptions[producto.id]);
+              const stock = Number(producto.stock_disponible ?? 0);
+              const sinStock = !productHasStock(producto);
+              const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
+              const cantidadSuperaStock = producto.track_stock !== false && cantidadSeleccionada > stock;
 
               return (
               <div key={producto.id} className={`product-card ${descripcionExpandida ? "product-card-expanded" : ""}`}>
@@ -961,6 +1026,15 @@ export function Catalogo() {
                         </div>
                       </>
                     ) : null}
+                    <div className="product-card-divider" />
+                    <div className="product-card-row product-card-points-tile">
+                      <span className="product-points-copy">
+                        <span>{sucursalRetiroSeleccionada ? `Stock en ${sucursalRetiroSeleccionada.nombre}:` : "Stock:"}</span>
+                        <span className={sinStock ? "store-stock-empty" : "earn"}>
+                          {producto.track_stock === false ? "Consultar" : stock}
+                        </span>
+                      </span>
+                    </div>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-ver"
@@ -975,18 +1049,18 @@ export function Catalogo() {
                         <button
                           type="button"
                           className="vendedor-round-btn"
-                          disabled={canjearCarritoMutation.isPending || getCantidadSeleccionada(producto.id) <= 1}
+                          disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
                           onClick={() => ajustarCantidadSeleccionada(producto.id, -1)}
                         >
                           -
                         </button>
                         <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                          {getCantidadSeleccionada(producto.id)}
+                          {cantidadSeleccionada}
                         </span>
                         <button
                           type="button"
                           className="vendedor-round-btn"
-                          disabled={canjearCarritoMutation.isPending}
+                          disabled={canjearCarritoMutation.isPending || (producto.track_stock !== false && cantidadSeleccionada >= stock)}
                           onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
                         >
                           +
@@ -995,7 +1069,7 @@ export function Catalogo() {
                       <button
                         className="product-card-btn product-card-btn-canjear"
                         style={{ marginTop: "0.5rem" }}
-                        disabled={canjearCarritoMutation.isPending}
+                        disabled={canjearCarritoMutation.isPending || sinStock || cantidadSuperaStock}
                         onClick={() =>
                           agregarProductoAlCarrito(
                             producto,
@@ -1005,11 +1079,11 @@ export function Catalogo() {
                                 delete next[producto.id];
                                 return next;
                               }),
-                            getCantidadSeleccionada(producto.id)
+                            cantidadSeleccionada
                           )
                         }
                       >
-                        Agregar al carrito
+                        {sinStock ? "Sin stock" : "Agregar al carrito"}
                       </button>
                     </>
                   ) : (
@@ -1292,6 +1366,13 @@ export function Catalogo() {
                     </div>
                   </>
                 ) : null}
+                <div className="product-card-divider" />
+                <div className="product-card-row">
+                  <span>{sucursalRetiroSeleccionada ? `Stock en ${sucursalRetiroSeleccionada.nombre}` : "Stock disponible"}</span>
+                  <span className={productoModalSinStock ? "store-stock-empty" : "earn"}>
+                    {productoModal.track_stock === false ? "Consultar" : productoModalStock}
+                  </span>
+                </div>
               </div>
 
               {user ? (
@@ -1300,6 +1381,7 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
+                      disabled={cantidadModalCanje <= 1}
                       onClick={() => setCantidadModalCanje((prev) => Math.max(1, prev - 1))}
                     >
                       -
@@ -1310,17 +1392,18 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
-                      onClick={() => setCantidadModalCanje((prev) => Math.min(100, prev + 1))}
+                      disabled={productoModal.track_stock !== false && cantidadModalCanje >= productoModalStock}
+                      onClick={() => setCantidadModalCanje((prev) => Math.min(productoModalCantidadMaxima, prev + 1))}
                     >
                       +
                     </button>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={canjearCarritoMutation.isPending}
+                    disabled={canjearCarritoMutation.isPending || productoModalSinStock || (productoModal.track_stock !== false && cantidadModalCanje > productoModalStock)}
                     onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanje)}
                   >
-                    Agregar {cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}
+                    {productoModalSinStock ? "Sin stock" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}`}
                   </button>
                 </>
               ) : (

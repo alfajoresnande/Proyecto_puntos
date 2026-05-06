@@ -24,6 +24,15 @@ type PriceRange = {
   match: (precio: number) => boolean;
 };
 
+type SucursalRetiro = {
+  id: number;
+  nombre: string;
+  direccion: string;
+  piso?: string | null;
+  localidad: string;
+  provincia: string;
+};
+
 function productPrice(producto: Producto): number {
   const n = Number(producto.precio_dinero ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -53,13 +62,41 @@ export function TiendaOnline() {
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
   const filtrosWasOpen = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [sucursalId, setSucursalId] = useState(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
+  );
 
   const productosQuery = useQuery({
-    queryKey: ["productos", "venta"],
-    queryFn: () => api.get<Producto[]>("/productos?modo=venta"),
+    queryKey: ["productos", "venta", sucursalId],
+    queryFn: () => {
+      const qs = new URLSearchParams({ modo: "venta" });
+      if (sucursalId) qs.set("sucursal_id", sucursalId);
+      return api.get<Producto[]>(`/productos?${qs.toString()}`);
+    },
+  });
+
+  const sucursalesQuery = useQuery({
+    queryKey: ["productos", "sucursales"],
+    queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
   });
 
   const productos = productosQuery.data ?? [];
+  const sucursales = sucursalesQuery.data ?? [];
+  const sucursalSeleccionada = sucursalId ? sucursales.find((sucursal) => String(sucursal.id) === sucursalId) : undefined;
+
+  useEffect(() => {
+    if (!sucursales.length) return;
+    if (!sucursalId || !sucursales.some((sucursal) => String(sucursal.id) === sucursalId)) {
+      setSucursalId(String(sucursales[0].id));
+    }
+  }, [sucursalId, sucursales]);
+
+  useEffect(() => {
+    if (sucursalId && typeof window !== "undefined") {
+      window.localStorage.setItem("sucursal_retiro_id", sucursalId);
+    }
+  }, [sucursalId]);
+
   const categorias = useMemo(
     () => Array.from(new Set(productos.map((p) => p.categoria).filter((c): c is string => Boolean(c)))).sort(),
     [productos],
@@ -248,6 +285,20 @@ export function TiendaOnline() {
           <p className="catalog-subtitle">Compra productos con dinero y reserva stock para retiro en sucursal</p>
         </div>
         <div className="store-actions">
+          <label className="catalog-branch-select">
+            <span>Sucursal</span>
+            <select
+              value={sucursalId}
+              onChange={(event) => setSucursalId(event.target.value)}
+              disabled={sucursalesQuery.isLoading || !sucursales.length}
+            >
+              {sucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
           <Link className="catalog-float-toast-btn-secondary" to="/carrito-tienda">Ver carrito</Link>
           {user?.rol === "cliente" ? <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link> : null}
         </div>
@@ -532,7 +583,7 @@ export function TiendaOnline() {
                       </div>
                       <div className="product-card-divider" />
                       <div className="product-card-row">
-                        <span>Stock disponible</span>
+                        <span>{sucursalSeleccionada ? `Stock en ${sucursalSeleccionada.nombre}` : "Stock disponible"}</span>
                         <span className={sinStock ? "store-stock-empty" : "earn"}>{producto.track_stock === false ? "Consultar" : stock}</span>
                       </div>
                     </div>

@@ -35,6 +35,15 @@ export type Producto = {
   puntos_para_canjear?: number | null;
   stock_disponible?: number;
   stock_reservado?: number;
+  stock_total_disponible?: number;
+  stock_total_reservado?: number;
+  stock_sucursal_id?: number | null;
+  inventario_sucursales?: Array<{
+    sucursal_id: number;
+    sucursal_nombre: string;
+    stock_disponible: number;
+    stock_reservado: number;
+  }>;
   track_stock?: boolean;
   permite_envio?: boolean;
   permite_retiro_local?: boolean;

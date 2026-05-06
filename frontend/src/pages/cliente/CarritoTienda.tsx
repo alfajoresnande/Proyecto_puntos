@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -69,7 +69,9 @@ function money(value: number | string | null | undefined): string {
 export function CarritoTienda() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
-  const [sucursalId, setSucursalId] = useState("");
+  const [sucursalId, setSucursalId] = useState(() =>
+    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
+  );
   const [paymentId, setPaymentId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
@@ -102,6 +104,19 @@ export function CarritoTienda() {
     (sucursales.length === 1 ? sucursales[0] : undefined);
   const paymentOptions = paymentOptionsQuery.data?.options ?? [];
   const selectedPayment = paymentOptions.find((option) => option.id === (paymentId || paymentOptionsQuery.data?.default_option)) ?? paymentOptions[0];
+
+  useEffect(() => {
+    if (!sucursales.length) return;
+    if (!sucursalId || !sucursales.some((sucursal) => String(sucursal.id) === sucursalId)) {
+      setSucursalId(String(sucursales[0].id));
+    }
+  }, [sucursalId, sucursales]);
+
+  useEffect(() => {
+    if (sucursalId && typeof window !== "undefined") {
+      window.localStorage.setItem("sucursal_retiro_id", sucursalId);
+    }
+  }, [sucursalId]);
 
   const updateQuantity = useMutation({
     mutationFn: ({ itemId, cantidad }: { itemId: number; cantidad: number }) =>
