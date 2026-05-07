@@ -386,28 +386,62 @@ export function TiendaOnline() {
   }
 
   return (
-    <section className="catalog-page store-page">
-      <div className="catalog-top-shell store-head">
+    <section className="catalog-page store-page catalog-redemption-page">
+      <div className="catalog-top-shell catalog-redemption-hero">
         <div className="catalog-header">
           <h1 className="catalog-title">Tienda Online</h1>
           <p className="catalog-subtitle">Compra productos con dinero y reserva para retiro en sucursal</p>
         </div>
-        <div className="store-actions">
-          <label className="catalog-branch-select">
-            <span>Sucursal</span>
-            <select
-              value={sucursalId}
-              onChange={(event) => setSucursalId(event.target.value)}
-              disabled={sucursalesQuery.isLoading || !sucursales.length}
-            >
-              {sucursales.map((sucursal) => (
-                <option key={sucursal.id} value={sucursal.id}>
-                  {sucursal.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          {user?.rol === "cliente" ? <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link> : null}
+        <div className="catalog-redemption-account">
+          {user?.rol === "cliente" ? (
+            <div className="catalog-user-banner">
+              <div className="catalog-user-copy">
+                <span className="catalog-user-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 12.4c2.7 0 4.8-2.2 4.8-4.9S14.7 2.6 12 2.6 7.2 4.8 7.2 7.5s2.1 4.9 4.8 4.9Z" />
+                    <path d="M4.2 21.4c.4-4.3 3.5-7 7.8-7s7.4 2.7 7.8 7H4.2Z" />
+                  </svg>
+                </span>
+                <div>
+                  <p>
+                    Hola, <strong>{user.nombre}</strong>
+                  </p>
+                  <p>Tus puntos disponibles</p>
+                </div>
+              </div>
+              <div className="catalog-points-summary">
+                <span className="catalog-points-star" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
+                  </svg>
+                </span>
+                <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
+                <p className="banner-pts-label">puntos</p>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="catalog-redemption-branch-row">
+            <label className="catalog-branch-select">
+              <span>Sucursal de retiro</span>
+              <select
+                value={sucursalId}
+                onChange={(event) => setSucursalId(event.target.value)}
+                disabled={sucursalesQuery.isLoading || !sucursales.length}
+              >
+                {sucursales.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>
+                    {sucursal.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {user?.rol === "cliente" ? (
+            <div className="catalog-redemption-account-actions">
+              <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link>
+            </div>
+          ) : null}
         </div>
       </div>
 

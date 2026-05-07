@@ -633,43 +633,58 @@ export function Catalogo() {
   const productoModalSinStock = productoModal ? !productHasStock(productoModal) : false;
 
   return (
-    <section className="catalog-page">
-      <div className="catalog-top-shell store-head">
+    <section className="catalog-page catalog-redemption-page">
+      <div className="catalog-top-shell catalog-redemption-hero">
         <div className="catalog-header">
           <h1 className="catalog-title">Catalogo de productos</h1>
           <p className="catalog-subtitle">Canjea tus puntos por productos exclusivos Nande</p>
         </div>
 
-        <div className="store-actions">
+        <div className="catalog-redemption-account">
           {isCliente ? (
             <div className="catalog-user-banner">
-              <div>
-                <p>
-                  Hola, <strong>{user.nombre}</strong>
-                </p>
-                <p style={{ fontSize: "0.8rem", color: "#A08060", marginTop: "0.15rem" }}>Tus puntos disponibles</p>
+              <div className="catalog-user-copy">
+                <span className="catalog-user-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M12 12.4c2.7 0 4.8-2.2 4.8-4.9S14.7 2.6 12 2.6 7.2 4.8 7.2 7.5s2.1 4.9 4.8 4.9Z" />
+                    <path d="M4.2 21.4c.4-4.3 3.5-7 7.8-7s7.4 2.7 7.8 7H4.2Z" />
+                  </svg>
+                </span>
+                <div>
+                  <p>
+                    Hola, <strong>{user.nombre}</strong>
+                  </p>
+                  <p>Tus puntos disponibles</p>
+                </div>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div className="catalog-points-summary">
+                <span className="catalog-points-star" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
+                  </svg>
+                </span>
                 <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
                 <p className="banner-pts-label">puntos</p>
               </div>
             </div>
           ) : null}
 
-          <label className="catalog-branch-select">
-            <span>Sucursal de retiro</span>
-            <select
-              value={sucursalRetiroId}
-              onChange={(event) => setSucursalRetiroId(event.target.value)}
-              disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length}
-            >
-              {sucursalesRetiro.map((sucursal) => (
-                <option key={sucursal.id} value={sucursal.id}>
-                  {sucursal.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="catalog-redemption-branch-row">
+            <label className="catalog-branch-select">
+              <span>Sucursal de retiro</span>
+              <select
+                value={sucursalRetiroId}
+                onChange={(event) => setSucursalRetiroId(event.target.value)}
+                disabled={sucursalesQuery.isLoading || !sucursalesRetiro.length}
+              >
+                {sucursalesRetiro.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>
+                    {sucursal.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       </div>
       <div className="catalog-products-shell">

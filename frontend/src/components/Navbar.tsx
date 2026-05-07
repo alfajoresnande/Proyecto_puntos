@@ -91,28 +91,13 @@ export function Navbar() {
   }, [location.pathname, location.hash]);
 
   const cartButton = canSeeCliente ? (
-    <div style={{ position: "relative", marginRight: "0.4rem" }}>
+    <div className="navbar-cart-wrap">
       <button
         type="button"
         onClick={handleIrACarritoCanjes}
         aria-label={`${cartLabel}${cartCount > 0 ? ` (${cartCount} producto${cartCount === 1 ? "" : "s"})` : ""}`}
         title={cartLabel}
-        style={{
-          position: "relative",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "42px",
-          height: "42px",
-          borderRadius: "50%",
-          color: "#ffffff",
-          background: "#D4621A",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-          boxShadow: "0 2px 8px rgba(212, 98, 26, 0.45)",
-          transition: "background 0.15s ease, transform 0.15s ease",
-        }}
+        className="navbar-cart-btn"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <circle cx="9" cy="21" r="1.6" />
@@ -120,27 +105,7 @@ export function Navbar() {
           <path d="M2.5 3h2.4l2.7 12.3a2 2 0 0 0 2 1.7h8.5a2 2 0 0 0 2-1.6L21.5 7H6" />
         </svg>
         {cartCount > 0 ? (
-          <span
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              top: "-3px",
-              right: "-3px",
-              minWidth: "20px",
-              height: "20px",
-              padding: "0 5px",
-              borderRadius: "999px",
-              background: "#ffffff",
-              color: "#D4621A",
-              fontSize: "0.72rem",
-              fontWeight: 800,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              lineHeight: 1,
-              boxShadow: "0 0 0 2px #D4621A",
-            }}
-          >
+          <span aria-hidden="true" className="navbar-cart-badge">
             {cartCount > 99 ? "99+" : cartCount}
           </span>
         ) : null}
@@ -163,15 +128,19 @@ export function Navbar() {
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
-            {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)}>Puntos</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
             {canSeeAdmin ? <NavLink to="/admin" className={({ isActive }) => navClass(isActive)}>Panel Admin</NavLink> : null}
           </div>
 
           <div className="navbar-auth">
+            {canSeeCliente ? (
+              <NavLink to="/cliente" className={({ isActive }) => `navbar-points-action${isActive ? " active" : ""}`}>
+                Mis Puntos
+                <span aria-hidden="true">☆</span>
+              </NavLink>
+            ) : null}
             {user ? (
               <div className="navbar-user">
-                {user.rol === "cliente" ? <span className="navbar-points">{user.puntos_saldo ?? 0} pts</span> : null}
                 <div ref={userMenuRef} className="navbar-user-menu">
                   <button
                     className="navbar-name-btn"

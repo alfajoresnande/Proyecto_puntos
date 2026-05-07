@@ -2632,10 +2632,12 @@ export function Admin() {
                       <input type="number" min={1} className="adm-input" value={nuevoProducto.precio_dinero ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, precio_dinero: event.target.value ? Number(event.target.value) : null }))} />
                     </div>
                   ) : null}
-                  <div className="adm-field">
-                    <label className="adm-label">Puntos para canjear</label>
-                    <input type="number" min={1} className="adm-input" value={nuevoProducto.puntos_requeridos ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))} />
-                  </div>
+                  {(nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto") ? (
+                    <div className="adm-field">
+                      <label className="adm-label">Puntos para canjear</label>
+                      <input type="number" min={1} className="adm-input" value={nuevoProducto.puntos_requeridos ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))} />
+                    </div>
+                  ) : null}
                   <div className="adm-field">
                     <label className="adm-label">Puntos que suma al comprar</label>
                     <input type="number" className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
@@ -2820,19 +2822,21 @@ export function Admin() {
                               />
                             </div>
                           ) : null}
-                          <div className="adm-field">
-                            <FieldLabel
-                              text="Puntos para canjear"
-                              tip="Cantidad de puntos que el cliente necesita para canjear este producto."
-                            />
-                            <input
-                              type="number"
-                              min={1}
-                              className="adm-input"
-                              value={editDraft.puntos_requeridos ?? ""}
-                              onChange={(event) => setEditDraft((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))}
-                            />
-                          </div>
+                          {(editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto") ? (
+                            <div className="adm-field">
+                              <FieldLabel
+                                text="Puntos para canjear"
+                                tip="Cantidad de puntos que el cliente necesita para canjear este producto."
+                              />
+                              <input
+                                type="number"
+                                min={1}
+                                className="adm-input"
+                                value={editDraft.puntos_requeridos ?? ""}
+                                onChange={(event) => setEditDraft((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))}
+                              />
+                            </div>
+                          ) : null}
                           <div className="adm-field">
                             <FieldLabel
                               text="Puntos que suma al comprar"
