@@ -34,6 +34,9 @@ function tomorrowAtNoonLocal() {
     return date;
 }
 function isEnabled(choice) {
+    if (choice.provider === "efectivo") {
+        return { enabled: true, reason: null };
+    }
     if (choice.provider === "mercadopago") {
         if (!MERCADOPAGO_ACCESS_TOKEN)
             return { enabled: false, reason: "Falta MERCADOPAGO_ACCESS_TOKEN" };
@@ -45,6 +48,13 @@ function isEnabled(choice) {
 }
 function listPaymentOptions() {
     const options = [
+        {
+            id: "efectivo_retiro",
+            provider: "efectivo",
+            method: "cash",
+            label: "Efectivo al retirar",
+            description: "Reserva el pedido y paga en la sucursal antes de retirar.",
+        },
         {
             id: "mercadopago_wallet",
             provider: "mercadopago",
@@ -89,6 +99,9 @@ function resolvePaymentChoice(raw) {
         if (raw.method === "debit_card")
             return { provider: "pagos360", method: "debit_card" };
         return { provider: "pagos360", method: "credit_card" };
+    }
+    if (raw.provider === "efectivo") {
+        return { provider: "efectivo", method: "cash" };
     }
     return { provider: "mercadopago", method: "wallet" };
 }
@@ -237,6 +250,15 @@ async function createPaymentSession(input) {
     }
     if (input.choice.provider === "mercadopago") {
         return createMercadoPagoWalletSession({ ...input, amount: normalizedAmount });
+    }
+    if (input.choice.provider === "efectivo") {
+        return {
+            providerPaymentId: null,
+            checkoutUrl: null,
+            payload: { type: "cash_on_pickup", order_id: input.orderId },
+            status: "ready",
+            message: "Reserva generada. El cliente paga en efectivo al retirar.",
+        };
     }
     return createPagos360Session({ ...input, amount: normalizedAmount });
 }

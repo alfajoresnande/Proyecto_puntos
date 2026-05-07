@@ -135,21 +135,33 @@ router.get("/", async (req, res) => {
         .map((url) => normalizeSafeImageUrl(url))
         .filter((url): url is string => Boolean(url))
         .slice(0, 3);
+      const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
+      const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
       return {
-        ...row,
-        stock_disponible: Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0),
-        stock_reservado: Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0),
-        stock_total_disponible: Number(row.stock_disponible ?? 0),
-        stock_total_reservado: Number(row.stock_reservado ?? 0),
+        id: row.id,
+        nombre: row.nombre,
+        descripcion: row.descripcion,
+        imagen_url: imagenes[0] ?? null,
+        categoria: row.categoria,
+        puntos_requeridos: row.puntos_requeridos,
+        puntos_acumulables: row.puntos_acumulables,
+        puntaje_al_comprar: row.puntaje_al_comprar,
+        tipo_producto: row.tipo_producto,
+        precio_dinero: row.precio_dinero,
+        precio_puntos: row.precio_puntos,
+        puntos_para_canjear: row.puntos_para_canjear,
+        stock_disponible: hasStock ? 1 : 0,
+        stock_reservado: 0,
+        stock_total_disponible: hasStock ? 1 : 0,
+        stock_total_reservado: 0,
         stock_sucursal_id: hasSucursalFilter ? sucursalId : null,
         inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
           sucursal_id: Number(item.sucursal_id),
           sucursal_nombre: item.sucursal_nombre,
-          stock_disponible: Number(item.stock_disponible ?? 0),
-          stock_reservado: Number(item.stock_reservado ?? 0),
+          stock_disponible: Number(item.stock_disponible ?? 0) > 0 ? 1 : 0,
+          stock_reservado: 0,
         })),
         imagenes,
-        imagen_url: imagenes[0] ?? null,
         track_stock: Boolean(row.track_stock),
         permite_envio: Boolean(row.permite_envio),
         permite_retiro_local: Boolean(row.permite_retiro_local),

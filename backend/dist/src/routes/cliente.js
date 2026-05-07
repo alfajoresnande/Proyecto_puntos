@@ -177,7 +177,7 @@ function validateProductoForMode(producto, modoCompra) {
 async function getCarritoItems(conn, usuarioId) {
     const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra,
             ci.precio_dinero_unit, ci.precio_puntos_unit, ci.subtotal_dinero, ci.subtotal_puntos,
-            p.nombre, p.tipo_producto, p.imagen_url, p.track_stock
+            p.nombre, p.tipo_producto, p.imagen_url, p.track_stock, p.permite_envio
      FROM carrito_items ci
      JOIN carritos c ON c.id = ci.carrito_id
      JOIN productos p ON p.id = ci.producto_id
@@ -193,7 +193,42 @@ async function getCarritoItems(conn, usuarioId) {
         subtotal_dinero: Number(row.subtotal_dinero),
         subtotal_puntos: Number(row.subtotal_puntos),
         track_stock: Number(row.track_stock ?? 0),
+        permite_envio: Number(row.permite_envio ?? 0),
     }));
+}
+const shippingAddressSchema = zod_1.z.object({
+    nombre: zod_1.z.string().min(2).max(120),
+    telefono: zod_1.z.string().min(6).max(40),
+    direccion: zod_1.z.string().min(5).max(180),
+    codigo_postal: zod_1.z.string().min(3).max(20),
+    localidad: zod_1.z.string().min(2).max(120),
+    provincia: zod_1.z.string().min(2).max(120),
+    referencias: zod_1.z.string().max(300).optional().nullable(),
+});
+function normalizeShippingAddress(raw) {
+    return {
+        nombre: raw.nombre.trim(),
+        telefono: raw.telefono.trim(),
+        direccion: raw.direccion.trim(),
+        codigo_postal: raw.codigo_postal.trim(),
+        localidad: raw.localidad.trim(),
+        provincia: raw.provincia.trim(),
+        referencias: raw.referencias?.trim() || null,
+    };
+}
+function parseJsonField(value) {
+    if (!value)
+        return null;
+    if (typeof value === "object")
+        return value;
+    if (typeof value !== "string")
+        return null;
+    try {
+        return JSON.parse(value);
+    }
+    catch {
+        return null;
+    }
 }
 async function getOrdenItems(conn, ordenId) {
     const rows = await (0, db_1.qAll)(conn, `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
@@ -354,7 +389,10 @@ async function crearCanjeCarrito(conn, { usuarioId, items, sucursalId, }) {
         });
     }
     catch (error) {
-        const message = error instanceof Error ? error.message : "No se pudo reservar stock para el canje.";
+        const rawMessage = error instanceof Error ? error.message : "No se pudo reservar stock para el canje.";
+        const message = rawMessage.toLowerCase().includes("stock insuficiente")
+            ? "No hay stock suficiente en la sucursal seleccionada para completar el canje."
+            : rawMessage;
         throw new HttpError(400, message);
     }
     const descripcionItems = itemsDetalle.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(", ");
@@ -775,6 +813,8 @@ router.delete("/carrito/items/:itemId", async (req, res) => {
 router.post("/checkout/preview", async (req, res) => {
     const schema = zod_1.z.object({
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
+        metodo_entrega: zod_1.z.enum(["retiro", "envio"]).optional().default("retiro"),
+        direccion_envio: shippingAddressSchema.optional().nullable(),
     });
     const parsed = schema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -800,9 +840,19 @@ router.post("/checkout/preview", async (req, res) => {
         const usuario = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [req.user.id]);
         const saldoPuntos = Number(usuario?.puntos_saldo ?? 0);
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
+        const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
         const requiereStock = items.some((item) => Number(item.track_stock) === 1);
         if (requiereStock && !sucursalSeleccionada) {
             throw new HttpError(400, "Debes seleccionar una sucursal para validar stock.");
+        }
+        if (metodoEntrega === "envio") {
+            if (!parsed.data.direccion_envio) {
+                throw new HttpError(400, "Completa direccion, codigo postal y telefono para solicitar envio.");
+            }
+            const noEnviables = items.filter((item) => Number(item.permite_envio ?? 0) !== 1);
+            if (noEnviables.length) {
+                throw new HttpError(400, `Hay productos que no permiten envio: ${noEnviables.map((item) => item.nombre).join(", ")}.`);
+            }
         }
         const stockIssues = [];
         const itemsEvaluados = [];
@@ -817,7 +867,7 @@ router.post("/checkout/preview", async (req, res) => {
            LIMIT 1`, [item.producto_id, sucursalSeleccionada.id]);
                 stockDisponibleSucursal = Number(inv?.stock_disponible ?? 0);
                 if (stockDisponibleSucursal < item.cantidad) {
-                    stockIssues.push(`${item.nombre}: solicitaste ${item.cantidad}, disponible ${stockDisponibleSucursal} en ${sucursalSeleccionada.nombre}.`);
+                    stockIssues.push(`${item.nombre}: no hay stock suficiente en la sucursal seleccionada.`);
                 }
             }
             const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
@@ -830,7 +880,6 @@ router.post("/checkout/preview", async (req, res) => {
                 precio_puntos_unit: precioPuntosUnit,
                 subtotal_dinero: subtotalDinero,
                 subtotal_puntos: subtotalPuntos,
-                stock_disponible_sucursal: stockDisponibleSucursal,
             });
         }
         const totalDinero = toMoney(itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
@@ -846,6 +895,10 @@ router.post("/checkout/preview", async (req, res) => {
                     ...sucursalSeleccionada,
                     label: buildLugarRetiro(sucursalSeleccionada),
                 }
+                : null,
+            metodo_entrega: metodoEntrega,
+            direccion_envio: metodoEntrega === "envio" && parsed.data.direccion_envio
+                ? normalizeShippingAddress(parsed.data.direccion_envio)
                 : null,
             resumen: {
                 total_items: itemsEvaluados.length,
@@ -880,10 +933,12 @@ router.post("/checkout/preview", async (req, res) => {
 router.post("/checkout/confirm", async (req, res) => {
     const schema = zod_1.z.object({
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
+        metodo_entrega: zod_1.z.enum(["retiro", "envio"]).optional().default("retiro"),
+        direccion_envio: shippingAddressSchema.optional().nullable(),
         notas: zod_1.z.string().max(500).optional().nullable(),
         pago: zod_1.z.object({
-            provider: zod_1.z.enum(["mercadopago", "pagos360"]),
-            method: zod_1.z.enum(["wallet", "qr", "credit_card", "debit_card"]).optional(),
+            provider: zod_1.z.enum(["mercadopago", "pagos360", "efectivo"]),
+            method: zod_1.z.enum(["wallet", "qr", "credit_card", "debit_card", "cash"]).optional(),
         }).optional(),
     });
     const parsed = schema.safeParse(req.body ?? {});
@@ -909,9 +964,22 @@ router.post("/checkout/confirm", async (req, res) => {
         const usuario = await (0, db_1.qOne)(conn, "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ? FOR UPDATE", [req.user.id]);
         const saldoPuntos = Number(usuario?.puntos_saldo ?? 0);
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
+        const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
         const requiereStock = items.some((item) => Number(item.track_stock) === 1);
         if (requiereStock && !sucursalSeleccionada) {
             throw new HttpError(400, "Debes seleccionar una sucursal para confirmar la orden.");
+        }
+        const direccionEnvio = metodoEntrega === "envio" && parsed.data.direccion_envio
+            ? normalizeShippingAddress(parsed.data.direccion_envio)
+            : null;
+        if (metodoEntrega === "envio") {
+            if (!direccionEnvio) {
+                throw new HttpError(400, "Completa direccion, codigo postal y telefono para solicitar envio.");
+            }
+            const noEnviables = items.filter((item) => Number(item.permite_envio ?? 0) !== 1);
+            if (noEnviables.length) {
+                throw new HttpError(400, `Hay productos que no permiten envio: ${noEnviables.map((item) => item.nombre).join(", ")}.`);
+            }
         }
         const itemsNormalizados = [];
         for (const item of items) {
@@ -938,6 +1006,9 @@ router.post("/checkout/confirm", async (req, res) => {
             throw new HttpError(400, `Puntos insuficientes. Tenés ${saldoPuntos}, necesitás ${totalPuntos}.`);
         }
         if (paymentChoice) {
+            if (paymentChoice.provider === "efectivo" && metodoEntrega !== "retiro") {
+                throw new HttpError(400, "El pago en efectivo solo esta disponible para retiro en sucursal.");
+            }
             const availability = (0, paymentProviders_1.isPaymentChoiceAvailable)(paymentChoice);
             if (!availability.ok) {
                 throw new HttpError(400, availability.reason || "Medio de pago no disponible.");
@@ -948,14 +1019,15 @@ router.post("/checkout/confirm", async (req, res) => {
                 : "canje";
         const estadoOrden = totalDinero > 0 ? "pendiente_pago" : "preparada";
         const { insertId: ordenId } = await (0, db_1.qRun)(conn, `INSERT INTO ordenes
-        (usuario_id, carrito_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
-       VALUES (?, ?, 'web', ?, ?, 'ARS', ?, ?, ?, ?)`, [
+        (usuario_id, carrito_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, direccion_envio_json, sucursal_retiro_id, notas)
+       VALUES (?, ?, 'web', ?, ?, 'ARS', ?, ?, ?, ?, ?)`, [
             req.user.id,
             carritoId,
             tipoOrden,
             estadoOrden,
             totalDinero,
             totalPuntos,
+            direccionEnvio ? JSON.stringify({ metodo_entrega: "envio", ...direccionEnvio }) : null,
             sucursalSeleccionada?.id ?? null,
             parsed.data.notas ?? null,
         ]);
@@ -1055,6 +1127,8 @@ router.post("/checkout/confirm", async (req, res) => {
                     label: buildLugarRetiro(sucursalSeleccionada),
                 }
                 : null,
+            metodo_entrega: metodoEntrega,
+            direccion_envio: direccionEnvio,
         });
     }
     catch (err) {
@@ -1066,7 +1140,10 @@ router.post("/checkout/confirm", async (req, res) => {
             });
             return;
         }
-        const msg = err instanceof Error ? err.message : "No se pudo confirmar el checkout.";
+        const rawMsg = err instanceof Error ? err.message : "No se pudo confirmar el checkout.";
+        const msg = rawMsg.toLowerCase().includes("stock insuficiente")
+            ? "No hay stock suficiente en la sucursal seleccionada para completar la reserva."
+            : rawMsg;
         res.status(400).json({ error: msg });
     }
     finally {
@@ -1081,7 +1158,7 @@ router.get("/checkout/payment-options", async (_req, res) => {
 });
 router.get("/ordenes", async (req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
-            o.sucursal_retiro_id, o.notas, o.created_at, o.updated_at,
+            o.direccion_envio_json, o.sucursal_retiro_id, o.notas, o.created_at, o.updated_at,
             s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
             s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia
      FROM ordenes o
@@ -1120,6 +1197,7 @@ router.get("/ordenes", async (req, res) => {
             ...row,
             total_dinero: Number(row.total_dinero),
             total_puntos: Number(row.total_puntos),
+            direccion_envio: parseJsonField(row.direccion_envio_json),
             sucursal,
             ...(summaryMap.get(Number(row.id)) ?? { total_items: 0, total_unidades: 0 }),
         };
@@ -1132,7 +1210,7 @@ router.get("/ordenes/:id", async (req, res) => {
         return;
     }
     const orden = await (0, db_1.qOne)(db_1.pool, `SELECT o.id, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
-            o.sucursal_retiro_id, o.notas, o.created_at, o.updated_at,
+            o.direccion_envio_json, o.sucursal_retiro_id, o.notas, o.created_at, o.updated_at,
             s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
             s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia
      FROM ordenes o
@@ -1153,6 +1231,7 @@ router.get("/ordenes/:id", async (req, res) => {
         ...orden,
         total_dinero: Number(orden.total_dinero),
         total_puntos: Number(orden.total_puntos),
+        direccion_envio: parseJsonField(orden.direccion_envio_json),
         items,
         pago: pago
             ? {

@@ -571,7 +571,7 @@ async function ensureOrderCoreSchema() {
       carrito_id BIGINT UNSIGNED NULL,
       canal ENUM('web','admin','vendedor') NOT NULL DEFAULT 'web',
       tipo_orden ENUM('canje','venta','mixta') NOT NULL DEFAULT 'canje',
-      estado ENUM('borrador','pendiente_pago','pagada','preparada','entregada','cancelada','expirada')
+      estado ENUM('borrador','pendiente_pago','pagada','preparada','enviada','entregada','cancelada','expirada')
         NOT NULL DEFAULT 'borrador',
       moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
       total_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -666,6 +666,25 @@ async function ensureOrderCoreSchema() {
       INDEX idx_mov_stock_orden (orden_id)
     )`
   );
+
+  try {
+    const [statusRows] = await pool.query(
+      `SELECT COLUMN_TYPE AS column_type
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes' AND COLUMN_NAME = 'estado'
+       LIMIT 1`
+    ) as [Array<{ column_type: string }>, any[]];
+    const columnType = statusRows[0]?.column_type ?? "";
+    if (!columnType.includes("'enviada'")) {
+      await pool.query(
+        `ALTER TABLE ordenes
+         MODIFY estado ENUM('borrador','pendiente_pago','pagada','preparada','enviada','entregada','cancelada','expirada')
+         NOT NULL DEFAULT 'borrador'`
+      );
+    }
+  } catch {
+    // No detenemos el arranque si MySQL no permite modificar el enum en este momento.
+  }
 }
 
 async function ensurePagosCheckoutSchema() {

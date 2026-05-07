@@ -113,15 +113,43 @@ type OrdenAdmin = {
   usuario_id: number;
   cliente_nombre: string;
   cliente_email: string;
-  estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "entregada" | "cancelada" | "expirada";
+  estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
   total_dinero: number;
   total_puntos: number;
   moneda: string;
   sucursal_retiro_id: number | null;
   sucursal_nombre: string | null;
+  sucursal?: {
+    id: number;
+    nombre: string | null;
+    direccion: string | null;
+    piso: string | null;
+    localidad: string | null;
+    provincia: string | null;
+  } | null;
+  direccion_envio?: {
+    metodo_entrega?: "envio";
+    nombre?: string;
+    telefono?: string;
+    direccion?: string;
+    codigo_postal?: string;
+    localidad?: string;
+    provincia?: string;
+    referencias?: string | null;
+  } | null;
+  notas: string | null;
   total_items: number;
   total_unidades: number;
+  items?: Array<{
+    producto_id: number;
+    nombre: string;
+    cantidad: number;
+    modo_compra: "dinero" | "puntos";
+    subtotal_dinero: number;
+    subtotal_puntos: number;
+    imagen_url: string | null;
+  }>;
   pago: {
     estado: string;
     proveedor: string;
@@ -394,11 +422,19 @@ function formatEstadoOrden(estado: string): string {
     pendiente_pago: "Pendiente pago",
     pagada: "Pagada",
     preparada: "Preparada",
+    enviada: "Enviada",
     entregada: "Entregada",
     cancelada: "Cancelada",
     expirada: "Expirada",
   };
   return labels[estado] ?? estado.replace(/_/g, " ");
+}
+
+function formatPagoOrden(orden: OrdenAdmin): string {
+  if (!orden.pago) return "-";
+  const proveedor = orden.pago.proveedor === "efectivo" ? "Efectivo" : orden.pago.proveedor;
+  const estado = orden.pago.estado === "iniciado" ? "pendiente" : orden.pago.estado;
+  return `${proveedor} / ${estado}`;
 }
 
 function normalizeImageList(urls: string[]): string[] {
@@ -561,6 +597,9 @@ export function Admin() {
   const [seguridadPage, setSeguridadPage] = useState(1);
   const [busquedaInventario, setBusquedaInventario] = useState("");
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
+  const [ordenesFiltroEstado, setOrdenesFiltroEstado] = useState("");
+  const [ordenesFiltroEntrega, setOrdenesFiltroEntrega] = useState("");
+  const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [inventarioDraft, setInventarioDraft] = useState<Record<string, string>>({});
   const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
   const [inventarioFiltroProducto, setInventarioFiltroProducto] = useState("");
@@ -852,8 +891,11 @@ export function Admin() {
 
   const ordenesFiltradas = useMemo(() => {
     const q = busquedaOrdenes.trim().toLowerCase();
-    if (!q) return ordenes;
     return ordenes.filter((orden) => {
+      if (ordenesFiltroEstado && orden.estado !== ordenesFiltroEstado) return false;
+      if (ordenesFiltroEntrega === "envio" && !orden.direccion_envio) return false;
+      if (ordenesFiltroEntrega === "retiro" && orden.direccion_envio) return false;
+      if (!q) return true;
       const haystack = [
         String(orden.id),
         orden.cliente_nombre,
@@ -861,12 +903,15 @@ export function Admin() {
         orden.estado,
         orden.tipo_orden,
         orden.sucursal_nombre || "",
+        orden.direccion_envio?.direccion || "",
+        orden.direccion_envio?.codigo_postal || "",
+        orden.direccion_envio?.localidad || "",
         orden.pago?.estado || "",
         orden.pago?.proveedor || "",
       ].join(" ").toLowerCase();
       return haystack.includes(q);
     });
-  }, [busquedaOrdenes, ordenes]);
+  }, [busquedaOrdenes, ordenes, ordenesFiltroEntrega, ordenesFiltroEstado]);
 
   const totalUsuariosPages = Math.max(1, Math.ceil(usuariosFiltrados.length / LISTA_POR_PAGINA));
   const totalProductosPages = Math.max(1, Math.ceil(productosFiltrados.length / LISTA_POR_PAGINA));
@@ -1210,6 +1255,15 @@ export function Admin() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function ajustarInventarioRapido(row: InventarioSucursal, delta: number) {
+    const key = `${row.producto_id}:${row.sucursal_id}`;
+    setInventarioDraft((prev) => {
+      const actual = Number(prev[key] ?? row.stock_disponible);
+      const base = Number.isFinite(actual) ? actual : Number(row.stock_disponible ?? 0);
+      return { ...prev, [key]: String(Math.max(0, base + delta)) };
+    });
   }
 
   async function actualizarEstadoOrden(id: number, estado: OrdenAdmin["estado"]) {
@@ -2973,6 +3027,12 @@ export function Admin() {
                             <td>{row.sucursal_nombre}</td>
                             <td>{formatTipoProducto(row.tipo_producto)}</td>
                             <td style={{ minWidth: 120 }}>
+                              <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.35rem" }}>
+                                <button className="adm-btn-link" type="button" onClick={() => ajustarInventarioRapido(row, -5)} disabled={busy}>-5</button>
+                                <button className="adm-btn-link" type="button" onClick={() => ajustarInventarioRapido(row, -1)} disabled={busy}>-1</button>
+                                <button className="adm-btn-link" type="button" onClick={() => ajustarInventarioRapido(row, 1)} disabled={busy}>+1</button>
+                                <button className="adm-btn-link" type="button" onClick={() => ajustarInventarioRapido(row, 5)} disabled={busy}>+5</button>
+                              </div>
                               <input
                                 type="number"
                                 min={0}
@@ -3044,11 +3104,26 @@ export function Admin() {
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
                 <div className="adm-form-grid">
                   <input className="adm-input" placeholder="Buscar por cliente, orden, estado o pago..." value={busquedaOrdenes} onChange={(event) => setBusquedaOrdenes(event.target.value)} />
+                  <select className="adm-input" value={ordenesFiltroEstado} onChange={(event) => setOrdenesFiltroEstado(event.target.value)}>
+                    <option value="">Todos los estados</option>
+                    <option value="pendiente_pago">Pendiente pago</option>
+                    <option value="pagada">Pagada</option>
+                    <option value="preparada">Preparada</option>
+                    <option value="enviada">Enviada</option>
+                    <option value="entregada">Entregada</option>
+                    <option value="cancelada">Cancelada</option>
+                    <option value="expirada">Expirada</option>
+                  </select>
+                  <select className="adm-input" value={ordenesFiltroEntrega} onChange={(event) => setOrdenesFiltroEntrega(event.target.value)}>
+                    <option value="">Retiro y envio</option>
+                    <option value="retiro">Solo retiro</option>
+                    <option value="envio">Solo envio</option>
+                  </select>
                   <button className="adm-btn-secondary" onClick={() => void expirarReservas()} disabled={busy}>
                     Expirar reservas vencidas
                   </button>
                 </div>
-                <p className="adm-inline-tip">Pagada descuenta definitivamente la reserva. Cancelada o expirada libera stock y devuelve puntos si la orden los habia usado.</p>
+                <p className="adm-inline-tip">Pago y preparacion van separados: primero pagada, luego preparada/enviada/entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.</p>
               </div>
 
               <div className="admin-card">
@@ -3060,7 +3135,7 @@ export function Admin() {
                         <th>Cliente</th>
                         <th>Tipo</th>
                         <th>Total</th>
-                        <th>Sucursal</th>
+                        <th>Entrega</th>
                         <th>Pago</th>
                         <th>Estado</th>
                         <th>Acciones</th>
@@ -3071,7 +3146,8 @@ export function Admin() {
                         <tr><td colSpan={8}><div className="adm-empty">No hay compras para mostrar.</div></td></tr>
                       ) : null}
                       {ordenesPagina.map((orden) => (
-                        <tr key={orden.id}>
+                        <Fragment key={orden.id}>
+                        <tr>
                           <td>
                             #{orden.id}
                             <br />
@@ -3087,23 +3163,80 @@ export function Admin() {
                             {formatMoney(orden.total_dinero)}
                             {orden.total_puntos > 0 ? <><br /><span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.total_puntos} pts</span></> : null}
                           </td>
-                          <td>{orden.sucursal_nombre || "-"}</td>
-                          <td>{orden.pago ? `${orden.pago.proveedor} / ${orden.pago.estado}` : "-"}</td>
+                          <td>
+                            {orden.direccion_envio ? "Envio" : "Retiro"}
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>
+                              {orden.direccion_envio
+                                ? `${orden.direccion_envio.localidad || "-"} (${orden.direccion_envio.codigo_postal || "s/CP"})`
+                                : orden.sucursal_nombre || "-"}
+                            </span>
+                          </td>
+                          <td>{formatPagoOrden(orden)}</td>
                           <td>{formatEstadoOrden(orden.estado)}</td>
                           <td>
                             <div className="adm-row-actions">
+                              <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
+                                {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
+                              </button>
                               {orden.estado === "pendiente_pago" ? (
                                 <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>
                               ) : null}
-                              {(orden.estado === "pagada" || orden.estado === "preparada") ? (
+                              {orden.estado === "pagada" ? (
+                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparada")} disabled={busy}>Preparar</button>
+                              ) : null}
+                              {(orden.estado === "pagada" || orden.estado === "preparada") && orden.direccion_envio ? (
+                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "enviada")} disabled={busy}>Enviar</button>
+                              ) : null}
+                              {(orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada") ? (
                                 <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
                               ) : null}
-                              {(orden.estado === "pendiente_pago" || orden.estado === "preparada") ? (
+                              {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
                                 <button className="adm-btn-danger" onClick={() => void actualizarEstadoOrden(orden.id, "cancelada")} disabled={busy}>Cancelar</button>
                               ) : null}
                             </div>
                           </td>
                         </tr>
+                        {ordenExpandidaId === orden.id ? (
+                          <tr>
+                            <td colSpan={8}>
+                              <div className="adm-inline-points-box">
+                                <p className="adm-inline-points-title">Detalle pedido #{orden.id}</p>
+                                <div className="adm-form-grid">
+                                  <div>
+                                    <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>Productos</p>
+                                    {(orden.items ?? []).map((item) => (
+                                      <p key={`${orden.id}-${item.producto_id}-${item.modo_compra}`} style={{ margin: "0.15rem 0", color: "#4A2C1A" }}>
+                                        {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? formatMoney(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
+                                      </p>
+                                    ))}
+                                  </div>
+                                  <div>
+                                    <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>{orden.direccion_envio ? "Datos de envio" : "Datos de retiro"}</p>
+                                    {orden.direccion_envio ? (
+                                      <>
+                                        <p style={{ margin: "0.15rem 0" }}><strong>Recibe:</strong> {orden.direccion_envio.nombre || "-"}</p>
+                                        <p style={{ margin: "0.15rem 0" }}><strong>Telefono:</strong> {orden.direccion_envio.telefono || "-"}</p>
+                                        <p style={{ margin: "0.15rem 0" }}><strong>Direccion:</strong> {orden.direccion_envio.direccion || "-"}</p>
+                                        <p style={{ margin: "0.15rem 0" }}><strong>CP:</strong> {orden.direccion_envio.codigo_postal || "-"} - {orden.direccion_envio.localidad || "-"}, {orden.direccion_envio.provincia || "-"}</p>
+                                        {orden.direccion_envio.referencias ? <p style={{ margin: "0.15rem 0" }}><strong>Referencias:</strong> {orden.direccion_envio.referencias}</p> : null}
+                                        <p style={{ margin: "0.15rem 0", color: "#8B5A30" }}>Sucursal que prepara: {orden.sucursal_nombre || "-"}</p>
+                                      </>
+                                    ) : (
+                                      <p style={{ margin: "0.15rem 0" }}>
+                                        {orden.sucursal?.nombre || orden.sucursal_nombre || "-"}
+                                        {orden.sucursal?.direccion ? ` - ${orden.sucursal.direccion}` : ""}
+                                        {orden.sucursal?.piso ? `, Piso ${orden.sucursal.piso}` : ""}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                {orden.notas ? <p style={{ margin: "0.65rem 0 0", color: "#8B5A30" }}><strong>Notas:</strong> {orden.notas}</p> : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

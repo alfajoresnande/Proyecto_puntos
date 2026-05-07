@@ -42,6 +42,17 @@ function isAtLeastAge(date: Date, minYears: number): boolean {
   return date.getTime() <= limit.getTime();
 }
 
+function parseJsonField(value: unknown): unknown {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 // ── Configuración de multer para subida de imágenes ──────
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -148,6 +159,7 @@ type OrdenItemAdminRow = {
   subtotal_dinero: number;
   subtotal_puntos: number;
   nombre: string;
+  imagen_url: string | null;
   track_stock: number;
 };
 
@@ -199,30 +211,13 @@ async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, 
   const rows = await qAll<OrdenItemAdminRow>(
     pool,
     `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
-            oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
+            oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.imagen_url, p.track_stock
      FROM orden_items oi
      JOIN productos p ON p.id = oi.producto_id
      WHERE oi.orden_id IN (${placeholders})
      ORDER BY oi.orden_id ASC, oi.id ASC`,
     orderIds,
   );
-const MINIMUM_ALLOWED_AGE_YEARS = 13;
-
-function parseBirthDate(raw: string): Date | null {
-  const text = (raw || "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-  const dt = new Date(`${text}T00:00:00.000Z`);
-  if (Number.isNaN(dt.getTime())) return null;
-  const [y, m, d] = text.split("-").map((x) => Number(x));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return null;
-  return dt;
-}
-
-function isAtLeastAge(date: Date, minYears: number): boolean {
-  const today = new Date();
-  const limit = new Date(Date.UTC(today.getUTCFullYear() - minYears, today.getUTCMonth(), today.getUTCDate()));
-  return date.getTime() <= limit.getTime();
-}
 
   for (const row of rows) {
     const list = map.get(Number(row.orden_id)) ?? [];
@@ -685,15 +680,24 @@ router.get("/ordenes", async (_req, res) => {
     total_dinero: number;
     total_puntos: number;
     moneda: string;
+    direccion_envio_json: string | null;
     sucursal_retiro_id: number | null;
     sucursal_nombre: string | null;
+    sucursal_direccion: string | null;
+    sucursal_piso: string | null;
+    sucursal_localidad: string | null;
+    sucursal_provincia: string | null;
+    notas: string | null;
     created_at: string;
     updated_at: string;
   }>(
     pool,
     `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
             o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
-            o.sucursal_retiro_id, s.nombre AS sucursal_nombre, o.created_at, o.updated_at
+            o.direccion_envio_json, o.sucursal_retiro_id,
+            s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
+            s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+            o.notas, o.created_at, o.updated_at
      FROM ordenes o
      JOIN usuarios u ON u.id = o.usuario_id
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
@@ -736,6 +740,18 @@ router.get("/ordenes", async (_req, res) => {
         total_puntos: Number(row.total_puntos ?? 0),
         total_items: items.length,
         total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
+        items,
+        direccion_envio: parseJsonField(row.direccion_envio_json),
+        sucursal: row.sucursal_retiro_id
+          ? {
+              id: Number(row.sucursal_retiro_id),
+              nombre: row.sucursal_nombre,
+              direccion: row.sucursal_direccion,
+              piso: row.sucursal_piso,
+              localidad: row.sucursal_localidad,
+              provincia: row.sucursal_provincia,
+            }
+          : null,
         pago: payMap.get(Number(row.id)) ?? null,
       };
     }),
@@ -750,7 +766,7 @@ router.patch("/ordenes/:id", async (req, res) => {
   }
 
   const schema = z.object({
-    estado: z.enum(["pendiente_pago", "pagada", "preparada", "entregada", "cancelada", "expirada"]),
+    estado: z.enum(["pendiente_pago", "pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"]),
     notas: z.string().max(1000).optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
@@ -766,7 +782,7 @@ router.patch("/ordenes/:id", async (req, res) => {
     const orden = await qOne<{
       id: number;
       usuario_id: number;
-      estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "entregada" | "cancelada" | "expirada";
+      estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
       total_puntos: number;
       sucursal_retiro_id: number | null;
       total_dinero: number;
@@ -790,6 +806,18 @@ router.patch("/ordenes/:id", async (req, res) => {
     }
     if (orden.estado === "entregada" || orden.estado === "cancelada" || orden.estado === "expirada") {
       res.status(400).json({ error: `No se puede modificar una orden en estado '${orden.estado}'.` });
+      return;
+    }
+
+    const allowedTransitions: Record<string, string[]> = {
+      borrador: ["pendiente_pago", "cancelada"],
+      pendiente_pago: ["pagada", "cancelada", "expirada"],
+      pagada: ["preparada", "enviada", "entregada", "cancelada"],
+      preparada: ["enviada", "entregada", "cancelada"],
+      enviada: ["entregada", "cancelada"],
+    };
+    if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
+      res.status(400).json({ error: `No se puede pasar una orden de '${orden.estado}' a '${estado}'.` });
       return;
     }
 

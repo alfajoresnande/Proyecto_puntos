@@ -63,6 +63,11 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
+function availabilityLabel(producto: Producto): string {
+  if (producto.track_stock === false) return "Consultar";
+  return productHasStock(producto) ? "Disponible" : "Sin stock";
+}
+
 function niceRoundMoney(n: number): number {
   if (n < 1000) return Math.max(100, Math.round(n / 100) * 100);
   if (n < 10000) return Math.round(n / 500) * 500;
@@ -102,22 +107,9 @@ export function TiendaOnline() {
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
   });
 
-  const onlineCartQuery = useQuery({
-    queryKey: ["cliente", "carrito-online"],
-    queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
-    enabled: user?.rol === "cliente",
-  });
-
   const productos = productosQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
   const sucursalSeleccionada = sucursalId ? sucursales.find((sucursal) => String(sucursal.id) === sucursalId) : undefined;
-  const onlineCartTotalUnidades = useMemo(
-    () =>
-      (onlineCartQuery.data?.items ?? [])
-        .filter((item) => item.modo_compra === "dinero")
-        .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
-    [onlineCartQuery.data?.items],
-  );
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -297,8 +289,7 @@ export function TiendaOnline() {
   function ajustarCantidadSeleccionada(producto: Producto, delta: number) {
     setCantidadesSeleccionadas((prev) => {
       const actual = Number.isInteger(prev[producto.id]) && prev[producto.id] > 0 ? prev[producto.id] : 1;
-      const stock = Number(producto.stock_disponible ?? 0);
-      const max = producto.track_stock === false ? 100 : Math.max(1, stock);
+      const max = 100;
       const next = Math.max(1, Math.min(max, actual + delta));
       return { ...prev, [producto.id]: next };
     });
@@ -391,11 +382,6 @@ export function TiendaOnline() {
       navigate("/login");
       return;
     }
-    const stock = Number(producto.stock_disponible ?? 0);
-    if (producto.track_stock !== false && cantidad > stock) {
-      setToast(`Stock insuficiente en la sucursal seleccionada. Disponible: ${stock}.`);
-      return;
-    }
     addMutation.mutate({ productoId: producto.id, cantidad });
   }
 
@@ -404,7 +390,7 @@ export function TiendaOnline() {
       <div className="catalog-top-shell store-head">
         <div className="catalog-header">
           <h1 className="catalog-title">Tienda Online</h1>
-          <p className="catalog-subtitle">Compra productos con dinero y reserva stock para retiro en sucursal</p>
+          <p className="catalog-subtitle">Compra productos con dinero y reserva para retiro en sucursal</p>
         </div>
         <div className="store-actions">
           <label className="catalog-branch-select">
@@ -421,14 +407,6 @@ export function TiendaOnline() {
               ))}
             </select>
           </label>
-          <Link className="catalog-float-toast-btn-secondary catalog-cart-link" to="/carrito-tienda">
-            Ver carrito
-            {onlineCartTotalUnidades > 0 ? (
-              <span className="catalog-cart-badge" aria-label={`${onlineCartTotalUnidades} productos en carrito`}>
-                {onlineCartTotalUnidades > 99 ? "99+" : onlineCartTotalUnidades}
-              </span>
-            ) : null}
-          </Link>
           {user?.rol === "cliente" ? <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link> : null}
         </div>
       </div>
@@ -624,7 +602,7 @@ export function TiendaOnline() {
                   <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-stock-label">
                     {[
                       { value: "all" as StockFilterId, label: "Todos", count: conteosPorStock.all },
-                      { value: "available" as StockFilterId, label: "Con stock", count: conteosPorStock.available },
+                      { value: "available" as StockFilterId, label: "Disponibles", count: conteosPorStock.available },
                     ].map((opt) => {
                       const checked = stockFilterId === opt.value;
                       const isEmpty = opt.count === 0 && !checked;
@@ -713,8 +691,8 @@ export function TiendaOnline() {
                       </div>
                       <div className="product-card-divider" />
                       <div className="product-card-row">
-                        <span>{sucursalSeleccionada ? `Stock en ${sucursalSeleccionada.nombre}` : "Stock disponible"}</span>
-                        <span className={sinStock ? "store-stock-empty" : "earn"}>{producto.track_stock === false ? "Consultar" : stock}</span>
+                        <span>{sucursalSeleccionada ? `Disponibilidad en ${sucursalSeleccionada.nombre}` : "Disponibilidad"}</span>
+                        <span className={sinStock ? "store-stock-empty" : "earn"}>{availabilityLabel(producto)}</span>
                       </div>
                     </div>
                     {user ? (
@@ -733,7 +711,7 @@ export function TiendaOnline() {
                         <button
                           type="button"
                           className="vendedor-round-btn"
-                          disabled={addMutation.isPending || (producto.track_stock !== false && cantidadSeleccionada >= stock)}
+                          disabled={addMutation.isPending || cantidadSeleccionada >= 100}
                           onClick={() => ajustarCantidadSeleccionada(producto, +1)}
                         >
                           +

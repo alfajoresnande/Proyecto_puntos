@@ -1,7 +1,7 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
 import { finalizeStockForCheckoutItems, releaseStockForCheckoutItems } from "./stock";
 
-export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "entregada" | "cancelada" | "expirada";
+export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
 export type OrderLifecycleResult = {
   ok: boolean;
   orderId: number;

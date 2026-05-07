@@ -701,6 +701,12 @@ body.catalogo-background .pagina-page {
   gap: 0.4rem;
   justify-content: center;
   margin-top: 0.5rem;
+  min-height: 40px;
+}
+
+.product-card-qty .vendedor-round-btn {
+  flex: 0 0 auto;
+  touch-action: manipulation;
 }
 
 /* CTA Buttons */
@@ -2135,6 +2141,8 @@ body.catalogo-background .pagina-page {
     color: #c86422;
     font-size: 1.1rem;
     font-weight: 900;
+    min-height: 38px;
+    min-width: 38px;
   }
 
   .product-card-btn-canjear::before {

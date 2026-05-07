@@ -1,11 +1,20 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../api";
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
 
 function navClass(isActive: boolean): string {
   return `navbar-link${isActive ? " active" : ""}`;
 }
+
+type OnlineCartResponse = {
+  items: Array<{
+    cantidad: number;
+    modo_compra: "dinero" | "puntos";
+  }>;
+};
 
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -21,18 +30,38 @@ export function Navbar() {
   const canSeeCliente = user?.rol === "cliente";
   const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin";
   const canSeeAdmin = user?.rol === "admin";
+  const isStoreContext =
+    location.pathname.startsWith("/tienda") ||
+    location.pathname.startsWith("/carrito-tienda") ||
+    location.pathname.startsWith("/mis-pedidos");
 
-  const cartCount = useMemo(
+  const onlineCartQuery = useQuery({
+    queryKey: ["cliente", "carrito-online"],
+    queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
+    enabled: canSeeCliente,
+  });
+
+  const canjeCartCount = useMemo(
     () => Object.values(cartItems).reduce((acc, item) => acc + item.cantidad, 0),
     [cartItems],
   );
+  const onlineCartCount = useMemo(
+    () =>
+      (onlineCartQuery.data?.items ?? [])
+        .filter((item) => item.modo_compra === "dinero")
+        .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
+    [onlineCartQuery.data?.items],
+  );
+  const cartCount = isStoreContext ? onlineCartCount : canjeCartCount;
+  const cartLabel = isStoreContext ? "Carrito tienda" : "Carrito de canjes";
+  const cartTarget = isStoreContext ? "/carrito-tienda" : "/carrito-canjes";
 
   const closeMenu = () => setMenuOpen(false);
 
   function handleIrACarritoCanjes() {
     closeMenu();
-    if (location.pathname !== "/carrito-canjes") {
-      navigate("/carrito-canjes");
+    if (location.pathname !== cartTarget) {
+      navigate(cartTarget);
     }
   }
 
@@ -66,8 +95,8 @@ export function Navbar() {
       <button
         type="button"
         onClick={handleIrACarritoCanjes}
-        aria-label={`Carrito de canjes${cartCount > 0 ? ` (${cartCount} producto${cartCount === 1 ? "" : "s"})` : ""}`}
-        title="Carrito de canjes"
+        aria-label={`${cartLabel}${cartCount > 0 ? ` (${cartCount} producto${cartCount === 1 ? "" : "s"})` : ""}`}
+        title={cartLabel}
         style={{
           position: "relative",
           display: "inline-flex",

@@ -82,6 +82,11 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
+function availabilityLabel(producto: Producto): string {
+  if (producto.track_stock === false) return "Consultar";
+  return productHasStock(producto) ? "Disponible" : "Sin stock";
+}
+
 type RangoPuntosId = "afford" | "all" | "low" | "mid-low" | "mid-high" | "high";
 
 type RangoPuntos = {
@@ -513,16 +518,6 @@ export function Catalogo() {
       });
       return;
     }
-    if (producto.track_stock !== false && cantidadSafe > stock) {
-      setToast({
-        msg: `Stock insuficiente en la sucursal seleccionada. Disponible: ${stock}.`,
-        variant: "error",
-        dismissLabel: "Cerrar",
-        autoHideMs: 7000,
-      });
-      return;
-    }
-
     cartAdd(
       {
         id: producto.id,
@@ -635,9 +630,7 @@ export function Catalogo() {
     });
   }
 
-  const productoModalStock = Number(productoModal?.stock_disponible ?? 0);
   const productoModalSinStock = productoModal ? !productHasStock(productoModal) : false;
-  const productoModalCantidadMaxima = productoModal?.track_stock === false ? 100 : Math.max(1, productoModalStock);
 
   return (
     <section className="catalog-page">
@@ -664,7 +657,7 @@ export function Catalogo() {
           ) : null}
 
           <label className="catalog-branch-select">
-            <span>Sucursal para ver stock</span>
+            <span>Sucursal de retiro</span>
             <select
               value={sucursalRetiroId}
               onChange={(event) => setSucursalRetiroId(event.target.value)}
@@ -956,7 +949,6 @@ export function Catalogo() {
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = !productHasStock(producto);
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
-              const cantidadSuperaStock = producto.track_stock !== false && cantidadSeleccionada > stock;
 
               return (
               <div key={producto.id} className={`product-card ${descripcionExpandida ? "product-card-expanded" : ""}`}>
@@ -1030,9 +1022,9 @@ export function Catalogo() {
                     <div className="product-card-divider" />
                     <div className="product-card-row product-card-points-tile">
                       <span className="product-points-copy">
-                        <span>{sucursalRetiroSeleccionada ? `Stock en ${sucursalRetiroSeleccionada.nombre}:` : "Stock:"}</span>
+                        <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}:` : "Disponibilidad:"}</span>
                         <span className={sinStock ? "store-stock-empty" : "earn"}>
-                          {producto.track_stock === false ? "Consultar" : stock}
+                          {availabilityLabel(producto)}
                         </span>
                       </span>
                     </div>
@@ -1061,7 +1053,7 @@ export function Catalogo() {
                         <button
                           type="button"
                           className="vendedor-round-btn"
-                          disabled={canjearCarritoMutation.isPending || (producto.track_stock !== false && cantidadSeleccionada >= stock)}
+                          disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= 100}
                           onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
                         >
                           +
@@ -1070,7 +1062,7 @@ export function Catalogo() {
                       <button
                         className="product-card-btn product-card-btn-canjear"
                         style={{ marginTop: "0.5rem" }}
-                        disabled={canjearCarritoMutation.isPending || sinStock || cantidadSuperaStock}
+                        disabled={canjearCarritoMutation.isPending || sinStock}
                         onClick={() =>
                           agregarProductoAlCarrito(
                             producto,
@@ -1369,9 +1361,9 @@ export function Catalogo() {
                 ) : null}
                 <div className="product-card-divider" />
                 <div className="product-card-row">
-                  <span>{sucursalRetiroSeleccionada ? `Stock en ${sucursalRetiroSeleccionada.nombre}` : "Stock disponible"}</span>
+                  <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}` : "Disponibilidad"}</span>
                   <span className={productoModalSinStock ? "store-stock-empty" : "earn"}>
-                    {productoModal.track_stock === false ? "Consultar" : productoModalStock}
+                    {availabilityLabel(productoModal)}
                   </span>
                 </div>
               </div>
@@ -1393,15 +1385,15 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
-                      disabled={productoModal.track_stock !== false && cantidadModalCanje >= productoModalStock}
-                      onClick={() => setCantidadModalCanje((prev) => Math.min(productoModalCantidadMaxima, prev + 1))}
+                      disabled={cantidadModalCanje >= 100}
+                      onClick={() => setCantidadModalCanje((prev) => Math.min(100, prev + 1))}
                     >
                       +
                     </button>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={canjearCarritoMutation.isPending || productoModalSinStock || (productoModal.track_stock !== false && cantidadModalCanje > productoModalStock)}
+                    disabled={canjearCarritoMutation.isPending || productoModalSinStock}
                     onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanje)}
                   >
                     {productoModalSinStock ? "Sin stock" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}`}
