@@ -128,12 +128,21 @@ declare global {
 let mercadoPagoSdkPromise: Promise<void> | null = null;
 
 function mercadoPagoErrorMessage(error: unknown): string {
+  const normalizeMessage = (raw: string): string => {
+    const value = raw.trim();
+    if (!value) return "";
+    if (value === "empty_installments") {
+      return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos o intenta con otra tarjeta.";
+    }
+    return value;
+  };
+
   if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error.trim();
+  if (typeof error === "string" && error.trim()) return normalizeMessage(error);
   if (error && typeof error === "object") {
     const err = error as { message?: unknown; cause?: unknown; error?: unknown };
-    if (typeof err.message === "string" && err.message.trim()) return err.message.trim();
-    if (typeof err.error === "string" && err.error.trim()) return err.error.trim();
+    if (typeof err.message === "string" && err.message.trim()) return normalizeMessage(err.message);
+    if (typeof err.error === "string" && err.error.trim()) return normalizeMessage(err.error);
     if (Array.isArray(err.cause)) {
       const causeMessage = err.cause
         .map((item) => {
@@ -149,7 +158,7 @@ function mercadoPagoErrorMessage(error: unknown): string {
           return "";
         })
         .find((item) => item.trim());
-      if (causeMessage) return causeMessage.trim();
+      if (causeMessage) return normalizeMessage(causeMessage);
     }
   }
   return "Mercado Pago no pudo obtener la informacion del medio de pago.";
@@ -181,10 +190,12 @@ function MercadoPagoBrick({
   confirmed,
   onPaid,
   onApproved,
+  buyerEmail,
 }: {
   confirmed: CheckoutConfirmResponse;
   onPaid: (response: ProcessPaymentResponse) => void;
   onApproved: () => void;
+  buyerEmail: string;
 }) {
   const [brickReady, setBrickReady] = useState(false);
   const [brickError, setBrickError] = useState<string | null>(null);
@@ -232,6 +243,11 @@ function MercadoPagoBrick({
           initialization: {
             amount: Number(confirmed.total_dinero),
             preferenceId,
+            payer: buyerEmail && buyerEmail.includes("@")
+              ? {
+                  email: buyerEmail.trim(),
+                }
+              : undefined,
           },
           customization: {
             visual: {
@@ -482,6 +498,7 @@ export function CarritoTienda() {
           {confirmed.pago?.metodo === "brick" && confirmed.pago.public_key && confirmed.pago.preference_id ? (
             <MercadoPagoBrick
               confirmed={confirmed}
+              buyerEmail={user?.email ?? ""}
               onPaid={(response) =>
                 setConfirmed((prev) =>
                   prev
