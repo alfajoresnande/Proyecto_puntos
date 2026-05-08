@@ -200,6 +200,33 @@ export function Navbar() {
                           </Link>
                         </>
                       ) : null}
+                      {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (
+                        <>
+                          <Link
+                            to="/staff/soporte"
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Inbox
+                          </Link>
+                          <Link
+                            to="/vendedor"
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Cargar Puntos
+                          </Link>
+                        </>
+                      ) : null}
+                      {user.rol === "admin" || user.rol === "superAdmin" ? (
+                        <Link
+                          to={adminPanelPath}
+                          className="navbar-user-dropdown-item"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          {adminPanelLabel}
+                        </Link>
+                      ) : null}
                       <button
                         className="navbar-user-dropdown-item navbar-user-dropdown-logout"
                         onClick={() => {
@@ -264,6 +291,15 @@ export function Navbar() {
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
                     <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>Mis Pedidos</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Soporte</Link>
+                  </div>
+                ) : null}
+                {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (
+                  <div className="navbar-mobile-user-links">
+                    <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Inbox</Link>
+                    <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Cargar Puntos</Link>
+                    {(user.rol === "admin" || user.rol === "superAdmin") ? (
+                      <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
+                    ) : null}
                   </div>
                 ) : null}
 
