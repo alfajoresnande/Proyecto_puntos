@@ -15,6 +15,7 @@ type SupportConversation = {
     id: number;
     nombre: string;
     email: string;
+    dni: string | null;
   };
 };
 
@@ -37,6 +38,7 @@ type SupportUser = {
   id: number;
   nombre: string;
   email: string;
+  dni: string | null;
   rol: "admin" | "vendedor" | "cliente";
 };
 
@@ -57,6 +59,7 @@ export function SoporteStaff() {
   const [respuesta, setRespuesta] = useState("");
   const [notaInterna, setNotaInterna] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [busqueda, setBusqueda] = useState("");
   const [nuevoUsuarioId, setNuevoUsuarioId] = useState("");
   const [nuevoAsunto, setNuevoAsunto] = useState("");
   const [nuevoMensaje, setNuevoMensaje] = useState("");
@@ -71,8 +74,9 @@ export function SoporteStaff() {
   });
 
   const usersQuery = useQuery({
-    queryKey: ["soporte", "staff", "usuarios"],
-    queryFn: () => api.get<SupportUser[]>("/soporte/usuarios"),
+    queryKey: ["soporte", "staff", "usuarios", busqueda],
+    queryFn: () =>
+      api.get<SupportUser[]>(`/soporte/usuarios${busqueda.trim() ? `?q=${encodeURIComponent(busqueda.trim())}` : ""}`),
     staleTime: 30_000,
   });
 
@@ -163,6 +167,18 @@ export function SoporteStaff() {
     [conversaciones],
   );
 
+  const conversacionesFiltradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return conversaciones;
+    return conversaciones.filter((item) => {
+      const name = item.usuario.nombre.toLowerCase();
+      const email = item.usuario.email.toLowerCase();
+      const dni = (item.usuario.dni ?? "").toLowerCase();
+      const asunto = (item.asunto ?? "").toLowerCase();
+      return name.includes(q) || email.includes(q) || dni.includes(q) || asunto.includes(q);
+    });
+  }, [busqueda, conversaciones]);
+
   return (
     <section className="dashboard-section perfil-dashboard-section">
       <div className="support-shell support-shell-staff">
@@ -177,6 +193,16 @@ export function SoporteStaff() {
               </div>
             </div>
 
+            <div className="support-search-wrap">
+              <span className="support-search-icon" aria-hidden="true">⌕</span>
+              <input
+                className="ios-input support-search-input"
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Buscar por nombre, DNI o asunto"
+              />
+            </div>
+
             <div className="support-form">
               <select
                 className="ios-input"
@@ -186,7 +212,7 @@ export function SoporteStaff() {
                 <option value="">Elegir usuario</option>
                 {usuarios.map((usuario) => (
                   <option key={usuario.id} value={usuario.id}>
-                    {usuario.nombre} - {usuario.email}
+                    {usuario.nombre}{usuario.dni ? ` - DNI ${usuario.dni}` : ""} - {usuario.email}
                   </option>
                 ))}
               </select>
@@ -231,24 +257,35 @@ export function SoporteStaff() {
 
           <div className="support-list">
             {conversationsQuery.isLoading ? <p className="support-empty">Cargando conversaciones...</p> : null}
-            {!conversationsQuery.isLoading && !conversaciones.length ? (
+            {!conversationsQuery.isLoading && !conversacionesFiltradas.length ? (
               <p className="support-empty">No hay conversaciones para este estado.</p>
             ) : null}
-            {conversaciones.map((item) => (
+            {conversacionesFiltradas.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 className={`support-list-item${selectedConversationId === item.id ? " active" : ""}`}
                 onClick={() => setSelectedId(item.id)}
               >
-                <div className="support-list-row">
-                  <strong>{item.usuario.nombre}</strong>
-                  {item.unread_staff > 0 ? <span className="support-badge">{item.unread_staff}</span> : null}
+                <div className="support-chat-row">
+                  <div className="support-chat-avatar" aria-hidden="true">
+                    {item.usuario.nombre.trim().charAt(0).toUpperCase() || "C"}
+                  </div>
+                  <div className="support-chat-main">
+                    <div className="support-list-row">
+                      <strong>{item.usuario.nombre}</strong>
+                      <span>{formatDate(item.ultimo_mensaje_at)}</span>
+                    </div>
+                    <p>{item.asunto || "Consulta general"}</p>
+                    <div className="support-list-row support-list-meta">
+                      <span>{item.usuario.dni ? `DNI ${item.usuario.dni}` : item.usuario.email}</span>
+                      {item.unread_staff > 0 ? <span className="support-badge">{item.unread_staff}</span> : null}
+                    </div>
+                  </div>
                 </div>
-                <p>{item.asunto || "Consulta general"}</p>
                 <div className="support-list-row support-list-meta">
                   <span className={`support-state support-state-${item.estado}`}>{item.estado}</span>
-                  <span>{formatDate(item.ultimo_mensaje_at)}</span>
+                  <span>{item.usuario.email}</span>
                 </div>
               </button>
             ))}
@@ -264,6 +301,7 @@ export function SoporteStaff() {
                     <h2 className="support-thread-title">{detalle.conversacion.asunto || "Consulta general"}</h2>
                     <p className="support-subtitle">
                       Cliente: {detalle.conversacion.usuario.nombre} - {detalle.conversacion.usuario.email}
+                      {detalle.conversacion.usuario.dni ? ` - DNI ${detalle.conversacion.usuario.dni}` : ""}
                     </p>
                   </div>
                   <div className="support-actions">

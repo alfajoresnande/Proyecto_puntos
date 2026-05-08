@@ -38,6 +38,7 @@ type ConversationRow = {
   updated_at: string;
   usuario_nombre: string;
   usuario_email: string;
+  usuario_dni: string | null;
   asignado_nombre: string | null;
 };
 
@@ -59,6 +60,7 @@ type SupportUserRow = {
   id: number;
   nombre: string;
   email: string;
+  dni: string | null;
   rol: "admin" | "superAdmin" | "vendedor" | "cliente";
 };
 
@@ -70,8 +72,8 @@ async function getConversationById(conn: Queryable, id: number): Promise<Convers
   return qOne<ConversationRow>(
     conn,
     `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
-            c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
-            u.nombre AS usuario_nombre, u.email AS usuario_email,
+           c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni,
             a.nombre AS asignado_nombre
      FROM soporte_conversaciones c
      JOIN usuarios u ON u.id = c.usuario_id
@@ -114,6 +116,7 @@ function serializeConversation(row: ConversationRow & {
       id: Number(row.usuario_id),
       nombre: row.usuario_nombre,
       email: row.usuario_email,
+      dni: row.usuario_dni ?? null,
     },
     asignado_nombre: row.asignado_nombre ?? null,
     unread_staff: Number(row.unread_staff ?? 0),
@@ -221,13 +224,13 @@ router.get("/usuarios", async (req, res) => {
   const where = ["u.activo = 1", "u.rol = 'cliente'"];
 
   if (search) {
-    where.push("(u.nombre LIKE ? OR u.email LIKE ?)");
-    params.push(`%${search}%`, `%${search}%`);
+    where.push("(u.nombre LIKE ? OR u.email LIKE ? OR u.dni LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const rows = await qAll<SupportUserRow>(
     pool,
-    `SELECT u.id, u.nombre, u.email, u.rol
+    `SELECT u.id, u.nombre, u.email, u.dni, u.rol
      FROM usuarios u
      WHERE ${where.join(" AND ")}
      ORDER BY
@@ -243,6 +246,7 @@ router.get("/usuarios", async (req, res) => {
       id: Number(row.id),
       nombre: row.nombre,
       email: row.email,
+      dni: row.dni ?? null,
       rol: row.rol,
     })),
   );
