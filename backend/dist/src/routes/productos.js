@@ -50,11 +50,15 @@ router.get("/", async (req, res) => {
      WHERE ${where}
      ORDER BY nombre ASC`, hasSucursalFilter ? [sucursalId, sucursalId, ...params] : params);
     const rows = rowsRaw;
-    if (!rows.length) {
+    const visibleRows = rows.filter((row) => {
+        const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
+        return !Boolean(row.track_stock) || stockSucursal > 0;
+    });
+    if (!visibleRows.length) {
         res.json([]);
         return;
     }
-    const ids = rows.map((row) => row.id);
+    const ids = visibleRows.map((row) => row.id);
     const placeholders = ids.map(() => "?").join(", ");
     const [imgRowsRaw] = await db_1.pool.query(`SELECT producto_id, imagen_url, orden
      FROM producto_imagenes
@@ -80,7 +84,7 @@ router.get("/", async (req, res) => {
         current.push(inventory);
         inventoryMap.set(inventory.producto_id, current);
     }
-    res.json(rows.map((row) => {
+    res.json(visibleRows.map((row) => {
         const imagenesRaw = imageMap.get(row.id) ?? [];
         const imagenes = (imagenesRaw.length > 0 ? imagenesRaw : (row.imagen_url ? [row.imagen_url] : []))
             .map((url) => (0, urlSafety_1.normalizeSafeImageUrl)(url))

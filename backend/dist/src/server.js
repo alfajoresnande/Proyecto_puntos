@@ -18,6 +18,7 @@ const paginas_1 = __importDefault(require("./routes/paginas"));
 const diagnostico_1 = __importDefault(require("./routes/diagnostico"));
 const pagos_1 = __importDefault(require("./routes/pagos"));
 const soporte_1 = __importDefault(require("./routes/soporte"));
+const ubicaciones_1 = __importDefault(require("./routes/ubicaciones"));
 const securityMonitor_1 = require("./securityMonitor");
 const expirations_1 = require("./services/expirations");
 const app = (0, express_1.default)();
@@ -168,6 +169,7 @@ app.use("/api/diagnostico", diagnostico_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/productos", productos_1.default); // publico (catalogo)
 app.use("/api/paginas", paginas_1.default); // publico (sobre nosotros, terminos)
+app.use("/api/ubicaciones", ubicaciones_1.default);
 app.use("/api/cliente", cliente_1.default);
 app.use("/api/vendedor", vendedor_1.default);
 app.use("/api/admin", admin_1.default);

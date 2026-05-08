@@ -483,6 +483,25 @@ function ProductInventoryEditor({
   onChangeStock: (sucursalId: number, stock: number) => void;
 }) {
   const activeSucursales = sucursales.filter((sucursal) => sucursal.activo);
+  const [selectedSucursalId, setSelectedSucursalId] = useState(() => activeSucursales[0]?.id ? String(activeSucursales[0].id) : "");
+
+  useEffect(() => {
+    if (!activeSucursales.length) {
+      setSelectedSucursalId("");
+      return;
+    }
+    if (!activeSucursales.some((sucursal) => String(sucursal.id) === selectedSucursalId)) {
+      setSelectedSucursalId(String(activeSucursales[0].id));
+    }
+  }, [activeSucursales, selectedSucursalId]);
+
+  const selectedSucursal = activeSucursales.find((sucursal) => String(sucursal.id) === selectedSucursalId) ?? activeSucursales[0];
+  const selectedRow = selectedSucursal
+    ? rows?.find((item) => Number(item.sucursal_id) === Number(selectedSucursal.id))
+    : undefined;
+  const selectedKey = selectedSucursal ? String(selectedSucursal.id) : "";
+  const selectedStockDisponible = selectedKey ? values[selectedKey] ?? selectedRow?.stock_disponible ?? 0 : 0;
+  const selectedStockReservado = Number(selectedRow?.stock_reservado ?? 0);
 
   return (
     <div className="adm-inventory-editor">
@@ -490,43 +509,51 @@ function ProductInventoryEditor({
       {activeSucursales.length === 0 ? (
         <div className="adm-empty">No hay sucursales activas. Activa o crea una sucursal antes de cargar stock.</div>
       ) : (
-        <div className="adm-inventory-branch-list">
-          {activeSucursales.map((sucursal) => {
-            const key = String(sucursal.id);
-            const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
-            const stockDisponible = values[key] ?? row?.stock_disponible ?? 0;
-            const stockReservado = Number(row?.stock_reservado ?? 0);
+        <>
+          <label className="adm-field adm-inventory-sucursal-select">
+            <span className="adm-label">Sucursal donde va el producto</span>
+            <select
+              className="adm-input"
+              value={selectedSucursalId}
+              onChange={(event) => setSelectedSucursalId(event.target.value)}
+            >
+              {activeSucursales.map((sucursal) => (
+                <option key={sucursal.id} value={sucursal.id}>
+                  {sucursal.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            return (
-              <div className="adm-inventory-branch-card" key={sucursal.id}>
-                <div className="adm-inventory-branch-main">
-                  <div>
-                    <p className="adm-inventory-branch-name">{sucursal.nombre}</p>
-                    <p className="adm-inventory-branch-address">{formatSucursalAddress(sucursal)}</p>
-                  </div>
-                  <span className="adm-inventory-branch-status">Activa</span>
+          {selectedSucursal ? (
+            <div className="adm-inventory-branch-card">
+              <div className="adm-inventory-branch-main">
+                <div>
+                  <p className="adm-inventory-branch-name">{selectedSucursal.nombre}</p>
+                  <p className="adm-inventory-branch-address">{formatSucursalAddress(selectedSucursal)}</p>
                 </div>
+                <span className="adm-inventory-branch-status">Activa</span>
+              </div>
 
-                <div className="adm-inventory-stock-row">
-                  <label className="adm-field adm-inventory-stock-field">
-                    <span className="adm-label">Stock disponible</span>
-                    <input
-                      type="number"
-                      min={0}
-                      className="adm-input"
-                      value={stockDisponible ?? ""}
-                      onChange={(event) => onChangeStock(sucursal.id, event.target.value ? Number(event.target.value) : 0)}
-                    />
-                  </label>
-                  <div className="adm-inventory-reserved-box">
-                    <span>Reservado</span>
-                    <strong>{stockReservado}</strong>
-                  </div>
+              <div className="adm-inventory-stock-row">
+                <label className="adm-field adm-inventory-stock-field">
+                  <span className="adm-label">Stock disponible en esta sucursal</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="adm-input"
+                    value={selectedStockDisponible ?? ""}
+                    onChange={(event) => onChangeStock(selectedSucursal.id, event.target.value ? Number(event.target.value) : 0)}
+                  />
+                </label>
+                <div className="adm-inventory-reserved-box">
+                  <span>Reservado</span>
+                  <strong>{selectedStockReservado}</strong>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

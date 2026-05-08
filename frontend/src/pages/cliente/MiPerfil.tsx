@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -21,6 +21,17 @@ type ClienteMe = {
 type MiCodigo = {
   codigo: string | null;
   total_invitados: number;
+};
+
+type Provincia = {
+  id: string;
+  nombre: string;
+};
+
+type Localidad = {
+  id: string;
+  provincia_id: string;
+  nombre: string;
 };
 
 type PerfilResponse = {
@@ -67,6 +78,8 @@ export function MiPerfil() {
   const [fechaNacimiento, setFechaNacimiento] = useState("");
   const [localidad, setLocalidad] = useState("");
   const [provincia, setProvincia] = useState("");
+  const [provinciaId, setProvinciaId] = useState("");
+  const [localidadId, setLocalidadId] = useState("");
   const [codigoInvitacionInput, setCodigoInvitacionInput] = useState("");
   const [perfilOk, setPerfilOk] = useState("");
   const [perfilErr, setPerfilErr] = useState("");
@@ -84,6 +97,25 @@ export function MiPerfil() {
     queryFn: () => api.get<MiCodigo>("/cliente/mi-codigo"),
   });
 
+  const provinciasQuery = useQuery({
+    queryKey: ["ubicaciones", "provincias"],
+    queryFn: () => api.get<Provincia[]>("/ubicaciones/provincias"),
+  });
+
+  const localidadesQuery = useQuery({
+    queryKey: ["ubicaciones", "localidades", provinciaId],
+    queryFn: () => api.get<Localidad[]>(`/ubicaciones/localidades?provincia_id=${encodeURIComponent(provinciaId)}`),
+    enabled: Boolean(provinciaId),
+  });
+
+  const provincias = provinciasQuery.data ?? [];
+  const localidades = localidadesQuery.data ?? [];
+
+  const provinciaSeleccionada = useMemo(
+    () => provincias.find((item) => item.id === provinciaId),
+    [provinciaId, provincias],
+  );
+
   useEffect(() => {
     const me = meQuery.data;
     if (!me) return;
@@ -94,6 +126,24 @@ export function MiPerfil() {
     setLocalidad(me.localidad || "");
     setProvincia(me.provincia || "");
   }, [meQuery.data]);
+
+  useEffect(() => {
+    if (!provincia || !provincias.length) {
+      if (!provincia) setProvinciaId("");
+      return;
+    }
+    const match = provincias.find((item) => item.nombre.toLowerCase() === provincia.trim().toLowerCase());
+    if (match && match.id !== provinciaId) setProvinciaId(match.id);
+  }, [provincia, provinciaId, provincias]);
+
+  useEffect(() => {
+    if (!localidad || !localidades.length) {
+      if (!localidad) setLocalidadId("");
+      return;
+    }
+    const match = localidades.find((item) => item.nombre.toLowerCase() === localidad.trim().toLowerCase());
+    if (match && match.id !== localidadId) setLocalidadId(match.id);
+  }, [localidad, localidadId, localidades]);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -201,6 +251,18 @@ export function MiPerfil() {
       setPerfilErr("La provincia debe tener al menos 2 caracteres.");
       return;
     }
+    if (provinciaLimpia && !provinciaId) {
+      setPerfilErr("Selecciona una provincia de la lista.");
+      return;
+    }
+    if (provinciaLimpia && !localidadLimpia) {
+      setPerfilErr("Selecciona una localidad de la lista.");
+      return;
+    }
+    if (localidadLimpia && !localidadId) {
+      setPerfilErr("Selecciona una localidad valida para la provincia elegida.");
+      return;
+    }
     if (telefonoLimpio && !/^[0-9+\-()\s]{7,25}$/.test(telefonoLimpio)) {
       setPerfilErr("Telefono invalido.");
       return;
@@ -282,23 +344,51 @@ export function MiPerfil() {
               onChange={(event) => setFechaNacimiento(event.target.value)}
             />
 
-            <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Localidad</label>
-            <input
-              className="ios-input"
-              value={localidad}
-              onChange={(event) => setLocalidad(event.target.value)}
-              maxLength={120}
-              placeholder="Ej: Corrientes"
-            />
-
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Provincia</label>
-            <input
+            <select
               className="ios-input"
-              value={provincia}
-              onChange={(event) => setProvincia(event.target.value)}
-              maxLength={120}
-              placeholder="Ej: Corrientes"
-            />
+              value={provinciaId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                const nextProvincia = provincias.find((item) => item.id === nextId);
+                setProvinciaId(nextId);
+                setProvincia(nextProvincia?.nombre ?? "");
+                setLocalidadId("");
+                setLocalidad("");
+              }}
+              disabled={provinciasQuery.isLoading || provincias.length === 0}
+            >
+              <option value="">
+                {provinciasQuery.isLoading ? "Cargando provincias..." : "Selecciona una provincia"}
+              </option>
+              {provincias.map((item) => (
+                <option key={item.id} value={item.id}>{item.nombre}</option>
+              ))}
+            </select>
+
+            <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Localidad</label>
+            <select
+              className="ios-input"
+              value={localidadId}
+              onChange={(event) => {
+                const nextId = event.target.value;
+                const nextLocalidad = localidades.find((item) => item.id === nextId);
+                setLocalidadId(nextId);
+                setLocalidad(nextLocalidad?.nombre ?? "");
+              }}
+              disabled={!provinciaId || localidadesQuery.isLoading || localidades.length === 0}
+            >
+              <option value="">
+                {!provinciaSeleccionada
+                  ? "Primero selecciona una provincia"
+                  : localidadesQuery.isLoading
+                    ? "Cargando localidades..."
+                    : "Selecciona una localidad"}
+              </option>
+              {localidades.map((item) => (
+                <option key={item.id} value={item.id}>{item.nombre}</option>
+              ))}
+            </select>
 
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Telefono</label>
             <input

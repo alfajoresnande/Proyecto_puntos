@@ -14,6 +14,7 @@ import paginasRoutes from "./routes/paginas";
 import diagnosticoRoutes from "./routes/diagnostico";
 import pagosRoutes from "./routes/pagos";
 import soporteRoutes from "./routes/soporte";
+import ubicacionesRoutes from "./routes/ubicaciones";
 import { recordSecurityEvent } from "./securityMonitor";
 import { startReservationExpirationWorker } from "./services/expirations";
 
@@ -188,6 +189,7 @@ app.use("/api/diagnostico", diagnosticoRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes); // publico (catalogo)
 app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
+app.use("/api/ubicaciones", ubicacionesRoutes);
 app.use("/api/cliente", clienteRoutes);
 app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);

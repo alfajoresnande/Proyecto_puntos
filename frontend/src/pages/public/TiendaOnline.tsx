@@ -167,6 +167,7 @@ export function TiendaOnline() {
   const baseSearch = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     return productos.filter((producto) => {
+      if (!productHasStock(producto)) return false;
       const text = [producto.nombre, producto.descripcion ?? "", producto.categoria ?? ""].join(" ").toLowerCase();
       return !q || text.includes(q);
     });

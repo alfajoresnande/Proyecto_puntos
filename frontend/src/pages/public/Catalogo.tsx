@@ -388,11 +388,12 @@ export function Catalogo() {
     const q = busquedaProducto.trim().toLowerCase();
     const rangoSel = rangosPuntos.find((r) => r.id === rangoPuntosId) ?? rangosPuntos[0];
     const filtrados = productos.filter((producto) => {
+      const tieneStock = productHasStock(producto);
       const coincideCategoria = !categoriaActiva || producto.categoria === categoriaActiva;
       const coincidePuntos = rangoSel ? rangoSel.match(producto.puntos_requeridos || 0) : true;
       const texto = [producto.nombre, producto.descripcion || "", producto.categoria || ""].join(" ").toLowerCase();
       const coincideBusqueda = !q || texto.includes(q);
-      return coincideCategoria && coincidePuntos && coincideBusqueda;
+      return tieneStock && coincideCategoria && coincidePuntos && coincideBusqueda;
     });
 
     if (ordenProductos === "puntos-desc") {

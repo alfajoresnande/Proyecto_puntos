@@ -625,6 +625,24 @@ async function ensureEventosSeguridadSchema() {
       INDEX idx_eventos_seguridad_ip_created_at (ip, created_at)
     )`);
 }
+async function ensureUbicacionesArgentinaSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS argentina_provincias (
+      id CHAR(2) PRIMARY KEY,
+      nombre VARCHAR(120) NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_argentina_provincias_nombre (nombre)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS argentina_localidades (
+      id VARCHAR(16) PRIMARY KEY,
+      provincia_id CHAR(2) NOT NULL,
+      nombre VARCHAR(160) NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_argentina_localidades_provincia
+        FOREIGN KEY (provincia_id) REFERENCES argentina_provincias(id)
+        ON DELETE CASCADE,
+      INDEX idx_argentina_localidades_provincia_nombre (provincia_id, nombre)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+}
 exports.pool
     .getConnection()
     .then(async (conn) => {
@@ -641,6 +659,12 @@ exports.pool
     }
     catch (err) {
         console.error("Migracion datos demograficos de usuarios:", err.message);
+    }
+    try {
+        await ensureUbicacionesArgentinaSchema();
+    }
+    catch (err) {
+        console.error("Migracion ubicaciones Argentina:", err.message);
     }
     try {
         await ensureCanjeRedeemCodeSchema();

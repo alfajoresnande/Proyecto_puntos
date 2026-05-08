@@ -81,12 +81,17 @@ router.get("/", async (req, res) => {
     permite_retiro_local: number;
   }>;
 
-  if (!rows.length) {
+  const visibleRows = rows.filter((row) => {
+    const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
+    return !Boolean(row.track_stock) || stockSucursal > 0;
+  });
+
+  if (!visibleRows.length) {
     res.json([]);
     return;
   }
 
-  const ids = rows.map((row) => row.id);
+  const ids = visibleRows.map((row) => row.id);
   const placeholders = ids.map(() => "?").join(", ");
   const [imgRowsRaw] = await pool.query(
     `SELECT producto_id, imagen_url, orden
@@ -129,7 +134,7 @@ router.get("/", async (req, res) => {
   }
 
   res.json(
-    rows.map((row) => {
+    visibleRows.map((row) => {
       const imagenesRaw = imageMap.get(row.id) ?? [];
       const imagenes = (imagenesRaw.length > 0 ? imagenesRaw : (row.imagen_url ? [row.imagen_url] : []))
         .map((url) => normalizeSafeImageUrl(url))
