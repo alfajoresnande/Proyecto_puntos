@@ -275,6 +275,29 @@ function toMoney(n: number): number {
   return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
 }
 
+function toDateOnly(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : null;
+  }
+  return null;
+}
+
+function normalizeClienteUserRow<T extends Record<string, unknown>>(row: T | undefined): T | undefined {
+  if (!row) return row;
+  return {
+    ...row,
+    fecha_nacimiento: toDateOnly(row.fecha_nacimiento),
+  };
+}
+
 function firstNonEmptyString(...values: unknown[]): string | null {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -709,7 +732,7 @@ router.get("/me", async (req, res) => {
     "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?",
     [req.user!.id]
   );
-  res.json(user);
+  res.json(normalizeClienteUserRow(user));
 });
 
 router.patch("/perfil", async (req, res) => {
@@ -809,7 +832,7 @@ router.patch("/perfil", async (req, res) => {
     );
 
     await conn.commit();
-    res.json({ ok: true, user: updated });
+    res.json({ ok: true, user: normalizeClienteUserRow(updated) });
   } catch (err) {
     await conn.rollback();
     throw err;

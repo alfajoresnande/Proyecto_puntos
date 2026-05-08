@@ -30,11 +30,6 @@ export function Navbar() {
   const canSeeCliente = user?.rol === "cliente";
   const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin";
   const canSeeAdmin = user?.rol === "admin";
-  const isStoreContext =
-    location.pathname.startsWith("/tienda") ||
-    location.pathname.startsWith("/carrito-tienda") ||
-    location.pathname.startsWith("/mis-pedidos");
-
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
@@ -52,18 +47,23 @@ export function Navbar() {
         .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
     [onlineCartQuery.data?.items],
   );
-  const cartCount = isStoreContext ? onlineCartCount : canjeCartCount;
-  const cartLabel = isStoreContext ? "Carrito tienda" : "Carrito de canjes";
-  const cartTarget = isStoreContext ? "/carrito-tienda" : "/carrito-canjes";
 
   const closeMenu = () => setMenuOpen(false);
 
-  function handleIrACarritoCanjes() {
+  function handleIrACarrito(target: string) {
     closeMenu();
-    if (location.pathname !== cartTarget) {
-      navigate(cartTarget);
+    if (location.pathname !== target) {
+      navigate(target);
     }
   }
+
+  const cartIcon = (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="21" r="1.6" />
+      <circle cx="18" cy="21" r="1.6" />
+      <path d="M2.5 3h2.4l2.7 12.3a2 2 0 0 0 2 1.7h8.5a2 2 0 0 0 2-1.6L21.5 7H6" />
+    </svg>
+  );
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -94,19 +94,29 @@ export function Navbar() {
     <div className="navbar-cart-wrap">
       <button
         type="button"
-        onClick={handleIrACarritoCanjes}
-        aria-label={`${cartLabel}${cartCount > 0 ? ` (${cartCount} producto${cartCount === 1 ? "" : "s"})` : ""}`}
-        title={cartLabel}
-        className="navbar-cart-btn"
+        onClick={() => handleIrACarrito("/carrito-tienda")}
+        aria-label={`Carrito de compras${onlineCartCount > 0 ? ` (${onlineCartCount} producto${onlineCartCount === 1 ? "" : "s"})` : ""}`}
+        title="Carrito de compras"
+        className="navbar-cart-btn navbar-cart-btn-store"
       >
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="9" cy="21" r="1.6" />
-          <circle cx="18" cy="21" r="1.6" />
-          <path d="M2.5 3h2.4l2.7 12.3a2 2 0 0 0 2 1.7h8.5a2 2 0 0 0 2-1.6L21.5 7H6" />
-        </svg>
-        {cartCount > 0 ? (
+        {cartIcon}
+        {onlineCartCount > 0 ? (
           <span aria-hidden="true" className="navbar-cart-badge">
-            {cartCount > 99 ? "99+" : cartCount}
+            {onlineCartCount > 99 ? "99+" : onlineCartCount}
+          </span>
+        ) : null}
+      </button>
+      <button
+        type="button"
+        onClick={() => handleIrACarrito("/carrito-canjes")}
+        aria-label={`Carrito de canjes${canjeCartCount > 0 ? ` (${canjeCartCount} producto${canjeCartCount === 1 ? "" : "s"})` : ""}`}
+        title="Carrito de canjes"
+        className="navbar-cart-btn navbar-cart-btn-canje"
+      >
+        {cartIcon}
+        {canjeCartCount > 0 ? (
+          <span aria-hidden="true" className="navbar-cart-badge">
+            {canjeCartCount > 99 ? "99+" : canjeCartCount}
           </span>
         ) : null}
       </button>

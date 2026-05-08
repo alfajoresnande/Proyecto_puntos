@@ -51,6 +51,18 @@ body {
     color: #9A7A5A;
   }
 
+  .ios-input[type="date"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 50px;
+    line-height: 1.25;
+  }
+
+  .ios-input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-height: 1.25em;
+  }
+
   .ios-btn {
     @apply w-full py-3 rounded-xl font-semibold text-base transition
       active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;

@@ -67,6 +67,18 @@ function cleanTelefono(value: string): string {
   return value.replace(/[^0-9+\-()\s]/g, "");
 }
 
+function dateOnly(value?: string | null): string {
+  const match = (value || "").trim().match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : "";
+}
+
+function normalizeDateInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 4) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
 export function MiPerfil() {
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
@@ -115,6 +127,11 @@ export function MiPerfil() {
     () => provincias.find((item) => item.id === provinciaId),
     [provinciaId, provincias],
   );
+  const useTextBirthdateInput = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    return /iP(hone|ad|od)/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }, []);
 
   useEffect(() => {
     const me = meQuery.data;
@@ -122,7 +139,7 @@ export function MiPerfil() {
     setNombre(me.nombre || "");
     setDni(me.dni || "");
     setTelefono(me.telefono || "");
-    setFechaNacimiento(me.fecha_nacimiento || "");
+    setFechaNacimiento(dateOnly(me.fecha_nacimiento));
     setLocalidad(me.localidad || "");
     setProvincia(me.provincia || "");
   }, [meQuery.data]);
@@ -271,7 +288,7 @@ export function MiPerfil() {
     if (nombreLimpio !== (me.nombre || "")) payload.nombre = nombreLimpio;
     if (dniLimpio && dniLimpio !== (me.dni || "")) payload.dni = dniLimpio;
     if (telefonoLimpio !== (me.telefono || "")) payload.telefono = telefonoLimpio;
-    if (fechaNacimientoLimpia && fechaNacimientoLimpia !== (me.fecha_nacimiento || "")) {
+    if (fechaNacimientoLimpia && fechaNacimientoLimpia !== dateOnly(me.fecha_nacimiento)) {
       payload.fecha_nacimiento = fechaNacimientoLimpia;
     }
     if (localidadLimpia && localidadLimpia !== (me.localidad || "")) payload.localidad = localidadLimpia;
@@ -339,9 +356,18 @@ export function MiPerfil() {
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Fecha de nacimiento</label>
             <input
               className="ios-input"
-              type="date"
+              type={useTextBirthdateInput ? "text" : "date"}
               value={fechaNacimiento}
-              onChange={(event) => setFechaNacimiento(event.target.value)}
+              onChange={(event) => {
+                const nextValue = useTextBirthdateInput
+                  ? normalizeDateInput(event.target.value)
+                  : event.target.value;
+                setFechaNacimiento(nextValue);
+              }}
+              inputMode={useTextBirthdateInput ? "numeric" : undefined}
+              maxLength={useTextBirthdateInput ? 10 : undefined}
+              placeholder={useTextBirthdateInput ? "AAAA-MM-DD" : undefined}
+              autoComplete="bday"
             />
 
             <label className="ios-label" style={{ paddingLeft: 0, paddingBottom: 0 }}>Provincia</label>

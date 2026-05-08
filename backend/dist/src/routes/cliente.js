@@ -119,6 +119,31 @@ function buildLugarRetiro(sucursal) {
 function toMoney(n) {
     return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
 }
+function toDateOnly(value) {
+    if (!value)
+        return null;
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime()))
+            return null;
+        return value.toISOString().slice(0, 10);
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return null;
+        const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : null;
+    }
+    return null;
+}
+function normalizeClienteUserRow(row) {
+    if (!row)
+        return row;
+    return {
+        ...row,
+        fecha_nacimiento: toDateOnly(row.fecha_nacimiento),
+    };
+}
 function firstNonEmptyString(...values) {
     for (const value of values) {
         if (typeof value === "string" && value.trim())
@@ -453,7 +478,7 @@ async function crearCanjeCarrito(conn, { usuarioId, items, sucursalId, }) {
 }
 router.get("/me", async (req, res) => {
     const user = await (0, db_1.qOne)(db_1.pool, "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?", [req.user.id]);
-    res.json(user);
+    res.json(normalizeClienteUserRow(user));
 });
 router.patch("/perfil", async (req, res) => {
     const schema = zod_1.z.object({
@@ -525,7 +550,7 @@ router.patch("/perfil", async (req, res) => {
         ]);
         const updated = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?", [usuarioId]);
         await conn.commit();
-        res.json({ ok: true, user: updated });
+        res.json({ ok: true, user: normalizeClienteUserRow(updated) });
     }
     catch (err) {
         await conn.rollback();
