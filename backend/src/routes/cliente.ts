@@ -4,9 +4,10 @@ import { z } from "zod";
 import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { releaseStockForCheckoutItems, reserveStockForCanje, reserveStockForCheckoutItems } from "../services/stock";
-import { approvePaidOrder } from "../services/orderLifecycle";
+import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import {
   createPaymentSession,
+  getMercadoPagoPayment,
   isPaymentChoiceAvailable,
   listPaymentOptions,
   processMercadoPagoApiPayment,
@@ -272,6 +273,36 @@ function buildLugarRetiro(sucursal: SucursalRetiro): string {
 
 function toMoney(n: number): number {
   return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+}
+
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function parseOrderIdFromReference(reference: string | null): number | null {
+  if (!reference) return null;
+  const direct = Number(reference);
+  if (Number.isInteger(direct) && direct > 0) return direct;
+
+  const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+  if (!match) return null;
+
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizeMercadoPagoStatus(status: string | null | undefined): "approved" | "rejected" | "expired" | null {
+  const normalized = (status || "").trim().toLowerCase();
+  if (["approved", "aprobado", "paid", "pagada", "success", "succeeded"].includes(normalized)) return "approved";
+  if (["expired", "expirada", "vencida"].includes(normalized)) return "expired";
+  if (["rejected", "rechazado", "failed", "failure", "cancelled", "canceled", "cancelada"].includes(normalized)) {
+    return "rejected";
+  }
+  return null;
 }
 
 async function ensureActiveCart(conn: Queryable, usuarioId: number): Promise<number> {
@@ -1707,6 +1738,158 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
       return;
     }
     const msg = err instanceof Error ? err.message : "No se pudo procesar el pago.";
+    res.status(400).json({ error: msg });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
+  const schema = z.object({
+    payment_id: z.union([z.string(), z.number()]).optional().nullable(),
+    external_reference: z.string().optional().nullable(),
+    status: z.string().optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message || "Datos de retorno invalidos." });
+    return;
+  }
+
+  const externalReference = firstNonEmptyString(parsed.data.external_reference);
+  const fallbackOrderId = parseOrderIdFromReference(externalReference);
+  const hintedStatus = normalizeMercadoPagoStatus(parsed.data.status ?? null);
+
+  const conn = await pool.getConnection();
+  let transactionOpen = false;
+  try {
+    let paymentId = firstNonEmptyString(parsed.data.payment_id);
+
+    if (!paymentId && fallbackOrderId) {
+      const existingPayment = await qOne<{ provider_payment_id: string | null }>(
+        conn,
+        `SELECT p.provider_payment_id
+         FROM ordenes o
+         LEFT JOIN pagos p ON p.orden_id = o.id AND p.proveedor = 'mercadopago'
+         WHERE o.id = ? AND o.usuario_id = ?
+         ORDER BY p.updated_at DESC, p.id DESC
+         LIMIT 1`,
+        [fallbackOrderId, req.user!.id],
+      );
+      paymentId = firstNonEmptyString(existingPayment?.provider_payment_id);
+    }
+
+    if (!paymentId && !fallbackOrderId) {
+      throw new HttpError(400, "No pudimos identificar el pago devuelto por Mercado Pago.");
+    }
+
+    const payment = paymentId ? await getMercadoPagoPayment(paymentId) : null;
+    const resolvedOrderId = payment?.orderId ?? fallbackOrderId;
+    const resolvedStatus = normalizeMercadoPagoStatus(payment?.status ?? hintedStatus);
+
+    if (!resolvedOrderId) {
+      throw new HttpError(400, "Mercado Pago no devolvio una referencia valida de la orden.");
+    }
+
+    await conn.beginTransaction();
+    transactionOpen = true;
+    const orden = await qOne<{
+      id: number;
+      estado: string;
+    }>(
+      conn,
+      `SELECT id, estado
+       FROM ordenes
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [resolvedOrderId, req.user!.id],
+    );
+    if (!orden) {
+      throw new HttpError(404, "Orden no encontrada.");
+    }
+
+    if (orden.estado === "pagada") {
+      await conn.commit();
+      transactionOpen = false;
+      res.json({
+        ok: true,
+        orden_id: resolvedOrderId,
+        estado: "pagada",
+        already_paid: true,
+        pago_estado: payment?.status ?? hintedStatus ?? "approved",
+        provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+        status_detail: payment?.statusDetail ?? null,
+      });
+      return;
+    }
+
+    if (resolvedStatus === "approved") {
+      const result = await approvePaidOrder(conn, {
+        orderId: resolvedOrderId,
+        provider: "mercadopago",
+        providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
+        payload: {
+          return_params: parsed.data,
+          payment_lookup: payment?.payload ?? null,
+        },
+      });
+      await conn.commit();
+      transactionOpen = false;
+      res.json({
+        ok: true,
+        orden_id: resolvedOrderId,
+        estado: result.state,
+        pago_estado: "approved",
+        provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+        status_detail: payment?.statusDetail ?? null,
+      });
+      return;
+    }
+
+    if (resolvedStatus === "rejected" || resolvedStatus === "expired") {
+      const result = await rejectOrExpirePendingOrder(conn, {
+        orderId: resolvedOrderId,
+        nextState: resolvedStatus === "expired" ? "expirada" : "cancelada",
+        provider: "mercadopago",
+        providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
+        payload: {
+          return_params: parsed.data,
+          payment_lookup: payment?.payload ?? null,
+        },
+      });
+      await conn.commit();
+      transactionOpen = false;
+      res.json({
+        ok: false,
+        orden_id: resolvedOrderId,
+        estado: result.state,
+        pago_estado: payment?.status ?? hintedStatus ?? resolvedStatus,
+        provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+        status_detail: payment?.statusDetail ?? null,
+      });
+      return;
+    }
+
+    await conn.commit();
+    transactionOpen = false;
+    res.json({
+      ok: false,
+      orden_id: resolvedOrderId,
+      estado: orden.estado,
+      pago_estado: payment?.status ?? hintedStatus ?? "pending",
+      provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+      status_detail: payment?.statusDetail ?? null,
+    });
+  } catch (err: unknown) {
+    if (transactionOpen) {
+      await conn.rollback();
+    }
+    if (err instanceof HttpError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    const msg = err instanceof Error ? err.message : "No se pudo validar el retorno de Mercado Pago.";
     res.status(400).json({ error: msg });
   } finally {
     conn.release();

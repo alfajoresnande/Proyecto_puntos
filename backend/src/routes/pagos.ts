@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../db";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
+import { getMercadoPagoPayment } from "../services/paymentProviders";
 import { recordSecurityEvent } from "../securityMonitor";
 
 const router = Router();
@@ -91,9 +92,30 @@ router.post("/webhook/:proveedor", async (req, res) => {
   const proveedor = String(req.params.proveedor || "").trim().toLowerCase();
   const body = asRecord(req.body);
   const query = asRecord(req.query);
-  const orderId = resolveOrderId(body, query);
-  const providerPaymentId = resolveProviderPaymentId(body, query);
-  const status = resolvePaymentStatus(body, query);
+  let orderId = resolveOrderId(body, query);
+  let providerPaymentId = resolveProviderPaymentId(body, query);
+  let status = resolvePaymentStatus(body, query);
+  let resolvedPayload: Record<string, unknown> = { body, query };
+
+  if (proveedor === "mercadopago" && providerPaymentId && (!orderId || !status)) {
+    try {
+      const payment = await getMercadoPagoPayment(providerPaymentId);
+      orderId = orderId ?? payment.orderId;
+      providerPaymentId = payment.providerPaymentId ?? providerPaymentId;
+      status = status ?? resolvePaymentStatus(payment.payload, {});
+      resolvedPayload = {
+        body,
+        query,
+        payment_lookup: payment.payload,
+      };
+    } catch (error) {
+      recordSecurityEvent("pago_webhook_lookup_fallido", req, {
+        proveedor,
+        providerPaymentId,
+        reason: error instanceof Error ? error.message : "lookup_error",
+      });
+    }
+  }
 
   if (!orderId) {
     recordSecurityEvent("pago_webhook_sin_orden", req, { proveedor, providerPaymentId });
@@ -115,14 +137,14 @@ router.post("/webhook/:proveedor", async (req, res) => {
             orderId,
             provider: proveedor,
             providerPaymentId,
-            payload: { body, query },
+            payload: resolvedPayload,
           })
         : await rejectOrExpirePendingOrder(conn, {
             orderId,
             nextState: status === "expired" ? "expirada" : "cancelada",
             provider: proveedor,
             providerPaymentId,
-            payload: { body, query },
+            payload: resolvedPayload,
           });
     await conn.commit();
     res.json(result);

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const paymentProviders_1 = require("../services/paymentProviders");
 const securityMonitor_1 = require("../securityMonitor");
 const router = (0, express_1.Router)();
 function asRecord(value) {
@@ -64,9 +65,30 @@ router.post("/webhook/:proveedor", async (req, res) => {
     const proveedor = String(req.params.proveedor || "").trim().toLowerCase();
     const body = asRecord(req.body);
     const query = asRecord(req.query);
-    const orderId = resolveOrderId(body, query);
-    const providerPaymentId = resolveProviderPaymentId(body, query);
-    const status = resolvePaymentStatus(body, query);
+    let orderId = resolveOrderId(body, query);
+    let providerPaymentId = resolveProviderPaymentId(body, query);
+    let status = resolvePaymentStatus(body, query);
+    let resolvedPayload = { body, query };
+    if (proveedor === "mercadopago" && providerPaymentId && (!orderId || !status)) {
+        try {
+            const payment = await (0, paymentProviders_1.getMercadoPagoPayment)(providerPaymentId);
+            orderId = orderId ?? payment.orderId;
+            providerPaymentId = payment.providerPaymentId ?? providerPaymentId;
+            status = status ?? resolvePaymentStatus(payment.payload, {});
+            resolvedPayload = {
+                body,
+                query,
+                payment_lookup: payment.payload,
+            };
+        }
+        catch (error) {
+            (0, securityMonitor_1.recordSecurityEvent)("pago_webhook_lookup_fallido", req, {
+                proveedor,
+                providerPaymentId,
+                reason: error instanceof Error ? error.message : "lookup_error",
+            });
+        }
+    }
     if (!orderId) {
         (0, securityMonitor_1.recordSecurityEvent)("pago_webhook_sin_orden", req, { proveedor, providerPaymentId });
         res.status(202).json({ ok: true, ignored: true, reason: "orden_no_identificada" });
@@ -84,14 +106,14 @@ router.post("/webhook/:proveedor", async (req, res) => {
                 orderId,
                 provider: proveedor,
                 providerPaymentId,
-                payload: { body, query },
+                payload: resolvedPayload,
             })
             : await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
                 orderId,
                 nextState: status === "expired" ? "expirada" : "cancelada",
                 provider: proveedor,
                 providerPaymentId,
-                payload: { body, query },
+                payload: resolvedPayload,
             });
         await conn.commit();
         res.json(result);

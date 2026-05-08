@@ -223,12 +223,23 @@ function MercadoPagoBrick({
             onSubmit: (
               data: { selectedPaymentMethod?: string | null; formData?: Record<string, unknown> },
               additionalData?: Record<string, unknown>,
-            ) =>
-              processPayment.mutateAsync({
+            ) => {
+              const formPaymentMethodId =
+                typeof data.formData?.payment_method_id === "string" ? data.formData.payment_method_id.trim() : "";
+              const isRedirectFlow =
+                data.selectedPaymentMethod === "wallet_purchase" || !formPaymentMethodId;
+
+              if (isRedirectFlow) {
+                setBrickError(null);
+                return Promise.resolve();
+              }
+
+              return processPayment.mutateAsync({
                 selectedPaymentMethod: data.selectedPaymentMethod ?? null,
                 formData: data.formData ?? {},
                 additionalData: additionalData ?? null,
-              }).then(() => undefined),
+              }).then(() => undefined);
+            },
             onError: (error: unknown) => {
               const message = error instanceof Error ? error.message : "Mercado Pago no pudo renderizar el checkout.";
               setBrickError(message);

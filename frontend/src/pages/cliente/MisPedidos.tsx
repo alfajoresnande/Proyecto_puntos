@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 
 type Orden = {
@@ -26,6 +27,16 @@ type Orden = {
     localidad: string | null;
     provincia: string | null;
   } | null;
+};
+
+type MercadoPagoReturnResponse = {
+  ok: boolean;
+  orden_id: number;
+  estado: string;
+  pago_estado?: string;
+  status_detail?: string | null;
+  already_paid?: boolean;
+  provider_payment_id?: string | null;
 };
 
 function money(value: number | string | null | undefined): string {
@@ -62,6 +73,9 @@ function estadoPedidoClass(estado: string): string {
 }
 
 export function MisPedidos() {
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hasProcessedReturnRef = useRef(false);
   const ordenesQuery = useQuery({
     queryKey: ["cliente", "ordenes"],
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
@@ -70,6 +84,46 @@ export function MisPedidos() {
       return orders.some((orden) => orden.estado === "pendiente_pago") ? 5000 : false;
     },
   });
+  const confirmReturnMutation = useMutation({
+    mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
+      api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+    },
+  });
+
+  useEffect(() => {
+    const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
+    const externalReference = searchParams.get("external_reference");
+    const status = searchParams.get("status") || searchParams.get("collection_status");
+
+    if (hasProcessedReturnRef.current) return;
+    if (!paymentId && !externalReference) return;
+
+    hasProcessedReturnRef.current = true;
+    confirmReturnMutation.mutate(
+      {
+        payment_id: paymentId,
+        external_reference: externalReference,
+        status,
+      },
+      {
+        onSettled: () => {
+          const nextParams = new URLSearchParams(searchParams);
+          [
+            "payment_id",
+            "collection_id",
+            "collection_status",
+            "status",
+            "external_reference",
+            "merchant_order_id",
+            "preference_id",
+          ].forEach((key) => nextParams.delete(key));
+          setSearchParams(nextParams, { replace: true });
+        },
+      },
+    );
+  }, [confirmReturnMutation, searchParams, setSearchParams]);
 
   const pedidos = (ordenesQuery.data ?? []).filter((orden) => orden.tipo_orden === "venta" || orden.tipo_orden === "mixta");
 
@@ -80,6 +134,18 @@ export function MisPedidos() {
           <h1 className="catalog-title">Mis pedidos</h1>
           <p className="catalog-subtitle">Compras online y estados de pago/entrega</p>
         </div>
+
+        {confirmReturnMutation.isPending ? (
+          <div className="catalog-canje-block">
+            <p>Actualizando el estado del pago...</p>
+          </div>
+        ) : null}
+
+        {confirmReturnMutation.isError ? (
+          <div className="catalog-canje-block">
+            <p>No pudimos actualizar automaticamente el pago. Estamos reintentando desde el historial.</p>
+          </div>
+        ) : null}
 
         {ordenesQuery.isLoading ? (
           <div className="catalog-skeleton store-skeleton" />

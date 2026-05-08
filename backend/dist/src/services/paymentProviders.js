@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listPaymentOptions = listPaymentOptions;
 exports.resolvePaymentChoice = resolvePaymentChoice;
+exports.getMercadoPagoPayment = getMercadoPagoPayment;
 exports.processMercadoPagoApiPayment = processMercadoPagoApiPayment;
 exports.createPaymentSession = createPaymentSession;
 exports.isPaymentChoiceAvailable = isPaymentChoiceAvailable;
@@ -154,6 +155,61 @@ async function createMercadoPagoPreferenceSession(input) {
 function asRecord(value) {
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
+function firstString(...values) {
+    for (const value of values) {
+        if (typeof value === "string" && value.trim())
+            return value.trim();
+        if (typeof value === "number" && Number.isFinite(value))
+            return String(value);
+    }
+    return null;
+}
+function parseOrderIdFromReference(reference) {
+    if (!reference)
+        return null;
+    const direct = Number(reference);
+    if (Number.isInteger(direct) && direct > 0)
+        return direct;
+    const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+    if (!match)
+        return null;
+    const parsed = Number(match[1]);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function toMercadoPagoPaymentResult(payload) {
+    const metadata = asRecord(payload.metadata);
+    const externalReference = firstString(payload.external_reference, metadata.external_reference);
+    const directOrderId = firstString(metadata.order_id, payload.order_id);
+    return {
+        providerPaymentId: typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
+        status: typeof payload.status === "string" ? payload.status : "unknown",
+        statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
+        externalReference,
+        orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
+        payload,
+    };
+}
+async function getMercadoPagoPayment(paymentId) {
+    if (!MERCADOPAGO_ACCESS_TOKEN) {
+        throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para consultar pagos de Mercado Pago.");
+    }
+    const normalizedPaymentId = String(paymentId).trim();
+    if (!normalizedPaymentId) {
+        throw new Error("Payment ID invalido para consultar en Mercado Pago.");
+    }
+    const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(normalizedPaymentId)}`, {
+        method: "GET",
+        headers: {
+            Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+        },
+    });
+    const payload = (await response.json().catch(() => ({})));
+    if (!response.ok) {
+        const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+        throw new Error(`Mercado Pago: no se pudo consultar el pago (${detail}).`);
+    }
+    return toMercadoPagoPaymentResult(payload);
+}
 async function processMercadoPagoApiPayment(input) {
     if (!MERCADOPAGO_ACCESS_TOKEN) {
         throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para procesar pagos con Checkout API.");
@@ -195,12 +251,7 @@ async function processMercadoPagoApiPayment(input) {
         const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
         throw new Error(`Mercado Pago: no se pudo procesar el pago (${detail}).`);
     }
-    return {
-        providerPaymentId: typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
-        status: typeof payload.status === "string" ? payload.status : "unknown",
-        statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
-        payload,
-    };
+    return toMercadoPagoPaymentResult(payload);
 }
 async function createPaymentSession(input) {
     const normalizedAmount = toTwoDecimals(input.amount);

@@ -209,8 +209,74 @@ export type MercadoPagoApiPaymentResult = {
   payload: Record<string, unknown>;
 };
 
+export type MercadoPagoPaymentLookupResult = MercadoPagoApiPaymentResult & {
+  externalReference: string | null;
+  orderId: number | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function parseOrderIdFromReference(reference: string | null): number | null {
+  if (!reference) return null;
+  const direct = Number(reference);
+  if (Number.isInteger(direct) && direct > 0) return direct;
+
+  const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+  if (!match) return null;
+
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function toMercadoPagoPaymentResult(payload: Record<string, unknown>): MercadoPagoPaymentLookupResult {
+  const metadata = asRecord(payload.metadata);
+  const externalReference = firstString(payload.external_reference, metadata.external_reference);
+  const directOrderId = firstString(metadata.order_id, payload.order_id);
+  return {
+    providerPaymentId:
+      typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
+    status: typeof payload.status === "string" ? payload.status : "unknown",
+    statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
+    externalReference,
+    orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
+    payload,
+  };
+}
+
+export async function getMercadoPagoPayment(paymentId: string | number): Promise<MercadoPagoPaymentLookupResult> {
+  if (!MERCADOPAGO_ACCESS_TOKEN) {
+    throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para consultar pagos de Mercado Pago.");
+  }
+
+  const normalizedPaymentId = String(paymentId).trim();
+  if (!normalizedPaymentId) {
+    throw new Error("Payment ID invalido para consultar en Mercado Pago.");
+  }
+
+  const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/payments/${encodeURIComponent(normalizedPaymentId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    throw new Error(`Mercado Pago: no se pudo consultar el pago (${detail}).`);
+  }
+
+  return toMercadoPagoPaymentResult(payload);
 }
 
 export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentInput): Promise<MercadoPagoApiPaymentResult> {
@@ -261,13 +327,7 @@ export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentI
     throw new Error(`Mercado Pago: no se pudo procesar el pago (${detail}).`);
   }
 
-  return {
-    providerPaymentId:
-      typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
-    status: typeof payload.status === "string" ? payload.status : "unknown",
-    statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
-    payload,
-  };
+  return toMercadoPagoPaymentResult(payload);
 }
 
 export async function createPaymentSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
