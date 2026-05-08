@@ -463,6 +463,75 @@ function inventoryDraftFromRows(rows: InventarioSucursal[] | undefined, sucursal
   return draft;
 }
 
+function formatSucursalAddress(sucursal: SucursalAdmin): string {
+  return [sucursal.direccion, sucursal.piso ? `Piso ${sucursal.piso}` : "", sucursal.localidad, sucursal.provincia]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function ProductInventoryEditor({
+  sucursales,
+  values,
+  rows,
+  tip,
+  onChangeStock,
+}: {
+  sucursales: SucursalAdmin[];
+  values: Record<string, number | null>;
+  rows?: InventarioSucursal[];
+  tip: string;
+  onChangeStock: (sucursalId: number, stock: number) => void;
+}) {
+  const activeSucursales = sucursales.filter((sucursal) => sucursal.activo);
+
+  return (
+    <div className="adm-inventory-editor">
+      <p className="adm-inline-tip">{tip}</p>
+      {activeSucursales.length === 0 ? (
+        <div className="adm-empty">No hay sucursales activas. Activa o crea una sucursal antes de cargar stock.</div>
+      ) : (
+        <div className="adm-inventory-branch-list">
+          {activeSucursales.map((sucursal) => {
+            const key = String(sucursal.id);
+            const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
+            const stockDisponible = values[key] ?? row?.stock_disponible ?? 0;
+            const stockReservado = Number(row?.stock_reservado ?? 0);
+
+            return (
+              <div className="adm-inventory-branch-card" key={sucursal.id}>
+                <div className="adm-inventory-branch-main">
+                  <div>
+                    <p className="adm-inventory-branch-name">{sucursal.nombre}</p>
+                    <p className="adm-inventory-branch-address">{formatSucursalAddress(sucursal)}</p>
+                  </div>
+                  <span className="adm-inventory-branch-status">Activa</span>
+                </div>
+
+                <div className="adm-inventory-stock-row">
+                  <label className="adm-field adm-inventory-stock-field">
+                    <span className="adm-label">Stock disponible</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="adm-input"
+                      value={stockDisponible ?? ""}
+                      onChange={(event) => onChangeStock(sucursal.id, event.target.value ? Number(event.target.value) : 0)}
+                    />
+                  </label>
+                  <div className="adm-inventory-reserved-box">
+                    <span>Reservado</span>
+                    <strong>{stockReservado}</strong>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function emptySucursalForm(): SucursalForm {
   return {
     nombre: "",
@@ -2660,31 +2729,20 @@ export function Admin() {
                 </div>
 
                 {nuevoProducto.track_stock ? (
-                  <div className="adm-inventory-editor">
-                    <p className="adm-inline-tip">Carga el stock disponible por sucursal. El stock reservado lo maneja el sistema al confirmar compras o canjes.</p>
-                    <div className="adm-inventory-grid">
-                      {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                        <div className="adm-field" key={sucursal.id}>
-                          <label className="adm-label">{sucursal.nombre}</label>
-                          <input
-                            type="number"
-                            min={0}
-                            className="adm-input"
-                            value={nuevoProducto.inventario_sucursales[String(sucursal.id)] ?? ""}
-                            onChange={(event) =>
-                              setNuevoProducto((prev) => ({
-                                ...prev,
-                                inventario_sucursales: {
-                                  ...prev.inventario_sucursales,
-                                  [String(sucursal.id)]: event.target.value ? Number(event.target.value) : 0,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <ProductInventoryEditor
+                    sucursales={sucursales}
+                    values={nuevoProducto.inventario_sucursales}
+                    tip="Carga cuanto stock disponible tiene este producto en cada sucursal activa. Si dejas una sucursal en 0, el cliente no podra retirar ese producto ahi."
+                    onChangeStock={(sucursalId, stock) =>
+                      setNuevoProducto((prev) => ({
+                        ...prev,
+                        inventario_sucursales: {
+                          ...prev.inventario_sucursales,
+                          [String(sucursalId)]: stock,
+                        },
+                      }))
+                    }
+                  />
                 ) : null}
 
                 <div
@@ -2870,31 +2928,21 @@ export function Admin() {
                         </div>
 
                         {editDraft.track_stock ? (
-                          <div className="adm-inventory-editor">
-                            <p className="adm-inline-tip">Ajusta stock disponible por sucursal. No edites el reservado: se mueve solo con compras, canjes y expiraciones.</p>
-                            <div className="adm-inventory-grid">
-                              {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                                <div className="adm-field" key={sucursal.id}>
-                                  <label className="adm-label">{sucursal.nombre}</label>
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    className="adm-input"
-                                    value={editDraft.inventario_sucursales[String(sucursal.id)] ?? ""}
-                                    onChange={(event) =>
-                                      setEditDraft((prev) => ({
-                                        ...prev,
-                                        inventario_sucursales: {
-                                          ...prev.inventario_sucursales,
-                                          [String(sucursal.id)]: event.target.value ? Number(event.target.value) : 0,
-                                        },
-                                      }))
-                                    }
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                          <ProductInventoryEditor
+                            sucursales={sucursales}
+                            values={editDraft.inventario_sucursales}
+                            rows={inventarioPorProducto.get(producto.id)}
+                            tip="Ajusta stock disponible por sucursal. Reservado se muestra solo para control y se mueve con compras, canjes y expiraciones."
+                            onChangeStock={(sucursalId, stock) =>
+                              setEditDraft((prev) => ({
+                                ...prev,
+                                inventario_sucursales: {
+                                  ...prev.inventario_sucursales,
+                                  [String(sucursalId)]: stock,
+                                },
+                              }))
+                            }
+                          />
                         ) : null}
 
                         <div

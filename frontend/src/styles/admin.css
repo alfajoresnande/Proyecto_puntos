@@ -465,6 +465,83 @@
   gap: 0.75rem;
 }
 
+.adm-inventory-branch-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.adm-inventory-branch-card {
+  background: #FFF8F0;
+  border: 1px solid rgba(180,84,20,0.2);
+  border-radius: 10px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.8rem;
+}
+
+.adm-inventory-branch-main {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.adm-inventory-branch-name {
+  color: #4A1C08;
+  font-size: 0.92rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.adm-inventory-branch-address {
+  color: #7A5A3C;
+  font-size: 0.78rem;
+  margin: 0.2rem 0 0;
+}
+
+.adm-inventory-branch-status {
+  background: rgba(31,122,55,0.1);
+  border: 1px solid rgba(31,122,55,0.18);
+  border-radius: 999px;
+  color: #1F7A37;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.25rem 0.55rem;
+}
+
+.adm-inventory-stock-row {
+  align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(180px, 1fr) 130px;
+}
+
+.adm-inventory-stock-field {
+  margin: 0;
+}
+
+.adm-inventory-reserved-box {
+  background: #FFFFFF;
+  border: 1px solid rgba(180,84,20,0.18);
+  border-radius: 9px;
+  display: grid;
+  gap: 0.2rem;
+  min-height: 48px;
+  padding: 0.45rem 0.65rem;
+}
+
+.adm-inventory-reserved-box span {
+  color: #8B5A30;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.adm-inventory-reserved-box strong {
+  color: #4A1C08;
+  font-size: 0.95rem;
+}
+
 .adm-config-header {
   margin-top: 1.4rem;
 }
@@ -1321,6 +1398,8 @@
   .adm-form-grid { grid-template-columns: 1fr; }
   .adm-config-grid { grid-template-columns: 1fr; }
   .adm-inventory-grid { grid-template-columns: 1fr; }
+  .adm-inventory-branch-main { flex-direction: column; }
+  .adm-inventory-stock-row { grid-template-columns: 1fr; }
   .adm-inline-points-grid { grid-template-columns: 1fr; }
   .adm-inline-points-actions { justify-content: stretch; }
   .adm-btn-inline { width: 100%; }
