@@ -211,7 +211,7 @@ export function SoporteStaff() {
   const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : null;
 
   return (
-    <section className="dashboard-section perfil-dashboard-section">
+    <section className="dashboard-section perfil-dashboard-section support-dashboard-full">
       <div className="support-shell support-shell-staff support-shell-messenger">
         <aside className="support-sidebar support-sidebar-messenger">
           <div className="support-card support-card-messenger">

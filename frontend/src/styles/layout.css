@@ -428,6 +428,12 @@
   max-width: 1120px;
 }
 
+.dashboard-section.support-dashboard-full,
+.perfil-dashboard-section.support-dashboard-full {
+  max-width: none;
+  padding: 1.25rem 1.5rem 2.5rem;
+}
+
 /* ---- FOOTER ---- */
 .footer {
   background: #3D1A02;          /* ← color de fondo del footer */
@@ -1418,17 +1424,53 @@
 }
 
 .support-shell-messenger {
-  max-width: 1320px;
+  gap: 1.25rem;
+  grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
+  max-width: none;
+  min-height: calc(100vh - 170px);
+  width: 100%;
 }
 
 .support-sidebar-messenger {
   grid-template-rows: auto 1fr;
 }
 
+.support-card-messenger,
+.support-thread-card-messenger {
+  border-radius: 18px;
+}
+
+.support-thread-card-messenger {
+  min-height: calc(100vh - 170px);
+}
+
+.support-thread {
+  width: 100%;
+}
+
+.support-thread-head-messenger,
+.support-thread-footer,
+.support-messages-messenger {
+  width: 100%;
+}
+
+.support-messages-messenger {
+  max-height: none;
+  padding-right: 0;
+}
+
 @media (max-width: 1100px) {
   .support-shell-staff,
   .support-reply-grid {
     grid-template-columns: 1fr;
+  }
+
+  .support-shell-messenger {
+    min-height: auto;
+  }
+
+  .support-thread-card-messenger {
+    min-height: auto;
   }
 }
 
