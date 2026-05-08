@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { Router } from "express";
 import { pool } from "../db";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
@@ -5,6 +6,7 @@ import { getMercadoPagoPayment } from "../services/paymentProviders";
 import { recordSecurityEvent } from "../securityMonitor";
 
 const router = Router();
+const MERCADOPAGO_WEBHOOK_SECRET = (process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -88,8 +90,63 @@ function resolvePaymentStatus(body: Record<string, unknown>, query: Record<strin
   return null;
 }
 
+function parseMercadoPagoSignature(signatureHeader: string): { ts: string | null; v1: string | null } {
+  let ts: string | null = null;
+  let v1: string | null = null;
+
+  for (const part of signatureHeader.split(",")) {
+    const [rawKey, rawValue] = part.split("=", 2);
+    const key = rawKey?.trim().toLowerCase();
+    const value = rawValue?.trim() || null;
+    if (!key || !value) continue;
+    if (key === "ts") ts = value;
+    if (key === "v1") v1 = value.toLowerCase();
+  }
+
+  return { ts, v1 };
+}
+
+function secureHexEquals(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  if (leftBuffer.length === 0 || rightBuffer.length === 0 || leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function validateMercadoPagoWebhook(req: Parameters<typeof router.post>[1] extends (...args: infer T) => unknown ? T[0] : never): boolean {
+  if (!MERCADOPAGO_WEBHOOK_SECRET) return true;
+
+  const signatureHeader = req.get("x-signature")?.trim() || "";
+  const requestId = req.get("x-request-id")?.trim() || "";
+  const dataId = (firstString(req.query["data.id"]) || "").toLowerCase();
+
+  if (!signatureHeader || !requestId) return false;
+
+  const { ts, v1 } = parseMercadoPagoSignature(signatureHeader);
+  if (!ts || !v1) return false;
+
+  const manifestParts = [`id:${dataId}`];
+  if (requestId) manifestParts.push(`request-id:${requestId}`);
+  if (ts) manifestParts.push(`ts:${ts}`);
+  const manifest = `${manifestParts.join(";")};`;
+
+  const expectedSignature = createHmac("sha256", MERCADOPAGO_WEBHOOK_SECRET).update(manifest).digest("hex");
+  return secureHexEquals(expectedSignature, v1);
+}
+
 router.post("/webhook/:proveedor", async (req, res) => {
   const proveedor = String(req.params.proveedor || "").trim().toLowerCase();
+  if (proveedor === "mercadopago" && !validateMercadoPagoWebhook(req)) {
+    recordSecurityEvent("pago_webhook_firma_invalida", req, {
+      proveedor,
+      hasSecret: Boolean(MERCADOPAGO_WEBHOOK_SECRET),
+    });
+    res.status(401).json({ error: "Firma del webhook de Mercado Pago invalida." });
+    return;
+  }
+
   const body = asRecord(req.body);
   const query = asRecord(req.query);
   let orderId = resolveOrderId(body, query);

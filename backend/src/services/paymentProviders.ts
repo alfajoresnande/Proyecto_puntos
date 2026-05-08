@@ -43,6 +43,31 @@ const MERCADOPAGO_API_BASE = (process.env.MERCADOPAGO_API_BASE || "https://api.m
 const MERCADOPAGO_WEBHOOK_URL = (process.env.MERCADOPAGO_WEBHOOK_URL || "").trim();
 const DEFAULT_FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").split(",")[0].trim().replace(/\/+$/, "");
 
+function mercadoPagoCredentialMode(value: string): "test" | "prod" | "unknown" {
+  const normalized = value.trim().toUpperCase();
+  if (!normalized) return "unknown";
+  if (normalized.startsWith("TEST-")) return "test";
+  if (normalized.startsWith("APP_USR-")) return "prod";
+  return "unknown";
+}
+
+function mercadoPagoConfigurationIssue(choice: PaymentChoice): string | null {
+  if (choice.provider === "efectivo") return null;
+  if (!MERCADOPAGO_ACCESS_TOKEN) return "Falta MERCADOPAGO_ACCESS_TOKEN";
+  if (choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
+    return "Falta MERCADOPAGO_PUBLIC_KEY";
+  }
+
+  const accessTokenMode = mercadoPagoCredentialMode(MERCADOPAGO_ACCESS_TOKEN);
+  const publicKeyMode = mercadoPagoCredentialMode(MERCADOPAGO_PUBLIC_KEY);
+
+  if (choice.method === "brick" && accessTokenMode !== "unknown" && publicKeyMode !== "unknown" && accessTokenMode !== publicKeyMode) {
+    return "MERCADOPAGO_ACCESS_TOKEN y MERCADOPAGO_PUBLIC_KEY no pertenecen al mismo entorno (test/prod).";
+  }
+
+  return null;
+}
+
 function paymentReturnUrl(envName: string): string {
   const fromEnv = (process.env[envName] || "").trim();
   if (fromEnv) return fromEnv;
@@ -57,9 +82,9 @@ function isEnabled(choice: PaymentChoice): { enabled: boolean; reason: string | 
   if (choice.provider === "efectivo") {
     return { enabled: true, reason: null };
   }
-  if (!MERCADOPAGO_ACCESS_TOKEN) return { enabled: false, reason: "Falta MERCADOPAGO_ACCESS_TOKEN" };
-  if (choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
-    return { enabled: false, reason: "Falta MERCADOPAGO_PUBLIC_KEY" };
+  const configIssue = mercadoPagoConfigurationIssue(choice);
+  if (configIssue) {
+    return { enabled: false, reason: configIssue };
   }
   return { enabled: true, reason: null };
 }
@@ -115,7 +140,8 @@ export function resolvePaymentChoice(raw?: Partial<PaymentChoice> | null): Payme
 }
 
 async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
-  if (!MERCADOPAGO_ACCESS_TOKEN) {
+  const configIssue = mercadoPagoConfigurationIssue(input.choice);
+  if (configIssue) {
     return {
       providerPaymentId: null,
       checkoutUrl: null,
@@ -123,18 +149,7 @@ async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): P
       publicKey: null,
       payload: null,
       status: "requires_configuration",
-      message: "Configura MERCADOPAGO_ACCESS_TOKEN para generar el checkout.",
-    };
-  }
-  if (input.choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
-    return {
-      providerPaymentId: null,
-      checkoutUrl: null,
-      preferenceId: null,
-      publicKey: null,
-      payload: null,
-      status: "requires_configuration",
-      message: "Configura MERCADOPAGO_PUBLIC_KEY para renderizar Checkout Bricks.",
+      message: configIssue,
     };
   }
 

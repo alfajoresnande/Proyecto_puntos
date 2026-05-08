@@ -132,7 +132,7 @@ function mercadoPagoErrorMessage(error: unknown): string {
     const value = raw.trim();
     if (!value) return "";
     if (value === "empty_installments") {
-      return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos o intenta con otra tarjeta.";
+      return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos y, si estas probando, confirma que la public key y el access token sean del mismo entorno.";
     }
     return value;
   };

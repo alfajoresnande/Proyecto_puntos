@@ -1,11 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+const crypto_1 = require("crypto");
 const express_1 = require("express");
 const db_1 = require("../db");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const paymentProviders_1 = require("../services/paymentProviders");
 const securityMonitor_1 = require("../securityMonitor");
 const router = (0, express_1.Router)();
+const MERCADOPAGO_WEBHOOK_SECRET = (process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
 function asRecord(value) {
     return value && typeof value === "object" ? value : {};
 }
@@ -61,8 +63,60 @@ function resolvePaymentStatus(body, query) {
     }
     return null;
 }
+function parseMercadoPagoSignature(signatureHeader) {
+    let ts = null;
+    let v1 = null;
+    for (const part of signatureHeader.split(",")) {
+        const [rawKey, rawValue] = part.split("=", 2);
+        const key = rawKey?.trim().toLowerCase();
+        const value = rawValue?.trim() || null;
+        if (!key || !value)
+            continue;
+        if (key === "ts")
+            ts = value;
+        if (key === "v1")
+            v1 = value.toLowerCase();
+    }
+    return { ts, v1 };
+}
+function secureHexEquals(left, right) {
+    const leftBuffer = Buffer.from(left, "hex");
+    const rightBuffer = Buffer.from(right, "hex");
+    if (leftBuffer.length === 0 || rightBuffer.length === 0 || leftBuffer.length !== rightBuffer.length) {
+        return false;
+    }
+    return (0, crypto_1.timingSafeEqual)(leftBuffer, rightBuffer);
+}
+function validateMercadoPagoWebhook(req) {
+    if (!MERCADOPAGO_WEBHOOK_SECRET)
+        return true;
+    const signatureHeader = req.get("x-signature")?.trim() || "";
+    const requestId = req.get("x-request-id")?.trim() || "";
+    const dataId = (firstString(req.query["data.id"]) || "").toLowerCase();
+    if (!signatureHeader || !requestId)
+        return false;
+    const { ts, v1 } = parseMercadoPagoSignature(signatureHeader);
+    if (!ts || !v1)
+        return false;
+    const manifestParts = [`id:${dataId}`];
+    if (requestId)
+        manifestParts.push(`request-id:${requestId}`);
+    if (ts)
+        manifestParts.push(`ts:${ts}`);
+    const manifest = `${manifestParts.join(";")};`;
+    const expectedSignature = (0, crypto_1.createHmac)("sha256", MERCADOPAGO_WEBHOOK_SECRET).update(manifest).digest("hex");
+    return secureHexEquals(expectedSignature, v1);
+}
 router.post("/webhook/:proveedor", async (req, res) => {
     const proveedor = String(req.params.proveedor || "").trim().toLowerCase();
+    if (proveedor === "mercadopago" && !validateMercadoPagoWebhook(req)) {
+        (0, securityMonitor_1.recordSecurityEvent)("pago_webhook_firma_invalida", req, {
+            proveedor,
+            hasSecret: Boolean(MERCADOPAGO_WEBHOOK_SECRET),
+        });
+        res.status(401).json({ error: "Firma del webhook de Mercado Pago invalida." });
+        return;
+    }
     const body = asRecord(req.body);
     const query = asRecord(req.query);
     let orderId = resolveOrderId(body, query);
