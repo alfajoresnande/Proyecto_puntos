@@ -7,7 +7,7 @@ const db_1 = require("../db");
 const securityMonitor_1 = require("../securityMonitor");
 const router = (0, express_1.Router)();
 const DEFAULT_DB_TIMEOUT_MS = 1500;
-const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin"]);
+const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin", "superAdmin"]);
 function isEnabled(raw) {
     if (!raw)
         return false;
@@ -28,7 +28,7 @@ function hasDiagnosticsAccess(req) {
     if (isEnabled(process.env.DIAGNOSTICO_PUBLIC))
         return true;
     const auth = (0, auth_1.getAuthPayload)(req);
-    if (auth?.rol === "admin")
+    if (auth?.rol === "admin" || auth?.rol === "superAdmin")
         return true;
     const expectedToken = (process.env.DIAGNOSTICO_TOKEN || "").trim();
     if (!expectedToken)

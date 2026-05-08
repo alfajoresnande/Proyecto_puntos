@@ -1,11 +1,13 @@
 ﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
-import type { Producto } from "../../types";
+import { useAuthStore } from "../../store/authStore";
+import type { Producto, Rol } from "../../types";
 
 type AdminTab =
   | "inicio"
@@ -51,7 +53,7 @@ type Usuario = {
   id: number;
   nombre: string;
   email: string;
-  rol: "cliente" | "vendedor" | "admin";
+  rol: Rol;
   dni: string | null;
   telefono?: string | null;
   puntos_saldo: number;
@@ -301,7 +303,7 @@ type ProductoForm = {
 type UsuarioEditDraft = {
   nombre: string;
   email: string;
-  rol: "cliente" | "vendedor" | "admin";
+  rol: Rol;
   dni: string;
   telefono: string;
 };
@@ -373,6 +375,7 @@ function formatMovimientoTipo(tipo: string): string {
 }
 
 function formatRolLabel(rol: Usuario["rol"]): string {
+  if (rol === "superAdmin") return "SuperAdmin";
   if (rol === "admin") return "Administrador";
   if (rol === "vendedor") return "Vendedor";
   return "Cliente";
@@ -637,6 +640,12 @@ function PaginationControls({
 
 export function Admin() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.rol === "superAdmin";
+  const panelBasePath = isSuperAdmin ? "/superadmin" : "/admin";
+  const isSuperAdminPanel = location.pathname.startsWith("/superadmin");
 
   const [tab, setTab] = useState<AdminTab>("inicio");
   const [okMsg, setOkMsg] = useState("");
@@ -679,7 +688,7 @@ export function Admin() {
     email: "",
     password: "",
     nombre: "",
-    rol: "vendedor" as "cliente" | "vendedor" | "admin",
+    rol: "vendedor" as Rol,
     dni: "",
   });
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
@@ -811,6 +820,7 @@ export function Admin() {
   const securityMonitorQuery = useQuery({
     queryKey: ["admin", "security-monitor"],
     queryFn: () => api.get<SecurityMonitorResponse>("/admin/security/monitor?limit=80"),
+    enabled: isSuperAdmin,
   });
 
   const sobreQuery = useQuery({
@@ -900,6 +910,10 @@ export function Admin() {
 
   async function refreshQueries(keys: Array<readonly string[]>) {
     await Promise.all(keys.map((key) => queryClient.invalidateQueries({ queryKey: key })));
+  }
+
+  function irAPanelSucursales() {
+    navigate(`${panelBasePath}/sucursales`);
   }
 
   const productos = productosQuery.data ?? [];
@@ -2044,8 +2058,8 @@ export function Admin() {
     <section className="admin-layout">
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <p className="admin-brand-name">Administrador</p>
-          <p className="admin-brand-role">Panel</p>
+          <p className="admin-brand-name">{isSuperAdminPanel ? "SuperAdmin" : "Administrador"}</p>
+          <p className="admin-brand-role">{isSuperAdminPanel ? "Control total" : "Panel"}</p>
           <button
             type="button"
             className="admin-mobile-nav-toggle"
@@ -2088,6 +2102,9 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "codigos" ? "active" : ""}`} onClick={() => setTab("codigos")}>
             Codigos
           </button>
+          <button className="admin-nav-btn" onClick={irAPanelSucursales}>
+            Sucursales
+          </button>
 
           <span className="admin-nav-section">Configuracion</span>
           <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => setTab("crear")}>
@@ -2105,8 +2122,10 @@ export function Admin() {
       <main className="admin-main">
         <div className="admin-topbar">
           <div className="admin-topbar-main">
-            <h1 className="admin-topbar-title">Panel de administracion</h1>
-            <p className="admin-topbar-sub">Resumen del programa de puntos</p>
+            <h1 className="admin-topbar-title">{isSuperAdminPanel ? "Panel SuperAdmin" : "Panel de administracion"}</h1>
+            <p className="admin-topbar-sub">
+              {isSuperAdminPanel ? "Control completo del sistema, seguridad y respaldos" : "Resumen del programa de puntos"}
+            </p>
           </div>
           <div className="admin-topbar-actions">
             <div className="admin-topbar-date">{new Date().toLocaleDateString("es-AR")}</div>
@@ -2314,30 +2333,32 @@ export function Admin() {
                 </div>
               </div>
 
-              <div className="admin-section-header adm-config-header">
-                <h2 className="admin-section-title">Backups de seguridad</h2>
-              </div>
-              <div className="admin-card admin-card-padded adm-config-card">
-                <p className="adm-config-subtitle">
-                  Genera un respaldo completo que incluye base de datos y carpeta de uploads.
-                </p>
-                {backupErr ? <div className="adm-msg-err">{backupErr}</div> : null}
-                {backupMsg ? <div className="adm-msg-ok">{backupMsg}</div> : null}
-                <div className="adm-config-actions">
-                  <button className="adm-btn-primary adm-btn-inline" onClick={generarBackupCompleto} disabled={backupBusy}>
-                    {backupBusy ? "Generando backup..." : "Generar y descargar backup completo"}
-                  </button>
-                </div>
-              </div>
+              {isSuperAdmin ? (
+                <>
+                  <div className="admin-section-header adm-config-header">
+                    <h2 className="admin-section-title">Backups de seguridad</h2>
+                  </div>
+                  <div className="admin-card admin-card-padded adm-config-card">
+                    <p className="adm-config-subtitle">
+                      Genera un respaldo completo que incluye base de datos y carpeta de uploads.
+                    </p>
+                    {backupErr ? <div className="adm-msg-err">{backupErr}</div> : null}
+                    {backupMsg ? <div className="adm-msg-ok">{backupMsg}</div> : null}
+                    <div className="adm-config-actions">
+                      <button className="adm-btn-primary adm-btn-inline" onClick={generarBackupCompleto} disabled={backupBusy}>
+                        {backupBusy ? "Generando backup..." : "Generar y descargar backup completo"}
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="admin-section-header adm-config-header">
-                <h2 className="admin-section-title">Intentos de acceso bloqueados</h2>
-                <button className="adm-btn-link" onClick={() => setInicioSeguridadOpen((prev) => !prev)}>
-                  {inicioSeguridadOpen ? "Ocultar" : "Mostrar"}
-                </button>
-              </div>
-              {inicioSeguridadOpen ? (
-                <div className="admin-card">
+                  <div className="admin-section-header adm-config-header">
+                    <h2 className="admin-section-title">Intentos de acceso bloqueados</h2>
+                    <button className="adm-btn-link" onClick={() => setInicioSeguridadOpen((prev) => !prev)}>
+                      {inicioSeguridadOpen ? "Ocultar" : "Mostrar"}
+                    </button>
+                  </div>
+                  {inicioSeguridadOpen ? (
+                    <div className="admin-card">
                   <div className="adm-mobile-list">
                     {securityMonitorQuery.isLoading ? (
                       <div className="adm-empty">Cargando eventos de seguridad...</div>
@@ -2441,160 +2462,23 @@ export function Admin() {
                     onPrev={() => setSeguridadPage((prev) => Math.max(1, prev - 1))}
                     onNext={() => setSeguridadPage((prev) => Math.min(totalSeguridadPages, prev + 1))}
                   />
-                </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
 
               <div className="admin-section-header adm-config-header">
-                <h2 className="admin-section-title">Tabla de sucursales de retiro</h2>
+                <h2 className="admin-section-title">Panel de sucursales</h2>
               </div>
               <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                <p className="adm-config-subtitle">Estas sucursales se muestran al cliente para elegir donde retirar su canje.</p>
-                <div className="adm-form-grid">
-                  <input
-                    className="adm-input"
-                    placeholder="Nombre (ej: Sucursal Centro)"
-                    value={nuevaSucursal.nombre}
-                    onChange={(event) => setNuevaSucursal((prev) => ({ ...prev, nombre: event.target.value }))}
-                  />
-                  <input
-                    className="adm-input"
-                    placeholder="Direccion (ej: Corrientes 1234)"
-                    value={nuevaSucursal.direccion}
-                    onChange={(event) => setNuevaSucursal((prev) => ({ ...prev, direccion: event.target.value }))}
-                  />
+                <p className="adm-config-subtitle">
+                  Gestiona altas, ediciones y activacion de sucursales desde un panel aparte para no mezclarlo con la configuracion general.
+                </p>
+                <div className="adm-config-actions">
+                  <button className="adm-btn-primary adm-btn-inline" onClick={irAPanelSucursales}>
+                    Abrir panel de sucursales
+                  </button>
                 </div>
-                <div className="adm-form-grid">
-                  <input
-                    className="adm-input"
-                    placeholder="Piso (opcional)"
-                    value={nuevaSucursal.piso}
-                    onChange={(event) => setNuevaSucursal((prev) => ({ ...prev, piso: event.target.value }))}
-                  />
-                  <input
-                    className="adm-input"
-                    placeholder="Localidad"
-                    value={nuevaSucursal.localidad}
-                    onChange={(event) => setNuevaSucursal((prev) => ({ ...prev, localidad: event.target.value }))}
-                  />
-                </div>
-                <input
-                  className="adm-input"
-                  placeholder="Provincia"
-                  value={nuevaSucursal.provincia}
-                  onChange={(event) => setNuevaSucursal((prev) => ({ ...prev, provincia: event.target.value }))}
-                />
-                <button className="adm-btn-primary adm-btn-inline" onClick={crearSucursal} disabled={busy}>
-                  {busy ? "Guardando..." : "Agregar sucursal"}
-                </button>
-              </div>
-
-              <div className="admin-card" style={{ marginTop: "0.85rem" }}>
-                <div className="admin-table-wrap">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Nombre</th>
-                        <th>Direccion</th>
-                        <th>Piso</th>
-                        <th>Localidad</th>
-                        <th>Provincia</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sucursalesPagina.length === 0 ? (
-                        <tr>
-                          <td colSpan={7}>
-                            <div className="adm-empty">No hay sucursales registradas.</div>
-                          </td>
-                        </tr>
-                      ) : null}
-                      {sucursalesPagina.map((sucursal) => (
-                        <Fragment key={sucursal.id}>
-                          <tr>
-                            <td>{sucursal.nombre}</td>
-                            <td>{sucursal.direccion}</td>
-                            <td>{sucursal.piso || "-"}</td>
-                            <td>{sucursal.localidad}</td>
-                            <td>{sucursal.provincia}</td>
-                            <td>{sucursal.activo ? "Activa" : "Inactiva"}</td>
-                            <td>
-                              <div className="adm-user-actions">
-                                <button className="adm-btn-link" onClick={() => iniciarEdicionSucursal(sucursal)}>
-                                  Editar
-                                </button>
-                                <button
-                                  className={sucursal.activo ? "adm-btn-danger" : "adm-btn-success"}
-                                  onClick={() => toggleSucursalActiva(sucursal)}
-                                >
-                                  {sucursal.activo ? "Desactivar" : "Activar"}
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                          {editSucursalId === sucursal.id ? (
-                            <tr>
-                              <td colSpan={7}>
-                                <div className="adm-inline-points-box">
-                                  <div className="adm-form-grid">
-                                    <input
-                                      className="adm-input"
-                                      placeholder="Nombre"
-                                      value={editSucursalDraft.nombre}
-                                      onChange={(event) => setEditSucursalDraft((prev) => ({ ...prev, nombre: event.target.value }))}
-                                    />
-                                    <input
-                                      className="adm-input"
-                                      placeholder="Direccion"
-                                      value={editSucursalDraft.direccion}
-                                      onChange={(event) => setEditSucursalDraft((prev) => ({ ...prev, direccion: event.target.value }))}
-                                    />
-                                  </div>
-                                  <div className="adm-form-grid" style={{ marginTop: "0.55rem" }}>
-                                    <input
-                                      className="adm-input"
-                                      placeholder="Piso (opcional)"
-                                      value={editSucursalDraft.piso}
-                                      onChange={(event) => setEditSucursalDraft((prev) => ({ ...prev, piso: event.target.value }))}
-                                    />
-                                    <input
-                                      className="adm-input"
-                                      placeholder="Localidad"
-                                      value={editSucursalDraft.localidad}
-                                      onChange={(event) => setEditSucursalDraft((prev) => ({ ...prev, localidad: event.target.value }))}
-                                    />
-                                  </div>
-                                  <input
-                                    className="adm-input"
-                                    style={{ marginTop: "0.55rem" }}
-                                    placeholder="Provincia"
-                                    value={editSucursalDraft.provincia}
-                                    onChange={(event) => setEditSucursalDraft((prev) => ({ ...prev, provincia: event.target.value }))}
-                                  />
-                                  <div className="adm-inline-points-actions">
-                                    <button className="adm-btn-primary adm-btn-inline" onClick={() => guardarEdicionSucursal(sucursal.id)} disabled={busy}>
-                                      {busy ? "Guardando..." : "Guardar cambios"}
-                                    </button>
-                                    <button className="adm-btn-secondary adm-btn-inline" onClick={() => setEditSucursalId(null)}>
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <PaginationControls
-                  page={sucursalesPage}
-                  totalPages={totalSucursalesPages}
-                  onPrev={() => setSucursalesPage((prev) => Math.max(1, prev - 1))}
-                  onNext={() => setSucursalesPage((prev) => Math.min(totalSucursalesPages, prev + 1))}
-                />
               </div>
             </>
           ) : null}
@@ -2654,20 +2538,26 @@ export function Admin() {
                             </td>
                             <td>
                               <div className="adm-user-actions">
-                                <button className="adm-btn-link" onClick={() => iniciarEdicionUsuario(usuario)}>
-                                  Editar
-                                </button>
-                                {usuario.rol === "cliente" ? (
-                                  <button className="adm-btn-link" onClick={() => abrirAsignacion(usuario)}>
-                                    Asignar puntos
-                                  </button>
-                                ) : null}
-                                <button
-                                  className={usuario.activo ? "adm-btn-danger" : "adm-btn-success"}
-                                  onClick={() => toggleUsuarioActivo(usuario)}
-                                >
-                                  {usuario.activo ? "Desactivar" : "Activar"}
-                                </button>
+                                {usuario.rol === "superAdmin" ? (
+                                  <span style={{ color: "#8B5A30", fontSize: "0.85rem" }}>Solo gestionable por SQL</span>
+                                ) : (
+                                  <>
+                                    <button className="adm-btn-link" onClick={() => iniciarEdicionUsuario(usuario)}>
+                                      Editar
+                                    </button>
+                                    {usuario.rol === "cliente" ? (
+                                      <button className="adm-btn-link" onClick={() => abrirAsignacion(usuario)}>
+                                        Asignar puntos
+                                      </button>
+                                    ) : null}
+                                    <button
+                                      className={usuario.activo ? "adm-btn-danger" : "adm-btn-success"}
+                                      onClick={() => toggleUsuarioActivo(usuario)}
+                                    >
+                                      {usuario.activo ? "Desactivar" : "Activar"}
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -3837,7 +3727,7 @@ export function Admin() {
                   className="adm-input"
                   value={nuevoUsuario.rol}
                   onChange={(event) =>
-                    setNuevoUsuario((prev) => ({ ...prev, rol: event.target.value as "cliente" | "vendedor" | "admin" }))
+                    setNuevoUsuario((prev) => ({ ...prev, rol: event.target.value as Rol }))
                   }
                 >
                   <option value="vendedor">Vendedor</option>

@@ -4,7 +4,7 @@ import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
 
 const router = Router();
-router.use(requireAuth, requireRole("vendedor", "admin"));
+router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
 
 type CanjeItemDetalle = {
   producto_id: number;

@@ -28,8 +28,10 @@ export function Navbar() {
   const cartItems = useCartStore((state) => state.items);
 
   const canSeeCliente = user?.rol === "cliente";
-  const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin";
-  const canSeeAdmin = user?.rol === "admin";
+  const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin" || user?.rol === "superAdmin";
+  const canSeeAdmin = user?.rol === "admin" || user?.rol === "superAdmin";
+  const adminPanelPath = user?.rol === "superAdmin" ? "/superadmin" : "/admin";
+  const adminPanelLabel = user?.rol === "superAdmin" ? "Panel SuperAdmin" : "Panel Admin";
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
@@ -141,7 +143,7 @@ export function Navbar() {
             {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>Soporte</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>Inbox</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
-            {canSeeAdmin ? <NavLink to="/admin" className={({ isActive }) => navClass(isActive)}>Panel Admin</NavLink> : null}
+            {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
 
           <div className="navbar-auth">
@@ -240,7 +242,7 @@ export function Navbar() {
           {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inbox</NavLink> : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Cargar Puntos</NavLink> : null}
-          {canSeeAdmin ? <NavLink to="/admin" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Panel Admin</NavLink> : null}
+          {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
 
           <div className="navbar-mobile-divider" />
 

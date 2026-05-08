@@ -10,6 +10,7 @@ const createConversationSchema = zod_1.z.object({
     asunto: zod_1.z.string().trim().min(3).max(180).optional().default(""),
     cuerpo: zod_1.z.string().trim().min(1).max(4000),
     prioridad: zod_1.z.enum(["normal", "alta"]).optional().default("normal"),
+    usuario_id: zod_1.z.number().int().positive().optional(),
 });
 const sendMessageSchema = zod_1.z.object({
     cuerpo: zod_1.z.string().trim().min(1).max(4000),
@@ -21,7 +22,7 @@ const updateConversationSchema = zod_1.z.object({
     asignado_a: zod_1.z.number().int().positive().nullable().optional(),
 });
 function isStaff(req) {
-    return req.user?.rol === "admin" || req.user?.rol === "vendedor";
+    return req.user?.rol === "admin" || req.user?.rol === "superAdmin" || req.user?.rol === "vendedor";
 }
 async function getConversationById(conn, id) {
     return (0, db_1.qOne)(conn, `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
@@ -141,25 +142,79 @@ router.get("/conversaciones", async (req, res) => {
        c.id DESC`, params);
     res.json(rows.map(serializeConversation));
 });
-router.post("/conversaciones", async (req, res) => {
-    if (req.user.rol !== "cliente") {
-        res.status(403).json({ error: "Solo clientes pueden iniciar conversaciones." });
+router.get("/usuarios", async (req, res) => {
+    if (!isStaff(req)) {
+        res.status(403).json({ error: "Solo staff puede consultar usuarios." });
         return;
     }
+    const search = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    const params = [];
+    const where = ["u.activo = 1", "u.rol = 'cliente'"];
+    if (search) {
+        where.push("(u.nombre LIKE ? OR u.email LIKE ?)");
+        params.push(`%${search}%`, `%${search}%`);
+    }
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT u.id, u.nombre, u.email, u.rol
+     FROM usuarios u
+     WHERE ${where.join(" AND ")}
+     ORDER BY
+       CASE u.rol WHEN 'cliente' THEN 0 WHEN 'vendedor' THEN 1 ELSE 2 END ASC,
+       u.nombre ASC,
+       u.id ASC
+     LIMIT 100`, params);
+    res.json(rows.map((row) => ({
+        id: Number(row.id),
+        nombre: row.nombre,
+        email: row.email,
+        rol: row.rol,
+    })));
+});
+router.post("/conversaciones", async (req, res) => {
     const parsed = createConversationSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0]?.message || "Datos invalidos." });
         return;
     }
+    const staff = isStaff(req);
+    if (!staff && req.user.rol !== "cliente") {
+        res.status(403).json({ error: "No autorizado para iniciar conversaciones." });
+        return;
+    }
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        const usuarioDestinoId = staff ? Number(parsed.data.usuario_id ?? 0) : req.user.id;
+        if (!Number.isInteger(usuarioDestinoId) || usuarioDestinoId <= 0) {
+            throw new Error("Selecciona un usuario valido para iniciar la conversacion.");
+        }
+        const usuarioDestino = await (0, db_1.qOne)(conn, "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1", [usuarioDestinoId]);
+        if (!usuarioDestino || Number(usuarioDestino.activo) !== 1) {
+            throw new Error("El usuario seleccionado no esta disponible.");
+        }
+        const asunto = parsed.data.asunto || "Consulta general";
+        const prioridad = parsed.data.prioridad;
+        const estadoInicial = staff ? "respondida" : "abierta";
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO soporte_conversaciones
-        (usuario_id, asunto, estado, prioridad, ultimo_mensaje_at, ultimo_cliente_at)
-       VALUES (?, ?, 'abierta', ?, NOW(), NOW())`, [req.user.id, parsed.data.asunto || "Consulta general", parsed.data.prioridad]);
+        (usuario_id, asunto, estado, prioridad, asignado_a, ultimo_mensaje_at, ultimo_staff_at, ultimo_cliente_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`, [
+            usuarioDestinoId,
+            asunto,
+            estadoInicial,
+            prioridad,
+            staff ? req.user.id : null,
+            staff ? new Date() : null,
+            staff ? null : new Date(),
+        ]);
         await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
-        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at)
-       VALUES (?, ?, 'cliente', ?, 0, NULL)`, [insertId, req.user.id, parsed.data.cuerpo]);
+        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)`, [
+            insertId,
+            req.user.id,
+            staff ? "staff" : "cliente",
+            parsed.data.cuerpo,
+            staff ? new Date() : null,
+            staff ? null : new Date(),
+        ]);
         await conn.commit();
         const conversation = await getConversationById(db_1.pool, insertId);
         res.status(201).json({

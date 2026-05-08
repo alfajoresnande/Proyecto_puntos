@@ -5,7 +5,7 @@ const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
 const router = (0, express_1.Router)();
-router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin"));
+router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
 async function getCanjeItemsByCanjeIds(canjeIds) {
     const map = new Map();
     if (!canjeIds.length)

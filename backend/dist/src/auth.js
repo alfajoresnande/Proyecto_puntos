@@ -72,7 +72,7 @@ function getTokenFromRequest(req) {
 }
 exports.JWT_SECRET = loadJwtSecret();
 function signToken(payload) {
-    const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "7d";
+    const expiresIn = payload.rol === "admin" || payload.rol === "superAdmin" || payload.rol === "vendedor" ? "1d" : "7d";
     return jsonwebtoken_1.default.sign(payload, exports.JWT_SECRET, { expiresIn });
 }
 function getAuthPayload(req) {

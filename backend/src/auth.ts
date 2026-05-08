@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
 
-export type Rol = "cliente" | "vendedor" | "admin";
+export type Rol = "cliente" | "vendedor" | "admin" | "superAdmin";
 export interface TokenPayload {
   id: number;
   rol: Rol;
@@ -74,7 +74,8 @@ function getTokenFromRequest(req: Request): string | null {
 export const JWT_SECRET = loadJwtSecret();
 
 export function signToken(payload: TokenPayload): string {
-  const expiresIn = payload.rol === "admin" || payload.rol === "vendedor" ? "1d" : "7d";
+  const expiresIn =
+    payload.rol === "admin" || payload.rol === "superAdmin" || payload.rol === "vendedor" ? "1d" : "7d";
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 }
 

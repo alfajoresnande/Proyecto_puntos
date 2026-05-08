@@ -118,6 +118,16 @@ async function ensureUsuarioDemographicsSchema() {
         await exports.pool.query("ALTER TABLE usuarios ADD COLUMN provincia VARCHAR(120) NULL AFTER localidad");
     }
 }
+async function ensureUsuarioRolesSchema() {
+    const [roleRows] = await exports.pool.query(`SELECT COLUMN_TYPE
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'rol'
+     LIMIT 1`);
+    const currentType = (roleRows[0]?.COLUMN_TYPE || "").toLowerCase();
+    if (!currentType.includes("'superadmin'")) {
+        await exports.pool.query("ALTER TABLE usuarios MODIFY COLUMN rol ENUM('admin','superAdmin','vendedor','cliente') NOT NULL DEFAULT 'cliente'");
+    }
+}
 async function ensureCanjeRedeemCodeSchema() {
     // Agrega la columna si no existe, o expande a VARCHAR(50) para que quepan los updates
     const [colRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
@@ -648,6 +658,12 @@ exports.pool
     .then(async (conn) => {
     console.log("✅ MySQL conectado");
     conn.release();
+    try {
+        await ensureUsuarioRolesSchema();
+    }
+    catch (err) {
+        console.error("Migracion roles de usuarios:", err.message);
+    }
     try {
         await ensureUsuarioTelefonoSchema();
     }

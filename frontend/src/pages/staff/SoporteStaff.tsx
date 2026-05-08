@@ -33,6 +33,13 @@ type SupportDetail = {
   mensajes: SupportMessage[];
 };
 
+type SupportUser = {
+  id: number;
+  nombre: string;
+  email: string;
+  rol: "admin" | "vendedor" | "cliente";
+};
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
   return new Date(value).toLocaleString("es-AR", {
@@ -50,6 +57,9 @@ export function SoporteStaff() {
   const [respuesta, setRespuesta] = useState("");
   const [notaInterna, setNotaInterna] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [nuevoUsuarioId, setNuevoUsuarioId] = useState("");
+  const [nuevoAsunto, setNuevoAsunto] = useState("");
+  const [nuevoMensaje, setNuevoMensaje] = useState("");
 
   const conversationsQuery = useQuery({
     queryKey: ["soporte", "staff", "conversaciones", estadoFiltro],
@@ -57,6 +67,13 @@ export function SoporteStaff() {
       api.get<SupportConversation[]>(
         `/soporte/conversaciones${estadoFiltro ? `?estado=${encodeURIComponent(estadoFiltro)}` : ""}`,
       ),
+    refetchInterval: 5000,
+  });
+
+  const usersQuery = useQuery({
+    queryKey: ["soporte", "staff", "usuarios"],
+    queryFn: () => api.get<SupportUser[]>("/soporte/usuarios"),
+    staleTime: 30_000,
   });
 
   const selectedConversationId = selectedId ?? conversationsQuery.data?.[0]?.id ?? null;
@@ -64,6 +81,7 @@ export function SoporteStaff() {
     queryKey: ["soporte", "staff", "detalle", selectedConversationId],
     queryFn: () => api.get<SupportDetail>(`/soporte/conversaciones/${selectedConversationId}`),
     enabled: Boolean(selectedConversationId),
+    refetchInterval: selectedConversationId ? 5000 : false,
   });
 
   const sendMutation = useMutation({
@@ -100,7 +118,30 @@ export function SoporteStaff() {
     onError: (error: Error) => setErrorMsg(error.message),
   });
 
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ conversacion: SupportConversation }>("/soporte/conversaciones", {
+        usuario_id: Number(nuevoUsuarioId),
+        asunto: nuevoAsunto.trim(),
+        cuerpo: nuevoMensaje.trim(),
+      }),
+    onSuccess: async (result) => {
+      setNuevoUsuarioId("");
+      setNuevoAsunto("");
+      setNuevoMensaje("");
+      setErrorMsg("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+      ]);
+      setEstadoFiltro("respondida");
+      setSelectedId(result.conversacion.id);
+    },
+    onError: (error: Error) => setErrorMsg(error.message),
+  });
+
   const conversaciones = conversationsQuery.data ?? [];
+  const usuarios = usersQuery.data ?? [];
   const detalle = detailQuery.data;
   useEffect(() => {
     if (!conversaciones.length) {
@@ -133,6 +174,40 @@ export function SoporteStaff() {
                   {counters.abiertas} abiertas, {counters.respondidas} respondidas, {counters.cerradas} cerradas
                 </p>
               </div>
+            </div>
+
+            <div className="support-form">
+              <select
+                className="ios-input"
+                value={nuevoUsuarioId}
+                onChange={(event) => setNuevoUsuarioId(event.target.value)}
+              >
+                <option value="">Elegir usuario</option>
+                {usuarios.map((usuario) => (
+                  <option key={usuario.id} value={usuario.id}>
+                    {usuario.nombre} - {usuario.email}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="ios-input"
+                value={nuevoAsunto}
+                onChange={(event) => setNuevoAsunto(event.target.value)}
+                placeholder="Asunto para el usuario"
+              />
+              <textarea
+                className="ios-input support-textarea"
+                value={nuevoMensaje}
+                onChange={(event) => setNuevoMensaje(event.target.value)}
+                placeholder="Mensaje inicial visible para el usuario"
+              />
+              <button
+                className="ios-btn-primary"
+                disabled={createMutation.isPending || !nuevoUsuarioId || nuevoAsunto.trim().length < 3 || !nuevoMensaje.trim()}
+                onClick={() => createMutation.mutate()}
+              >
+                {createMutation.isPending ? "Enviando..." : "Iniciar chat"}
+              </button>
             </div>
 
             <div className="support-filter-row">

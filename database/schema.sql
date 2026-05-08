@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     email               VARCHAR(150)    NOT NULL UNIQUE,
     google_id           VARCHAR(255)    NULL UNIQUE,
     password_hash       VARCHAR(255)    NOT NULL,
-    rol                 ENUM('admin','vendedor','cliente') NOT NULL DEFAULT 'cliente',
+    rol                 ENUM('admin','superAdmin','vendedor','cliente') NOT NULL DEFAULT 'cliente',
     dni                 VARCHAR(20)     NULL,
     telefono            VARCHAR(25)     NULL,
     fecha_nacimiento    DATE            NULL,

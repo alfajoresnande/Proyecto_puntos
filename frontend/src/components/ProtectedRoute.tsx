@@ -67,7 +67,9 @@ export function ProtectedRoute({ rol, children }: ProtectedRouteProps) {
   const allowedRoles = Array.isArray(rol) ? rol : [rol];
 
   const isRestrictedPanelPath =
-    location.pathname.startsWith("/admin") || location.pathname.startsWith("/vendedor");
+    location.pathname.startsWith("/admin") ||
+    location.pathname.startsWith("/superadmin") ||
+    location.pathname.startsWith("/vendedor");
 
   if (isRestoringSession || !hasRestoredSession) {
     return <SessionLoading />;

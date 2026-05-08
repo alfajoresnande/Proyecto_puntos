@@ -47,6 +47,7 @@ export function SoporteCliente() {
   const conversationsQuery = useQuery({
     queryKey: ["soporte", "cliente", "conversaciones"],
     queryFn: () => api.get<SupportConversation[]>("/soporte/conversaciones"),
+    refetchInterval: 5000,
   });
 
   const selectedConversationId = selectedId ?? conversationsQuery.data?.[0]?.id ?? null;
@@ -54,6 +55,7 @@ export function SoporteCliente() {
     queryKey: ["soporte", "cliente", "detalle", selectedConversationId],
     queryFn: () => api.get<SupportDetail>(`/soporte/conversaciones/${selectedConversationId}`),
     enabled: Boolean(selectedConversationId),
+    refetchInterval: selectedConversationId ? 5000 : false,
   });
 
   useEffect(() => {

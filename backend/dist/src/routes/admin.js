@@ -79,7 +79,14 @@ const upload = (0, multer_1.default)({
     },
 });
 const router = (0, express_1.Router)();
-router.use(auth_1.requireAuth, (0, auth_1.requireRole)("admin"));
+router.use(auth_1.requireAuth, (0, auth_1.requireRole)("admin", "superAdmin"));
+function requireSuperAdmin(req, res, next) {
+    if (req.user?.rol !== "superAdmin") {
+        res.status(403).json({ error: "Solo superAdmin puede usar esta funcion." });
+        return;
+    }
+    next();
+}
 const strongPasswordSchema = zod_1.z
     .string()
     .min(8, "La contrasena debe tener al menos 8 caracteres")
@@ -199,14 +206,14 @@ router.get("/stats", async (_req, res) => {
         puntos_emitidos: ptsEmitidos?.s ?? 0,
     });
 });
-router.get("/security/monitor", async (req, res) => {
+router.get("/security/monitor", requireSuperAdmin, async (req, res) => {
     const requested = Number(req.query.limit ?? 50);
     const limit = Number.isFinite(requested) ? requested : 50;
     const snapshot = (0, securityMonitor_1.getSecurityMonitorSnapshot)();
     const persistidos = await (0, securityMonitor_1.getPersistedSecurityEvents)(limit);
     res.json({ ...snapshot, persistidos });
 });
-router.post("/backup/full", async (req, res) => {
+router.post("/backup/full", requireSuperAdmin, async (req, res) => {
     try {
         const backup = await (0, backup_1.createFullBackupArchive)();
         (0, securityMonitor_1.recordSecurityEvent)("backup_full_generado", req, {
@@ -225,7 +232,11 @@ router.post("/backup/full", async (req, res) => {
 //  USUARIOS
 // ════════════════════════════════════════════════════════
 router.get("/usuarios", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo, created_at FROM usuarios ORDER BY created_at DESC");
+    const isSuperAdmin = _req.user?.rol === "superAdmin";
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo, created_at
+     FROM usuarios
+     ${isSuperAdmin ? "" : "WHERE rol <> 'superAdmin'"}
+     ORDER BY created_at DESC`);
     res.json(rows);
 });
 router.post("/usuarios", async (req, res) => {
@@ -1224,8 +1235,15 @@ router.get("/movimientos-stock", async (req, res) => {
     res.json(rows);
 });
 router.post("/reservas/expirar", async (_req, res) => {
-    const result = await (0, expirations_1.runReservationExpirations)();
-    res.json({ ok: true, ...result });
+    try {
+        const result = await (0, expirations_1.runReservationExpirations)();
+        res.json({ ok: true, ...result });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudieron expirar las reservas";
+        console.error("Expirar reservas vencidas:", message);
+        res.status(500).json({ error: "No se pudieron expirar las reservas vencidas en este momento." });
+    }
 });
 router.patch("/inventario/ajuste", async (req, res) => {
     const schema = zod_1.z.object({

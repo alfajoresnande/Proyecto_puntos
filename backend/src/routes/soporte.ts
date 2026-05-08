@@ -10,6 +10,7 @@ const createConversationSchema = z.object({
   asunto: z.string().trim().min(3).max(180).optional().default(""),
   cuerpo: z.string().trim().min(1).max(4000),
   prioridad: z.enum(["normal", "alta"]).optional().default("normal"),
+  usuario_id: z.number().int().positive().optional(),
 });
 
 const sendMessageSchema = z.object({
@@ -54,8 +55,15 @@ type MessageRow = {
   autor_rol: string | null;
 };
 
+type SupportUserRow = {
+  id: number;
+  nombre: string;
+  email: string;
+  rol: "admin" | "superAdmin" | "vendedor" | "cliente";
+};
+
 function isStaff(req: Express.Request): boolean {
-  return req.user?.rol === "admin" || req.user?.rol === "vendedor";
+  return req.user?.rol === "admin" || req.user?.rol === "superAdmin" || req.user?.rol === "vendedor";
 }
 
 async function getConversationById(conn: Queryable, id: number): Promise<ConversationRow | undefined> {
@@ -202,35 +210,107 @@ router.get("/conversaciones", async (req, res) => {
   res.json(rows.map(serializeConversation));
 });
 
-router.post("/conversaciones", async (req, res) => {
-  if (req.user!.rol !== "cliente") {
-    res.status(403).json({ error: "Solo clientes pueden iniciar conversaciones." });
+router.get("/usuarios", async (req, res) => {
+  if (!isStaff(req)) {
+    res.status(403).json({ error: "Solo staff puede consultar usuarios." });
     return;
   }
 
+  const search = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const params: Array<string | number> = [];
+  const where = ["u.activo = 1", "u.rol = 'cliente'"];
+
+  if (search) {
+    where.push("(u.nombre LIKE ? OR u.email LIKE ?)");
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  const rows = await qAll<SupportUserRow>(
+    pool,
+    `SELECT u.id, u.nombre, u.email, u.rol
+     FROM usuarios u
+     WHERE ${where.join(" AND ")}
+     ORDER BY
+       CASE u.rol WHEN 'cliente' THEN 0 WHEN 'vendedor' THEN 1 ELSE 2 END ASC,
+       u.nombre ASC,
+       u.id ASC
+     LIMIT 100`,
+    params,
+  );
+
+  res.json(
+    rows.map((row) => ({
+      id: Number(row.id),
+      nombre: row.nombre,
+      email: row.email,
+      rol: row.rol,
+    })),
+  );
+});
+
+router.post("/conversaciones", async (req, res) => {
   const parsed = createConversationSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0]?.message || "Datos invalidos." });
     return;
   }
 
+  const staff = isStaff(req);
+  if (!staff && req.user!.rol !== "cliente") {
+    res.status(403).json({ error: "No autorizado para iniciar conversaciones." });
+    return;
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const usuarioDestinoId = staff ? Number(parsed.data.usuario_id ?? 0) : req.user!.id;
+    if (!Number.isInteger(usuarioDestinoId) || usuarioDestinoId <= 0) {
+      throw new Error("Selecciona un usuario valido para iniciar la conversacion.");
+    }
+
+    const usuarioDestino = await qOne<{ id: number; activo: number }>(
+      conn,
+      "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1",
+      [usuarioDestinoId],
+    );
+    if (!usuarioDestino || Number(usuarioDestino.activo) !== 1) {
+      throw new Error("El usuario seleccionado no esta disponible.");
+    }
+
+    const asunto = parsed.data.asunto || "Consulta general";
+    const prioridad = parsed.data.prioridad;
+    const estadoInicial = staff ? "respondida" : "abierta";
+
     const { insertId } = await qRun(
       conn,
       `INSERT INTO soporte_conversaciones
-        (usuario_id, asunto, estado, prioridad, ultimo_mensaje_at, ultimo_cliente_at)
-       VALUES (?, ?, 'abierta', ?, NOW(), NOW())`,
-      [req.user!.id, parsed.data.asunto || "Consulta general", parsed.data.prioridad],
+        (usuario_id, asunto, estado, prioridad, asignado_a, ultimo_mensaje_at, ultimo_staff_at, ultimo_cliente_at)
+       VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
+      [
+        usuarioDestinoId,
+        asunto,
+        estadoInicial,
+        prioridad,
+        staff ? req.user!.id : null,
+        staff ? new Date() : null,
+        staff ? null : new Date(),
+      ],
     );
 
     await qRun(
       conn,
       `INSERT INTO soporte_mensajes
-        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at)
-       VALUES (?, ?, 'cliente', ?, 0, NULL)`,
-      [insertId, req.user!.id, parsed.data.cuerpo],
+        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)`,
+      [
+        insertId,
+        req.user!.id,
+        staff ? "staff" : "cliente",
+        parsed.data.cuerpo,
+        staff ? new Date() : null,
+        staff ? null : new Date(),
+      ],
     );
 
     await conn.commit();

@@ -6,7 +6,7 @@ import { recordSecurityEvent } from "../securityMonitor";
 
 const router = Router();
 const DEFAULT_DB_TIMEOUT_MS = 1500;
-const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin"]);
+const ALLOWED_ROLES = new Set(["cliente", "vendedor", "admin", "superAdmin"]);
 
 function isEnabled(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -28,7 +28,7 @@ function hasDiagnosticsAccess(req: Parameters<typeof getAuthPayload>[0]): boolea
   if (isEnabled(process.env.DIAGNOSTICO_PUBLIC)) return true;
 
   const auth = getAuthPayload(req);
-  if (auth?.rol === "admin") return true;
+  if (auth?.rol === "admin" || auth?.rol === "superAdmin") return true;
 
   const expectedToken = (process.env.DIAGNOSTICO_TOKEN || "").trim();
   if (!expectedToken) return false;

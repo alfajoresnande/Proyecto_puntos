@@ -4,6 +4,7 @@ import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Admin } from "./pages/admin/Admin";
+import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
 import { ForgotPassword } from "./pages/auth/ForgotPassword";
 import { Login } from "./pages/auth/Login";
 import { Registro } from "./pages/auth/Registro";
@@ -96,7 +97,7 @@ export default function App() {
             <Route
               path="/staff/soporte"
               element={
-                <ProtectedRoute rol={["vendedor", "admin"]}>
+                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
                   <SoporteStaff />
                 </ProtectedRoute>
               }
@@ -104,15 +105,39 @@ export default function App() {
             <Route
               path="/vendedor"
               element={
-                <ProtectedRoute rol={["vendedor", "admin"]}>
+                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
                   <Vendedor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/sucursales"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <SucursalesAdmin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/sucursales"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <SucursalesAdmin />
                 </ProtectedRoute>
               }
             />
             <Route
               path="/admin"
               element={
-                <ProtectedRoute rol="admin">
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin"
+              element={
+                <ProtectedRoute rol="superAdmin">
                   <Admin />
                 </ProtectedRoute>
               }
