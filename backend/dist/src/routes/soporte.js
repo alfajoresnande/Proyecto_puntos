@@ -27,7 +27,7 @@ function isStaff(req) {
 async function getConversationById(conn, id) {
     return (0, db_1.qOne)(conn, `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
            c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
-            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
             a.nombre AS asignado_nombre
      FROM soporte_conversaciones c
      JOIN usuarios u ON u.id = c.usuario_id
@@ -63,6 +63,7 @@ function serializeConversation(row) {
             nombre: row.usuario_nombre,
             email: row.usuario_email,
             dni: row.usuario_dni ?? null,
+            telefono: row.usuario_telefono ?? null,
         },
         asignado_nombre: row.asignado_nombre ?? null,
         unread_staff: Number(row.unread_staff ?? 0),
@@ -108,7 +109,7 @@ router.get("/conversaciones", async (req, res) => {
     }
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
             c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
-            u.nombre AS usuario_nombre, u.email AS usuario_email,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
             a.nombre AS asignado_nombre,
             (
               SELECT COUNT(*)
@@ -155,7 +156,7 @@ router.get("/usuarios", async (req, res) => {
         where.push("(u.nombre LIKE ? OR u.email LIKE ? OR u.dni LIKE ?)");
         params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT u.id, u.nombre, u.email, u.dni, u.rol
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT u.id, u.nombre, u.email, u.dni, u.telefono, u.rol
      FROM usuarios u
      WHERE ${where.join(" AND ")}
      ORDER BY
@@ -168,6 +169,7 @@ router.get("/usuarios", async (req, res) => {
         nombre: row.nombre,
         email: row.email,
         dni: row.dni ?? null,
+        telefono: row.telefono ?? null,
         rol: row.rol,
     })));
 });

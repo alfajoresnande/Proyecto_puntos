@@ -39,6 +39,7 @@ type ConversationRow = {
   usuario_nombre: string;
   usuario_email: string;
   usuario_dni: string | null;
+  usuario_telefono: string | null;
   asignado_nombre: string | null;
 };
 
@@ -61,6 +62,7 @@ type SupportUserRow = {
   nombre: string;
   email: string;
   dni: string | null;
+  telefono: string | null;
   rol: "admin" | "superAdmin" | "vendedor" | "cliente";
 };
 
@@ -73,7 +75,7 @@ async function getConversationById(conn: Queryable, id: number): Promise<Convers
     conn,
     `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
            c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
-            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
             a.nombre AS asignado_nombre
      FROM soporte_conversaciones c
      JOIN usuarios u ON u.id = c.usuario_id
@@ -117,6 +119,7 @@ function serializeConversation(row: ConversationRow & {
       nombre: row.usuario_nombre,
       email: row.usuario_email,
       dni: row.usuario_dni ?? null,
+      telefono: row.usuario_telefono ?? null,
     },
     asignado_nombre: row.asignado_nombre ?? null,
     unread_staff: Number(row.unread_staff ?? 0),
@@ -174,7 +177,7 @@ router.get("/conversaciones", async (req, res) => {
     pool,
     `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
             c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
-            u.nombre AS usuario_nombre, u.email AS usuario_email,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
             a.nombre AS asignado_nombre,
             (
               SELECT COUNT(*)
@@ -230,7 +233,7 @@ router.get("/usuarios", async (req, res) => {
 
   const rows = await qAll<SupportUserRow>(
     pool,
-    `SELECT u.id, u.nombre, u.email, u.dni, u.rol
+    `SELECT u.id, u.nombre, u.email, u.dni, u.telefono, u.rol
      FROM usuarios u
      WHERE ${where.join(" AND ")}
      ORDER BY
@@ -247,6 +250,7 @@ router.get("/usuarios", async (req, res) => {
       nombre: row.nombre,
       email: row.email,
       dni: row.dni ?? null,
+      telefono: row.telefono ?? null,
       rol: row.rol,
     })),
   );
