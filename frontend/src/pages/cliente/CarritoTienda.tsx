@@ -127,6 +127,34 @@ declare global {
 
 let mercadoPagoSdkPromise: Promise<void> | null = null;
 
+function mercadoPagoErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (error && typeof error === "object") {
+    const err = error as { message?: unknown; cause?: unknown; error?: unknown };
+    if (typeof err.message === "string" && err.message.trim()) return err.message.trim();
+    if (typeof err.error === "string" && err.error.trim()) return err.error.trim();
+    if (Array.isArray(err.cause)) {
+      const causeMessage = err.cause
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && "description" in item) {
+            const description = (item as { description?: unknown }).description;
+            return typeof description === "string" ? description : "";
+          }
+          if (item && typeof item === "object" && "message" in item) {
+            const message = (item as { message?: unknown }).message;
+            return typeof message === "string" ? message : "";
+          }
+          return "";
+        })
+        .find((item) => item.trim());
+      if (causeMessage) return causeMessage.trim();
+    }
+  }
+  return "Mercado Pago no pudo obtener la informacion del medio de pago.";
+}
+
 function loadMercadoPagoSdk(): Promise<void> {
   if (typeof window === "undefined") return Promise.resolve();
   if (window.MercadoPago) return Promise.resolve();
@@ -179,7 +207,8 @@ function MercadoPagoBrick({
         onPaid(response);
         return;
       }
-      setBrickError(`Mercado Pago dejo el pago en estado ${response.pago_estado || "pendiente"}.`);
+      const detail = response.status_detail ? ` (${response.status_detail})` : "";
+      setBrickError(`Mercado Pago dejo el pago en estado ${response.pago_estado || "pendiente"}${detail}.`);
     },
     onError: (error: Error) => setBrickError(error.message || "No se pudo procesar el pago."),
   });
@@ -241,13 +270,12 @@ function MercadoPagoBrick({
               }).then(() => undefined);
             },
             onError: (error: unknown) => {
-              const message = error instanceof Error ? error.message : "Mercado Pago no pudo renderizar el checkout.";
-              setBrickError(message);
+              setBrickError(mercadoPagoErrorMessage(error));
             },
           },
         });
       })
-      .catch((error: Error) => setBrickError(error.message));
+      .catch((error: Error) => setBrickError(error.message || "No se pudo cargar Mercado Pago."));
 
     return () => {
       cancelled = true;
@@ -262,6 +290,11 @@ function MercadoPagoBrick({
       <div id="mercadopago-payment-brick" />
       {processPayment.isPending ? <p className="catalog-confirm-hint">Procesando pago...</p> : null}
       {brickError ? <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{brickError}</p> : null}
+      {brickError && confirmed.pago?.checkout_url ? (
+        <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">
+          Abrir Mercado Pago
+        </a>
+      ) : null}
     </div>
   );
 }
