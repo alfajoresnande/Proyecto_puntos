@@ -308,6 +308,43 @@ async function getOrdenItems(conn, ordenId) {
         track_stock: Number(row.track_stock ?? 0),
     }));
 }
+async function getOrderReceiptConfig(conn = db_1.pool) {
+    const rows = await (0, db_1.qAll)(conn, `SELECT clave, valor
+     FROM configuracion
+     WHERE clave IN (
+       'pedido_comprobante_leyenda',
+       'empresa_dias_habiles_retiro',
+       'empresa_horario_retiro',
+       'pedido_efectivo_dias_vigencia'
+     )`);
+    const values = new Map(rows.map((row) => [row.clave, row.valor]));
+    const parsedCashDays = Number(values.get("pedido_efectivo_dias_vigencia") ?? 3);
+    return {
+        disclaimer: (values.get("pedido_comprobante_leyenda") || "Este documento no es valido como factura.").trim(),
+        businessDays: (values.get("empresa_dias_habiles_retiro") || "Lunes a viernes").trim(),
+        businessHours: (values.get("empresa_horario_retiro") || "08:00 a 18:00").trim(),
+        cashOrderValidityDays: Number.isInteger(parsedCashDays) && parsedCashDays > 0 ? parsedCashDays : 3,
+    };
+}
+function addDaysIso(value, days) {
+    const base = new Date(value);
+    if (Number.isNaN(base.getTime()))
+        return null;
+    const next = new Date(base.getTime());
+    next.setUTCDate(next.getUTCDate() + Math.max(1, days));
+    return next.toISOString();
+}
+function buildOrderReceiptMeta(order, pago, config) {
+    const isCashOrder = pago?.metodo === "cash";
+    return {
+        leyenda_no_factura: config.disclaimer,
+        dias_habiles: config.businessDays,
+        horario_habil: config.businessHours,
+        dias_vigencia_efectivo: isCashOrder ? config.cashOrderValidityDays : null,
+        fecha_limite_efectivo: isCashOrder ? addDaysIso(order.created_at, config.cashOrderValidityDays) : null,
+        retiro_en_sucursal: Boolean(order.sucursal_retiro_id),
+    };
+}
 async function resolveSucursalSeleccionada(conn, sucursalId) {
     const sucursalesActivas = await (0, db_1.qAll)(conn, `SELECT id, nombre, direccion, piso, localidad, provincia
      FROM sucursales
@@ -1454,15 +1491,56 @@ router.get("/ordenes", async (req, res) => {
     }
     const orderIds = rows.map((r) => Number(r.id));
     const placeholders = orderIds.map(() => "?").join(", ");
+    const config = await getOrderReceiptConfig(db_1.pool);
     const itemRows = await (0, db_1.qAll)(db_1.pool, `SELECT oi.orden_id, COUNT(*) AS total_items, COALESCE(SUM(oi.cantidad),0) AS total_unidades
      FROM orden_items oi
      WHERE oi.orden_id IN (${placeholders})
      GROUP BY oi.orden_id`, orderIds);
+    const orderItemsRows = await (0, db_1.qAll)(db_1.pool, `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+            oi.precio_dinero_unit, oi.precio_puntos_unit, oi.subtotal_dinero, oi.subtotal_puntos,
+            p.nombre, p.imagen_url, p.track_stock
+     FROM orden_items oi
+     JOIN productos p ON p.id = oi.producto_id
+     WHERE oi.orden_id IN (${placeholders})
+     ORDER BY oi.orden_id ASC, oi.id ASC`, orderIds);
+    const paymentRows = await (0, db_1.qAll)(db_1.pool, `SELECT p.id, p.orden_id, p.proveedor, p.metodo, p.estado, p.monto, p.moneda,
+            p.provider_payment_id, p.checkout_url, p.created_at, p.updated_at
+     FROM pagos p
+     JOIN (
+       SELECT orden_id, MAX(id) AS latest_id
+       FROM pagos
+       WHERE orden_id IN (${placeholders})
+       GROUP BY orden_id
+     ) latest ON latest.latest_id = p.id`, orderIds);
     const summaryMap = new Map();
+    const itemsMap = new Map();
+    const paymentsMap = new Map();
     for (const row of itemRows) {
         summaryMap.set(Number(row.orden_id), {
             total_items: Number(row.total_items ?? 0),
             total_unidades: Number(row.total_unidades ?? 0),
+        });
+    }
+    for (const row of orderItemsRows) {
+        const list = itemsMap.get(Number(row.orden_id)) ?? [];
+        list.push({
+            ...row,
+            orden_id: Number(row.orden_id),
+            producto_id: Number(row.producto_id),
+            cantidad: Number(row.cantidad),
+            precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
+            precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
+            subtotal_dinero: Number(row.subtotal_dinero),
+            subtotal_puntos: Number(row.subtotal_puntos),
+            track_stock: Number(row.track_stock ?? 0),
+        });
+        itemsMap.set(Number(row.orden_id), list);
+    }
+    for (const row of paymentRows) {
+        paymentsMap.set(Number(row.orden_id), {
+            ...row,
+            orden_id: Number(row.orden_id),
+            monto: Number(row.monto),
         });
     }
     res.json(rows.map((row) => {
@@ -1476,12 +1554,16 @@ router.get("/ordenes", async (req, res) => {
                 provincia: row.sucursal_provincia,
             }
             : null;
+        const pago = paymentsMap.get(Number(row.id)) ?? null;
         return {
             ...row,
             total_dinero: Number(row.total_dinero),
             total_puntos: Number(row.total_puntos),
             direccion_envio: parseJsonField(row.direccion_envio_json),
             sucursal,
+            items: itemsMap.get(Number(row.id)) ?? [],
+            pago,
+            comprobante: buildOrderReceiptMeta(row, pago, config),
             ...(summaryMap.get(Number(row.id)) ?? { total_items: 0, total_unidades: 0 }),
         };
     }));
@@ -1505,6 +1587,7 @@ router.get("/ordenes/:id", async (req, res) => {
         return;
     }
     const items = await getOrdenItems(db_1.pool, ordenId);
+    const config = await getOrderReceiptConfig(db_1.pool);
     const pago = await (0, db_1.qOne)(db_1.pool, `SELECT id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url, created_at, updated_at
      FROM pagos
      WHERE orden_id = ?
@@ -1522,6 +1605,7 @@ router.get("/ordenes/:id", async (req, res) => {
                 monto: Number(pago.monto),
             }
             : null,
+        comprobante: buildOrderReceiptMeta(orden, pago, config),
         sucursal: orden.sucursal_retiro_id
             ? {
                 id: Number(orden.sucursal_retiro_id),

@@ -177,6 +177,55 @@
   min-width: 148px;
 }
 
+.cliente-canje-expired-actions {
+  margin-top: 0.45rem;
+}
+
+.cliente-canje-detail-btn {
+  background: #fff5ea;
+  border: 1px solid #e6c9a7;
+  border-radius: 8px;
+  color: #6b3e26;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.38rem 0.6rem;
+}
+
+.cliente-canje-detail-btn:hover {
+  background: #ffedd8;
+}
+
+.cliente-canje-detail-box {
+  background: #fff8f0;
+  border: 1px solid #edd4b2;
+  border-radius: 10px;
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.cliente-canje-detail-title {
+  color: #5d3a1a;
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin: 0 0 0.45rem;
+  text-transform: uppercase;
+}
+
+.cliente-canje-detail-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cliente-canje-detail-row {
+  align-items: center;
+  color: #6f4b35;
+  display: flex;
+  font-size: 0.83rem;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
 .store-page .catalog-filter-search-input {
   flex: 1 1 260px;
 }
@@ -512,6 +561,13 @@
   padding: 0.85rem 0.95rem;
 }
 
+.store-order-head {
+  align-items: start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
 .store-order-title {
   color: #4A2C1A;
   font-weight: 800;
@@ -555,6 +611,63 @@
 .store-order-status.is-danger {
   background: #FDE2E2;
   color: #9B2C2C;
+}
+
+.store-order-receipt {
+  background: #fffdf9;
+  border: 1px dashed #d6b690;
+  border-radius: 10px;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem;
+}
+
+.store-order-receipt-row,
+.store-order-item-row {
+  align-items: center;
+  color: #4A2C1A;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.store-order-items {
+  border-top: 1px solid #f0dfca;
+  border-bottom: 1px solid #f0dfca;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.55rem 0;
+}
+
+.store-order-detail-box,
+.store-order-cash-box {
+  background: #fdf4e8;
+  border: 1px solid #edd4b2;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.store-order-detail-title {
+  color: #5a331f;
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.store-order-disclaimer {
+  border-top: 1px solid #f0dfca;
+  color: #8a5b40;
+  font-size: 0.8rem;
+  margin: 0.15rem 0 0;
+  padding-top: 0.55rem;
+}
+
+.store-order-thanks-image {
+  border-radius: 18px;
+  display: block;
+  margin: 0 auto 0.75rem;
+  max-width: 240px;
+  width: 100%;
 }
 
 .store-order-paid-msg {

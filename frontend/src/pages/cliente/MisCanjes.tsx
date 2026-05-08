@@ -54,6 +54,7 @@ function formatDate(value: string | null): string {
 
 function estadoLabel(estado: Canje["estado"]): string {
   if (estado === "no_disponible") return "NO DISPONIBLE";
+  if (estado === "expirado") return "CANJE EXPIRADO";
   return estado.toUpperCase();
 }
 
@@ -66,6 +67,7 @@ export function MisCanjes() {
   const [canjeFilter, setCanjeFilter] = useState<CanjeFilter>("todos");
   const [canjePage, setCanjePage] = useState(1);
   const [copiadoCanjeId, setCopiadoCanjeId] = useState<number | null>(null);
+  const [detalleAbiertoId, setDetalleAbiertoId] = useState<number | null>(null);
 
   const canjesQuery = useQuery({
     queryKey: ["cliente", "canjes"],
@@ -231,12 +233,48 @@ export function MisCanjes() {
                       </strong>
                     </p>
                   ) : null}
+                  {canje.estado === "expirado" ? (
+                    <div className="cliente-canje-expired-actions">
+                      <button
+                        type="button"
+                        className="cliente-canje-detail-btn"
+                        onClick={() => setDetalleAbiertoId((prev) => (prev === canje.id ? null : canje.id))}
+                      >
+                        {detalleAbiertoId === canje.id ? "Ocultar detalle" : "Ver detalle"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
               {canje.estado === "pendiente" && canje.fecha_limite_retiro ? (
                 <div className="cliente-limite-box">
                   Retirar antes del: <strong style={{ color: "#D4621A" }}>{formatDate(canje.fecha_limite_retiro)}</strong>
+                </div>
+              ) : null}
+
+              {canje.estado === "expirado" && detalleAbiertoId === canje.id ? (
+                <div className="cliente-canje-detail-box">
+                  <p className="cliente-canje-detail-title">Detalle del canje expirado</p>
+                  {canje.fecha_limite_retiro ? (
+                    <p className="text-xs" style={{ color: "#8B5A30", margin: "0 0 0.45rem" }}>
+                      Expiró el: <strong>{formatDate(canje.fecha_limite_retiro)}</strong>
+                    </p>
+                  ) : null}
+                  {canje.items && canje.items.length > 0 ? (
+                    <div className="cliente-canje-detail-list">
+                      {canje.items.map((item) => (
+                        <div key={`${canje.id}-${item.producto_id}`} className="cliente-canje-detail-row">
+                          <span>{item.producto_nombre}</span>
+                          <strong>x{item.cantidad}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs" style={{ color: "#8B5A30", margin: 0 }}>
+                      Producto: <strong>{canje.producto_nombre}</strong>
+                    </p>
+                  )}
                 </div>
               ) : null}
 

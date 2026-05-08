@@ -24,8 +24,31 @@ type Orden = {
   sucursal?: {
     nombre: string | null;
     direccion: string | null;
+    piso?: string | null;
     localidad: string | null;
     provincia: string | null;
+  } | null;
+  items?: Array<{
+    producto_id: number;
+    nombre: string;
+    cantidad: number;
+    precio_dinero_unit: number | null;
+    subtotal_dinero: number;
+  }>;
+  pago?: {
+    proveedor: string;
+    metodo: string | null;
+    estado: string;
+    monto: number;
+    moneda: string;
+  } | null;
+  comprobante?: {
+    leyenda_no_factura: string;
+    dias_habiles: string;
+    horario_habil: string;
+    dias_vigencia_efectivo: number | null;
+    fecha_limite_efectivo: string | null;
+    retiro_en_sucursal: boolean;
   } | null;
 };
 
@@ -75,6 +98,20 @@ function estadoPedidoClass(estado: string): string {
   if (normalized === "pendiente_pago") return " is-pending";
   if (normalized === "cancelada" || normalized === "expirada") return " is-danger";
   return "";
+}
+
+function paymentMethodLabel(metodo: string | null | undefined): string {
+  if (metodo === "cash") return "Efectivo al retirar";
+  if (metodo === "wallet") return "Mercado Pago";
+  if (metodo === "brick") return "Tarjeta";
+  return "Sin definir";
+}
+
+function branchLabel(sucursal: Orden["sucursal"]): string {
+  if (!sucursal?.nombre) return "-";
+  return [sucursal.nombre, sucursal.direccion, sucursal.piso ? `Piso ${sucursal.piso}` : "", sucursal.localidad, sucursal.provincia]
+    .filter(Boolean)
+    .join(", ");
 }
 
 export function MisPedidos() {
@@ -160,13 +197,16 @@ export function MisPedidos() {
         </div>
 
         {returnNotice ? (
-          <div
-            className={`catalog-float-toast catalog-float-toast-${returnNotice.variant} catalog-float-toast-front`}
-            role="status"
-            aria-live="polite"
-          >
-            <p className="catalog-float-toast-msg">{returnNotice.msg}</p>
-            <div className="catalog-float-toast-actions">
+          <div className="catalog-canje-block" role="status" aria-live="polite">
+            {returnNotice.variant === "success" ? (
+              <img
+                src="/nande_muchas_gracias.webp"
+                alt="Pedido pagado con exito"
+                className="store-order-thanks-image"
+              />
+            ) : null}
+            <p>{returnNotice.msg}</p>
+            <div className="catalog-float-toast-actions catalog-canje-actions">
               <button className="catalog-float-toast-btn-secondary" onClick={() => setReturnNotice(null)}>
                 Cerrar
               </button>
@@ -197,26 +237,75 @@ export function MisPedidos() {
           <div className="store-orders-list">
             {pedidos.map((orden) => (
               <article key={orden.id} className="store-order-card">
-                <div>
-                  <p className="store-order-title">Pedido #{orden.id}</p>
-                  <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
+                <div className="store-order-head">
+                  <div>
+                    <p className="store-order-title">Pedido #{orden.id}</p>
+                    <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
+                  </div>
+                  <div className="store-order-meta">
+                    <span className={`store-order-status${estadoPedidoClass(orden.estado)}`}>
+                      {estadoPedidoLabel(orden.estado)}
+                    </span>
+                    <strong>{money(orden.total_dinero)}</strong>
+                  </div>
                 </div>
-                <div className="store-order-meta">
-                  <span className={`store-order-status${estadoPedidoClass(orden.estado)}`}>
-                    {estadoPedidoLabel(orden.estado)}
-                  </span>
-                  <strong>{money(orden.total_dinero)}</strong>
+                <div className="store-order-receipt">
+                  <div className="store-order-receipt-row">
+                    <span>Comprobante</span>
+                    <strong>Pedido web #{orden.id}</strong>
+                  </div>
+                  <div className="store-order-receipt-row">
+                    <span>Pago</span>
+                    <strong>{paymentMethodLabel(orden.pago?.metodo)}</strong>
+                  </div>
+                  {orden.items?.length ? (
+                    <div className="store-order-items">
+                      {orden.items.map((item) => (
+                        <div key={`${orden.id}-${item.producto_id}-${item.nombre}`} className="store-order-item-row">
+                          <span>{item.nombre} x{item.cantidad}</span>
+                          <strong>{money(item.subtotal_dinero)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="store-order-receipt-row">
+                    <span>Total</span>
+                    <strong>{money(orden.total_dinero)}</strong>
+                  </div>
+                  {orden.direccion_envio ? (
+                    <div className="store-order-detail-box">
+                      <p className="store-order-detail-title">Entrega</p>
+                      <p className="store-order-muted">
+                        Envio a {orden.direccion_envio.nombre || "-"} - {orden.direccion_envio.direccion}, {orden.direccion_envio.localidad} ({orden.direccion_envio.codigo_postal})
+                      </p>
+                    </div>
+                  ) : orden.sucursal?.nombre ? (
+                    <div className="store-order-detail-box">
+                      <p className="store-order-detail-title">Retiro en sucursal</p>
+                      <p className="store-order-muted">{branchLabel(orden.sucursal)}</p>
+                      {orden.comprobante?.dias_habiles ? (
+                        <p className="store-order-muted">Dias habiles: {orden.comprobante.dias_habiles}</p>
+                      ) : null}
+                      {orden.comprobante?.horario_habil ? (
+                        <p className="store-order-muted">Horario: {orden.comprobante.horario_habil}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {orden.pago?.metodo === "cash" && orden.comprobante?.fecha_limite_efectivo ? (
+                    <div className="store-order-cash-box">
+                      <p className="store-order-detail-title">Reserva en efectivo</p>
+                      <p className="store-order-muted">
+                        Tienes {orden.comprobante.dias_vigencia_efectivo} dia(s) para acercarte, abonar y retirar tu pedido.
+                      </p>
+                      <p className="store-order-muted">
+                        Limite: {dateLabel(orden.comprobante.fecha_limite_efectivo)}
+                      </p>
+                    </div>
+                  ) : null}
+                  {orden.comprobante?.leyenda_no_factura ? (
+                    <p className="store-order-disclaimer">{orden.comprobante.leyenda_no_factura}</p>
+                  ) : null}
                 </div>
-                {orden.estado === "pagada" ? (
-                  <p className="store-order-paid-msg">Muchas gracias por tu compra. Pago aprobado.</p>
-                ) : null}
-                {orden.direccion_envio ? (
-                  <p className="store-order-muted">
-                    Envio: {orden.direccion_envio.direccion}, {orden.direccion_envio.localidad} ({orden.direccion_envio.codigo_postal})
-                  </p>
-                ) : orden.sucursal?.nombre ? (
-                  <p className="store-order-muted">Retiro: {orden.sucursal.nombre}</p>
-                ) : null}
               </article>
             ))}
           </div>

@@ -8,20 +8,37 @@ const db_1 = require("../db");
 const stock_1 = require("./stock");
 const orderLifecycle_1 = require("./orderLifecycle");
 const DEFAULT_CHECKOUT_RESERVATION_MINUTES = 30;
+const DEFAULT_CASH_ORDER_VALIDITY_DAYS = 3;
 function checkoutReservationMinutes() {
     const raw = Number(process.env.CHECKOUT_RESERVATION_MINUTES ?? DEFAULT_CHECKOUT_RESERVATION_MINUTES);
     if (!Number.isFinite(raw))
         return DEFAULT_CHECKOUT_RESERVATION_MINUTES;
     return Math.max(5, Math.min(24 * 60, Math.floor(raw)));
 }
+async function cashOrderValidityDays() {
+    const row = await (0, db_1.qOne)(db_1.pool, "SELECT valor FROM configuracion WHERE clave = 'pedido_efectivo_dias_vigencia' LIMIT 1");
+    const parsed = Number(row?.valor ?? DEFAULT_CASH_ORDER_VALIDITY_DAYS);
+    if (!Number.isInteger(parsed))
+        return DEFAULT_CASH_ORDER_VALIDITY_DAYS;
+    return Math.max(1, Math.min(30, parsed));
+}
 async function expireStalePendingOrders() {
     const minutes = checkoutReservationMinutes();
+    const cashDays = await cashOrderValidityDays();
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id
-     FROM ordenes
-     WHERE estado = 'pendiente_pago'
-       AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)
-     ORDER BY created_at ASC
-     LIMIT 50`, [minutes]);
+     FROM ordenes o
+     LEFT JOIN pagos p_cash
+       ON p_cash.orden_id = o.id
+      AND p_cash.proveedor = 'efectivo'
+      AND p_cash.metodo = 'cash'
+     WHERE o.estado = 'pendiente_pago'
+       AND (
+         (p_cash.id IS NOT NULL AND o.created_at < DATE_SUB(NOW(), INTERVAL ? DAY))
+         OR
+         (p_cash.id IS NULL AND o.created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE))
+       )
+     ORDER BY o.created_at ASC
+     LIMIT 50`, [cashDays, minutes]);
     let expired = 0;
     for (const row of rows) {
         const conn = await db_1.pool.getConnection();

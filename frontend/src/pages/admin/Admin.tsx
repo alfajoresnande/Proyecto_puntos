@@ -256,6 +256,10 @@ type ConfiguracionDraft = {
   puntos_referido_invitador: string;
   puntos_referido_invitado: string;
   longitud_codigo_invitacion: string;
+  pedido_efectivo_dias_vigencia: string;
+  empresa_dias_habiles_retiro: string;
+  empresa_horario_retiro: string;
+  pedido_comprobante_leyenda: string;
 };
 
 type SucursalAdmin = {
@@ -714,6 +718,10 @@ export function Admin() {
     puntos_referido_invitador: "50",
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
+    pedido_efectivo_dias_vigencia: "3",
+    empresa_dias_habiles_retiro: "Lunes a viernes",
+    empresa_horario_retiro: "08:00 a 18:00",
+    pedido_comprobante_leyenda: "Este documento no es valido como factura.",
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
@@ -857,6 +865,10 @@ export function Admin() {
       puntos_referido_invitador: getConfig("puntos_referido_invitador", "50"),
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
+      pedido_efectivo_dias_vigencia: getConfig("pedido_efectivo_dias_vigencia", "3"),
+      empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
+      empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
+      pedido_comprobante_leyenda: getConfig("pedido_comprobante_leyenda", "Este documento no es valido como factura."),
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
@@ -1738,6 +1750,10 @@ export function Admin() {
     const puntosInvitador = Number(configDraft.puntos_referido_invitador);
     const puntosInvitado = Number(configDraft.puntos_referido_invitado);
     const longitudCodigoInvitacion = Number(configDraft.longitud_codigo_invitacion);
+    const pedidoEfectivoDiasVigencia = Number(configDraft.pedido_efectivo_dias_vigencia);
+    const empresaDiasHabilesRetiro = configDraft.empresa_dias_habiles_retiro.trim();
+    const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
+    const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -1753,6 +1769,22 @@ export function Admin() {
     }
     if (!Number.isInteger(longitudCodigoInvitacion) || longitudCodigoInvitacion < 6 || longitudCodigoInvitacion > 20) {
       setConfigErr("La longitud del codigo de invitacion debe ser un entero entre 6 y 20.");
+      return;
+    }
+    if (!Number.isInteger(pedidoEfectivoDiasVigencia) || pedidoEfectivoDiasVigencia < 1 || pedidoEfectivoDiasVigencia > 30) {
+      setConfigErr("Los dias de vigencia para pedidos en efectivo deben ser un entero entre 1 y 30.");
+      return;
+    }
+    if (!empresaDiasHabilesRetiro) {
+      setConfigErr("Completa los dias habiles de retiro.");
+      return;
+    }
+    if (!empresaHorarioRetiro) {
+      setConfigErr("Completa el horario de retiro.");
+      return;
+    }
+    if (!pedidoComprobanteLeyenda) {
+      setConfigErr("Completa la leyenda legal del comprobante.");
       return;
     }
 
@@ -1778,6 +1810,26 @@ export function Admin() {
           clave: "longitud_codigo_invitacion",
           valor: String(longitudCodigoInvitacion),
           descripcion: "Longitud del codigo de invitacion generado automaticamente.",
+        },
+        {
+          clave: "pedido_efectivo_dias_vigencia",
+          valor: String(pedidoEfectivoDiasVigencia),
+          descripcion: "Dias habiles que se reserva un pedido en efectivo antes de expirar.",
+        },
+        {
+          clave: "empresa_dias_habiles_retiro",
+          valor: empresaDiasHabilesRetiro,
+          descripcion: "Dias habiles en los que la empresa entrega pedidos en sucursal.",
+        },
+        {
+          clave: "empresa_horario_retiro",
+          valor: empresaHorarioRetiro,
+          descripcion: "Horario de atencion para retiro de pedidos en sucursal.",
+        },
+        {
+          clave: "pedido_comprobante_leyenda",
+          valor: pedidoComprobanteLeyenda,
+          descripcion: "Leyenda legal que se muestra al pie del comprobante de pedidos.",
         },
       ];
 
@@ -2207,6 +2259,50 @@ export function Admin() {
                       placeholder="Ej: 30"
                     />
                     <p className="adm-field-help">Puntos que recibe el nuevo cliente al usar un codigo de invitacion valido.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Dias para pedidos en efectivo</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      className="adm-input"
+                      value={configDraft.pedido_efectivo_dias_vigencia}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, pedido_efectivo_dias_vigencia: event.target.value }))}
+                      placeholder="Ej: 3"
+                    />
+                    <p className="adm-field-help">Cantidad de dias que se reserva un pedido en efectivo antes de expirar si el cliente no se presenta.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Dias habiles de retiro</label>
+                    <input
+                      className="adm-input"
+                      value={configDraft.empresa_dias_habiles_retiro}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, empresa_dias_habiles_retiro: event.target.value }))}
+                      placeholder="Ej: Lunes a sabado"
+                    />
+                    <p className="adm-field-help">Se muestra en la mini factura y en la informacion de retiro para el cliente.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Horario de retiro</label>
+                    <input
+                      className="adm-input"
+                      value={configDraft.empresa_horario_retiro}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, empresa_horario_retiro: event.target.value }))}
+                      placeholder="Ej: 08:00 a 18:00"
+                    />
+                    <p className="adm-field-help">Horario que acompana la sucursal en el comprobante del pedido.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Leyenda legal del comprobante</label>
+                    <textarea
+                      className="adm-input"
+                      rows={3}
+                      value={configDraft.pedido_comprobante_leyenda}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, pedido_comprobante_leyenda: event.target.value }))}
+                      placeholder="Ej: Este documento no es valido como factura."
+                    />
+                    <p className="adm-field-help">Aparece al final de cada mini factura dentro de Mis pedidos.</p>
                   </div>
                 </div>
                 {configErr ? <div className="adm-msg-err">{configErr}</div> : null}

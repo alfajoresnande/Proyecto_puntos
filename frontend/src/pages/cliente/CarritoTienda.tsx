@@ -268,8 +268,7 @@ function MercadoPagoBrick({
             paymentMethods: {
               creditCard: "all",
               debitCard: "all",
-              ticket: "all",
-              mercadoPago: "all",
+              prepaidCard: "all",
               maxInstallments: 12,
             },
           },
@@ -385,6 +384,12 @@ export function CarritoTienda() {
     !paymentApproved &&
     confirmed.pago?.proveedor === "mercadopago",
   );
+  const isCashOrder = confirmed?.pago?.proveedor === "efectivo" || confirmed?.pago?.metodo === "cash";
+  const confirmedTitle = paymentApproved
+    ? "Pago aprobado"
+    : isCashOrder
+      ? "Pedido reservado"
+      : "Pedido pendiente de pago";
 
   const confirmedOrderQuery = useQuery({
     queryKey: ["cliente", "ordenes"],
@@ -549,17 +554,13 @@ export function CarritoTienda() {
       <section className="catalog-page catalog-canje-page">
         <div className="catalog-products-shell">
           <div className="catalog-header">
-            <h1 className="catalog-title">{paymentApproved ? "Pago aprobado" : "Pedido confirmado"}</h1>
+            <h1 className="catalog-title">{confirmedTitle}</h1>
             <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
           </div>
           {paymentNotice ? (
-            <div
-              className={`catalog-float-toast catalog-float-toast-${paymentNotice.variant} catalog-float-toast-front`}
-              role="status"
-              aria-live="polite"
-            >
-              <p className="catalog-float-toast-msg">{paymentNotice.msg}</p>
-              <div className="catalog-float-toast-actions">
+            <div className="catalog-canje-block" role="status" aria-live="polite">
+              <p>{paymentNotice.msg}</p>
+              <div className="catalog-float-toast-actions catalog-canje-actions">
                 {paymentNotice.variant === "success" ? (
                   <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
                 ) : null}
@@ -571,12 +572,25 @@ export function CarritoTienda() {
           ) : null}
           {paymentApproved ? (
             <div className="checkout-approved-card" role="status" aria-live="polite">
+              <img
+                src="/nande_muchas_gracias.webp"
+                alt="Pedido pagado con exito"
+                className="store-order-thanks-image"
+              />
               <p className="checkout-approved-title">Muchas gracias por tu compra</p>
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
             </div>
-          ) : null}
+          ) : isCashOrder ? (
+            <div className="catalog-canje-block" role="status" aria-live="polite">
+              <p><strong>Reservamos tu pedido.</strong> Lo pagas en efectivo al retirar en sucursal.</p>
+            </div>
+          ) : (
+            <div className="catalog-canje-block" role="status" aria-live="polite">
+              <p><strong>Tu pedido todavia no esta confirmado.</strong> Se confirma automaticamente cuando Mercado Pago aprueba el pago.</p>
+            </div>
+          )}
           <div className="catalog-confirm-branch-detail catalog-canje-block">
             <p><strong>Estado:</strong> {estadoLabel}</p>
             {shouldPollMercadoPagoOrder ? (
@@ -780,8 +794,13 @@ export function CarritoTienda() {
                     </option>
                   ))}
                 </select>
+                {selectedPayment?.description ? (
+                  <p className="catalog-confirm-hint">{selectedPayment.description}</p>
+                ) : null}
                 {selectedPayment?.provider === "efectivo" ? (
-                  <p className="catalog-confirm-hint">Se genera una reserva pendiente de pago. Si no se paga a tiempo, expira automaticamente.</p>
+                  <p className="catalog-confirm-hint">Se reserva el pedido para retiro. El equipo no lo toma como pago aprobado hasta cobrarlo en sucursal.</p>
+                ) : selectedPayment?.method === "brick" ? (
+                  <p className="catalog-confirm-hint">Esta opcion deja el pago con tarjeta dentro del sitio. Si prefieres usar tu cuenta o la app, elige "Pagar con Mercado Pago".</p>
                 ) : null}
               </div>
             ) : null}
