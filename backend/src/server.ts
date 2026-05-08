@@ -13,6 +13,7 @@ import productosRoutes from "./routes/productos";
 import paginasRoutes from "./routes/paginas";
 import diagnosticoRoutes from "./routes/diagnostico";
 import pagosRoutes from "./routes/pagos";
+import soporteRoutes from "./routes/soporte";
 import { recordSecurityEvent } from "./securityMonitor";
 import { startReservationExpirationWorker } from "./services/expirations";
 
@@ -118,7 +119,10 @@ function csrfProtection(req: Request, res: Response, next: NextFunction) {
 // Con un unico hop de proxy; aumentar si hay mas capas.
 const TRUST_PROXY = process.env.TRUST_PROXY;
 if (TRUST_PROXY) {
-  app.set("trust proxy", Number.isNaN(Number(TRUST_PROXY)) ? TRUST_PROXY : Number(TRUST_PROXY));
+  const normalizedTrustProxy = TRUST_PROXY.trim().toLowerCase();
+  if (!["0", "false", "off", "no"].includes(normalizedTrustProxy)) {
+    app.set("trust proxy", Number.isNaN(Number(TRUST_PROXY)) ? TRUST_PROXY : Number(TRUST_PROXY));
+  }
 }
 
 // Seguridad: headers HTTP seguros
@@ -188,6 +192,7 @@ app.use("/api/cliente", clienteRoutes);
 app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pagos", pagosRoutes);
+app.use("/api/soporte", soporteRoutes);
 
 // Manejo global de errores
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

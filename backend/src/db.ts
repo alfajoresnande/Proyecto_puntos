@@ -721,6 +721,54 @@ async function ensurePagosCheckoutSchema() {
   }
 }
 
+async function ensureSupportInboxSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS soporte_conversaciones (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      asunto VARCHAR(180) NULL,
+      estado ENUM('abierta','respondida','cerrada') NOT NULL DEFAULT 'abierta',
+      prioridad ENUM('normal','alta') NOT NULL DEFAULT 'normal',
+      asignado_a INT NULL,
+      ultimo_mensaje_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      ultimo_staff_at DATETIME NULL,
+      ultimo_cliente_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_soporte_conversacion_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_soporte_conversacion_asignado
+        FOREIGN KEY (asignado_a) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      INDEX idx_soporte_conversaciones_usuario_estado (usuario_id, estado, updated_at),
+      INDEX idx_soporte_conversaciones_estado_fecha (estado, ultimo_mensaje_at)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS soporte_mensajes (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      conversacion_id BIGINT UNSIGNED NOT NULL,
+      autor_usuario_id INT NULL,
+      autor_tipo ENUM('cliente','staff','sistema') NOT NULL,
+      cuerpo TEXT NOT NULL,
+      es_interno TINYINT(1) NOT NULL DEFAULT 0,
+      leido_por_cliente_at DATETIME NULL,
+      leido_por_staff_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_soporte_mensaje_conversacion
+        FOREIGN KEY (conversacion_id) REFERENCES soporte_conversaciones(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_soporte_mensaje_autor
+        FOREIGN KEY (autor_usuario_id) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      INDEX idx_soporte_mensajes_conversacion_fecha (conversacion_id, created_at),
+      INDEX idx_soporte_mensajes_autor (autor_usuario_id)
+    )`
+  );
+}
+
 
 async function ensureEventosSeguridadSchema() {
   await pool.query(
@@ -795,6 +843,11 @@ pool
       await ensurePagosCheckoutSchema();
     } catch (err: any) {
       console.error("⚠️  Migración columnas de pagos checkout:", err.message);
+    }
+    try {
+      await ensureSupportInboxSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración inbox de soporte:", err.message);
     }
     try {
       await ensureEventosSeguridadSchema();

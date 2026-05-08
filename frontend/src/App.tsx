@@ -14,10 +14,12 @@ import { ConfirmarCanje } from "./pages/cliente/ConfirmarCanje";
 import { MisCanjes } from "./pages/cliente/MisCanjes";
 import { MisPedidos } from "./pages/cliente/MisPedidos";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
+import { SoporteCliente } from "./pages/cliente/SoporteCliente";
 import { Catalogo } from "./pages/public/Catalogo";
 import { SobreNosotros } from "./pages/public/SobreNosotros";
 import { TiendaOnline } from "./pages/public/TiendaOnline";
 import { Terminos } from "./pages/public/Terminos";
+import { SoporteStaff } from "./pages/staff/SoporteStaff";
 import { Vendedor } from "./pages/vendedor/Vendedor";
 
 export default function App() {
@@ -82,7 +84,23 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/soporte"
+              element={
+                <ProtectedRoute rol="cliente">
+                  <SoporteCliente />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/confirmar-canje" element={<Navigate to="/carrito-canjes" replace />} />
+            <Route
+              path="/staff/soporte"
+              element={
+                <ProtectedRoute rol={["vendedor", "admin"]}>
+                  <SoporteStaff />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/vendedor"
               element={

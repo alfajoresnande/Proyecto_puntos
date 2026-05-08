@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 
-export type PaymentProvider = "mercadopago" | "pagos360" | "efectivo";
-export type PaymentMethod = "wallet" | "qr" | "credit_card" | "debit_card" | "cash";
+export type PaymentProvider = "mercadopago" | "efectivo";
+export type PaymentMethod = "brick" | "wallet" | "cash";
 
 export type PaymentChoice = {
   provider: PaymentProvider;
@@ -19,6 +19,8 @@ export type PaymentOption = PaymentChoice & {
 export type PaymentSessionResult = {
   providerPaymentId: string | null;
   checkoutUrl: string | null;
+  preferenceId: string | null;
+  publicKey: string | null;
   payload: Record<string, unknown> | null;
   status: "ready" | "requires_configuration";
   message: string | null;
@@ -36,10 +38,9 @@ type PaymentSessionInput = {
 
 const IS_PRODUCTION = (process.env.NODE_ENV || "").trim().toLowerCase() === "production";
 const MERCADOPAGO_ACCESS_TOKEN = (process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
+const MERCADOPAGO_PUBLIC_KEY = (process.env.MERCADOPAGO_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
 const MERCADOPAGO_API_BASE = (process.env.MERCADOPAGO_API_BASE || "https://api.mercadopago.com").trim().replace(/\/+$/, "");
 const MERCADOPAGO_WEBHOOK_URL = (process.env.MERCADOPAGO_WEBHOOK_URL || "").trim();
-const PAGOS360_API_KEY = (process.env.PAGOS360_API_KEY || "").trim();
-const PAGOS360_API_BASE = (process.env.PAGOS360_API_BASE || "https://api.sandbox.pagos360.com").trim().replace(/\/+$/, "");
 const DEFAULT_FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").split(",")[0].trim().replace(/\/+$/, "");
 
 function paymentReturnUrl(envName: string): string {
@@ -52,61 +53,39 @@ function toTwoDecimals(value: number): number {
   return Number((Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2));
 }
 
-function toPagos360Date(date: Date): string {
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = String(date.getFullYear());
-  return `${dd}-${mm}-${yyyy}`;
-}
-
-function tomorrowAtNoonLocal(): Date {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(12, 0, 0, 0);
-  return date;
-}
-
 function isEnabled(choice: PaymentChoice): { enabled: boolean; reason: string | null } {
   if (choice.provider === "efectivo") {
     return { enabled: true, reason: null };
   }
-  if (choice.provider === "mercadopago") {
-    if (!MERCADOPAGO_ACCESS_TOKEN) return { enabled: false, reason: "Falta MERCADOPAGO_ACCESS_TOKEN" };
-    return { enabled: true, reason: null };
+  if (!MERCADOPAGO_ACCESS_TOKEN) return { enabled: false, reason: "Falta MERCADOPAGO_ACCESS_TOKEN" };
+  if (choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
+    return { enabled: false, reason: "Falta MERCADOPAGO_PUBLIC_KEY" };
   }
-  if (!PAGOS360_API_KEY) return { enabled: false, reason: "Falta PAGOS360_API_KEY" };
   return { enabled: true, reason: null };
 }
 
 export function listPaymentOptions(): PaymentOption[] {
   const options: Array<Omit<PaymentOption, "enabled" | "reason_disabled">> = [
     {
-      id: "efectivo_retiro",
-      provider: "efectivo",
-      method: "cash",
-      label: "Efectivo al retirar",
-      description: "Reserva el pedido y paga en la sucursal antes de retirar.",
+      id: "mercadopago_brick",
+      provider: "mercadopago",
+      method: "brick",
+      label: "Tarjeta y Mercado Pago",
+      description: "Paga dentro de la tienda con tarjetas y medios habilitados por Mercado Pago.",
     },
     {
       id: "mercadopago_wallet",
       provider: "mercadopago",
       method: "wallet",
-      label: "Mercado Pago Wallet",
-      description: "Pago rapido con cuenta Mercado Pago.",
+      label: "Ir a Mercado Pago",
+      description: "Abre Mercado Pago para pagar con tu cuenta, app o checkout seguro.",
     },
     {
-      id: "pagos360_qr",
-      provider: "pagos360",
-      method: "qr",
-      label: "Pagos360 QR",
-      description: "Checkout de Pagos360 con foco en QR interoperable.",
-    },
-    {
-      id: "pagos360_tarjeta",
-      provider: "pagos360",
-      method: "credit_card",
-      label: "Pagos360 Tarjeta",
-      description: "Checkout de Pagos360 con foco en tarjetas credito/debito.",
+      id: "efectivo_retiro",
+      provider: "efectivo",
+      method: "cash",
+      label: "Efectivo al retirar",
+      description: "Reserva el pedido y paga en la sucursal antes de retirar.",
     },
   ];
 
@@ -122,60 +101,46 @@ export function listPaymentOptions(): PaymentOption[] {
 
 export function resolvePaymentChoice(raw?: Partial<PaymentChoice> | null): PaymentChoice {
   if (!raw || !raw.provider) {
-    return { provider: "mercadopago", method: "wallet" };
+    return { provider: "mercadopago", method: "brick" };
   }
   if (raw.provider === "mercadopago") {
-    return { provider: "mercadopago", method: "wallet" };
-  }
-  if (raw.provider === "pagos360") {
-    if (raw.method === "qr") return { provider: "pagos360", method: "qr" };
-    if (raw.method === "debit_card") return { provider: "pagos360", method: "debit_card" };
-    return { provider: "pagos360", method: "credit_card" };
+    return raw.method === "wallet"
+      ? { provider: "mercadopago", method: "wallet" }
+      : { provider: "mercadopago", method: "brick" };
   }
   if (raw.provider === "efectivo") {
     return { provider: "efectivo", method: "cash" };
   }
-  return { provider: "mercadopago", method: "wallet" };
+  return { provider: "mercadopago", method: "brick" };
 }
 
-function excludedChannelsForPagos360(method: PaymentMethod): string[] {
-  const allChannels = [
-    "credit_card",
-    "credit_card_agro",
-    "debit_card",
-    "banelco_pmc",
-    "link_pagos",
-    "DEBIN",
-    "wire_transfer",
-    "non_banking",
-    "QR",
-  ];
-  if (method === "qr") {
-    return allChannels.filter((channel) => channel !== "QR");
-  }
-  if (method === "debit_card") {
-    return allChannels.filter((channel) => channel !== "debit_card");
-  }
-  if (method === "credit_card") {
-    return allChannels.filter((channel) => channel !== "credit_card" && channel !== "credit_card_agro");
-  }
-  return [];
-}
-
-async function createMercadoPagoWalletSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
+async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
   if (!MERCADOPAGO_ACCESS_TOKEN) {
     return {
       providerPaymentId: null,
       checkoutUrl: null,
+      preferenceId: null,
+      publicKey: null,
       payload: null,
       status: "requires_configuration",
-      message: "Configura MERCADOPAGO_ACCESS_TOKEN para generar el checkout de wallet.",
+      message: "Configura MERCADOPAGO_ACCESS_TOKEN para generar el checkout.",
+    };
+  }
+  if (input.choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
+    return {
+      providerPaymentId: null,
+      checkoutUrl: null,
+      preferenceId: null,
+      publicKey: null,
+      payload: null,
+      status: "requires_configuration",
+      message: "Configura MERCADOPAGO_PUBLIC_KEY para renderizar Checkout Bricks.",
     };
   }
 
   const body = {
     external_reference: `orden_${input.orderId}`,
-    purpose: "wallet_purchase",
+    ...(input.choice.method === "wallet" ? { purpose: "wallet_purchase" } : {}),
     items: [
       {
         title: input.description,
@@ -219,6 +184,8 @@ async function createMercadoPagoWalletSession(input: PaymentSessionInput): Promi
 
   return {
     providerPaymentId: typeof payload.id === "string" ? payload.id : null,
+    preferenceId: typeof payload.id === "string" ? payload.id : null,
+    publicKey: input.choice.method === "brick" ? MERCADOPAGO_PUBLIC_KEY : null,
     checkoutUrl,
     payload,
     status: "ready",
@@ -226,50 +193,64 @@ async function createMercadoPagoWalletSession(input: PaymentSessionInput): Promi
   };
 }
 
-async function createPagos360Session(input: PaymentSessionInput): Promise<PaymentSessionResult> {
-  if (!PAGOS360_API_KEY) {
-    return {
-      providerPaymentId: null,
-      checkoutUrl: null,
-      payload: null,
-      status: "requires_configuration",
-      message: "Configura PAGOS360_API_KEY para generar el checkout de Pagos360.",
-    };
+export type MercadoPagoApiPaymentInput = {
+  orderId: number;
+  amount: number;
+  currency: string;
+  buyerEmail: string;
+  description: string;
+  formData: Record<string, unknown>;
+};
+
+export type MercadoPagoApiPaymentResult = {
+  providerPaymentId: string | null;
+  status: string;
+  statusDetail: string | null;
+  payload: Record<string, unknown>;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentInput): Promise<MercadoPagoApiPaymentResult> {
+  if (!MERCADOPAGO_ACCESS_TOKEN) {
+    throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para procesar pagos con Checkout API.");
   }
 
-  const dueDate = toPagos360Date(tomorrowAtNoonLocal());
+  const normalizedAmount = toTwoDecimals(input.amount);
+  const formData = asRecord(input.formData);
+  const payer = asRecord(formData.payer);
+  const payerEmail =
+    typeof payer.email === "string" && payer.email.includes("@")
+      ? payer.email.trim()
+      : input.buyerEmail.trim();
+
+  if (!payerEmail || !payerEmail.includes("@")) {
+    throw new Error("Mercado Pago requiere un email de comprador valido.");
+  }
+
   const body = {
-    payment_request: {
-      description: input.description,
-      first_due_date: dueDate,
-      first_total: toTwoDecimals(input.amount),
-      payer_name: input.buyerName || `Cliente #${input.orderId}`,
-      payer_email: input.buyerEmail || undefined,
-      external_reference: `orden_${input.orderId}`,
-      back_url_success: paymentReturnUrl("PAYMENT_RETURN_SUCCESS_URL"),
-      back_url_pending: paymentReturnUrl("PAYMENT_RETURN_PENDING_URL"),
-      back_url_rejected: paymentReturnUrl("PAYMENT_RETURN_FAILURE_URL"),
-      excluded_channels: excludedChannelsForPagos360(input.choice.method),
-      metadata: {
-        order_id: input.orderId,
-        provider: input.choice.provider,
-        method: input.choice.method,
-      },
-      items: [
-        {
-          quantity: 1,
-          description: input.description,
-          amount: toTwoDecimals(input.amount),
-        },
-      ],
+    ...formData,
+    transaction_amount: normalizedAmount,
+    description: input.description,
+    external_reference: `orden_${input.orderId}`,
+    metadata: {
+      ...asRecord(formData.metadata),
+      order_id: input.orderId,
+    },
+    payer: {
+      ...payer,
+      email: payerEmail,
     },
   };
 
-  const response = await fetch(`${PAGOS360_API_BASE}/payment-request`, {
+  const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/payments`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${PAGOS360_API_KEY}`,
+      Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+      "X-Idempotency-Key": randomUUID(),
     },
     body: JSON.stringify(body),
   });
@@ -277,15 +258,15 @@ async function createPagos360Session(input: PaymentSessionInput): Promise<Paymen
 
   if (!response.ok) {
     const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
-    throw new Error(`Pagos360: no se pudo crear la solicitud (${detail}).`);
+    throw new Error(`Mercado Pago: no se pudo procesar el pago (${detail}).`);
   }
 
   return {
-    providerPaymentId: payload.id !== undefined ? String(payload.id) : null,
-    checkoutUrl: typeof payload.checkout_url === "string" ? payload.checkout_url : null,
+    providerPaymentId:
+      typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
+    status: typeof payload.status === "string" ? payload.status : "unknown",
+    statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
     payload,
-    status: "ready",
-    message: null,
   };
 }
 
@@ -296,18 +277,20 @@ export async function createPaymentSession(input: PaymentSessionInput): Promise<
   }
 
   if (input.choice.provider === "mercadopago") {
-    return createMercadoPagoWalletSession({ ...input, amount: normalizedAmount });
+    return createMercadoPagoPreferenceSession({ ...input, amount: normalizedAmount });
   }
   if (input.choice.provider === "efectivo") {
     return {
       providerPaymentId: null,
       checkoutUrl: null,
+      preferenceId: null,
+      publicKey: null,
       payload: { type: "cash_on_pickup", order_id: input.orderId },
       status: "ready",
       message: "Reserva generada. El cliente paga en efectivo al retirar.",
     };
   }
-  return createPagos360Session({ ...input, amount: normalizedAmount });
+  return createMercadoPagoPreferenceSession({ ...input, amount: normalizedAmount });
 }
 
 export function isPaymentChoiceAvailable(choice: PaymentChoice): { ok: boolean; reason: string | null } {

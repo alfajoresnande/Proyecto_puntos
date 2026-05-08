@@ -950,3 +950,250 @@
   }
 }
 
+.support-shell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.support-shell-staff {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.support-sidebar,
+.support-thread {
+  min-width: 0;
+}
+
+.support-card,
+.support-list-item {
+  background: #fff8f0;
+  border: 1px solid #e6d3b8;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(74, 44, 26, 0.08);
+}
+
+.support-card {
+  padding: 1rem;
+}
+
+.support-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.support-title,
+.support-thread-title {
+  margin: 0;
+  color: #4a2c1a;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.support-subtitle,
+.support-empty,
+.support-list-item p,
+.support-message p,
+.support-box-title {
+  margin: 0;
+  color: #7a5a3c;
+}
+
+.support-subtitle,
+.support-list-item p,
+.support-box-title {
+  font-size: 0.82rem;
+}
+
+.support-form,
+.support-reply-box {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.support-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.support-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+
+.support-list-item {
+  border: 1px solid #e6d3b8;
+  cursor: pointer;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem;
+  text-align: left;
+}
+
+.support-list-item.active {
+  border-color: #a86a3d;
+  box-shadow: 0 0 0 2px rgba(168, 106, 61, 0.12);
+}
+
+.support-list-row {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.support-list-row strong {
+  color: #4a2c1a;
+  font-size: 0.88rem;
+}
+
+.support-list-meta {
+  color: #8a6a4b;
+  font-size: 0.75rem;
+}
+
+.support-badge {
+  align-items: center;
+  background: #6b3e26;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  height: 20px;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0 0.4rem;
+}
+
+.support-state {
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.18rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.support-state-abierta {
+  background: #fde8d8;
+  color: #b85415;
+}
+
+.support-state-respondida {
+  background: #e7f3ff;
+  color: #1d4ed8;
+}
+
+.support-state-cerrada {
+  background: #ececec;
+  color: #6b7280;
+}
+
+.support-thread-card {
+  min-height: 640px;
+}
+
+.support-thread-head {
+  border-bottom: 1px solid #eedcc7;
+  margin: -1rem -1rem 1rem;
+  padding: 1rem 1rem 0.9rem;
+}
+
+.support-messages {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.support-message {
+  background: #fffdf8;
+  border: 1px solid #eedcc7;
+  border-radius: 12px;
+  display: grid;
+  gap: 0.45rem;
+  max-width: 84%;
+  padding: 0.8rem 0.9rem;
+}
+
+.support-message.mine {
+  justify-self: end;
+  background: #f3e3d1;
+}
+
+.support-message.internal {
+  background: #f7f0ff;
+  border-color: #ddccf7;
+}
+
+.support-message-meta {
+  align-items: center;
+  color: #8a6a4b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+}
+
+.support-message-meta strong {
+  color: #4a2c1a;
+  font-size: 0.78rem;
+}
+
+.support-reply-box {
+  margin-top: 1rem;
+}
+
+.support-reply-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
+}
+
+.support-filter-row,
+.support-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.support-chip {
+  background: #fffdf8;
+  border: 1px solid #d8c2a8;
+  border-radius: 999px;
+  color: #6b3e26;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.45rem 0.75rem;
+}
+
+.support-chip.active {
+  background: #6b3e26;
+  border-color: #6b3e26;
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .support-shell,
+  .support-shell-staff,
+  .support-reply-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .support-thread-card {
+    min-height: auto;
+  }
+
+  .support-message {
+    max-width: 100%;
+  }
+}
+

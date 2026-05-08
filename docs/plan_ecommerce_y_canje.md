@@ -338,18 +338,18 @@ Con eso no rompes tu sistema actual y evolucionas a e-commerce de forma ordenada
 
 ---
 
-## 11) Configuracion de pagos (MercadoPago + Pagos360)
+## 11) Configuracion de pagos (Mercado Pago)
 Estrategia definida:
-- `MercadoPago Wallet` para pago rapido.
-- `Pagos360 QR` como alternativa.
-- `Pagos360 Tarjeta` como alternativa de credito/debito.
+- `Mercado Pago Checkout Bricks` como checkout principal para pagos online dentro de la tienda.
+- `Ir a Mercado Pago` como alternativa para abrir app/checkout externo cuando el cliente lo prefiera.
+- `Efectivo al retirar` como alternativa offline para pedidos con retiro.
+- `Carrito tienda` y `carrito de canjes` se mantienen separados: la tienda genera pedidos de venta; los canjes generan codigo de retiro en `canjes`.
 
 Variables recomendadas en `backend/.env`:
 - `MERCADOPAGO_ACCESS_TOKEN=...`
+- `MERCADOPAGO_PUBLIC_KEY=...`
 - `MERCADOPAGO_API_BASE=https://api.mercadopago.com`
 - `MERCADOPAGO_WEBHOOK_URL=https://tu-dominio.com/api/pagos/webhook/mercadopago` (opcional por ahora)
-- `PAGOS360_API_KEY=...`
-- `PAGOS360_API_BASE=https://api.sandbox.pagos360.com` (sandbox) o `https://api.pagos360.com` (produccion)
 - `PAYMENT_RETURN_SUCCESS_URL=https://tu-frontend.com/cliente`
 - `PAYMENT_RETURN_PENDING_URL=https://tu-frontend.com/cliente`
 - `PAYMENT_RETURN_FAILURE_URL=https://tu-frontend.com/cliente`

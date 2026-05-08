@@ -542,6 +542,32 @@
   text-transform: uppercase;
 }
 
+.store-order-status.is-ok {
+  background: #E7F6EC;
+  color: #1F7A3F;
+}
+
+.store-order-status.is-pending {
+  background: #FFF3CD;
+  color: #856404;
+}
+
+.store-order-status.is-danger {
+  background: #FDE2E2;
+  color: #9B2C2C;
+}
+
+.store-order-paid-msg {
+  background: #F0FFF4;
+  border: 1px solid #B7E4C7;
+  border-radius: 10px;
+  color: #276749;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+}
+
 body.catalog-background,
 body.catalogo-background {
   background: #F5E6D3;
@@ -1679,6 +1705,32 @@ body.catalogo-background .pagina-page {
   margin: 0;
   font-size: 0.84rem;
   color: #8B5A30;
+}
+
+.checkout-approved-card {
+  background: linear-gradient(135deg, #F0FFF4, #FFFFFF);
+  border: 1px solid #B7E4C7;
+  border-left: 5px solid #2F9E44;
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(47, 158, 68, 0.12);
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem 1.1rem;
+}
+
+.checkout-approved-title {
+  color: #1F7A3F;
+  font-size: 1.05rem;
+  font-weight: 900;
+  margin: 0;
+}
+
+.checkout-approved-text {
+  color: #276749;
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .catalog-alert-overlay {

@@ -4,10 +4,12 @@ import { z } from "zod";
 import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { releaseStockForCheckoutItems, reserveStockForCanje, reserveStockForCheckoutItems } from "../services/stock";
+import { approvePaidOrder } from "../services/orderLifecycle";
 import {
   createPaymentSession,
   isPaymentChoiceAvailable,
   listPaymentOptions,
+  processMercadoPagoApiPayment,
   resolvePaymentChoice,
   type PaymentChoice,
 } from "../services/paymentProviders";
@@ -1000,9 +1002,8 @@ router.get("/sucursales", async (_req, res) => {
 });
 
 router.get("/carrito", async (req, res) => {
-  const items = await getCarritoItems(pool, req.user!.id);
+  const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
   const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
-  const totalPuntos = items.reduce((acc, item) => acc + Number(item.subtotal_puntos || 0), 0);
   const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
 
   res.json({
@@ -1011,7 +1012,7 @@ router.get("/carrito", async (req, res) => {
       total_items: items.length,
       total_unidades: totalUnidades,
       total_dinero: totalDinero,
-      total_puntos: totalPuntos,
+      total_puntos: 0,
     },
   });
 });
@@ -1020,7 +1021,7 @@ router.post("/carrito/items", async (req, res) => {
   const schema = z.object({
     producto_id: z.number().int().positive(),
     cantidad: z.number().int().positive().max(100),
-    modo_compra: z.enum(["dinero", "puntos"]),
+    modo_compra: z.literal("dinero"),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -1052,10 +1053,10 @@ router.post("/carrito/items", async (req, res) => {
       throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
     }
 
-    const precioDineroUnit = modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
-    const precioPuntosUnit = modo_compra === "puntos" ? Number(producto.precio_puntos_effectivo ?? 0) : null;
-    const subtotalDinero = toMoney((precioDineroUnit ?? 0) * nuevaCantidad);
-    const subtotalPuntos = (precioPuntosUnit ?? 0) * nuevaCantidad;
+    const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+    const precioPuntosUnit = null;
+    const subtotalDinero = toMoney(precioDineroUnit * nuevaCantidad);
+    const subtotalPuntos = 0;
 
     if (existente?.id) {
       await qRun(
@@ -1128,14 +1129,17 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
       res.status(404).json({ error: "Item de carrito no encontrado." });
       return;
     }
+    if (item.modo_compra !== "dinero") {
+      throw new HttpError(400, "Este endpoint solo modifica items del carrito de tienda.");
+    }
 
     const producto = await getProductoForCart(conn, Number(item.producto_id));
     validateProductoForMode(producto, item.modo_compra);
 
-    const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
-    const precioPuntosUnit = item.modo_compra === "puntos" ? Number(producto.precio_puntos_effectivo ?? 0) : null;
-    const subtotalDinero = toMoney((precioDineroUnit ?? 0) * parsed.data.cantidad);
-    const subtotalPuntos = (precioPuntosUnit ?? 0) * parsed.data.cantidad;
+    const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+    const precioPuntosUnit = null;
+    const subtotalDinero = toMoney(precioDineroUnit * parsed.data.cantidad);
+    const subtotalPuntos = 0;
 
     await qRun(
       conn,
@@ -1223,14 +1227,11 @@ router.post("/checkout/preview", async (req, res) => {
       return;
     }
 
-    const items = await getCarritoItems(conn, req.user!.id);
+    const items = (await getCarritoItems(conn, req.user!.id)).filter((item) => item.modo_compra === "dinero");
     if (!items.length) {
       res.status(400).json({ error: "Tu carrito está vacío." });
       return;
     }
-
-    const usuario = await qOne<{ puntos_saldo: number }>(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [req.user!.id]);
-    const saldoPuntos = Number(usuario?.puntos_saldo ?? 0);
 
     const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
     const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
@@ -1271,9 +1272,9 @@ router.post("/checkout/preview", async (req, res) => {
       }
 
       const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
-      const precioPuntosUnit = item.modo_compra === "puntos" ? Number(producto.precio_puntos_effectivo ?? 0) : null;
+      const precioPuntosUnit = null;
       const subtotalDinero = toMoney((precioDineroUnit ?? 0) * item.cantidad);
-      const subtotalPuntos = (precioPuntosUnit ?? 0) * item.cantidad;
+      const subtotalPuntos = 0;
 
       itemsEvaluados.push({
         ...item,
@@ -1285,9 +1286,7 @@ router.post("/checkout/preview", async (req, res) => {
     }
 
     const totalDinero = toMoney(itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
-    const totalPuntos = itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_puntos || 0), 0);
     const totalUnidades = itemsEvaluados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-    const puntosOk = saldoPuntos >= totalPuntos;
     const stockOk = stockIssues.length === 0;
 
     res.json({
@@ -1307,16 +1306,16 @@ router.post("/checkout/preview", async (req, res) => {
         total_items: itemsEvaluados.length,
         total_unidades: totalUnidades,
         total_dinero: totalDinero,
-        total_puntos: totalPuntos,
+        total_puntos: 0,
       },
       validaciones: {
-        puntos_ok: puntosOk,
+        puntos_ok: true,
         stock_ok: stockOk,
-        saldo_puntos_actual: saldoPuntos,
-        puntos_faltantes: Math.max(0, totalPuntos - saldoPuntos),
+        saldo_puntos_actual: null,
+        puntos_faltantes: 0,
         errores_stock: stockIssues,
       },
-      puede_confirmar: puntosOk && stockOk,
+      puede_confirmar: stockOk,
     });
   } catch (err: unknown) {
     if (err instanceof HttpError) {
@@ -1339,8 +1338,8 @@ router.post("/checkout/confirm", async (req, res) => {
     direccion_envio: shippingAddressSchema.optional().nullable(),
     notas: z.string().max(500).optional().nullable(),
     pago: z.object({
-      provider: z.enum(["mercadopago", "pagos360", "efectivo"]),
-      method: z.enum(["wallet", "qr", "credit_card", "debit_card", "cash"]).optional(),
+      provider: z.enum(["mercadopago", "efectivo"]),
+      method: z.enum(["brick", "wallet", "cash"]).optional(),
     }).optional(),
   });
   const parsed = schema.safeParse(req.body ?? {});
@@ -1362,17 +1361,16 @@ router.post("/checkout/confirm", async (req, res) => {
       throw new HttpError(400, "No tienes un carrito activo.");
     }
 
-    const items = await getCarritoItems(conn, req.user!.id);
+    const items = (await getCarritoItems(conn, req.user!.id)).filter((item) => item.modo_compra === "dinero");
     if (!items.length) {
       throw new HttpError(400, "Tu carrito está vacío.");
     }
 
     const usuario = await qOne<CheckoutBuyer>(
       conn,
-      "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ? FOR UPDATE",
+      "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ?",
       [req.user!.id],
     );
-    const saldoPuntos = Number(usuario?.puntos_saldo ?? 0);
 
     const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
     const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
@@ -1409,8 +1407,8 @@ router.post("/checkout/confirm", async (req, res) => {
       const producto = await getProductoForCart(conn, Number(item.producto_id));
       validateProductoForMode(producto, item.modo_compra);
 
-      const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
-      const precioPuntosUnit = item.modo_compra === "puntos" ? Number(producto.precio_puntos_effectivo ?? 0) : null;
+      const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+      const precioPuntosUnit = null;
 
       itemsNormalizados.push({
         producto_id: Number(item.producto_id),
@@ -1419,19 +1417,15 @@ router.post("/checkout/confirm", async (req, res) => {
         precio_dinero_unit: precioDineroUnit,
         precio_puntos_unit: precioPuntosUnit,
         subtotal_dinero: toMoney((precioDineroUnit ?? 0) * Number(item.cantidad)),
-        subtotal_puntos: (precioPuntosUnit ?? 0) * Number(item.cantidad),
+        subtotal_puntos: 0,
         track_stock: Number(item.track_stock ?? 0),
         nombre: item.nombre,
       });
     }
 
     const totalDinero = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
-    const totalPuntos = itemsNormalizados.reduce((acc, item) => acc + item.subtotal_puntos, 0);
+    const totalPuntos = 0;
     const paymentChoice: PaymentChoice | null = totalDinero > 0 ? resolvePaymentChoice(parsed.data.pago ?? null) : null;
-
-    if (saldoPuntos < totalPuntos) {
-      throw new HttpError(400, `Puntos insuficientes. Tenés ${saldoPuntos}, necesitás ${totalPuntos}.`);
-    }
 
     if (paymentChoice) {
       if (paymentChoice.provider === "efectivo" && metodoEntrega !== "retiro") {
@@ -1443,10 +1437,7 @@ router.post("/checkout/confirm", async (req, res) => {
       }
     }
 
-    const tipoOrden =
-      totalDinero > 0 && totalPuntos > 0 ? "mixta"
-      : totalDinero > 0 ? "venta"
-      : "canje";
+    const tipoOrden = "venta";
     const estadoOrden = totalDinero > 0 ? "pendiente_pago" : "preparada";
 
     const { insertId: ordenId } = await qRun(
@@ -1475,7 +1466,7 @@ router.post("/checkout/confirm", async (req, res) => {
           .map((item) => ({
             producto_id: item.producto_id,
             cantidad: item.cantidad,
-            origen: item.modo_compra === "dinero" ? "compra" : "canje",
+            origen: "compra",
             descripcion: `Reserva orden #${ordenId}`,
           })),
         referencia: `orden #${ordenId}`,
@@ -1503,26 +1494,17 @@ router.post("/checkout/confirm", async (req, res) => {
       );
     }
 
-    if (totalPuntos > 0) {
-      await qRun(
-        conn,
-        `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-         VALUES (?, 'canje_producto', ?, ?, ?, 'ordenes')`,
-        [req.user!.id, -totalPuntos, `Checkout carrito #${carritoId}`, ordenId],
-      );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo - ? WHERE id = ?", [totalPuntos, req.user!.id]);
-    }
-
     let checkoutUrl: string | null = null;
     let paymentStatus: "ready" | "requires_configuration" | null = null;
     let paymentMessage: string | null = null;
     let paymentProvider: string | null = null;
     let paymentMethod: string | null = null;
     let paymentProviderId: string | null = null;
+    let paymentPreferenceId: string | null = null;
+    let paymentPublicKey: string | null = null;
 
     if (totalDinero > 0) {
-      const choice = paymentChoice ?? { provider: "mercadopago", method: "wallet" };
+      const choice = paymentChoice ?? { provider: "mercadopago", method: "brick" };
       const paymentSession = await createPaymentSession({
         choice,
         orderId: Number(ordenId),
@@ -1553,6 +1535,8 @@ router.post("/checkout/confirm", async (req, res) => {
       paymentProvider = choice.provider;
       paymentMethod = choice.method;
       paymentProviderId = paymentSession.providerPaymentId;
+      paymentPreferenceId = paymentSession.preferenceId;
+      paymentPublicKey = paymentSession.publicKey;
     }
 
     await qRun(conn, "UPDATE carritos SET estado = 'convertido' WHERE id = ?", [carritoId]);
@@ -1571,11 +1555,13 @@ router.post("/checkout/confirm", async (req, res) => {
         metodo: paymentMethod,
         estado: "iniciado",
         checkout_url: checkoutUrl,
+        preference_id: paymentPreferenceId,
+        public_key: paymentPublicKey,
         provider_payment_id: paymentProviderId,
         setup_status: paymentStatus,
         setup_message: paymentMessage,
       } : null,
-      nuevo_saldo_puntos: saldoPuntos - totalPuntos,
+      nuevo_saldo_puntos: usuario?.puntos_saldo ?? 0,
       sucursal: sucursalSeleccionada
         ? {
             ...sucursalSeleccionada,
@@ -1604,10 +1590,133 @@ router.post("/checkout/confirm", async (req, res) => {
   }
 });
 
+router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
+  const ordenId = Number(req.params.id);
+  if (!Number.isInteger(ordenId) || ordenId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido." });
+    return;
+  }
+
+  const schema = z.object({
+    selected_payment_method: z.string().optional().nullable(),
+    form_data: z.record(z.unknown()),
+    additional_data: z.record(z.unknown()).optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message || "Datos de pago invalidos." });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const orden = await qOne<{
+      id: number;
+      usuario_id: number;
+      estado: "pendiente_pago" | "pagada" | "cancelada" | "expirada" | string;
+      total_dinero: number;
+      moneda: string;
+      comprador_email: string | null;
+    }>(
+      conn,
+      `SELECT o.id, o.usuario_id, o.estado, o.total_dinero, o.moneda, u.email AS comprador_email
+       FROM ordenes o
+       JOIN usuarios u ON u.id = o.usuario_id
+       WHERE o.id = ? AND o.usuario_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [ordenId, req.user!.id],
+    );
+    if (!orden) {
+      throw new HttpError(404, "Orden no encontrada.");
+    }
+    if (orden.estado === "pagada") {
+      await conn.commit();
+      res.json({ ok: true, orden_id: ordenId, estado: "pagada", already_paid: true });
+      return;
+    }
+    if (orden.estado !== "pendiente_pago") {
+      throw new HttpError(400, `No se puede pagar una orden en estado '${orden.estado}'.`);
+    }
+
+    const total = toMoney(Number(orden.total_dinero ?? 0));
+    if (total <= 0) {
+      throw new HttpError(400, "La orden no tiene monto pendiente en dinero.");
+    }
+
+    const mpResult = await processMercadoPagoApiPayment({
+      orderId: ordenId,
+      amount: total,
+      currency: orden.moneda || "ARS",
+      buyerEmail: orden.comprador_email || "",
+      description: `Pedido #${ordenId}`,
+      formData: parsed.data.form_data,
+    });
+
+    const payload = {
+      mercado_pago: mpResult.payload,
+      selected_payment_method: parsed.data.selected_payment_method ?? null,
+      additional_data: parsed.data.additional_data ?? null,
+    };
+
+    if (mpResult.status === "approved") {
+      const result = await approvePaidOrder(conn, {
+        orderId: ordenId,
+        provider: "mercadopago",
+        providerPaymentId: mpResult.providerPaymentId,
+        payload,
+      });
+      await conn.commit();
+      res.json({
+        ok: true,
+        orden_id: ordenId,
+        estado: result.state,
+        pago_estado: "aprobado",
+        provider_payment_id: mpResult.providerPaymentId,
+        status_detail: mpResult.statusDetail,
+      });
+      return;
+    }
+
+    await qRun(
+      conn,
+      `UPDATE pagos
+       SET estado = ?, provider_payment_id = COALESCE(?, provider_payment_id), payload_json = ?
+       WHERE orden_id = ? AND proveedor = 'mercadopago' AND estado = 'iniciado'`,
+      [
+        ["rejected", "cancelled", "canceled"].includes(mpResult.status) ? "rechazado" : "iniciado",
+        mpResult.providerPaymentId,
+        JSON.stringify(payload),
+        ordenId,
+      ],
+    );
+    await conn.commit();
+    res.json({
+      ok: false,
+      orden_id: ordenId,
+      estado: "pendiente_pago",
+      pago_estado: mpResult.status,
+      provider_payment_id: mpResult.providerPaymentId,
+      status_detail: mpResult.statusDetail,
+    });
+  } catch (err: unknown) {
+    await conn.rollback();
+    if (err instanceof HttpError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    const msg = err instanceof Error ? err.message : "No se pudo procesar el pago.";
+    res.status(400).json({ error: msg });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/checkout/payment-options", async (_req, res) => {
   res.json({
     options: listPaymentOptions(),
-    default_option: "mercadopago_wallet",
+    default_option: "mercadopago_brick",
   });
 });
 

@@ -39,10 +39,36 @@ function dateLabel(value: string): string {
   return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
+function estadoPedidoLabel(estado: string): string {
+  const normalized = estado.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    pendiente_pago: "Pendiente de pago",
+    pagada: "Pago aprobado",
+    preparada: "Preparando pedido",
+    enviada: "En camino",
+    entregada: "Entregado",
+    cancelada: "Cancelado",
+    expirada: "Expirado",
+  };
+  return labels[normalized] ?? estado;
+}
+
+function estadoPedidoClass(estado: string): string {
+  const normalized = estado.trim().toLowerCase();
+  if (normalized === "pagada" || normalized === "preparada" || normalized === "entregada") return " is-ok";
+  if (normalized === "pendiente_pago") return " is-pending";
+  if (normalized === "cancelada" || normalized === "expirada") return " is-danger";
+  return "";
+}
+
 export function MisPedidos() {
   const ordenesQuery = useQuery({
     queryKey: ["cliente", "ordenes"],
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
+    refetchInterval: (query) => {
+      const orders = query.state.data ?? [];
+      return orders.some((orden) => orden.estado === "pendiente_pago") ? 5000 : false;
+    },
   });
 
   const pedidos = (ordenesQuery.data ?? []).filter((orden) => orden.tipo_orden === "venta" || orden.tipo_orden === "mixta");
@@ -71,9 +97,14 @@ export function MisPedidos() {
                   <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
                 </div>
                 <div className="store-order-meta">
-                  <span className="store-order-status">{orden.estado}</span>
+                  <span className={`store-order-status${estadoPedidoClass(orden.estado)}`}>
+                    {estadoPedidoLabel(orden.estado)}
+                  </span>
                   <strong>{money(orden.total_dinero)}</strong>
                 </div>
+                {orden.estado === "pagada" ? (
+                  <p className="store-order-paid-msg">Muchas gracias por tu compra. Pago aprobado.</p>
+                ) : null}
                 {orden.direccion_envio ? (
                   <p className="store-order-muted">
                     Envio: {orden.direccion_envio.direccion}, {orden.direccion_envio.localidad} ({orden.direccion_envio.codigo_postal})

@@ -17,6 +17,7 @@ const productos_1 = __importDefault(require("./routes/productos"));
 const paginas_1 = __importDefault(require("./routes/paginas"));
 const diagnostico_1 = __importDefault(require("./routes/diagnostico"));
 const pagos_1 = __importDefault(require("./routes/pagos"));
+const soporte_1 = __importDefault(require("./routes/soporte"));
 const securityMonitor_1 = require("./securityMonitor");
 const expirations_1 = require("./services/expirations");
 const app = (0, express_1.default)();
@@ -110,7 +111,10 @@ function csrfProtection(req, res, next) {
 // Con un unico hop de proxy; aumentar si hay mas capas.
 const TRUST_PROXY = process.env.TRUST_PROXY;
 if (TRUST_PROXY) {
-    app.set("trust proxy", Number.isNaN(Number(TRUST_PROXY)) ? TRUST_PROXY : Number(TRUST_PROXY));
+    const normalizedTrustProxy = TRUST_PROXY.trim().toLowerCase();
+    if (!["0", "false", "off", "no"].includes(normalizedTrustProxy)) {
+        app.set("trust proxy", Number.isNaN(Number(TRUST_PROXY)) ? TRUST_PROXY : Number(TRUST_PROXY));
+    }
 }
 // Seguridad: headers HTTP seguros
 app.use((0, helmet_1.default)({
@@ -168,6 +172,7 @@ app.use("/api/cliente", cliente_1.default);
 app.use("/api/vendedor", vendedor_1.default);
 app.use("/api/admin", admin_1.default);
 app.use("/api/pagos", pagos_1.default);
+app.use("/api/soporte", soporte_1.default);
 // Manejo global de errores
 app.use((err, req, res, _next) => {
     if (err instanceof Error && err.message === "CORS no permitido para este origen") {

@@ -37,8 +37,8 @@ type SucursalRetiro = {
 
 type PaymentOption = {
   id: string;
-  provider: "mercadopago" | "pagos360" | "efectivo";
-  method: "wallet" | "qr" | "credit_card" | "debit_card" | "cash";
+  provider: "mercadopago" | "efectivo";
+  method: "brick" | "wallet" | "cash";
   label: string;
   description: string;
   enabled: boolean;
@@ -56,10 +56,23 @@ type CheckoutConfirmResponse = {
   total_dinero: number;
   pago_pendiente: boolean;
   pago: null | {
+    proveedor: string | null;
+    metodo: "brick" | "wallet" | "cash" | null;
     checkout_url: string | null;
+    preference_id: string | null;
+    public_key: string | null;
+    provider_payment_id: string | null;
     setup_status: "ready" | "requires_configuration" | null;
     setup_message: string | null;
   };
+};
+
+type ProcessPaymentResponse = {
+  ok: boolean;
+  orden_id: number;
+  estado: string;
+  pago_estado?: string;
+  status_detail?: string | null;
 };
 
 type MetodoEntrega = "retiro" | "envio";
@@ -77,6 +90,169 @@ type ShippingDraft = {
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
+}
+
+function estadoPedidoLabel(estado: string): string {
+  const normalized = estado.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    pendiente_pago: "Pendiente de pago",
+    pagada: "Pago aprobado",
+    preparada: "Preparando pedido",
+    enviada: "En camino",
+    entregada: "Entregado",
+    cancelada: "Cancelado",
+    expirada: "Expirado",
+  };
+  return labels[normalized] ?? estado;
+}
+
+type MercadoPagoConstructor = new (
+  publicKey: string,
+  options?: { locale?: string },
+) => {
+  bricks: () => {
+    create: (
+      type: "payment",
+      containerId: string,
+      settings: Record<string, unknown>,
+    ) => Promise<{ unmount?: () => void }>;
+  };
+};
+
+declare global {
+  interface Window {
+    MercadoPago?: MercadoPagoConstructor;
+  }
+}
+
+let mercadoPagoSdkPromise: Promise<void> | null = null;
+
+function loadMercadoPagoSdk(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.MercadoPago) return Promise.resolve();
+  if (!mercadoPagoSdkPromise) {
+    mercadoPagoSdkPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>('script[src="https://sdk.mercadopago.com/js/v2"]');
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("No se pudo cargar Mercado Pago.")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://sdk.mercadopago.com/js/v2";
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("No se pudo cargar Mercado Pago."));
+      document.head.appendChild(script);
+    });
+  }
+  return mercadoPagoSdkPromise;
+}
+
+function MercadoPagoBrick({
+  confirmed,
+  onPaid,
+  onApproved,
+}: {
+  confirmed: CheckoutConfirmResponse;
+  onPaid: (response: ProcessPaymentResponse) => void;
+  onApproved: () => void;
+}) {
+  const [brickReady, setBrickReady] = useState(false);
+  const [brickError, setBrickError] = useState<string | null>(null);
+
+  const processPayment = useMutation({
+    mutationFn: (payload: {
+      selectedPaymentMethod?: string | null;
+      formData: Record<string, unknown>;
+      additionalData?: Record<string, unknown> | null;
+    }) =>
+      api.post<ProcessPaymentResponse>(`/cliente/checkout/ordenes/${confirmed.orden_id}/process-payment`, {
+        selected_payment_method: payload.selectedPaymentMethod ?? null,
+        form_data: payload.formData,
+        additional_data: payload.additionalData ?? null,
+      }),
+    onSuccess: (response) => {
+      if (response.ok) {
+        setBrickError(null);
+        onApproved();
+        onPaid(response);
+        return;
+      }
+      setBrickError(`Mercado Pago dejo el pago en estado ${response.pago_estado || "pendiente"}.`);
+    },
+    onError: (error: Error) => setBrickError(error.message || "No se pudo procesar el pago."),
+  });
+
+  useEffect(() => {
+    const publicKey = confirmed.pago?.public_key;
+    const preferenceId = confirmed.pago?.preference_id;
+    if (!publicKey || !preferenceId) return;
+
+    let cancelled = false;
+    let controller: { unmount?: () => void } | null = null;
+    setBrickReady(false);
+    setBrickError(null);
+
+    loadMercadoPagoSdk()
+      .then(async () => {
+        if (cancelled || !window.MercadoPago) return;
+        const mp = new window.MercadoPago(publicKey, { locale: "es-AR" });
+        const bricksBuilder = mp.bricks();
+        controller = await bricksBuilder.create("payment", "mercadopago-payment-brick", {
+          initialization: {
+            amount: Number(confirmed.total_dinero),
+            preferenceId,
+          },
+          customization: {
+            visual: {
+              style: {
+                theme: "default",
+              },
+            },
+            paymentMethods: {
+              creditCard: "all",
+              debitCard: "all",
+              ticket: "all",
+              mercadoPago: "all",
+              maxInstallments: 12,
+            },
+          },
+          callbacks: {
+            onReady: () => setBrickReady(true),
+            onSubmit: (
+              data: { selectedPaymentMethod?: string | null; formData?: Record<string, unknown> },
+              additionalData?: Record<string, unknown>,
+            ) =>
+              processPayment.mutateAsync({
+                selectedPaymentMethod: data.selectedPaymentMethod ?? null,
+                formData: data.formData ?? {},
+                additionalData: additionalData ?? null,
+              }).then(() => undefined),
+            onError: (error: unknown) => {
+              const message = error instanceof Error ? error.message : "Mercado Pago no pudo renderizar el checkout.";
+              setBrickError(message);
+            },
+          },
+        });
+      })
+      .catch((error: Error) => setBrickError(error.message));
+
+    return () => {
+      cancelled = true;
+      controller?.unmount?.();
+    };
+  }, [confirmed.orden_id, confirmed.pago?.preference_id, confirmed.pago?.public_key, confirmed.total_dinero]);
+
+  return (
+    <div className="catalog-confirm-branch-detail catalog-canje-block">
+      <p style={{ margin: 0, fontWeight: 800 }}>Pago online</p>
+      {!brickReady && !brickError ? <p className="catalog-confirm-hint">Cargando checkout seguro...</p> : null}
+      <div id="mercadopago-payment-brick" />
+      {processPayment.isPending ? <p className="catalog-confirm-hint">Procesando pago...</p> : null}
+      {brickError ? <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{brickError}</p> : null}
+    </div>
+  );
 }
 
 export function CarritoTienda() {
@@ -99,6 +275,7 @@ export function CarritoTienda() {
   const [message, setMessage] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
+  const [paymentApproved, setPaymentApproved] = useState(false);
 
   const cartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
@@ -182,6 +359,7 @@ export function CarritoTienda() {
       }),
     onSuccess: async (data) => {
       setConfirmed(data);
+      setPaymentApproved(data.estado === "pagada");
       setMessage(null);
       setNeedsProfile(false);
       await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
@@ -227,18 +405,27 @@ export function CarritoTienda() {
   }
 
   if (confirmed) {
+    const estadoLabel = estadoPedidoLabel(confirmed.estado);
     return (
       <section className="catalog-page catalog-canje-page">
         <div className="catalog-products-shell">
           <div className="catalog-header">
-            <h1 className="catalog-title">Pedido confirmado</h1>
+            <h1 className="catalog-title">{paymentApproved ? "Pago aprobado" : "Pedido confirmado"}</h1>
             <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
           </div>
+          {paymentApproved ? (
+            <div className="checkout-approved-card" role="status" aria-live="polite">
+              <p className="checkout-approved-title">Muchas gracias por tu compra</p>
+              <p className="checkout-approved-text">
+                Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
+              </p>
+            </div>
+          ) : null}
           <div className="catalog-confirm-branch-detail catalog-canje-block">
-            <p><strong>Estado:</strong> {confirmed.estado}</p>
-            {confirmed.pago?.checkout_url ? (
+            <p><strong>Estado:</strong> {estadoLabel}</p>
+            {confirmed.pago?.metodo === "wallet" && confirmed.pago.checkout_url ? (
               <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">
-                Abrir pago seguro
+                Abrir Mercado Pago
               </a>
             ) : confirmed.pago?.setup_message ? (
               <p>{confirmed.pago.setup_message}</p>
@@ -248,6 +435,23 @@ export function CarritoTienda() {
               <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
             </div>
           </div>
+          {confirmed.pago?.metodo === "brick" && confirmed.pago.public_key && confirmed.pago.preference_id ? (
+            <MercadoPagoBrick
+              confirmed={confirmed}
+              onPaid={(response) =>
+                setConfirmed((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        estado: response.estado,
+                        pago_pendiente: response.estado !== "pagada",
+                      }
+                    : prev,
+                )
+              }
+              onApproved={() => setPaymentApproved(true)}
+            />
+          ) : null}
         </div>
       </section>
     );
