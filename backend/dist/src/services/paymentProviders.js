@@ -38,11 +38,16 @@ function mercadoPagoConfigurationIssue(choice) {
     }
     return null;
 }
+const PAYMENT_RETURN_PATHS = {
+    PAYMENT_RETURN_SUCCESS_URL: "/mis-pedidos",
+    PAYMENT_RETURN_PENDING_URL: "/mis-pedidos",
+    PAYMENT_RETURN_FAILURE_URL: "/mis-pedidos",
+};
 function paymentReturnUrl(envName) {
     const fromEnv = (process.env[envName] || "").trim();
     if (fromEnv)
         return fromEnv;
-    return `${DEFAULT_FRONTEND_URL}/cliente`;
+    return `${DEFAULT_FRONTEND_URL}${PAYMENT_RETURN_PATHS[envName] ?? "/mis-pedidos"}`;
 }
 function toTwoDecimals(value) {
     return Number((Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2));

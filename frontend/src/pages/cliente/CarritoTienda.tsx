@@ -75,6 +75,16 @@ type ProcessPaymentResponse = {
   status_detail?: string | null;
 };
 
+type OrdenCheckoutStatus = {
+  id: number;
+  estado: string;
+};
+
+type PaymentNotice = {
+  variant: "success" | "error" | "info";
+  msg: string;
+};
+
 type MetodoEntrega = "retiro" | "envio";
 
 type ShippingDraft = {
@@ -336,6 +346,7 @@ export function CarritoTienda() {
   const [needsProfile, setNeedsProfile] = useState(false);
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
   const [paymentApproved, setPaymentApproved] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
 
   const cartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
@@ -368,6 +379,24 @@ export function CarritoTienda() {
     visiblePaymentOptions.find((option) => option.id === (paymentId || paymentOptionsQuery.data?.default_option)) ??
     visiblePaymentOptions[0];
   const todosPermitenEnvio = cartItems.every((item) => item.permite_envio === true || Number(item.permite_envio ?? 0) === 1);
+  const shouldPollMercadoPagoOrder = Boolean(
+    confirmed?.orden_id &&
+    confirmed.pago_pendiente &&
+    !paymentApproved &&
+    confirmed.pago?.proveedor === "mercadopago",
+  );
+
+  const confirmedOrderQuery = useQuery({
+    queryKey: ["cliente", "ordenes"],
+    queryFn: () => api.get<OrdenCheckoutStatus[]>("/cliente/ordenes"),
+    enabled: shouldPollMercadoPagoOrder,
+    refetchInterval: (query) => {
+      if (!shouldPollMercadoPagoOrder || !confirmed?.orden_id) return false;
+      const orders = query.state.data ?? [];
+      const currentOrder = orders.find((orden) => Number(orden.id) === Number(confirmed.orden_id));
+      return currentOrder?.estado === "pendiente_pago" || !currentOrder ? 5000 : false;
+    },
+  });
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -387,6 +416,50 @@ export function CarritoTienda() {
       setPaymentId("");
     }
   }, [metodoEntrega, selectedPayment?.provider]);
+
+  useEffect(() => {
+    if (!confirmed?.orden_id || !confirmedOrderQuery.data?.length) return;
+    const currentOrder = confirmedOrderQuery.data.find((orden) => Number(orden.id) === Number(confirmed.orden_id));
+    const nextState = currentOrder?.estado?.trim().toLowerCase();
+    if (!nextState || nextState === "pendiente_pago") return;
+
+    if (nextState === "pagada") {
+      if (!paymentApproved || confirmed.estado !== "pagada") {
+        setPaymentApproved(true);
+        setPaymentNotice({
+          variant: "success",
+          msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+        });
+        setConfirmed((prev) =>
+          prev && Number(prev.orden_id) === Number(confirmed.orden_id)
+            ? { ...prev, estado: "pagada", pago_pendiente: false }
+            : prev,
+        );
+        void queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+      }
+      return;
+    }
+
+    if (nextState === "cancelada" || nextState === "expirada") {
+      setPaymentNotice({
+        variant: "error",
+        msg: nextState === "expirada"
+          ? "El pago expiro en Mercado Pago. Puedes generar una compra nueva cuando quieras."
+          : "Mercado Pago rechazo o cancelo el pago.",
+      });
+      setConfirmed((prev) =>
+        prev && Number(prev.orden_id) === Number(confirmed.orden_id)
+          ? { ...prev, estado: nextState, pago_pendiente: false }
+          : prev,
+      );
+    }
+  }, [
+    confirmed?.estado,
+    confirmed?.orden_id,
+    confirmedOrderQuery.data,
+    paymentApproved,
+    queryClient,
+  ]);
 
   const updateQuantity = useMutation({
     mutationFn: ({ itemId, cantidad }: { itemId: number; cantidad: number }) =>
@@ -420,6 +493,12 @@ export function CarritoTienda() {
     onSuccess: async (data) => {
       setConfirmed(data);
       setPaymentApproved(data.estado === "pagada");
+      setPaymentNotice(data.estado === "pagada"
+        ? {
+            variant: "success",
+            msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+          }
+        : null);
       setMessage(null);
       setNeedsProfile(false);
       await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
@@ -473,6 +552,23 @@ export function CarritoTienda() {
             <h1 className="catalog-title">{paymentApproved ? "Pago aprobado" : "Pedido confirmado"}</h1>
             <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
           </div>
+          {paymentNotice ? (
+            <div
+              className={`catalog-float-toast catalog-float-toast-${paymentNotice.variant} catalog-float-toast-front`}
+              role="status"
+              aria-live="polite"
+            >
+              <p className="catalog-float-toast-msg">{paymentNotice.msg}</p>
+              <div className="catalog-float-toast-actions">
+                {paymentNotice.variant === "success" ? (
+                  <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
+                ) : null}
+                <button className="catalog-float-toast-btn-secondary" onClick={() => setPaymentNotice(null)}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          ) : null}
           {paymentApproved ? (
             <div className="checkout-approved-card" role="status" aria-live="polite">
               <p className="checkout-approved-title">Muchas gracias por tu compra</p>
@@ -483,6 +579,11 @@ export function CarritoTienda() {
           ) : null}
           <div className="catalog-confirm-branch-detail catalog-canje-block">
             <p><strong>Estado:</strong> {estadoLabel}</p>
+            {shouldPollMercadoPagoOrder ? (
+              <p className="catalog-confirm-hint">
+                Si Mercado Pago abre la app, termina el pago ahi. Cuando llegue la confirmacion, esta pantalla se actualiza sola.
+              </p>
+            ) : null}
             {confirmed.pago?.metodo === "wallet" && confirmed.pago.checkout_url ? (
               <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">
                 Abrir Mercado Pago
@@ -510,7 +611,13 @@ export function CarritoTienda() {
                     : prev,
                 )
               }
-              onApproved={() => setPaymentApproved(true)}
+              onApproved={() => {
+                setPaymentApproved(true);
+                setPaymentNotice({
+                  variant: "success",
+                  msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+                });
+              }}
             />
           ) : null}
         </div>

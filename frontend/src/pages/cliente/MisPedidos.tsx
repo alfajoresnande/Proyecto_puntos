@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 
@@ -39,6 +39,11 @@ type MercadoPagoReturnResponse = {
   provider_payment_id?: string | null;
 };
 
+type ReturnNotice = {
+  variant: "success" | "error" | "info";
+  msg: string;
+};
+
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
@@ -76,6 +81,7 @@ export function MisPedidos() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
+  const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null);
   const ordenesQuery = useQuery({
     queryKey: ["cliente", "ordenes"],
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
@@ -87,8 +93,25 @@ export function MisPedidos() {
   const confirmReturnMutation = useMutation({
     mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
       api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      setReturnNotice(
+        response.estado === "pagada"
+          ? {
+              variant: "success",
+              msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+            }
+          : {
+              variant: "info",
+              msg: "Recibimos el retorno de Mercado Pago. Si el pago queda pendiente, lo actualizamos automaticamente al recibir la confirmacion.",
+            },
+      );
       await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+    },
+    onError: () => {
+      setReturnNotice({
+        variant: "error",
+        msg: "No pudimos actualizar automaticamente el pago. Vamos a seguir consultando el estado desde tu historial.",
+      });
     },
   });
 
@@ -118,6 +141,7 @@ export function MisPedidos() {
             "external_reference",
             "merchant_order_id",
             "preference_id",
+            "mp_return",
           ].forEach((key) => nextParams.delete(key));
           setSearchParams(nextParams, { replace: true });
         },
@@ -134,6 +158,21 @@ export function MisPedidos() {
           <h1 className="catalog-title">Mis pedidos</h1>
           <p className="catalog-subtitle">Compras online y estados de pago/entrega</p>
         </div>
+
+        {returnNotice ? (
+          <div
+            className={`catalog-float-toast catalog-float-toast-${returnNotice.variant} catalog-float-toast-front`}
+            role="status"
+            aria-live="polite"
+          >
+            <p className="catalog-float-toast-msg">{returnNotice.msg}</p>
+            <div className="catalog-float-toast-actions">
+              <button className="catalog-float-toast-btn-secondary" onClick={() => setReturnNotice(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {confirmReturnMutation.isPending ? (
           <div className="catalog-canje-block">

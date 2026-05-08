@@ -68,10 +68,16 @@ function mercadoPagoConfigurationIssue(choice: PaymentChoice): string | null {
   return null;
 }
 
+const PAYMENT_RETURN_PATHS: Record<string, string> = {
+  PAYMENT_RETURN_SUCCESS_URL: "/mis-pedidos",
+  PAYMENT_RETURN_PENDING_URL: "/mis-pedidos",
+  PAYMENT_RETURN_FAILURE_URL: "/mis-pedidos",
+};
+
 function paymentReturnUrl(envName: string): string {
   const fromEnv = (process.env[envName] || "").trim();
   if (fromEnv) return fromEnv;
-  return `${DEFAULT_FRONTEND_URL}/cliente`;
+  return `${DEFAULT_FRONTEND_URL}${PAYMENT_RETURN_PATHS[envName] ?? "/mis-pedidos"}`;
 }
 
 function toTwoDecimals(value: number): number {
