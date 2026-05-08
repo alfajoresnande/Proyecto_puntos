@@ -134,9 +134,27 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export function requireRole(...roles: Rol[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.rol)) {
+    const currentRole = req.user?.rol;
+    if (!currentRole) {
       return res.status(403).json({ error: "No autorizado" });
     }
-    next();
+
+    if (roles.includes(currentRole)) {
+      next();
+      return;
+    }
+
+    const inheritedRoles: Partial<Record<Rol, Rol[]>> = {
+      admin: ["vendedor"],
+      superAdmin: ["admin", "vendedor"],
+    };
+
+    const impliedRoles = inheritedRoles[currentRole] ?? [];
+    if (roles.some((role) => impliedRoles.includes(role))) {
+      next();
+      return;
+    }
+
+    return res.status(403).json({ error: "No autorizado" });
   };
 }

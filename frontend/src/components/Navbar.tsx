@@ -140,8 +140,8 @@ export function Navbar() {
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
-            {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>Soporte</NavLink> : null}
-            {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>Inbox</NavLink> : null}
+            {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
+            {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
@@ -196,7 +196,7 @@ export function Navbar() {
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
-                            Soporte
+                            Mensajes
                           </Link>
                         </>
                       ) : null}
@@ -207,7 +207,7 @@ export function Navbar() {
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
-                            Inbox
+                            Mensajes
                           </Link>
                           <Link
                             to="/vendedor"
@@ -265,8 +265,8 @@ export function Navbar() {
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}
-          {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Soporte</NavLink> : null}
-          {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inbox</NavLink> : null}
+          {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mensajes</NavLink> : null}
+          {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mensajes</NavLink> : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Cargar Puntos</NavLink> : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
@@ -290,12 +290,12 @@ export function Navbar() {
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
                     <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>Mis Pedidos</Link>
-                    <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Soporte</Link>
+                    <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                   </div>
                 ) : null}
                 {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (
                   <div className="navbar-mobile-user-links">
-                    <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Inbox</Link>
+                    <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Cargar Puntos</Link>
                     {(user.rol === "admin" || user.rol === "superAdmin") ? (
                       <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>

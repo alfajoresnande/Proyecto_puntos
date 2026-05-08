@@ -118,9 +118,23 @@ function requireAuth(req, res, next) {
 }
 function requireRole(...roles) {
     return (req, res, next) => {
-        if (!req.user || !roles.includes(req.user.rol)) {
+        const currentRole = req.user?.rol;
+        if (!currentRole) {
             return res.status(403).json({ error: "No autorizado" });
         }
-        next();
+        if (roles.includes(currentRole)) {
+            next();
+            return;
+        }
+        const inheritedRoles = {
+            admin: ["vendedor"],
+            superAdmin: ["admin", "vendedor"],
+        };
+        const impliedRoles = inheritedRoles[currentRole] ?? [];
+        if (roles.some((role) => impliedRoles.includes(role))) {
+            next();
+            return;
+        }
+        return res.status(403).json({ error: "No autorizado" });
     };
 }

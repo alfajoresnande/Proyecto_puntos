@@ -143,6 +143,7 @@ export function SoporteStaff() {
   const conversaciones = conversationsQuery.data ?? [];
   const usuarios = usersQuery.data ?? [];
   const detalle = detailQuery.data;
+
   useEffect(() => {
     if (!conversaciones.length) {
       if (selectedId !== null) setSelectedId(null);
@@ -169,7 +170,7 @@ export function SoporteStaff() {
           <div className="support-card">
             <div className="support-card-head">
               <div>
-                <h1 className="support-title">Inbox staff</h1>
+                <h1 className="support-title">Mensajes del staff</h1>
                 <p className="support-subtitle">
                   {counters.abiertas} abiertas, {counters.respondidas} respondidas, {counters.cerradas} cerradas
                 </p>
@@ -262,7 +263,7 @@ export function SoporteStaff() {
                   <div>
                     <h2 className="support-thread-title">{detalle.conversacion.asunto || "Consulta general"}</h2>
                     <p className="support-subtitle">
-                      Cliente: {detalle.conversacion.usuario.nombre} · {detalle.conversacion.usuario.email}
+                      Cliente: {detalle.conversacion.usuario.nombre} - {detalle.conversacion.usuario.email}
                     </p>
                   </div>
                   <div className="support-actions">
@@ -295,14 +296,14 @@ export function SoporteStaff() {
                       className="ios-input support-textarea"
                       value={respuesta}
                       onChange={(event) => setRespuesta(event.target.value)}
-                      placeholder="Escribe una respuesta como Staff"
+                      placeholder="Escribe una respuesta como staff"
                     />
                     <button
                       className="ios-btn-primary"
                       disabled={sendMutation.isPending || !respuesta.trim()}
                       onClick={() => sendMutation.mutate({ cuerpo: respuesta.trim(), esInterno: false })}
                     >
-                      {sendMutation.isPending ? "Enviando..." : "Responder como Staff"}
+                      {sendMutation.isPending ? "Enviando..." : "Responder como staff"}
                     </button>
                   </div>
 
@@ -312,7 +313,7 @@ export function SoporteStaff() {
                       className="ios-input support-textarea"
                       value={notaInterna}
                       onChange={(event) => setNotaInterna(event.target.value)}
-                      placeholder="Nota privada para admins/vendedores"
+                      placeholder="Nota privada para admins y vendedores"
                     />
                     <button
                       className="adm-btn-secondary"
@@ -325,7 +326,7 @@ export function SoporteStaff() {
                 </div>
               </>
             ) : (
-              <p className="support-empty">Selecciona una conversación para verla.</p>
+              <p className="support-empty">Selecciona una conversacion para verla.</p>
             )}
 
             {errorMsg ? <div className="adm-msg-err"><p>{errorMsg}</p></div> : null}

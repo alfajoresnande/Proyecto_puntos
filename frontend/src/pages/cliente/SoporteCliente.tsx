@@ -124,7 +124,7 @@ export function SoporteCliente() {
           <div className="support-card">
             <div className="support-card-head">
               <div>
-                <h1 className="support-title">Soporte</h1>
+                <h1 className="support-title">Mensajes</h1>
                 <p className="support-subtitle">{resumen} conversaciones activas</p>
               </div>
             </div>
@@ -140,14 +140,14 @@ export function SoporteCliente() {
                 className="ios-input support-textarea"
                 value={nuevoMensaje}
                 onChange={(event) => setNuevoMensaje(event.target.value)}
-                placeholder="Cuéntanos qué necesitas"
+                placeholder="Cuentanos que necesitas"
               />
               <button
                 className="ios-btn-primary"
                 disabled={createMutation.isPending || !nuevoMensaje.trim() || nuevoAsunto.trim().length < 3}
                 onClick={() => createMutation.mutate()}
               >
-                {createMutation.isPending ? "Enviando..." : "Abrir conversación"}
+                {createMutation.isPending ? "Enviando..." : "Abrir conversacion"}
               </button>
             </div>
           </div>
@@ -155,7 +155,7 @@ export function SoporteCliente() {
           <div className="support-list">
             {conversationsQuery.isLoading ? <p className="support-empty">Cargando conversaciones...</p> : null}
             {!conversationsQuery.isLoading && !conversaciones.length ? (
-              <p className="support-empty">Todavía no abriste ninguna conversación.</p>
+              <p className="support-empty">Todavia no abriste ninguna conversacion.</p>
             ) : null}
             {conversaciones.map((item) => (
               <button
@@ -223,11 +223,11 @@ export function SoporteCliente() {
                     </button>
                   </div>
                 ) : (
-                  <p className="support-empty">Esta conversación está cerrada.</p>
+                  <p className="support-empty">Esta conversacion esta cerrada.</p>
                 )}
               </>
             ) : (
-              <p className="support-empty">Selecciona una conversación para ver los mensajes.</p>
+              <p className="support-empty">Selecciona una conversacion para ver los mensajes.</p>
             )}
 
             {errorMsg ? <div className="status-err-box"><p>{errorMsg}</p></div> : null}
