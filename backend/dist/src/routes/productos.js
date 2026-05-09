@@ -91,6 +91,7 @@ router.get("/", async (req, res) => {
             .filter((url) => Boolean(url))
             .slice(0, 3);
         const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
+        const stockReservadoSucursal = Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0);
         const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
         return {
             id: row.id,
@@ -105,16 +106,16 @@ router.get("/", async (req, res) => {
             precio_dinero: row.precio_dinero,
             precio_puntos: row.precio_puntos,
             puntos_para_canjear: row.puntos_para_canjear,
-            stock_disponible: hasStock ? 1 : 0,
-            stock_reservado: 0,
-            stock_total_disponible: hasStock ? 1 : 0,
-            stock_total_reservado: 0,
+            stock_disponible: stockSucursal,
+            stock_reservado: stockReservadoSucursal,
+            stock_total_disponible: Number(row.stock_disponible ?? 0),
+            stock_total_reservado: Number(row.stock_reservado ?? 0),
             stock_sucursal_id: hasSucursalFilter ? sucursalId : null,
             inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
                 sucursal_id: Number(item.sucursal_id),
                 sucursal_nombre: item.sucursal_nombre,
-                stock_disponible: Number(item.stock_disponible ?? 0) > 0 ? 1 : 0,
-                stock_reservado: 0,
+                stock_disponible: Number(item.stock_disponible ?? 0),
+                stock_reservado: Number(item.stock_reservado ?? 0),
             })),
             imagenes,
             track_stock: Boolean(row.track_stock),

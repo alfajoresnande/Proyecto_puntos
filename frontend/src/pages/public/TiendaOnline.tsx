@@ -63,6 +63,16 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
+function productAvailableStock(producto: Producto): number {
+  const stock = Number(producto.stock_disponible ?? 0);
+  return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
+}
+
+function maxSelectableQuantity(producto: Producto): number {
+  if (producto.track_stock === false) return 100;
+  return Math.max(1, Math.min(100, productAvailableStock(producto)));
+}
+
 function availabilityLabel(producto: Producto): string {
   if (producto.track_stock === false) return "Consultar";
   return productHasStock(producto) ? "Disponible" : "Sin stock";
@@ -290,18 +300,19 @@ export function TiendaOnline() {
   function ajustarCantidadSeleccionada(producto: Producto, delta: number) {
     setCantidadesSeleccionadas((prev) => {
       const actual = Number.isInteger(prev[producto.id]) && prev[producto.id] > 0 ? prev[producto.id] : 1;
-      const max = 100;
+      const max = maxSelectableQuantity(producto);
       const next = Math.max(1, Math.min(max, actual + delta));
       return { ...prev, [producto.id]: next };
     });
   }
 
   const addMutation = useMutation({
-    mutationFn: ({ productoId, cantidad }: { productoId: number; cantidad: number }) =>
+    mutationFn: ({ productoId, cantidad, sucursalId }: { productoId: number; cantidad: number; sucursalId: number | null }) =>
       api.post<{ ok: true }>("/cliente/carrito/items", {
         producto_id: productoId,
         cantidad,
         modo_compra: "dinero",
+        sucursal_id: sucursalId,
       }),
     onMutate: async ({ productoId, cantidad }) => {
       await queryClient.cancelQueries({ queryKey: ["cliente", "carrito-online"] });
@@ -383,7 +394,20 @@ export function TiendaOnline() {
       navigate("/login");
       return;
     }
-    addMutation.mutate({ productoId: producto.id, cantidad });
+    if (producto.track_stock !== false && !sucursalId) {
+      setToast("Selecciona una sucursal para validar stock.");
+      return;
+    }
+    const disponible = productAvailableStock(producto);
+    if (producto.track_stock !== false && cantidad > disponible) {
+      setToast(`Solo hay ${disponible} unidades disponibles en la sucursal seleccionada.`);
+      return;
+    }
+    addMutation.mutate({
+      productoId: producto.id,
+      cantidad,
+      sucursalId: sucursalId ? Number(sucursalId) : null,
+    });
   }
 
   return (
@@ -708,6 +732,7 @@ export function TiendaOnline() {
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = producto.track_stock !== false && stock <= 0;
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
+              const maxCantidad = maxSelectableQuantity(producto);
               return (
                 <article key={producto.id} className="product-card store-product-card">
                   {img ? (
@@ -746,7 +771,7 @@ export function TiendaOnline() {
                         <button
                           type="button"
                           className="vendedor-round-btn"
-                          disabled={addMutation.isPending || cantidadSeleccionada >= 100}
+                          disabled={addMutation.isPending || cantidadSeleccionada >= maxCantidad}
                           onClick={() => ajustarCantidadSeleccionada(producto, +1)}
                         >
                           +

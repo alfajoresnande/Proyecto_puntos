@@ -232,6 +232,24 @@ function validateProductoForMode(producto, modoCompra) {
         }
     }
 }
+async function assertCartQuantityWithinStock(conn, { producto, cantidad, sucursalId, }) {
+    if (!producto.track_stock)
+        return;
+    const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, sucursalId ?? null);
+    if (!sucursalSeleccionada) {
+        throw new HttpError(400, "Selecciona una sucursal para validar stock.");
+    }
+    const inv = await (0, db_1.qOne)(conn, `SELECT stock_disponible
+     FROM inventario_sucursal
+     WHERE producto_id = ? AND sucursal_id = ?
+     LIMIT 1`, [producto.id, sucursalSeleccionada.id]);
+    const disponible = Number(inv?.stock_disponible ?? 0);
+    if (disponible < cantidad) {
+        throw new HttpError(400, disponible > 0
+            ? `Solo hay ${disponible} unidades disponibles de ${producto.nombre} en la sucursal seleccionada.`
+            : `No hay stock disponible de ${producto.nombre} en la sucursal seleccionada.`);
+    }
+}
 async function getCarritoItems(conn, usuarioId) {
     const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra,
             ci.precio_dinero_unit, ci.precio_puntos_unit, ci.subtotal_dinero, ci.subtotal_puntos,
@@ -766,13 +784,14 @@ router.post("/carrito/items", async (req, res) => {
         producto_id: zod_1.z.number().int().positive(),
         cantidad: zod_1.z.number().int().positive().max(100),
         modo_compra: zod_1.z.literal("dinero"),
+        sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { producto_id, cantidad, modo_compra } = parsed.data;
+    const { producto_id, cantidad, modo_compra, sucursal_id } = parsed.data;
     const usuarioId = req.user.id;
     const conn = await db_1.pool.getConnection();
     try {
@@ -788,6 +807,11 @@ router.post("/carrito/items", async (req, res) => {
         if (nuevaCantidad > 200) {
             throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
         }
+        await assertCartQuantityWithinStock(conn, {
+            producto,
+            cantidad: nuevaCantidad,
+            sucursalId: sucursal_id ?? null,
+        });
         const precioDineroUnit = Number(producto.precio_dinero ?? 0);
         const precioPuntosUnit = null;
         const subtotalDinero = toMoney(precioDineroUnit * nuevaCantidad);
@@ -823,6 +847,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const itemId = Number(req.params.itemId);
     const schema = zod_1.z.object({
         cantidad: zod_1.z.number().int().positive().max(200),
+        sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
     if (!Number.isFinite(itemId) || itemId <= 0) {
@@ -836,7 +861,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        const item = await (0, db_1.qOne)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra
+        const item = await (0, db_1.qOne)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra, ci.cantidad
        FROM carrito_items ci
        JOIN carritos c ON c.id = ci.carrito_id
        WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
@@ -851,6 +876,13 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
         }
         const producto = await getProductoForCart(conn, Number(item.producto_id));
         validateProductoForMode(producto, item.modo_compra);
+        if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
+            await assertCartQuantityWithinStock(conn, {
+                producto,
+                cantidad: parsed.data.cantidad,
+                sucursalId: parsed.data.sucursal_id ?? null,
+            });
+        }
         const precioDineroUnit = Number(producto.precio_dinero ?? 0);
         const precioPuntosUnit = null;
         const subtotalDinero = toMoney(precioDineroUnit * parsed.data.cantidad);

@@ -425,6 +425,44 @@ function validateProductoForMode(producto: ProductoCarritoDB, modoCompra: ModoCo
   }
 }
 
+async function assertCartQuantityWithinStock(
+  conn: Queryable,
+  {
+    producto,
+    cantidad,
+    sucursalId,
+  }: {
+    producto: ProductoCarritoDB;
+    cantidad: number;
+    sucursalId?: number | null;
+  },
+) {
+  if (!producto.track_stock) return;
+
+  const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, sucursalId ?? null);
+  if (!sucursalSeleccionada) {
+    throw new HttpError(400, "Selecciona una sucursal para validar stock.");
+  }
+
+  const inv = await qOne<{ stock_disponible: number }>(
+    conn,
+    `SELECT stock_disponible
+     FROM inventario_sucursal
+     WHERE producto_id = ? AND sucursal_id = ?
+     LIMIT 1`,
+    [producto.id, sucursalSeleccionada.id],
+  );
+  const disponible = Number(inv?.stock_disponible ?? 0);
+  if (disponible < cantidad) {
+    throw new HttpError(
+      400,
+      disponible > 0
+        ? `Solo hay ${disponible} unidades disponibles de ${producto.nombre} en la sucursal seleccionada.`
+        : `No hay stock disponible de ${producto.nombre} en la sucursal seleccionada.`,
+    );
+  }
+}
+
 async function getCarritoItems(conn: Queryable, usuarioId: number): Promise<CarritoItemDB[]> {
   const rows = await qAll<CarritoItemDB>(
     conn,
@@ -1148,6 +1186,7 @@ router.post("/carrito/items", async (req, res) => {
     producto_id: z.number().int().positive(),
     cantidad: z.number().int().positive().max(100),
     modo_compra: z.literal("dinero"),
+    sucursal_id: z.number().int().positive().optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -1155,7 +1194,7 @@ router.post("/carrito/items", async (req, res) => {
     return;
   }
 
-  const { producto_id, cantidad, modo_compra } = parsed.data;
+  const { producto_id, cantidad, modo_compra, sucursal_id } = parsed.data;
   const usuarioId = req.user!.id;
   const conn = await pool.getConnection();
 
@@ -1178,6 +1217,11 @@ router.post("/carrito/items", async (req, res) => {
     if (nuevaCantidad > 200) {
       throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
     }
+    await assertCartQuantityWithinStock(conn, {
+      producto,
+      cantidad: nuevaCantidad,
+      sucursalId: sucursal_id ?? null,
+    });
 
     const precioDineroUnit = Number(producto.precio_dinero ?? 0);
     const precioPuntosUnit = null;
@@ -1222,6 +1266,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   const schema = z.object({
     cantidad: z.number().int().positive().max(200),
+    sucursal_id: z.number().int().positive().optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
   if (!Number.isFinite(itemId) || itemId <= 0) {
@@ -1241,9 +1286,10 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
       carrito_id: number;
       producto_id: number;
       modo_compra: ModoCompra;
+      cantidad: number;
     }>(
       conn,
-      `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra
+      `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra, ci.cantidad
        FROM carrito_items ci
        JOIN carritos c ON c.id = ci.carrito_id
        WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
@@ -1261,6 +1307,13 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
 
     const producto = await getProductoForCart(conn, Number(item.producto_id));
     validateProductoForMode(producto, item.modo_compra);
+    if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
+      await assertCartQuantityWithinStock(conn, {
+        producto,
+        cantidad: parsed.data.cantidad,
+        sucursalId: parsed.data.sucursal_id ?? null,
+      });
+    }
 
     const precioDineroUnit = Number(producto.precio_dinero ?? 0);
     const precioPuntosUnit = null;

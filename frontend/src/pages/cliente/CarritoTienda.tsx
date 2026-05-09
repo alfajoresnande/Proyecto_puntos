@@ -149,8 +149,8 @@ function mercadoPagoErrorMessage(error: unknown): string {
   const normalizeMessage = (raw: string): string => {
     const value = raw.trim();
     if (!value) return "";
-    if (value === "payment_method_not_allowed_types") {
-      return "Ese tipo de tarjeta no esta habilitado para este pago. Proba con otra tarjeta o usa Abrir Mercado Pago.";
+    if (value === "payment_method_not_allowed_types" || value === "payment_method_not_in_allowed_types") {
+    return "Ese medio de pago no está habilitado para esta compra. Probá con otra tarjeta, una prepaga, débito, crédito o usá Abrir Mercado Pago.";
     }
     if (value === "empty_installments") {
       return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos y, si estas probando, confirma que la public key y el access token sean del mismo entorno.";
@@ -280,11 +280,10 @@ function MercadoPagoBrick({
               },
             },
             paymentMethods: {
-              ticket: "all",
               creditCard: "all",
-              prepaidCard: "all",
               debitCard: "all",
-              mercadoPago: "all",
+              prepaidCard: "all",
+              mercadoPago: "wallet_purchase",
               maxInstallments: 12,
             },
           },
@@ -517,8 +516,14 @@ export function CarritoTienda() {
 
   const updateQuantity = useMutation({
     mutationFn: ({ itemId, cantidad }: { itemId: number; cantidad: number }) =>
-      api.patch<{ ok: true }>(`/cliente/carrito/items/${itemId}`, { cantidad }),
+      api.patch<{ ok: true }>(`/cliente/carrito/items/${itemId}`, {
+        cantidad,
+        sucursal_id: sucursalSeleccionada?.id ?? null,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
+    onError: (error: Error) => {
+      setMessage(error.message || "No se pudo actualizar la cantidad.");
+    },
   });
 
   const deleteItem = useMutation({
