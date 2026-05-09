@@ -1,7 +1,4 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listPaymentOptions = listPaymentOptions;
 exports.resolvePaymentChoice = resolvePaymentChoice;
@@ -11,7 +8,6 @@ exports.processMercadoPagoApiPayment = processMercadoPagoApiPayment;
 exports.createPaymentSession = createPaymentSession;
 exports.isPaymentChoiceAvailable = isPaymentChoiceAvailable;
 const crypto_1 = require("crypto");
-const qrcode_1 = __importDefault(require("qrcode"));
 const IS_PRODUCTION = (process.env.NODE_ENV || "").trim().toLowerCase() === "production";
 const MERCADOPAGO_ACCESS_TOKEN = (process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
 const MERCADOPAGO_PUBLIC_KEY = (process.env.MERCADOPAGO_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
@@ -208,6 +204,10 @@ function addIsoDurationToNow(duration) {
         return null;
     return new Date(Date.now() + totalMs).toISOString();
 }
+function makeQrImageUrl(qrData) {
+    const encoded = encodeURIComponent(qrData);
+    return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=16&data=${encoded}`;
+}
 async function createMercadoPagoQrSession(input) {
     const configIssue = mercadoPagoConfigurationIssue(input.choice);
     if (configIssue) {
@@ -270,13 +270,7 @@ async function createMercadoPagoQrSession(input) {
         throw new Error(`Mercado Pago: no se pudo crear la order QR (${detail}).`);
     }
     const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data);
-    const qrImage = qrData
-        ? await qrcode_1.default.toDataURL(qrData, {
-            errorCorrectionLevel: "M",
-            margin: 2,
-            width: 320,
-        })
-        : null;
+    const qrImage = qrData ? makeQrImageUrl(qrData) : null;
     return {
         providerPaymentId: firstString(payload.id),
         checkoutUrl: null,

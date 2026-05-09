@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import QRCode from "qrcode";
 
 export type PaymentProvider = "mercadopago" | "efectivo";
 export type PaymentMethod = "brick" | "wallet" | "qr" | "cash";
@@ -67,7 +66,6 @@ function mercadoPagoConfigurationIssue(choice: PaymentChoice): string | null {
   if (choice.method === "qr" && !MERCADOPAGO_QR_EXTERNAL_POS_ID) {
     return "Falta MERCADOPAGO_QR_EXTERNAL_POS_ID para generar QR de Mercado Pago";
   }
-
   const accessTokenMode = mercadoPagoCredentialMode(MERCADOPAGO_ACCESS_TOKEN);
   const publicKeyMode = mercadoPagoCredentialMode(MERCADOPAGO_PUBLIC_KEY);
 
@@ -248,6 +246,11 @@ function addIsoDurationToNow(duration: string): string | null {
   return new Date(Date.now() + totalMs).toISOString();
 }
 
+function makeQrImageUrl(qrData: string): string {
+  const encoded = encodeURIComponent(qrData);
+  return `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=16&data=${encoded}`;
+}
+
 async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
   const configIssue = mercadoPagoConfigurationIssue(input.choice);
   if (configIssue) {
@@ -314,13 +317,7 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
   }
 
   const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data);
-  const qrImage = qrData
-    ? await QRCode.toDataURL(qrData, {
-        errorCorrectionLevel: "M",
-        margin: 2,
-        width: 320,
-      })
-    : null;
+  const qrImage = qrData ? makeQrImageUrl(qrData) : null;
 
   return {
     providerPaymentId: firstString(payload.id),

@@ -27,7 +27,7 @@ const DEFAULT_FRONTEND_ORIGINS = [
 ].join(",");
 
 function parseOrigins(raw: string | undefined, fallback: string): string[] {
-  return (raw ?? fallback)
+  const origins = (raw ?? fallback)
     .split(",")
     .map((origin) => {
       const trimmed = origin.trim();
@@ -35,6 +35,8 @@ function parseOrigins(raw: string | undefined, fallback: string): string[] {
       return toOrigin(trimmed) ?? trimmed.replace(/\/+$/, "");
     })
     .filter(Boolean);
+
+  return Array.from(new Set(origins));
 }
 
 function toOrigin(input: string | undefined): string | null {
@@ -65,13 +67,48 @@ function addLoopbackAliases(origins: string[]): string[] {
   return [...expanded];
 }
 
-const allowedOrigins = addLoopbackAliases([
-  ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
-  ...parseOrigins(process.env.FRONTEND_URL, ""),
-]);
+function addWebAliases(origins: string[]): string[] {
+  const expanded = new Set(origins);
+
+  for (const origin of origins) {
+    const normalized = toOrigin(origin);
+    if (!normalized) continue;
+
+    const url = new URL(normalized);
+    const port = url.port ? `:${url.port}` : "";
+    if (url.hostname.startsWith("www.")) {
+      expanded.add(`${url.protocol}//${url.hostname.replace(/^www\./, "")}${port}`);
+    } else if (!url.hostname.includes("localhost") && url.hostname !== "127.0.0.1") {
+      expanded.add(`${url.protocol}//www.${url.hostname}${port}`);
+    }
+  }
+
+  return [...expanded];
+}
+
+function buildAllowedOrigins() {
+  return new Set(
+    addWebAliases(
+      addLoopbackAliases([
+        ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
+        ...parseOrigins(process.env.FRONTEND_URL, ""),
+        ...parseOrigins(process.env.CORS_ALLOWED_ORIGINS, ""),
+        ...parseOrigins(process.env.ALLOWED_ORIGINS, ""),
+        ...parseOrigins(process.env.ALLOWED_FRONTEND_ORIGINS, ""),
+      ])
+    )
+  );
+}
+
+const allowedOrigins = buildAllowedOrigins();
+const allowedOriginsList = [...allowedOrigins];
+const isAllowedOrigin = (origin: string | undefined) => {
+  const normalized = toOrigin(origin);
+  return !!normalized && allowedOrigins.has(normalized);
+};
 const trustedCsrfOrigins = new Set(
   addLoopbackAliases([
-    ...allowedOrigins,
+    ...allowedOriginsList,
     ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, ""),
   ])
 );
@@ -148,12 +185,14 @@ app.use(
   cors((req, cb) => {
     const origin = req.get("origin");
     // Permitir requests sin origin (Postman, apps moviles, curl)
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || isAllowedOrigin(origin)) {
       cb(null, {
-        origin: origin || false,
+        origin: origin ? toOrigin(origin) || origin : false,
         credentials: true,
         methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token", "x-csrf-token"],
+        optionsSuccessStatus: 204,
+        maxAge: 86400,
       });
       return;
     }
