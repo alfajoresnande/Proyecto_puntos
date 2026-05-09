@@ -89,6 +89,23 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+async function ensureCanManageUser(req: Request, res: Response, userId: number): Promise<boolean> {
+  const target = await qOne<{ id: number; rol: string }>(
+    pool,
+    "SELECT id, rol FROM usuarios WHERE id = ? LIMIT 1",
+    [userId]
+  );
+  if (!target) {
+    res.status(404).json({ error: "Usuario no encontrado" });
+    return false;
+  }
+  if (req.user?.rol !== "superAdmin" && target.rol === "superAdmin") {
+    res.status(404).json({ error: "Usuario no encontrado" });
+    return false;
+  }
+  return true;
+}
+
 const strongPasswordSchema = z
   .string()
   .min(8, "La contrasena debe tener al menos 8 caracteres")
@@ -354,6 +371,8 @@ router.put("/usuarios/:id", async (req, res) => {
     return;
   }
 
+  if (!(await ensureCanManageUser(req, res, id))) return;
+
   const schema = z.object({
     nombre: z.string().min(1).max(100),
     email: z.string().email(),
@@ -418,8 +437,17 @@ router.put("/usuarios/:id", async (req, res) => {
 router.patch("/usuarios/:id/activo", async (req, res) => {
   const id = Number(req.params.id);
   const { activo } = req.body;
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID de usuario invalido" });
+    return;
+  }
   if (typeof activo !== "boolean") { res.status(400).json({ error: "activo debe ser boolean" }); return; }
-  await qRun(pool, "UPDATE usuarios SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+  if (!(await ensureCanManageUser(req, res, id))) return;
+  const { affectedRows } = await qRun(pool, "UPDATE usuarios SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+  if (affectedRows === 0) {
+    res.status(404).json({ error: "Usuario no encontrado" });
+    return;
+  }
   res.json({ ok: true });
 });
 
