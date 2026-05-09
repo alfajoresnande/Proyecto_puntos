@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
 
@@ -155,10 +155,13 @@ function mercadoPagoErrorMessage(error: unknown): string {
     if (value === "empty_installments") {
       return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos y, si estas probando, confirma que la public key y el access token sean del mismo entorno.";
     }
+    if (value.toLowerCase().includes("no pudimos obtener la informacion de pago") || value.toLowerCase().includes("no pudimos obtener la información de pago")) {
+      return "Mercado Pago no pudo identificar esa tarjeta. Si estas probando, usa una tarjeta de prueba de Argentina y confirma que public key y access token sean del mismo entorno.";
+    }
     return value;
   };
 
-  if (error instanceof Error && error.message) return error.message;
+  if (error instanceof Error && error.message) return normalizeMessage(error.message);
   if (typeof error === "string" && error.trim()) return normalizeMessage(error);
   if (error && typeof error === "object") {
     const err = error as { message?: unknown; cause?: unknown; error?: unknown };
@@ -182,7 +185,7 @@ function mercadoPagoErrorMessage(error: unknown): string {
       if (causeMessage) return normalizeMessage(causeMessage);
     }
   }
-  return "Mercado Pago no pudo obtener la informacion del medio de pago.";
+  return "Mercado Pago no pudo identificar esa tarjeta. Si estas probando, usa una tarjeta de prueba de Argentina y confirma que public key y access token sean del mismo entorno.";
 }
 
 function loadMercadoPagoSdk(): Promise<void> {
@@ -308,6 +311,7 @@ function MercadoPagoBrick({
               }).then(() => undefined);
             },
             onError: (error: unknown) => {
+              console.error("Mercado Pago Brick error:", error);
               setBrickError(mercadoPagoErrorMessage(error));
             },
           },
@@ -319,7 +323,7 @@ function MercadoPagoBrick({
       cancelled = true;
       controller?.unmount?.();
     };
-  }, [confirmed.orden_id, confirmed.pago?.preference_id, confirmed.pago?.public_key, confirmed.total_dinero]);
+  }, [buyerEmail, confirmed.orden_id, confirmed.pago?.preference_id, confirmed.pago?.public_key, confirmed.total_dinero]);
 
   return (
     <div className="catalog-confirm-branch-detail catalog-canje-block">
@@ -340,6 +344,8 @@ function MercadoPagoBrick({
 export function CarritoTienda() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const resumeOrderId = searchParams.get("pagar_orden");
   const [sucursalId, setSucursalId] = useState(() =>
     typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
   );
@@ -373,6 +379,13 @@ export function CarritoTienda() {
   const paymentOptionsQuery = useQuery({
     queryKey: ["cliente", "payment-options"],
     queryFn: () => api.get<PaymentOptionsResponse>("/cliente/checkout/payment-options"),
+  });
+
+  const resumePaymentQuery = useQuery({
+    queryKey: ["cliente", "resume-payment", resumeOrderId],
+    queryFn: () => api.get<CheckoutConfirmResponse>(`/cliente/checkout/ordenes/${resumeOrderId}/resume-payment`),
+    enabled: Boolean(resumeOrderId),
+    retry: false,
   });
 
   const cartItems = useMemo(
@@ -414,6 +427,27 @@ export function CarritoTienda() {
       return currentOrder?.estado === "pendiente_pago" || !currentOrder ? 5000 : false;
     },
   });
+
+  useEffect(() => {
+    if (!resumeOrderId) return;
+    if (resumePaymentQuery.data) {
+      setConfirmed(resumePaymentQuery.data);
+      setPaymentApproved(resumePaymentQuery.data.estado === "pagada");
+      setPaymentNotice(null);
+      setMessage(null);
+      setNeedsProfile(false);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("pagar_orden");
+      setSearchParams(nextParams, { replace: true });
+      return;
+    }
+    if (resumePaymentQuery.error instanceof Error) {
+      setMessage(resumePaymentQuery.error.message || "No se pudo reanudar el pago de la orden.");
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("pagar_orden");
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [resumeOrderId, resumePaymentQuery.data, resumePaymentQuery.error, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -672,6 +706,10 @@ export function CarritoTienda() {
           <div className="catalog-canje-block">
             <p>Inicia sesion para comprar online.</p>
             <Link className="product-card-btn product-card-btn-canjear" to="/login">Ir a login</Link>
+          </div>
+        ) : resumePaymentQuery.isFetching ? (
+          <div className="catalog-canje-block">
+            <p>Reabriendo el pago pendiente...</p>
           </div>
         ) : cartQuery.isLoading ? (
           <div className="catalog-skeleton store-skeleton" />

@@ -103,6 +103,7 @@ function estadoPedidoClass(estado: string): string {
 function paymentMethodLabel(metodo: string | null | undefined): string {
   if (metodo === "cash") return "Efectivo al retirar";
   if (metodo === "wallet") return "Mercado Pago";
+  if (metodo === "qr") return "QR Mercado Pago";
   if (metodo === "brick") return "Tarjeta";
   return "Sin definir";
 }
@@ -300,6 +301,13 @@ export function MisPedidos() {
                       <p className="store-order-muted">
                         Limite: {dateLabel(orden.comprobante.fecha_limite_efectivo)}
                       </p>
+                    </div>
+                  ) : null}
+                  {orden.estado === "pendiente_pago" && orden.pago?.proveedor === "mercadopago" && orden.pago.estado === "iniciado" ? (
+                    <div className="catalog-float-toast-actions catalog-canje-actions">
+                      <Link className="catalog-float-toast-btn-primary" to={`/carrito-tienda?pagar_orden=${orden.id}`}>
+                        Continuar pago
+                      </Link>
                     </div>
                   ) : null}
                   {orden.comprobante?.leyenda_no_factura ? (

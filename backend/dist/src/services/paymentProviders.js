@@ -8,6 +8,7 @@ exports.getMercadoPagoQrOrder = getMercadoPagoQrOrder;
 exports.processMercadoPagoApiPayment = processMercadoPagoApiPayment;
 exports.createPaymentSession = createPaymentSession;
 exports.isPaymentChoiceAvailable = isPaymentChoiceAvailable;
+exports.getMercadoPagoPublicKey = getMercadoPagoPublicKey;
 const crypto_1 = require("crypto");
 class MercadoPagoQrOrderError extends Error {
     status;
@@ -650,4 +651,7 @@ function isPaymentChoiceAvailable(choice) {
         return { ok: false, reason: status.reason };
     // In dev we allow creating orders even if provider keys are not present.
     return { ok: true, reason: status.reason };
+}
+function getMercadoPagoPublicKey() {
+    return MERCADOPAGO_PUBLIC_KEY || null;
 }

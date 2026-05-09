@@ -768,3 +768,7 @@ export function isPaymentChoiceAvailable(choice: PaymentChoice): { ok: boolean; 
   // In dev we allow creating orders even if provider keys are not present.
   return { ok: true, reason: status.reason };
 }
+
+export function getMercadoPagoPublicKey(): string | null {
+  return MERCADOPAGO_PUBLIC_KEY || null;
+}

@@ -159,7 +159,7 @@ function parseOrderIdFromReference(reference) {
     const direct = Number(reference);
     if (Number.isInteger(direct) && direct > 0)
         return direct;
-    const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+    const match = reference.match(/(?:orden|order|pedido)[_-]?(\d+)/i);
     if (!match)
         return null;
     const parsed = Number(match[1]);
@@ -1369,6 +1369,66 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     finally {
         conn.release();
     }
+});
+router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
+    const ordenId = Number(req.params.id);
+    if (!Number.isInteger(ordenId) || ordenId <= 0) {
+        res.status(400).json({ error: "ID de orden invalido." });
+        return;
+    }
+    const orden = await (0, db_1.qOne)(db_1.pool, `SELECT id, estado, total_dinero
+     FROM ordenes
+     WHERE id = ? AND usuario_id = ?
+     LIMIT 1`, [ordenId, req.user.id]);
+    if (!orden) {
+        res.status(404).json({ error: "Orden no encontrada." });
+        return;
+    }
+    if (orden.estado !== "pendiente_pago") {
+        res.status(400).json({ error: `La orden esta en estado '${orden.estado}' y no tiene un pago pendiente para reanudar.` });
+        return;
+    }
+    const pago = await (0, db_1.qOne)(db_1.pool, `SELECT id, orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url,
+            payload_json, created_at, updated_at
+     FROM pagos
+     WHERE orden_id = ?
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 1`, [ordenId]);
+    if (!pago || pago.proveedor !== "mercadopago") {
+        res.status(400).json({ error: "Esta orden no tiene un pago de Mercado Pago pendiente para reanudar." });
+        return;
+    }
+    if (pago.estado !== "iniciado") {
+        res.status(400).json({ error: `El pago de esta orden esta en estado '${pago.estado}'.` });
+        return;
+    }
+    const payload = parseJsonField(pago.payload_json);
+    const payloadRecord = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload
+        : {};
+    const preferenceId = firstNonEmptyString(payloadRecord.id, payloadRecord.preference_id);
+    const qrData = firstNonEmptyString(payloadRecord.qr_data);
+    const qrImage = firstNonEmptyString(payloadRecord.qr_image);
+    res.json({
+        orden_id: ordenId,
+        estado: orden.estado,
+        total_dinero: Number(orden.total_dinero),
+        pago_pendiente: true,
+        pago: {
+            proveedor: pago.proveedor,
+            metodo: pago.metodo,
+            estado: pago.estado,
+            checkout_url: pago.checkout_url,
+            preference_id: preferenceId,
+            public_key: pago.metodo === "brick" ? (0, paymentProviders_1.getMercadoPagoPublicKey)() : null,
+            qr_data: qrData,
+            qr_image: qrImage,
+            expires_at: null,
+            provider_payment_id: pago.provider_payment_id,
+            setup_status: "ready",
+            setup_message: null,
+        },
+    });
 });
 router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
     const ordenId = Number(req.params.id);
