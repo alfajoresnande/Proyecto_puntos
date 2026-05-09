@@ -11,6 +11,7 @@ import {
   getMercadoPagoPayment,
   isPaymentChoiceAvailable,
   listPaymentOptions,
+  MercadoPagoQrOrderError,
   processMercadoPagoApiPayment,
   resolvePaymentChoice,
   type PaymentChoice,
@@ -1710,6 +1711,16 @@ router.post("/checkout/confirm", async (req, res) => {
       res.status(err.status).json({
         error: err.message,
         ...(err.errorCode ? { error_code: err.errorCode } : {}),
+      });
+      return;
+    }
+    if (err instanceof MercadoPagoQrOrderError) {
+      res.status(400).json({
+        error: "No se pudo crear la orden QR de Mercado Pago",
+        message: "No se pudo crear la orden QR de Mercado Pago",
+        mercadoPagoError: err.detail,
+        status: err.status,
+        cause: err.cause ?? null,
       });
       return;
     }

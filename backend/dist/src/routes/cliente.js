@@ -1236,6 +1236,16 @@ router.post("/checkout/confirm", async (req, res) => {
             });
             return;
         }
+        if (err instanceof paymentProviders_1.MercadoPagoQrOrderError) {
+            res.status(400).json({
+                error: "No se pudo crear la orden QR de Mercado Pago",
+                message: "No se pudo crear la orden QR de Mercado Pago",
+                mercadoPagoError: err.detail,
+                status: err.status,
+                cause: err.cause ?? null,
+            });
+            return;
+        }
         const rawMsg = err instanceof Error ? err.message : "No se pudo confirmar el checkout.";
         const msg = rawMsg.toLowerCase().includes("stock insuficiente")
             ? "No hay stock suficiente en la sucursal seleccionada para completar la reserva."

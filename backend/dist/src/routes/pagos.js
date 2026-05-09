@@ -26,7 +26,7 @@ function parseOrderIdFromReference(reference) {
     const direct = Number(reference);
     if (Number.isInteger(direct) && direct > 0)
         return direct;
-    const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+    const match = reference.match(/(?:orden|order|pedido)[_-]?(\d+)/i);
     if (!match)
         return null;
     const parsed = Number(match[1]);

@@ -29,6 +29,31 @@ export type PaymentSessionResult = {
   message: string | null;
 };
 
+export class MercadoPagoQrOrderError extends Error {
+  status: number | null;
+  data: Record<string, unknown> | null;
+  cause: unknown;
+  payload: Record<string, unknown>;
+  detail: string;
+
+  constructor(input: {
+    status: number | null;
+    data: Record<string, unknown> | null;
+    cause: unknown;
+    payload: Record<string, unknown>;
+    detail: string;
+    message?: string;
+  }) {
+    super(input.message ?? `No se pudo crear la orden QR de Mercado Pago (${input.detail}).`);
+    this.name = "MercadoPagoQrOrderError";
+    this.status = input.status;
+    this.data = input.data;
+    this.cause = input.cause;
+    this.payload = input.payload;
+    this.detail = input.detail;
+  }
+}
+
 type PaymentSessionInput = {
   choice: PaymentChoice;
   orderId: number;
@@ -44,7 +69,11 @@ const MERCADOPAGO_ACCESS_TOKEN = (process.env.MERCADOPAGO_ACCESS_TOKEN || "").tr
 const MERCADOPAGO_PUBLIC_KEY = (process.env.MERCADOPAGO_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
 const MERCADOPAGO_API_BASE = (process.env.MERCADOPAGO_API_BASE || "https://api.mercadopago.com").trim().replace(/\/+$/, "");
 const MERCADOPAGO_WEBHOOK_URL = (process.env.MERCADOPAGO_WEBHOOK_URL || "").trim();
-const MERCADOPAGO_QR_EXTERNAL_POS_ID = (process.env.MERCADOPAGO_QR_EXTERNAL_POS_ID || "").trim();
+const MERCADOPAGO_QR_EXTERNAL_POS_ID = (
+  process.env.MERCADOPAGO_QR_EXTERNAL_POS_ID ||
+  process.env.MERCADOPAGO_EXTERNAL_POS_ID ||
+  ""
+).trim();
 const MERCADOPAGO_QR_MODE = (process.env.MERCADOPAGO_QR_MODE || "dynamic").trim().toLowerCase();
 const MERCADOPAGO_QR_EXPIRATION_TIME = (process.env.MERCADOPAGO_QR_EXPIRATION_TIME || "PT15M").trim();
 const DEFAULT_FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").split(",")[0].trim().replace(/\/+$/, "");
@@ -64,7 +93,7 @@ function mercadoPagoConfigurationIssue(choice: PaymentChoice): string | null {
     return "Falta MERCADOPAGO_PUBLIC_KEY";
   }
   if (choice.method === "qr" && !MERCADOPAGO_QR_EXTERNAL_POS_ID) {
-    return "Falta MERCADOPAGO_QR_EXTERNAL_POS_ID para generar QR de Mercado Pago";
+    return "Falta MERCADOPAGO_QR_EXTERNAL_POS_ID o MERCADOPAGO_EXTERNAL_POS_ID en variables de entorno";
   }
   const accessTokenMode = mercadoPagoCredentialMode(MERCADOPAGO_ACCESS_TOKEN);
   const publicKeyMode = mercadoPagoCredentialMode(MERCADOPAGO_PUBLIC_KEY);
@@ -94,6 +123,90 @@ function toTwoDecimals(value: number): number {
 
 function toMercadoPagoAmount(value: number): string {
   return toTwoDecimals(value).toFixed(2);
+}
+
+function sanitizeExternalReference(prefix: string, orderId: number): string {
+  const reference = `${prefix}_${Math.trunc(orderId)}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(reference)) {
+    throw new Error("external_reference invalido para Mercado Pago QR.");
+  }
+  return reference;
+}
+
+function cleanString(value: string, fallback: string, maxLength: number): string {
+  const cleaned = value
+    .replace(/[^\p{L}\p{N} .,_-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+  return cleaned || fallback;
+}
+
+function parseMercadoPagoAmount(value: unknown, fieldName: string): number {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed || /[$,]/.test(trimmed) || /^\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(trimmed)) {
+      throw new Error(`${fieldName} invalido para Mercado Pago QR.`);
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`${fieldName} invalido para Mercado Pago QR.`);
+    }
+    return toTwoDecimals(parsed);
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${fieldName} invalido para Mercado Pago QR.`);
+  }
+  return toTwoDecimals(value);
+}
+
+function removeNullish<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => removeNullish(item))
+      .filter((item) => item !== null && item !== undefined) as T;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== null && entryValue !== undefined)
+      .map(([key, entryValue]) => [key, removeNullish(entryValue)] as const);
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
+}
+
+function validateQrPayload(payload: Record<string, unknown>): void {
+  const externalReference = firstString(payload.external_reference);
+  if (!externalReference || !/^[A-Za-z0-9_-]{1,64}$/.test(externalReference)) {
+    throw new Error("external_reference invalido para Mercado Pago QR.");
+  }
+
+  parseMercadoPagoAmount(payload.total_amount, "total_amount");
+
+  const qr = asRecord(asRecord(payload.config).qr);
+  const externalPosId = firstString(qr.external_pos_id);
+  if (!externalPosId) {
+    throw new Error("Falta MERCADOPAGO_QR_EXTERNAL_POS_ID o MERCADOPAGO_EXTERNAL_POS_ID en variables de entorno");
+  }
+  if (firstString(qr.external_store_id) || firstString(qr.pos_id)) {
+    throw new Error("Payload QR invalido: usa external_pos_id, no external_store_id ni pos_id.");
+  }
+
+  const payments = asRecord(payload.transactions).payments;
+  const payment = Array.isArray(payments) ? asRecord(payments[0]) : {};
+  parseMercadoPagoAmount(payment.amount, "transactions.payments[0].amount");
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (!items.length) throw new Error("Mercado Pago QR requiere al menos un item.");
+  items.forEach((item, index) => {
+    const record = asRecord(item);
+    if (!firstString(record.title)) throw new Error(`items[${index}].title invalido para Mercado Pago QR.`);
+    parseMercadoPagoAmount(record.unit_price, `items[${index}].unit_price`);
+    const quantity = Number(record.quantity);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw new Error(`items[${index}].quantity invalido para Mercado Pago QR.`);
+    }
+  });
 }
 
 function mercadoPagoErrorDetail(payload: Record<string, unknown>, status: number): string {
@@ -294,14 +407,16 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
     };
   }
 
-  const amount = toTwoDecimals(input.amount);
+  const amount = parseMercadoPagoAmount(input.amount, "amount");
   const amountText = toMercadoPagoAmount(amount);
   const qrMode = normalizeQrMode(MERCADOPAGO_QR_MODE);
-  const body = {
+  const externalReference = sanitizeExternalReference("pedido", input.orderId);
+  const description = cleanString(input.description, `Pedido ${input.orderId}`, 150);
+  const body = removeNullish({
     type: "qr",
     total_amount: amountText,
-    description: input.description.slice(0, 150),
-    external_reference: `orden_${input.orderId}`,
+    description,
+    external_reference: externalReference,
     expiration_time: MERCADOPAGO_QR_EXPIRATION_TIME,
     config: {
       qr: {
@@ -318,29 +433,65 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
     },
     items: [
       {
-        title: input.description.slice(0, 150),
+        title: description,
         unit_price: amountText,
         quantity: 1,
         unit_measure: "unit",
-        external_code: `orden_${input.orderId}`,
+        external_code: externalReference,
       },
     ],
-  };
-
-  const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/orders`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
-      "X-Idempotency-Key": randomUUID(),
-    },
-    body: JSON.stringify(body),
   });
-  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  validateQrPayload(body);
+  console.log("Mercado Pago QR payload:", JSON.stringify(body, null, 2));
+
+  let response: Response;
+  let payload: Record<string, unknown> = {};
+  try {
+    response = await fetch(`${MERCADOPAGO_API_BASE}/v1/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+        "X-Idempotency-Key": randomUUID(),
+      },
+      body: JSON.stringify(body),
+    });
+    payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  } catch (error: unknown) {
+    console.error("Mercado Pago QR error:", {
+      status: null,
+      data: null,
+      message: error instanceof Error ? error.message : String(error),
+      cause: error instanceof Error ? error.cause : undefined,
+      payload: body,
+    });
+    throw new MercadoPagoQrOrderError({
+      status: null,
+      data: null,
+      cause: error instanceof Error ? error.cause : undefined,
+      payload: body,
+      detail: error instanceof Error ? error.message : "fetch_failed",
+    });
+  }
 
   if (!response.ok) {
     const detail = mercadoPagoErrorDetail(payload, response.status);
-    throw new Error(`Mercado Pago: no se pudo crear la order QR (${detail}).`);
+    console.error("Mercado Pago QR error:", {
+      status: response.status,
+      data: payload,
+      message: detail,
+      cause: payload.cause,
+      payload: body,
+    });
+    throw new MercadoPagoQrOrderError({
+      status: response.status,
+      data: payload,
+      cause: payload.cause,
+      payload: body,
+      detail,
+      message: `Mercado Pago: no se pudo crear la order QR (${detail}).`,
+    });
   }
 
   const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data, asRecord(payload.type_response).qr_data);
@@ -424,7 +575,7 @@ function parseOrderIdFromReference(reference: string | null): number | null {
   const direct = Number(reference);
   if (Number.isInteger(direct) && direct > 0) return direct;
 
-  const match = reference.match(/(?:orden|order)[_-]?(\d+)/i);
+  const match = reference.match(/(?:orden|order|pedido)[_-]?(\d+)/i);
   if (!match) return null;
 
   const parsed = Number(match[1]);
