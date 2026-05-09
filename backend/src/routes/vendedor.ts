@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
+import { finalizeStockForCheckoutItems } from "../services/stock";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -14,6 +15,29 @@ type CanjeItemDetalle = {
   puntos_unitarios: number;
   puntos_total: number;
 };
+
+type OrdenVendedorItem = {
+  id: number;
+  orden_id: number;
+  producto_id: number;
+  cantidad: number;
+  modo_compra: "dinero" | "puntos";
+  subtotal_dinero: number;
+  subtotal_puntos: number;
+  nombre: string;
+  track_stock: number;
+};
+
+function parseJsonField(value: unknown): unknown {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
 async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
   const map = new Map<number, CanjeItemDetalle[]>();
@@ -50,6 +74,39 @@ async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, 
       puntos_total: Number(row.puntos_total),
     });
     map.set(Number(row.canje_id), current);
+  }
+
+  return map;
+}
+
+async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, OrdenVendedorItem[]>> {
+  const map = new Map<number, OrdenVendedorItem[]>();
+  if (!orderIds.length) return map;
+
+  const rows = await qAll<OrdenVendedorItem>(
+    pool,
+    `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+            oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
+     FROM orden_items oi
+     JOIN productos p ON p.id = oi.producto_id
+     WHERE oi.orden_id IN (${orderIds.map(() => "?").join(", ")})
+     ORDER BY oi.orden_id ASC, oi.id ASC`,
+    orderIds,
+  );
+
+  for (const row of rows) {
+    const orderId = Number(row.orden_id);
+    const current = map.get(orderId) ?? [];
+    current.push({
+      ...row,
+      orden_id: orderId,
+      producto_id: Number(row.producto_id),
+      cantidad: Number(row.cantidad),
+      subtotal_dinero: Number(row.subtotal_dinero ?? 0),
+      subtotal_puntos: Number(row.subtotal_puntos ?? 0),
+      track_stock: Number(row.track_stock ?? 0),
+    });
+    map.set(orderId, current);
   }
 
   return map;
@@ -246,6 +303,216 @@ router.patch("/canje/:codigo", async (req, res, next) => {
 
     await conn.commit();
     res.json({ ok: true, estado });
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
+  }
+});
+
+router.get("/ordenes", async (_req, res, next) => {
+  try {
+    const rows = await qAll<{
+      id: number;
+      usuario_id: number;
+      cliente_nombre: string;
+      cliente_email: string;
+      estado: string;
+      tipo_orden: string;
+      total_dinero: number;
+      total_puntos: number;
+      moneda: string;
+      direccion_envio_json: string | null;
+      sucursal_retiro_id: number | null;
+      sucursal_nombre: string | null;
+      sucursal_direccion: string | null;
+      sucursal_piso: string | null;
+      sucursal_localidad: string | null;
+      sucursal_provincia: string | null;
+      notas: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      pool,
+      `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
+              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.direccion_envio_json, o.sucursal_retiro_id,
+              s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
+              s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              o.notas, o.created_at, o.updated_at
+       FROM ordenes o
+       JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
+       WHERE o.tipo_orden IN ('venta', 'mixta')
+       ORDER BY o.created_at DESC, o.id DESC
+       LIMIT 300`,
+    );
+
+    const orderIds = rows.map((row) => Number(row.id));
+    const itemMap = await getOrdenItemsByOrdenIds(orderIds);
+    const payments = orderIds.length
+      ? await qAll<{ orden_id: number; estado: string; proveedor: string; metodo: string | null; monto: number; moneda: string }>(
+          pool,
+          `SELECT p.orden_id, p.estado, p.proveedor, p.metodo, p.monto, p.moneda
+           FROM pagos p
+           JOIN (
+              SELECT orden_id, MAX(id) AS last_id
+              FROM pagos
+              WHERE orden_id IN (${orderIds.map(() => "?").join(", ")})
+              GROUP BY orden_id
+            ) latest ON latest.last_id = p.id`,
+          orderIds,
+        )
+      : [];
+    const payMap = new Map<number, { estado: string; proveedor: string; metodo: string | null; monto: number; moneda: string }>();
+    for (const payment of payments) {
+      payMap.set(Number(payment.orden_id), {
+        estado: payment.estado,
+        proveedor: payment.proveedor,
+        metodo: payment.metodo ?? null,
+        monto: Number(payment.monto ?? 0),
+        moneda: payment.moneda,
+      });
+    }
+
+    res.json(
+      rows.map((row) => {
+        const items = itemMap.get(Number(row.id)) ?? [];
+        return {
+          ...row,
+          total_dinero: Number(row.total_dinero ?? 0),
+          total_puntos: Number(row.total_puntos ?? 0),
+          total_items: items.length,
+          total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
+          items,
+          direccion_envio: parseJsonField(row.direccion_envio_json),
+          sucursal: row.sucursal_retiro_id
+            ? {
+                id: Number(row.sucursal_retiro_id),
+                nombre: row.sucursal_nombre,
+                direccion: row.sucursal_direccion,
+                piso: row.sucursal_piso,
+                localidad: row.sucursal_localidad,
+                provincia: row.sucursal_provincia,
+              }
+            : null,
+          pago: payMap.get(Number(row.id)) ?? null,
+        };
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/ordenes/:id", async (req, res, next) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido" });
+    return;
+  }
+
+  const schema = z.object({
+    estado: z.enum(["pagada", "preparada", "enviada", "entregada"]),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+  const { estado } = parsed.data;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const orden = await qOne<{
+      id: number;
+      estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
+      sucursal_retiro_id: number | null;
+    }>(
+      conn,
+      `SELECT id, estado, sucursal_retiro_id
+       FROM ordenes
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    if (!orden) {
+      await conn.rollback();
+      res.status(404).json({ error: "Orden no encontrada" });
+      return;
+    }
+    if (orden.estado === estado) {
+      await conn.commit();
+      res.json({ ok: true, unchanged: true });
+      return;
+    }
+    if (["entregada", "cancelada", "expirada"].includes(orden.estado)) {
+      await conn.rollback();
+      res.status(400).json({ error: `No se puede modificar una orden en estado '${orden.estado}'.` });
+      return;
+    }
+
+    const pago = await qOne<{ proveedor: string; metodo: string | null; estado: string }>(
+      conn,
+      `SELECT proveedor, metodo, estado
+       FROM pagos
+       WHERE orden_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId],
+    );
+    const isCashPayment = pago?.proveedor === "efectivo" || pago?.metodo === "cash";
+    const allowedTransitions: Record<string, string[]> = {
+      pendiente_pago: isCashPayment ? ["pagada"] : [],
+      pagada: ["preparada", "enviada", "entregada"],
+      preparada: ["enviada", "entregada"],
+      enviada: ["entregada"],
+    };
+    if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
+      await conn.rollback();
+      res.status(400).json({ error: `No se puede pasar una orden de '${orden.estado}' a '${estado}' desde el panel vendedor.` });
+      return;
+    }
+
+    if (orden.estado === "pendiente_pago" && estado === "pagada") {
+      const items = await qAll<OrdenVendedorItem>(
+        conn,
+        `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+                oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
+         FROM orden_items oi
+         JOIN productos p ON p.id = oi.producto_id
+         WHERE oi.orden_id = ?
+         ORDER BY oi.id ASC`,
+        [orderId],
+      );
+      const stockItems = items
+        .filter((item) => Number(item.track_stock ?? 0) === 1)
+        .map((item) => ({
+          producto_id: Number(item.producto_id),
+          cantidad: Number(item.cantidad),
+          origen: item.modo_compra === "dinero" ? ("compra" as const) : ("canje" as const),
+          descripcion: `Pago en efectivo orden #${orderId}`,
+        }));
+
+      if (orden.sucursal_retiro_id && stockItems.length) {
+        await finalizeStockForCheckoutItems(conn, {
+          sucursalId: Number(orden.sucursal_retiro_id),
+          items: stockItems,
+          referencia: `orden #${orderId}`,
+          creadoPor: req.user!.id,
+          ordenId: orderId,
+        });
+      }
+      await qRun(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+    }
+
+    await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
+    await conn.commit();
+    res.json({ ok: true });
   } catch (err) {
     await conn.rollback();
     next(err);

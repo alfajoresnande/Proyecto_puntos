@@ -49,6 +49,20 @@ export function Navbar() {
         .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
     [onlineCartQuery.data?.items],
   );
+  const isStoreCartSection = ["/tienda", "/carrito-tienda", "/mis-pedidos"].some((path) => location.pathname.startsWith(path));
+  const activeCart = isStoreCartSection
+    ? {
+        target: "/carrito-tienda",
+        count: onlineCartCount,
+        label: "Carrito de compras",
+        className: "navbar-cart-btn navbar-cart-btn-store",
+      }
+    : {
+        target: "/carrito-canjes",
+        count: canjeCartCount,
+        label: "Carrito de canjes",
+        className: "navbar-cart-btn navbar-cart-btn-canje",
+      };
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -96,29 +110,15 @@ export function Navbar() {
     <div className="navbar-cart-wrap">
       <button
         type="button"
-        onClick={() => handleIrACarrito("/carrito-tienda")}
-        aria-label={`Carrito de compras${onlineCartCount > 0 ? ` (${onlineCartCount} producto${onlineCartCount === 1 ? "" : "s"})` : ""}`}
-        title="Carrito de compras"
-        className="navbar-cart-btn navbar-cart-btn-store"
+        onClick={() => handleIrACarrito(activeCart.target)}
+        aria-label={`${activeCart.label}${activeCart.count > 0 ? ` (${activeCart.count} producto${activeCart.count === 1 ? "" : "s"})` : ""}`}
+        title={activeCart.label}
+        className={activeCart.className}
       >
         {cartIcon}
-        {onlineCartCount > 0 ? (
+        {activeCart.count > 0 ? (
           <span aria-hidden="true" className="navbar-cart-badge">
-            {onlineCartCount > 99 ? "99+" : onlineCartCount}
-          </span>
-        ) : null}
-      </button>
-      <button
-        type="button"
-        onClick={() => handleIrACarrito("/carrito-canjes")}
-        aria-label={`Carrito de canjes${canjeCartCount > 0 ? ` (${canjeCartCount} producto${canjeCartCount === 1 ? "" : "s"})` : ""}`}
-        title="Carrito de canjes"
-        className="navbar-cart-btn navbar-cart-btn-canje"
-      >
-        {cartIcon}
-        {canjeCartCount > 0 ? (
-          <span aria-hidden="true" className="navbar-cart-badge">
-            {canjeCartCount > 99 ? "99+" : canjeCartCount}
+            {activeCart.count > 99 ? "99+" : activeCart.count}
           </span>
         ) : null}
       </button>
