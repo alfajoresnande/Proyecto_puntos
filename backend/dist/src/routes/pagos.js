@@ -47,18 +47,18 @@ function resolveOrderId(body, query) {
 function resolveProviderPaymentId(body, query) {
     const data = asRecord(body.data);
     const payment = asRecord(body.payment);
-    return firstString(body.provider_payment_id, body.payment_id, body.id, data.id, payment.id, query["data.id"], query.payment_id, query.id);
+    return firstString(body.provider_payment_id, body.payment_id, data.id, payment.id, body.id, query["data.id"], query.payment_id, query.id);
 }
 function resolvePaymentStatus(body, query) {
     const data = asRecord(body.data);
     const payment = asRecord(body.payment);
     const raw = firstString(body.status, body.estado, data.status, payment.status, query.status, query.estado);
     const status = raw?.toLowerCase() ?? "";
-    if (["approved", "aprobado", "paid", "pagada", "success", "succeeded"].includes(status))
+    if (["approved", "aprobado", "paid", "pagada", "success", "succeeded", "processed"].includes(status))
         return "approved";
     if (["expired", "expirada", "vencida"].includes(status))
         return "expired";
-    if (["rejected", "rechazado", "failed", "failure", "cancelled", "canceled", "cancelada"].includes(status)) {
+    if (["rejected", "rechazado", "failed", "failure", "cancelled", "canceled", "cancelada", "refunded"].includes(status)) {
         return "rejected";
     }
     return null;
@@ -93,16 +93,19 @@ function validateMercadoPagoWebhook(req) {
     const signatureHeader = req.get("x-signature")?.trim() || "";
     const requestId = req.get("x-request-id")?.trim() || "";
     const dataId = (firstString(req.query["data.id"]) || "").toLowerCase();
-    if (!signatureHeader || !requestId)
+    if (!signatureHeader)
         return false;
     const { ts, v1 } = parseMercadoPagoSignature(signatureHeader);
     if (!ts || !v1)
         return false;
-    const manifestParts = [`id:${dataId}`];
+    const manifestParts = [];
+    if (dataId)
+        manifestParts.push(`id:${dataId}`);
     if (requestId)
         manifestParts.push(`request-id:${requestId}`);
-    if (ts)
-        manifestParts.push(`ts:${ts}`);
+    manifestParts.push(`ts:${ts}`);
+    if (!manifestParts.length)
+        return false;
     const manifest = `${manifestParts.join(";")};`;
     const expectedSignature = (0, crypto_1.createHmac)("sha256", MERCADOPAGO_WEBHOOK_SECRET).update(manifest).digest("hex");
     return secureHexEquals(expectedSignature, v1);
@@ -123,7 +126,27 @@ router.post("/webhook/:proveedor", async (req, res) => {
     let providerPaymentId = resolveProviderPaymentId(body, query);
     let status = resolvePaymentStatus(body, query);
     let resolvedPayload = { body, query };
-    if (proveedor === "mercadopago" && providerPaymentId && (!orderId || !status)) {
+    if (proveedor === "mercadopago" && providerPaymentId && providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
+        try {
+            const order = await (0, paymentProviders_1.getMercadoPagoQrOrder)(providerPaymentId);
+            orderId = orderId ?? order.orderId;
+            providerPaymentId = order.providerPaymentId ?? providerPaymentId;
+            status = status ?? resolvePaymentStatus(order.payload, {});
+            resolvedPayload = {
+                body,
+                query,
+                qr_order_lookup: order.payload,
+            };
+        }
+        catch (error) {
+            (0, securityMonitor_1.recordSecurityEvent)("pago_webhook_qr_order_lookup_fallido", req, {
+                proveedor,
+                providerPaymentId,
+                reason: error instanceof Error ? error.message : "lookup_error",
+            });
+        }
+    }
+    if (proveedor === "mercadopago" && providerPaymentId && !providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
         try {
             const payment = await (0, paymentProviders_1.getMercadoPagoPayment)(providerPaymentId);
             orderId = orderId ?? payment.orderId;

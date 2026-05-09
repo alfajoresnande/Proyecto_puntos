@@ -298,7 +298,7 @@ BEGIN
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     usuario_id INT NOT NULL,
     asunto VARCHAR(180) NULL,
-    estado ENUM('abierta','respondida','cerrada') NOT NULL DEFAULT 'abierta',
+    estado ENUM('abierta','respondida','cerrada','archivada') NOT NULL DEFAULT 'abierta',
     prioridad ENUM('normal','alta') NOT NULL DEFAULT 'normal',
     asignado_a INT NULL,
     ultimo_mensaje_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -335,6 +335,9 @@ BEGIN
     INDEX idx_soporte_mensajes_conversacion_fecha (conversacion_id, created_at),
     INDEX idx_soporte_mensajes_autor (autor_usuario_id)
   );
+
+  ALTER TABLE soporte_conversaciones
+    MODIFY estado ENUM('abierta','respondida','cerrada','archivada') NOT NULL DEFAULT 'abierta';
 END $$
 
 DELIMITER ;

@@ -1846,6 +1846,36 @@ body.catalogo-background .pagina-page {
   margin: 0;
 }
 
+.store-qr-payment-card {
+  align-items: center;
+  background: linear-gradient(180deg, #FFFDF8 0%, #FDF4E8 100%);
+  border: 1px solid #E9C9A5;
+  border-radius: 16px;
+  display: grid;
+  gap: 0.7rem;
+  justify-items: center;
+  margin-top: 0.55rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+.store-qr-payment-title {
+  color: #4A2C1A;
+  font-size: 1rem;
+  font-weight: 900;
+  margin: 0;
+}
+
+.store-qr-payment-card img {
+  background: #FFFFFF;
+  border: 1px solid #E6D3B8;
+  border-radius: 18px;
+  box-shadow: 0 16px 34px rgba(74, 44, 26, 0.12);
+  max-width: 320px;
+  padding: 0.75rem;
+  width: min(100%, 320px);
+}
+
 .catalog-alert-overlay {
   position: fixed;
   inset: 0;

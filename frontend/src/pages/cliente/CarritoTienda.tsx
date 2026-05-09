@@ -38,7 +38,7 @@ type SucursalRetiro = {
 type PaymentOption = {
   id: string;
   provider: "mercadopago" | "efectivo";
-  method: "brick" | "wallet" | "cash";
+  method: "brick" | "wallet" | "qr" | "cash";
   label: string;
   description: string;
   enabled: boolean;
@@ -57,10 +57,13 @@ type CheckoutConfirmResponse = {
   pago_pendiente: boolean;
   pago: null | {
     proveedor: string | null;
-    metodo: "brick" | "wallet" | "cash" | null;
+    metodo: "brick" | "wallet" | "qr" | "cash" | null;
     checkout_url: string | null;
     preference_id: string | null;
     public_key: string | null;
+    qr_data?: string | null;
+    qr_image?: string | null;
+    expires_at?: string | null;
     provider_payment_id: string | null;
     setup_status: "ready" | "requires_configuration" | null;
     setup_message: string | null;
@@ -76,8 +79,13 @@ type ProcessPaymentResponse = {
 };
 
 type OrdenCheckoutStatus = {
+  ok?: boolean;
+  orden_id?: number;
   id: number;
   estado: string;
+  pago_estado?: string | null;
+  provider_payment_id?: string | null;
+  status_detail?: string | null;
 };
 
 type PaymentNotice = {
@@ -278,14 +286,17 @@ function MercadoPagoBrick({
               data: { selectedPaymentMethod?: string | null; formData?: Record<string, unknown> },
               additionalData?: Record<string, unknown>,
             ) => {
-              const formPaymentMethodId =
-                typeof data.formData?.payment_method_id === "string" ? data.formData.payment_method_id.trim() : "";
-              const isRedirectFlow =
-                data.selectedPaymentMethod === "wallet_purchase" || !formPaymentMethodId;
+              const isRedirectFlow = data.selectedPaymentMethod === "wallet_purchase";
 
               if (isRedirectFlow) {
                 setBrickError(null);
                 return Promise.resolve();
+              }
+
+              if (!data.formData?.token) {
+                const message = "Mercado Pago no devolvio el token de la tarjeta. Revisa los datos de debito/credito e intenta de nuevo.";
+                setBrickError(message);
+                return Promise.reject(new Error(message));
               }
 
               return processPayment.mutateAsync({
@@ -392,13 +403,12 @@ export function CarritoTienda() {
       : "Pedido pendiente de pago";
 
   const confirmedOrderQuery = useQuery({
-    queryKey: ["cliente", "ordenes"],
-    queryFn: () => api.get<OrdenCheckoutStatus[]>("/cliente/ordenes"),
+    queryKey: ["cliente", "orden-payment-status", confirmed?.orden_id],
+    queryFn: () => api.get<OrdenCheckoutStatus>(`/cliente/checkout/ordenes/${confirmed?.orden_id}/payment-status`),
     enabled: shouldPollMercadoPagoOrder,
     refetchInterval: (query) => {
       if (!shouldPollMercadoPagoOrder || !confirmed?.orden_id) return false;
-      const orders = query.state.data ?? [];
-      const currentOrder = orders.find((orden) => Number(orden.id) === Number(confirmed.orden_id));
+      const currentOrder = query.state.data;
       return currentOrder?.estado === "pendiente_pago" || !currentOrder ? 5000 : false;
     },
   });
@@ -423,8 +433,8 @@ export function CarritoTienda() {
   }, [metodoEntrega, selectedPayment?.provider]);
 
   useEffect(() => {
-    if (!confirmed?.orden_id || !confirmedOrderQuery.data?.length) return;
-    const currentOrder = confirmedOrderQuery.data.find((orden) => Number(orden.id) === Number(confirmed.orden_id));
+    if (!confirmed?.orden_id || !confirmedOrderQuery.data) return;
+    const currentOrder = confirmedOrderQuery.data;
     const nextState = currentOrder?.estado?.trim().toLowerCase();
     if (!nextState || nextState === "pendiente_pago") return;
 
@@ -602,6 +612,15 @@ export function CarritoTienda() {
               <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">
                 Abrir Mercado Pago
               </a>
+            ) : confirmed.pago?.metodo === "qr" && confirmed.pago.qr_image ? (
+              <div className="store-qr-payment-card">
+                <p className="store-qr-payment-title">Escanea este QR con Mercado Pago</p>
+                <img src={confirmed.pago.qr_image} alt={`QR de pago para orden ${confirmed.orden_id}`} />
+                <p className="catalog-confirm-hint">
+                  Cuando Mercado Pago apruebe el pago, el pedido se confirma automaticamente.
+                  {confirmed.pago.expires_at ? " Si vence, genera una compra nueva." : ""}
+                </p>
+              </div>
             ) : confirmed.pago?.setup_message ? (
               <p>{confirmed.pago.setup_message}</p>
             ) : null}
@@ -789,7 +808,7 @@ export function CarritoTienda() {
                   onChange={(event) => setPaymentId(event.target.value)}
                 >
                   {visiblePaymentOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
+                    <option key={option.id} value={option.id} disabled={!option.enabled}>
                       {option.label}{option.enabled ? "" : ` (${option.reason_disabled})`}
                     </option>
                   ))}
@@ -801,6 +820,8 @@ export function CarritoTienda() {
                   <p className="catalog-confirm-hint">Se reserva el pedido para retiro. El equipo no lo toma como pago aprobado hasta cobrarlo en sucursal.</p>
                 ) : selectedPayment?.method === "brick" ? (
                   <p className="catalog-confirm-hint">Esta opcion deja el pago con tarjeta dentro del sitio. Si prefieres usar tu cuenta o la app, elige "Pagar con Mercado Pago".</p>
+                ) : selectedPayment?.method === "qr" ? (
+                  <p className="catalog-confirm-hint">Te vamos a mostrar un QR de Mercado Pago para escanear y pagar desde la app.</p>
                 ) : null}
               </div>
             ) : null}

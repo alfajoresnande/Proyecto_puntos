@@ -5,7 +5,7 @@ import { api } from "../../api";
 type SupportConversation = {
   id: number;
   asunto: string;
-  estado: "abierta" | "respondida" | "cerrada";
+  estado: "abierta" | "respondida" | "cerrada" | "archivada";
   prioridad: "normal" | "alta";
   last_public_message?: string | null;
   ultimo_mensaje_at: string;

@@ -50,7 +50,7 @@ async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, e
     const params = [estado];
     const setParts = ["estado = ?"];
     if (providerPaymentId) {
-        setParts.push("provider_payment_id = COALESCE(provider_payment_id, ?)");
+        setParts.push("provider_payment_id = ?");
         params.push(providerPaymentId);
     }
     if (payloadJson) {
@@ -62,10 +62,6 @@ async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, e
     if (provider) {
         whereParts.push("proveedor = ?");
         params.push(provider);
-    }
-    if (providerPaymentId) {
-        whereParts.push("(provider_payment_id = ? OR provider_payment_id IS NULL)");
-        params.push(providerPaymentId);
     }
     const result = await (0, db_1.qRun)(conn, `UPDATE pagos
      SET ${setParts.join(", ")}

@@ -2,10 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 
+type ConversationState = "abierta" | "respondida" | "cerrada" | "archivada";
+type ViewFilter = "todos" | "prioritarios" | "archivados";
+
 type SupportConversation = {
   id: number;
   asunto: string;
-  estado: "abierta" | "respondida" | "cerrada";
+  estado: ConversationState;
   prioridad: "normal" | "alta";
   ultimo_mensaje_at: string;
   last_public_message?: string | null;
@@ -42,7 +45,7 @@ type SupportUser = {
   email: string;
   dni: string | null;
   telefono: string | null;
-  rol: "admin" | "vendedor" | "cliente";
+  rol: "admin" | "superAdmin" | "vendedor" | "cliente";
 };
 
 function formatDate(value: string | null | undefined): string {
@@ -65,23 +68,27 @@ function makeInitials(name: string): string {
   return parts.map((part) => part.charAt(0).toUpperCase()).join("");
 }
 
+function matchesSearch(search: string, values: Array<string | null | undefined>): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  return values.some((value) => (value ?? "").toLowerCase().includes(q));
+}
+
+function previewText(conversation: SupportConversation): string {
+  return conversation.last_public_message || conversation.asunto || "Sin mensajes todavia.";
+}
+
 export function SoporteStaff() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [estadoFiltro, setEstadoFiltro] = useState("abierta");
+  const [viewFilter, setViewFilter] = useState<ViewFilter>("todos");
   const [busqueda, setBusqueda] = useState("");
-  const [nuevoUsuarioId, setNuevoUsuarioId] = useState("");
-  const [nuevoAsunto, setNuevoAsunto] = useState("");
-  const [nuevoMensaje, setNuevoMensaje] = useState("");
   const [respuesta, setRespuesta] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   const conversationsQuery = useQuery({
-    queryKey: ["soporte", "staff", "conversaciones", estadoFiltro],
-    queryFn: () =>
-      api.get<SupportConversation[]>(
-        `/soporte/conversaciones${estadoFiltro ? `?estado=${encodeURIComponent(estadoFiltro)}` : ""}`,
-      ),
+    queryKey: ["soporte", "staff", "conversaciones"],
+    queryFn: () => api.get<SupportConversation[]>("/soporte/conversaciones"),
     refetchInterval: 5000,
   });
 
@@ -94,7 +101,47 @@ export function SoporteStaff() {
     staleTime: 30_000,
   });
 
-  const selectedConversationId = selectedId ?? conversationsQuery.data?.[0]?.id ?? null;
+  const conversaciones = conversationsQuery.data ?? [];
+  const usuarios = usersQuery.data ?? [];
+
+  const counters = useMemo(
+    () => ({
+      abiertas: conversaciones.filter((item) => item.estado === "abierta").length,
+      respondidas: conversaciones.filter((item) => item.estado === "respondida").length,
+      cerradas: conversaciones.filter((item) => item.estado === "cerrada").length,
+      archivadas: conversaciones.filter((item) => item.estado === "archivada").length,
+      prioritarias: conversaciones.filter((item) => item.prioridad === "alta" && item.estado !== "archivada").length,
+    }),
+    [conversaciones],
+  );
+
+  const conversacionesFiltradas = useMemo(() => {
+    return conversaciones.filter((item) => {
+      const matchesView =
+        viewFilter === "archivados"
+          ? item.estado === "archivada"
+          : viewFilter === "prioritarios"
+            ? item.estado !== "archivada" && item.prioridad === "alta"
+            : item.estado !== "archivada";
+
+      return matchesView && matchesSearch(busqueda, [
+        item.usuario.nombre,
+        item.usuario.email,
+        item.usuario.dni,
+        item.usuario.telefono,
+        item.asunto,
+        item.last_public_message,
+      ]);
+    });
+  }, [busqueda, conversaciones, viewFilter]);
+
+  const usuariosFiltrados = useMemo(() => {
+    return usuarios.filter((usuario) =>
+      matchesSearch(busqueda, [usuario.nombre, usuario.email, usuario.dni, usuario.telefono]),
+    );
+  }, [busqueda, usuarios]);
+
+  const selectedConversationId = selectedId ?? conversacionesFiltradas[0]?.id ?? null;
   const detailQuery = useQuery({
     queryKey: ["soporte", "staff", "detalle", selectedConversationId],
     queryFn: () => api.get<SupportDetail>(`/soporte/conversaciones/${selectedConversationId}`),
@@ -103,24 +150,19 @@ export function SoporteStaff() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (usuarioId: number) =>
       api.post<{ conversacion: SupportConversation }>("/soporte/conversaciones", {
-        usuario_id: Number(nuevoUsuarioId),
-        asunto: nuevoAsunto.trim(),
-        cuerpo: nuevoMensaje.trim(),
+        usuario_id: usuarioId,
+        prioridad: "normal",
       }),
     onSuccess: async (result) => {
-      setBusqueda("");
-      setNuevoUsuarioId("");
-      setNuevoAsunto("");
-      setNuevoMensaje("");
       setErrorMsg("");
+      setViewFilter("todos");
+      setSelectedId(result.conversacion.id);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
       ]);
-      setEstadoFiltro("respondida");
-      setSelectedId(result.conversacion.id);
     },
     onError: (error: Error) => setErrorMsg(error.message),
   });
@@ -143,8 +185,8 @@ export function SoporteStaff() {
   });
 
   const stateMutation = useMutation({
-    mutationFn: (estado: "abierta" | "respondida" | "cerrada") =>
-      api.patch<{ ok: true }>(`/soporte/conversaciones/${selectedConversationId}`, { estado }),
+    mutationFn: (payload: { estado?: ConversationState; prioridad?: "normal" | "alta" }) =>
+      api.patch<{ ok: true }>(`/soporte/conversaciones/${selectedConversationId}`, payload),
     onSuccess: async () => {
       setErrorMsg("");
       await Promise.all([
@@ -155,58 +197,31 @@ export function SoporteStaff() {
     onError: (error: Error) => setErrorMsg(error.message),
   });
 
-  const conversaciones = conversationsQuery.data ?? [];
-  const usuarios = usersQuery.data ?? [];
-  const detalle = detailQuery.data;
-  const usuarioSeleccionado =
-    usuarios.find((usuario) => String(usuario.id) === nuevoUsuarioId) ?? null;
-
   useEffect(() => {
-    if (!conversaciones.length) {
+    if (!conversacionesFiltradas.length) {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
-    if (!selectedId || !conversaciones.some((item) => item.id === selectedId)) {
-      setSelectedId(conversaciones[0].id);
+    if (!selectedId || !conversacionesFiltradas.some((item) => item.id === selectedId)) {
+      setSelectedId(conversacionesFiltradas[0].id);
     }
-  }, [conversaciones, selectedId]);
+  }, [conversacionesFiltradas, selectedId]);
 
-  const counters = useMemo(
-    () => ({
-      abiertas: conversaciones.filter((item) => item.estado === "abierta").length,
-      respondidas: conversaciones.filter((item) => item.estado === "respondida").length,
-      cerradas: conversaciones.filter((item) => item.estado === "cerrada").length,
-    }),
-    [conversaciones],
-  );
+  function openUserConversation(usuario: SupportUser) {
+    const existing =
+      conversaciones.find((item) => item.usuario.id === usuario.id && item.estado !== "archivada") ??
+      conversaciones.find((item) => item.usuario.id === usuario.id);
 
-  const conversacionesFiltradas = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return conversaciones;
-    return conversaciones.filter((item) => {
-      const values = [
-        item.usuario.nombre,
-        item.usuario.email,
-        item.usuario.dni ?? "",
-        item.usuario.telefono ?? "",
-        item.asunto ?? "",
-      ];
-      return values.some((value) => value.toLowerCase().includes(q));
-    });
-  }, [busqueda, conversaciones]);
+    if (existing) {
+      setSelectedId(existing.id);
+      setViewFilter(existing.estado === "archivada" ? "archivados" : "todos");
+      return;
+    }
 
-  const suggestedUsers = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return [];
-    return usuarios
-      .filter((usuario) => {
-        const values = [usuario.nombre, usuario.email, usuario.dni ?? "", usuario.telefono ?? ""];
-        return values.some((value) => value.toLowerCase().includes(q));
-      })
-      .slice(0, 8);
-  }, [busqueda, usuarios]);
+    createMutation.mutate(usuario.id);
+  }
 
-  const activeConversation = detalle?.conversacion ?? null;
+  const activeConversation = detailQuery.data?.conversacion ?? null;
   const whatsappDigits = onlyDigits(activeConversation?.usuario.telefono);
   const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : null;
 
@@ -225,7 +240,6 @@ export function SoporteStaff() {
             </div>
 
             <div className="support-search-wrap">
-              <span className="support-search-icon" aria-hidden="true">⌕</span>
               <input
                 className="ios-input support-search-input"
                 value={busqueda}
@@ -234,99 +248,19 @@ export function SoporteStaff() {
               />
             </div>
 
-            {busqueda.trim() ? (
-              <div className="support-suggestions">
-                {suggestedUsers.length ? (
-                  suggestedUsers.map((usuario) => (
-                    <button
-                      key={usuario.id}
-                      type="button"
-                      className={`support-suggestion-item${String(usuario.id) === nuevoUsuarioId ? " active" : ""}`}
-                      onClick={() => {
-                        setNuevoUsuarioId(String(usuario.id));
-                        setBusqueda(usuario.nombre);
-                      }}
-                    >
-                      <span className="support-suggestion-name">{usuario.nombre}</span>
-                      <span className="support-suggestion-meta">
-                        {usuario.dni ? `DNI ${usuario.dni} · ` : ""}
-                        {usuario.email}
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <div className="support-suggestion-empty">No encontramos usuarios relacionados.</div>
-                )}
-              </div>
-            ) : null}
-
-            {usuarioSeleccionado ? (
-              <div className="support-selected-user">
-                <div className="support-chat-row">
-                  <div className="support-chat-avatar" aria-hidden="true">
-                    {makeInitials(usuarioSeleccionado.nombre)}
-                  </div>
-                  <div className="support-chat-main">
-                    <strong>{usuarioSeleccionado.nombre}</strong>
-                    <p>
-                      {usuarioSeleccionado.dni ? `DNI ${usuarioSeleccionado.dni} · ` : ""}
-                      {usuarioSeleccionado.email}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="support-selected-user-clear"
-                  onClick={() => {
-                    setNuevoUsuarioId("");
-                    setBusqueda("");
-                  }}
-                >
-                  Quitar
-                </button>
-              </div>
-            ) : null}
-
-            <div className="support-form support-form-compact">
-              <input
-                className="ios-input"
-                value={nuevoAsunto}
-                onChange={(event) => setNuevoAsunto(event.target.value)}
-                placeholder="Asunto para el usuario"
-              />
-              <textarea
-                className="ios-input support-textarea"
-                value={nuevoMensaje}
-                onChange={(event) => setNuevoMensaje(event.target.value)}
-                placeholder="Mensaje inicial visible para el usuario"
-              />
-              <button
-                className="ios-btn-primary"
-                disabled={
-                  createMutation.isPending ||
-                  !nuevoUsuarioId ||
-                  nuevoAsunto.trim().length < 3 ||
-                  !nuevoMensaje.trim()
-                }
-                onClick={() => createMutation.mutate()}
-              >
-                {createMutation.isPending ? "Enviando..." : "Iniciar chat"}
-              </button>
-            </div>
-
-            <div className="support-filter-row">
+            <div className="support-filter-row support-filter-row-messenger">
               {[
-                { id: "abierta", label: "Abiertas" },
-                { id: "respondida", label: "Respondidas" },
-                { id: "cerrada", label: "Cerradas" },
+                { id: "todos", label: "Todos", count: conversaciones.filter((item) => item.estado !== "archivada").length },
+                { id: "prioritarios", label: "Prioritarios", count: counters.prioritarias },
+                { id: "archivados", label: "Archivados", count: counters.archivadas },
               ].map((item) => (
                 <button
                   key={item.id}
                   type="button"
-                  className={`support-chip${estadoFiltro === item.id ? " active" : ""}`}
-                  onClick={() => setEstadoFiltro(item.id)}
+                  className={`support-chip${viewFilter === item.id ? " active" : ""}`}
+                  onClick={() => setViewFilter(item.id as ViewFilter)}
                 >
-                  {item.label}
+                  {item.label} {item.count ? item.count : ""}
                 </button>
               ))}
             </div>
@@ -334,14 +268,11 @@ export function SoporteStaff() {
 
           <div className="support-list support-list-messenger">
             {conversationsQuery.isLoading ? <p className="support-empty">Cargando conversaciones...</p> : null}
-            {!conversationsQuery.isLoading && !conversacionesFiltradas.length ? (
-              <p className="support-empty">No hay conversaciones para este estado.</p>
-            ) : null}
             {conversacionesFiltradas.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`support-list-item${selectedConversationId === item.id ? " active" : ""}`}
+                className={`support-list-item support-chat-list-item${selectedConversationId === item.id ? " active" : ""}${item.prioridad === "alta" ? " priority" : ""}`}
                 onClick={() => setSelectedId(item.id)}
               >
                 <div className="support-chat-row">
@@ -353,11 +284,40 @@ export function SoporteStaff() {
                       <strong>{item.usuario.nombre}</strong>
                       <span>{formatDate(item.ultimo_mensaje_at)}</span>
                     </div>
-                    <p>{item.last_public_message || item.asunto || "Sin mensajes visibles."}</p>
+                    <p>{previewText(item)}</p>
                     <div className="support-list-row support-list-meta">
                       <span>{item.usuario.email}</span>
                       {item.unread_staff > 0 ? <span className="support-badge">{item.unread_staff}</span> : null}
                     </div>
+                  </div>
+                </div>
+              </button>
+            ))}
+
+            <div className="support-user-section-title">Todos los usuarios</div>
+            {usersQuery.isLoading ? <p className="support-empty">Cargando usuarios...</p> : null}
+            {!usersQuery.isLoading && !usuariosFiltrados.length ? (
+              <p className="support-empty">No encontramos clientes relacionados.</p>
+            ) : null}
+            {usuariosFiltrados.map((usuario) => (
+              <button
+                key={usuario.id}
+                type="button"
+                className="support-list-item support-user-list-item"
+                onClick={() => openUserConversation(usuario)}
+                disabled={createMutation.isPending}
+              >
+                <div className="support-chat-row">
+                  <div className="support-chat-avatar support-chat-avatar-client" aria-hidden="true">
+                    {makeInitials(usuario.nombre)}
+                  </div>
+                  <div className="support-chat-main">
+                    <strong>{usuario.nombre}</strong>
+                    <p>{usuario.email}</p>
+                    <p className="support-list-meta">
+                      {usuario.dni ? `DNI ${usuario.dni}` : "Cliente"}
+                      {usuario.telefono ? ` - ${usuario.telefono}` : ""}
+                    </p>
                   </div>
                 </div>
               </button>
@@ -378,42 +338,75 @@ export function SoporteStaff() {
                       <h2 className="support-thread-title">{activeConversation.usuario.nombre}</h2>
                       <p className="support-subtitle">
                         {activeConversation.usuario.email}
-                        {activeConversation.usuario.dni ? ` · DNI ${activeConversation.usuario.dni}` : ""}
+                        {activeConversation.usuario.dni ? ` - DNI ${activeConversation.usuario.dni}` : ""}
                       </p>
                     </div>
                   </div>
                   <div className="support-thread-actions">
                     {whatsappUrl ? (
-                      <a
-                        href={whatsappUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="support-wa-button"
-                      >
+                      <a href={whatsappUrl} target="_blank" rel="noreferrer" className="support-wa-button">
                         Hablar por WhatsApp
                       </a>
                     ) : null}
-                    <div className="support-actions">
-                      <button className="adm-btn-secondary adm-btn-inline" onClick={() => stateMutation.mutate("abierta")}>Reabrir</button>
-                      <button className="adm-btn-secondary adm-btn-inline" onClick={() => stateMutation.mutate("respondida")}>Respondida</button>
-                      <button className="adm-btn-secondary adm-btn-inline" onClick={() => stateMutation.mutate("cerrada")}>Cerrar</button>
-                    </div>
+                    <button
+                      className="adm-btn-secondary adm-btn-inline"
+                      onClick={() =>
+                        stateMutation.mutate({
+                          prioridad: activeConversation.prioridad === "alta" ? "normal" : "alta",
+                        })
+                      }
+                    >
+                      {activeConversation.prioridad === "alta" ? "Quitar prioridad" : "Prioritario"}
+                    </button>
+                    {activeConversation.estado === "archivada" ? (
+                      <button
+                        className="adm-btn-secondary adm-btn-inline"
+                        onClick={() => stateMutation.mutate({ estado: "abierta" })}
+                      >
+                        Reabrir
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="adm-btn-secondary adm-btn-inline"
+                          onClick={() => stateMutation.mutate({ estado: "respondida" })}
+                        >
+                          Respondida
+                        </button>
+                        <button
+                          className="adm-btn-secondary adm-btn-inline"
+                          onClick={() => stateMutation.mutate({ estado: "archivada" })}
+                        >
+                          Archivar
+                        </button>
+                        <button
+                          className="adm-btn-secondary adm-btn-inline"
+                          onClick={() => stateMutation.mutate({ estado: "cerrada" })}
+                        >
+                          Cerrar
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div className="support-messages support-messages-messenger">
-                  {detalle?.mensajes.map((mensaje) => (
-                    <article
-                      key={mensaje.id}
-                      className={`support-message${mensaje.autor_tipo === "staff" && !mensaje.es_interno ? " mine" : ""}${mensaje.es_interno ? " internal" : ""}`}
-                    >
-                      <div className="support-message-meta">
-                        <strong>{mensaje.autor_label}</strong>
-                        <span>{formatDate(mensaje.created_at)}</span>
-                      </div>
-                      <p>{mensaje.cuerpo}</p>
-                    </article>
-                  ))}
+                  {detailQuery.data?.mensajes.length ? (
+                    detailQuery.data.mensajes.map((mensaje) => (
+                      <article
+                        key={mensaje.id}
+                        className={`support-message${mensaje.autor_tipo === "staff" && !mensaje.es_interno ? " mine" : ""}${mensaje.es_interno ? " internal" : ""}`}
+                      >
+                        <div className="support-message-meta">
+                          <strong>{mensaje.autor_label}</strong>
+                          <span>{formatDate(mensaje.created_at)}</span>
+                        </div>
+                        <p>{mensaje.cuerpo}</p>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="support-empty">Todavia no hay mensajes. Escribe abajo para iniciar el chat.</p>
+                  )}
                 </div>
 
                 <div className="support-thread-footer">
@@ -433,7 +426,7 @@ export function SoporteStaff() {
                 </div>
               </>
             ) : (
-              <p className="support-empty">Selecciona una conversacion para verla.</p>
+              <p className="support-empty">Selecciona un cliente o una conversacion para ver los mensajes.</p>
             )}
 
             {errorMsg ? <div className="adm-msg-err"><p>{errorMsg}</p></div> : null}

@@ -8,7 +8,7 @@ const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
 const createConversationSchema = zod_1.z.object({
     asunto: zod_1.z.string().trim().min(3).max(180).optional().default(""),
-    cuerpo: zod_1.z.string().trim().min(1).max(4000),
+    cuerpo: zod_1.z.string().trim().max(4000).optional().default(""),
     prioridad: zod_1.z.enum(["normal", "alta"]).optional().default("normal"),
     usuario_id: zod_1.z.number().int().positive().optional(),
 });
@@ -17,7 +17,7 @@ const sendMessageSchema = zod_1.z.object({
     es_interno: zod_1.z.boolean().optional().default(false),
 });
 const updateConversationSchema = zod_1.z.object({
-    estado: zod_1.z.enum(["abierta", "respondida", "cerrada"]).optional(),
+    estado: zod_1.z.enum(["abierta", "respondida", "cerrada", "archivada"]).optional(),
     prioridad: zod_1.z.enum(["normal", "alta"]).optional(),
     asignado_a: zod_1.z.number().int().positive().nullable().optional(),
 });
@@ -103,7 +103,7 @@ router.get("/conversaciones", async (req, res) => {
         where.push("c.usuario_id = ?");
         params.push(req.user.id);
     }
-    if (estado && ["abierta", "respondida", "cerrada"].includes(estado)) {
+    if (estado && ["abierta", "respondida", "cerrada", "archivada"].includes(estado)) {
         where.push("c.estado = ?");
         params.push(estado);
     }
@@ -139,7 +139,8 @@ router.get("/conversaciones", async (req, res) => {
      LEFT JOIN usuarios a ON a.id = c.asignado_a
      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
      ORDER BY
-       CASE c.estado WHEN 'abierta' THEN 0 WHEN 'respondida' THEN 1 ELSE 2 END ASC,
+       CASE c.prioridad WHEN 'alta' THEN 0 ELSE 1 END ASC,
+       CASE c.estado WHEN 'abierta' THEN 0 WHEN 'respondida' THEN 1 WHEN 'cerrada' THEN 2 ELSE 3 END ASC,
        c.ultimo_mensaje_at DESC,
        c.id DESC`, params);
     res.json(rows.map(serializeConversation));
@@ -153,8 +154,8 @@ router.get("/usuarios", async (req, res) => {
     const params = [];
     const where = ["u.activo = 1", "u.rol = 'cliente'"];
     if (search) {
-        where.push("(u.nombre LIKE ? OR u.email LIKE ? OR u.dni LIKE ?)");
-        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+        where.push("(u.nombre LIKE ? OR u.email LIKE ? OR u.dni LIKE ? OR u.telefono LIKE ?)");
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT u.id, u.nombre, u.email, u.dni, u.telefono, u.rol
      FROM usuarios u
@@ -195,7 +196,10 @@ router.post("/conversaciones", async (req, res) => {
         if (!usuarioDestino || Number(usuarioDestino.activo) !== 1) {
             throw new Error("El usuario seleccionado no esta disponible.");
         }
-        const asunto = parsed.data.asunto || "Consulta general";
+        if (!staff && !parsed.data.cuerpo.trim()) {
+            throw new Error("Escribe un mensaje para iniciar la conversacion.");
+        }
+        const asunto = parsed.data.asunto || (staff ? "Mensaje directo" : "Consulta general");
         const prioridad = parsed.data.prioridad;
         const estadoInicial = staff ? "respondida" : "abierta";
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO soporte_conversaciones
@@ -209,16 +213,18 @@ router.post("/conversaciones", async (req, res) => {
             staff ? new Date() : null,
             staff ? null : new Date(),
         ]);
-        await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
-        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`, [
-            insertId,
-            req.user.id,
-            staff ? "staff" : "cliente",
-            parsed.data.cuerpo,
-            staff ? new Date() : null,
-            staff ? null : new Date(),
-        ]);
+        if (parsed.data.cuerpo.trim()) {
+            await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
+          (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
+         VALUES (?, ?, ?, ?, 0, ?, ?)`, [
+                insertId,
+                req.user.id,
+                staff ? "staff" : "cliente",
+                parsed.data.cuerpo.trim(),
+                staff ? new Date() : null,
+                staff ? null : new Date(),
+            ]);
+        }
         await conn.commit();
         const conversation = await getConversationById(db_1.pool, insertId);
         res.status(201).json({

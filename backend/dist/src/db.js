@@ -582,7 +582,7 @@ async function ensureSupportInboxSchema() {
       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
       usuario_id INT NOT NULL,
       asunto VARCHAR(180) NULL,
-      estado ENUM('abierta','respondida','cerrada') NOT NULL DEFAULT 'abierta',
+      estado ENUM('abierta','respondida','cerrada','archivada') NOT NULL DEFAULT 'abierta',
       prioridad ENUM('normal','alta') NOT NULL DEFAULT 'normal',
       asignado_a INT NULL,
       ultimo_mensaje_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -618,6 +618,12 @@ async function ensureSupportInboxSchema() {
       INDEX idx_soporte_mensajes_conversacion_fecha (conversacion_id, created_at),
       INDEX idx_soporte_mensajes_autor (autor_usuario_id)
     )`);
+    try {
+        await exports.pool.query("ALTER TABLE soporte_conversaciones MODIFY estado ENUM('abierta','respondida','cerrada','archivada') NOT NULL DEFAULT 'abierta'");
+    }
+    catch {
+        // No-op: algunos motores no permiten modificar el ENUM si la tabla aun no existe o no hubo cambios.
+    }
 }
 async function ensureEventosSeguridadSchema() {
     await exports.pool.query(`CREATE TABLE IF NOT EXISTS eventos_seguridad (

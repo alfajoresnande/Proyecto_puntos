@@ -1031,7 +1031,7 @@ router.post("/checkout/confirm", async (req, res) => {
         notas: zod_1.z.string().max(500).optional().nullable(),
         pago: zod_1.z.object({
             provider: zod_1.z.enum(["mercadopago", "efectivo"]),
-            method: zod_1.z.enum(["brick", "wallet", "cash"]).optional(),
+            method: zod_1.z.enum(["brick", "wallet", "qr", "cash"]).optional(),
         }).optional(),
     });
     const parsed = schema.safeParse(req.body ?? {});
@@ -1156,6 +1156,9 @@ router.post("/checkout/confirm", async (req, res) => {
         let paymentProviderId = null;
         let paymentPreferenceId = null;
         let paymentPublicKey = null;
+        let paymentQrData = null;
+        let paymentQrImage = null;
+        let paymentExpiresAt = null;
         if (totalDinero > 0) {
             const choice = paymentChoice ?? { provider: "mercadopago", method: "brick" };
             const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
@@ -1185,6 +1188,9 @@ router.post("/checkout/confirm", async (req, res) => {
             paymentProviderId = paymentSession.providerPaymentId;
             paymentPreferenceId = paymentSession.preferenceId;
             paymentPublicKey = paymentSession.publicKey;
+            paymentQrData = paymentSession.qrData ?? null;
+            paymentQrImage = paymentSession.qrImage ?? null;
+            paymentExpiresAt = paymentSession.expiresAt ?? null;
         }
         await (0, db_1.qRun)(conn, "UPDATE carritos SET estado = 'convertido' WHERE id = ?", [carritoId]);
         await conn.commit();
@@ -1203,6 +1209,9 @@ router.post("/checkout/confirm", async (req, res) => {
                 checkout_url: checkoutUrl,
                 preference_id: paymentPreferenceId,
                 public_key: paymentPublicKey,
+                qr_data: paymentQrData,
+                qr_image: paymentQrImage,
+                expires_at: paymentExpiresAt,
                 provider_payment_id: paymentProviderId,
                 setup_status: paymentStatus,
                 setup_message: paymentMessage,
@@ -1273,6 +1282,18 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
         if (orden.estado !== "pendiente_pago") {
             throw new HttpError(400, `No se puede pagar una orden en estado '${orden.estado}'.`);
         }
+        const pago = await (0, db_1.qOne)(conn, `SELECT id, proveedor, metodo, estado
+       FROM pagos
+       WHERE orden_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`, [ordenId]);
+        if (!pago || pago.proveedor !== "mercadopago" || pago.metodo !== "brick") {
+            throw new HttpError(400, "Esta orden no fue iniciada para pago con tarjeta en Mercado Pago.");
+        }
+        if (pago.estado !== "iniciado") {
+            throw new HttpError(400, `El pago de esta orden esta en estado '${pago.estado}'.`);
+        }
         const total = toMoney(Number(orden.total_dinero ?? 0));
         if (total <= 0) {
             throw new HttpError(400, "La orden no tiene monto pendiente en dinero.");
@@ -1309,12 +1330,12 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
             return;
         }
         await (0, db_1.qRun)(conn, `UPDATE pagos
-       SET estado = ?, provider_payment_id = COALESCE(?, provider_payment_id), payload_json = ?
-       WHERE orden_id = ? AND proveedor = 'mercadopago' AND estado = 'iniciado'`, [
+       SET estado = ?, provider_payment_id = ?, payload_json = ?
+       WHERE id = ? AND estado = 'iniciado'`, [
             ["rejected", "cancelled", "canceled"].includes(mpResult.status) ? "rechazado" : "iniciado",
             mpResult.providerPaymentId,
             JSON.stringify(payload),
-            ordenId,
+            pago.id,
         ]);
         await conn.commit();
         res.json({
@@ -1333,6 +1354,122 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
             return;
         }
         const msg = err instanceof Error ? err.message : "No se pudo procesar el pago.";
+        res.status(400).json({ error: msg });
+    }
+    finally {
+        conn.release();
+    }
+});
+router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
+    const ordenId = Number(req.params.id);
+    if (!Number.isInteger(ordenId) || ordenId <= 0) {
+        res.status(400).json({ error: "ID de orden invalido." });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    let transactionOpen = false;
+    try {
+        const orden = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado
+       FROM ordenes
+       WHERE id = ? AND usuario_id = ?
+       LIMIT 1`, [ordenId, req.user.id]);
+        if (!orden) {
+            throw new HttpError(404, "Orden no encontrada.");
+        }
+        const pago = await (0, db_1.qOne)(conn, `SELECT id, proveedor, metodo, estado, provider_payment_id, payload_json
+       FROM pagos
+       WHERE orden_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`, [ordenId]);
+        if (!pago || orden.estado !== "pendiente_pago") {
+            res.json({
+                ok: orden.estado === "pagada",
+                orden_id: ordenId,
+                estado: orden.estado,
+                pago_estado: pago?.estado ?? null,
+                provider_payment_id: pago?.provider_payment_id ?? null,
+                status_detail: null,
+            });
+            return;
+        }
+        if (pago.proveedor !== "mercadopago" || pago.metodo !== "qr" || !pago.provider_payment_id) {
+            res.json({
+                ok: false,
+                orden_id: ordenId,
+                estado: orden.estado,
+                pago_estado: pago.estado,
+                provider_payment_id: pago.provider_payment_id,
+                status_detail: null,
+            });
+            return;
+        }
+        const mpOrder = await (0, paymentProviders_1.getMercadoPagoQrOrder)(pago.provider_payment_id);
+        const status = normalizeMercadoPagoStatus(mpOrder.status === "processed" ? "approved" : mpOrder.status);
+        await conn.beginTransaction();
+        transactionOpen = true;
+        if (status === "approved") {
+            const result = await (0, orderLifecycle_1.approvePaidOrder)(conn, {
+                orderId: ordenId,
+                provider: "mercadopago",
+                providerPaymentId: mpOrder.providerPaymentId ?? pago.provider_payment_id,
+                payload: {
+                    qr_order_lookup: mpOrder.payload,
+                },
+            });
+            await conn.commit();
+            transactionOpen = false;
+            res.json({
+                ok: true,
+                orden_id: ordenId,
+                estado: result.state,
+                pago_estado: mpOrder.status,
+                provider_payment_id: mpOrder.providerPaymentId ?? pago.provider_payment_id,
+                status_detail: mpOrder.statusDetail,
+            });
+            return;
+        }
+        if (status === "rejected" || status === "expired") {
+            const result = await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
+                orderId: ordenId,
+                nextState: status === "expired" ? "expirada" : "cancelada",
+                provider: "mercadopago",
+                providerPaymentId: mpOrder.providerPaymentId ?? pago.provider_payment_id,
+                payload: {
+                    qr_order_lookup: mpOrder.payload,
+                },
+            });
+            await conn.commit();
+            transactionOpen = false;
+            res.json({
+                ok: false,
+                orden_id: ordenId,
+                estado: result.state,
+                pago_estado: mpOrder.status,
+                provider_payment_id: mpOrder.providerPaymentId ?? pago.provider_payment_id,
+                status_detail: mpOrder.statusDetail,
+            });
+            return;
+        }
+        await conn.commit();
+        transactionOpen = false;
+        res.json({
+            ok: false,
+            orden_id: ordenId,
+            estado: orden.estado,
+            pago_estado: mpOrder.status,
+            provider_payment_id: mpOrder.providerPaymentId ?? pago.provider_payment_id,
+            status_detail: mpOrder.statusDetail,
+        });
+    }
+    catch (err) {
+        if (transactionOpen) {
+            await conn.rollback();
+        }
+        if (err instanceof HttpError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        const msg = err instanceof Error ? err.message : "No se pudo consultar el estado del pago.";
         res.status(400).json({ error: msg });
     }
     finally {
@@ -1396,6 +1533,20 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
                 pago_estado: payment?.status ?? hintedStatus ?? "approved",
                 provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
                 status_detail: payment?.statusDetail ?? null,
+            });
+            return;
+        }
+        if (!payment) {
+            await conn.commit();
+            transactionOpen = false;
+            res.json({
+                ok: false,
+                orden_id: resolvedOrderId,
+                estado: orden.estado,
+                pago_estado: hintedStatus ?? "pending",
+                provider_payment_id: paymentId ?? null,
+                status_detail: null,
+                pending_lookup: true,
             });
             return;
         }

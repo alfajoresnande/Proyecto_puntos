@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
+import QRCode from "qrcode";
 
 export type PaymentProvider = "mercadopago" | "efectivo";
-export type PaymentMethod = "brick" | "wallet" | "cash";
+export type PaymentMethod = "brick" | "wallet" | "qr" | "cash";
 
 export type PaymentChoice = {
   provider: PaymentProvider;
@@ -22,6 +23,9 @@ export type PaymentSessionResult = {
   preferenceId: string | null;
   publicKey: string | null;
   payload: Record<string, unknown> | null;
+  qrData?: string | null;
+  qrImage?: string | null;
+  expiresAt?: string | null;
   status: "ready" | "requires_configuration";
   message: string | null;
 };
@@ -41,6 +45,9 @@ const MERCADOPAGO_ACCESS_TOKEN = (process.env.MERCADOPAGO_ACCESS_TOKEN || "").tr
 const MERCADOPAGO_PUBLIC_KEY = (process.env.MERCADOPAGO_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
 const MERCADOPAGO_API_BASE = (process.env.MERCADOPAGO_API_BASE || "https://api.mercadopago.com").trim().replace(/\/+$/, "");
 const MERCADOPAGO_WEBHOOK_URL = (process.env.MERCADOPAGO_WEBHOOK_URL || "").trim();
+const MERCADOPAGO_QR_EXTERNAL_POS_ID = (process.env.MERCADOPAGO_QR_EXTERNAL_POS_ID || "").trim();
+const MERCADOPAGO_QR_MODE = (process.env.MERCADOPAGO_QR_MODE || "dynamic").trim().toLowerCase();
+const MERCADOPAGO_QR_EXPIRATION_TIME = (process.env.MERCADOPAGO_QR_EXPIRATION_TIME || "PT15M").trim();
 const DEFAULT_FRONTEND_URL = (process.env.FRONTEND_URL || "http://localhost:5173").split(",")[0].trim().replace(/\/+$/, "");
 
 function mercadoPagoCredentialMode(value: string): "test" | "prod" | "unknown" {
@@ -56,6 +63,9 @@ function mercadoPagoConfigurationIssue(choice: PaymentChoice): string | null {
   if (!MERCADOPAGO_ACCESS_TOKEN) return "Falta MERCADOPAGO_ACCESS_TOKEN";
   if (choice.method === "brick" && !MERCADOPAGO_PUBLIC_KEY) {
     return "Falta MERCADOPAGO_PUBLIC_KEY";
+  }
+  if (choice.method === "qr" && !MERCADOPAGO_QR_EXTERNAL_POS_ID) {
+    return "Falta MERCADOPAGO_QR_EXTERNAL_POS_ID para generar QR de Mercado Pago";
   }
 
   const accessTokenMode = mercadoPagoCredentialMode(MERCADOPAGO_ACCESS_TOKEN);
@@ -112,6 +122,13 @@ export function listPaymentOptions(): PaymentOption[] {
       description: "Abre Mercado Pago para pagar con tu cuenta o desde la app.",
     },
     {
+      id: "mercadopago_qr",
+      provider: "mercadopago",
+      method: "qr",
+      label: "Pagar con QR",
+      description: "Genera un QR de Mercado Pago para escanearlo y abonar desde la app.",
+    },
+    {
       id: "efectivo_retiro",
       provider: "efectivo",
       method: "cash",
@@ -135,6 +152,7 @@ export function resolvePaymentChoice(raw?: Partial<PaymentChoice> | null): Payme
     return { provider: "mercadopago", method: "brick" };
   }
   if (raw.provider === "mercadopago") {
+    if (raw.method === "qr") return { provider: "mercadopago", method: "qr" };
     return raw.method === "wallet"
       ? { provider: "mercadopago", method: "wallet" }
       : { provider: "mercadopago", method: "brick" };
@@ -204,13 +222,122 @@ async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): P
     (typeof payload.sandbox_init_point === "string" ? payload.sandbox_init_point : null);
 
   return {
-    providerPaymentId: typeof payload.id === "string" ? payload.id : null,
+    providerPaymentId: null,
     preferenceId: typeof payload.id === "string" ? payload.id : null,
     publicKey: input.choice.method === "brick" ? MERCADOPAGO_PUBLIC_KEY : null,
     checkoutUrl,
     payload,
     status: "ready",
     message: checkoutUrl ? null : "Preferencia creada sin checkout_url.",
+  };
+}
+
+function normalizeQrMode(value: string): "static" | "dynamic" | "hybrid" {
+  if (value === "static" || value === "hybrid") return value;
+  return "dynamic";
+}
+
+function addIsoDurationToNow(duration: string): string | null {
+  const match = duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+  if (!match) return null;
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const totalMs = ((hours * 60 + minutes) * 60 + seconds) * 1000;
+  if (!Number.isFinite(totalMs) || totalMs <= 0) return null;
+  return new Date(Date.now() + totalMs).toISOString();
+}
+
+async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<PaymentSessionResult> {
+  const configIssue = mercadoPagoConfigurationIssue(input.choice);
+  if (configIssue) {
+    return {
+      providerPaymentId: null,
+      checkoutUrl: null,
+      preferenceId: null,
+      publicKey: null,
+      payload: null,
+      qrData: null,
+      qrImage: null,
+      expiresAt: null,
+      status: "requires_configuration",
+      message: configIssue,
+    };
+  }
+
+  const amount = toTwoDecimals(input.amount);
+  const qrMode = normalizeQrMode(MERCADOPAGO_QR_MODE);
+  const body = {
+    type: "qr",
+    total_amount: amount,
+    description: input.description.slice(0, 150),
+    external_reference: `orden_${input.orderId}`,
+    expiration_time: MERCADOPAGO_QR_EXPIRATION_TIME,
+    config: {
+      qr: {
+        external_pos_id: MERCADOPAGO_QR_EXTERNAL_POS_ID,
+        mode: qrMode,
+      },
+    },
+    transactions: {
+      payments: [
+        {
+          amount,
+        },
+      ],
+    },
+    items: [
+      {
+        title: input.description.slice(0, 150),
+        unit_price: amount,
+        quantity: 1,
+        unit_measure: "unit",
+        external_code: `orden_${input.orderId}`,
+      },
+    ],
+  };
+
+  const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/orders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+      "X-Idempotency-Key": randomUUID(),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    throw new Error(`Mercado Pago: no se pudo crear la order QR (${detail}).`);
+  }
+
+  const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data);
+  const qrImage = qrData
+    ? await QRCode.toDataURL(qrData, {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 320,
+      })
+    : null;
+
+  return {
+    providerPaymentId: firstString(payload.id),
+    checkoutUrl: null,
+    preferenceId: null,
+    publicKey: null,
+    payload: {
+      ...payload,
+      qr_data: qrData,
+      qr_image: qrImage,
+      qr_mode: qrMode,
+    },
+    qrData,
+    qrImage,
+    expiresAt: addIsoDurationToNow(MERCADOPAGO_QR_EXPIRATION_TIME),
+    status: qrData && qrImage ? "ready" : "requires_configuration",
+    message: qrData && qrImage ? null : "Mercado Pago creo la order, pero no devolvio qr_data para mostrar.",
   };
 }
 
@@ -235,6 +362,12 @@ export type MercadoPagoPaymentLookupResult = MercadoPagoApiPaymentResult & {
   orderId: number | null;
 };
 
+export type MercadoPagoQrOrderLookupResult = MercadoPagoApiPaymentResult & {
+  externalReference: string | null;
+  orderId: number | null;
+  paymentId: string | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -245,6 +378,21 @@ function firstString(...values: unknown[]): string | null {
     if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return null;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const normalized = typeof value === "string" ? value.trim() : value;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function firstInteger(...values: unknown[]): number | null {
+  const parsed = firstPositiveNumber(...values);
+  if (parsed === null) return null;
+  return Math.trunc(parsed);
 }
 
 function parseOrderIdFromReference(reference: string | null): number | null {
@@ -300,6 +448,44 @@ export async function getMercadoPagoPayment(paymentId: string | number): Promise
   return toMercadoPagoPaymentResult(payload);
 }
 
+export async function getMercadoPagoQrOrder(orderId: string | number): Promise<MercadoPagoQrOrderLookupResult> {
+  if (!MERCADOPAGO_ACCESS_TOKEN) {
+    throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para consultar orders QR de Mercado Pago.");
+  }
+
+  const normalizedOrderId = String(orderId).trim();
+  if (!normalizedOrderId) {
+    throw new Error("Order ID invalido para consultar en Mercado Pago.");
+  }
+
+  const response = await fetch(`${MERCADOPAGO_API_BASE}/v1/orders/${encodeURIComponent(normalizedOrderId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`,
+    },
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+  if (!response.ok) {
+    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    throw new Error(`Mercado Pago: no se pudo consultar la order QR (${detail}).`);
+  }
+
+  const transactions = asRecord(payload.transactions);
+  const payments = Array.isArray(transactions.payments) ? transactions.payments : [];
+  const firstPayment = asRecord(payments[0]);
+  const externalReference = firstString(payload.external_reference);
+  return {
+    providerPaymentId: firstString(payload.id),
+    status: typeof payload.status === "string" ? payload.status : "unknown",
+    statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
+    externalReference,
+    orderId: parseOrderIdFromReference(externalReference),
+    paymentId: firstString(firstPayment.id),
+    payload,
+  };
+}
+
 export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentInput): Promise<MercadoPagoApiPaymentResult> {
   if (!MERCADOPAGO_ACCESS_TOKEN) {
     throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para procesar pagos con Checkout API.");
@@ -308,6 +494,7 @@ export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentI
   const normalizedAmount = toTwoDecimals(input.amount);
   const formData = asRecord(input.formData);
   const payer = asRecord(formData.payer);
+  const payerIdentification = asRecord(payer.identification);
   const payerEmail =
     typeof payer.email === "string" && payer.email.includes("@")
       ? payer.email.trim()
@@ -317,18 +504,40 @@ export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentI
     throw new Error("Mercado Pago requiere un email de comprador valido.");
   }
 
+  const token = firstString(formData.token);
+  const paymentMethodId = firstString(formData.payment_method_id, formData.paymentMethodId);
+  const issuerId = firstString(formData.issuer_id, formData.issuerId);
+  const installments = firstInteger(formData.installments, 1) ?? 1;
+
+  if (!token) {
+    throw new Error("Mercado Pago no devolvio el token de la tarjeta.");
+  }
+  if (!paymentMethodId) {
+    throw new Error("Mercado Pago no devolvio el medio de pago de la tarjeta.");
+  }
+
   const body = {
-    ...formData,
+    token,
     transaction_amount: normalizedAmount,
     description: input.description,
+    installments,
+    payment_method_id: paymentMethodId,
+    ...(issuerId ? { issuer_id: issuerId } : {}),
     external_reference: `orden_${input.orderId}`,
     metadata: {
       ...asRecord(formData.metadata),
       order_id: input.orderId,
     },
     payer: {
-      ...payer,
       email: payerEmail,
+      ...(firstString(payerIdentification.type) && firstString(payerIdentification.number)
+        ? {
+            identification: {
+              type: firstString(payerIdentification.type),
+              number: firstString(payerIdentification.number),
+            },
+          }
+        : {}),
     },
   };
 
@@ -358,6 +567,9 @@ export async function createPaymentSession(input: PaymentSessionInput): Promise<
   }
 
   if (input.choice.provider === "mercadopago") {
+    if (input.choice.method === "qr") {
+      return createMercadoPagoQrSession({ ...input, amount: normalizedAmount });
+    }
     return createMercadoPagoPreferenceSession({ ...input, amount: normalizedAmount });
   }
   if (input.choice.provider === "efectivo") {

@@ -425,7 +425,7 @@ CREATE TABLE IF NOT EXISTS soporte_conversaciones (
     id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     usuario_id          INT             NOT NULL,
     asunto              VARCHAR(180)    NULL,
-    estado              ENUM('abierta','respondida','cerrada')
+    estado              ENUM('abierta','respondida','cerrada','archivada')
                                         NOT NULL DEFAULT 'abierta',
     prioridad           ENUM('normal','alta')
                                         NOT NULL DEFAULT 'normal',

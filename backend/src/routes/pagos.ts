@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { Router } from "express";
 import { pool } from "../db";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
-import { getMercadoPagoPayment } from "../services/paymentProviders";
+import { getMercadoPagoPayment, getMercadoPagoQrOrder } from "../services/paymentProviders";
 import { recordSecurityEvent } from "../securityMonitor";
 
 const router = Router();
@@ -66,9 +66,9 @@ function resolveProviderPaymentId(body: Record<string, unknown>, query: Record<s
   return firstString(
     body.provider_payment_id,
     body.payment_id,
-    body.id,
     data.id,
     payment.id,
+    body.id,
     query["data.id"],
     query.payment_id,
     query.id,
@@ -81,9 +81,9 @@ function resolvePaymentStatus(body: Record<string, unknown>, query: Record<strin
   const raw = firstString(body.status, body.estado, data.status, payment.status, query.status, query.estado);
   const status = raw?.toLowerCase() ?? "";
 
-  if (["approved", "aprobado", "paid", "pagada", "success", "succeeded"].includes(status)) return "approved";
+  if (["approved", "aprobado", "paid", "pagada", "success", "succeeded", "processed"].includes(status)) return "approved";
   if (["expired", "expirada", "vencida"].includes(status)) return "expired";
-  if (["rejected", "rechazado", "failed", "failure", "cancelled", "canceled", "cancelada"].includes(status)) {
+  if (["rejected", "rechazado", "failed", "failure", "cancelled", "canceled", "cancelada", "refunded"].includes(status)) {
     return "rejected";
   }
 
@@ -122,14 +122,16 @@ function validateMercadoPagoWebhook(req: Parameters<typeof router.post>[1] exten
   const requestId = req.get("x-request-id")?.trim() || "";
   const dataId = (firstString(req.query["data.id"]) || "").toLowerCase();
 
-  if (!signatureHeader || !requestId) return false;
+  if (!signatureHeader) return false;
 
   const { ts, v1 } = parseMercadoPagoSignature(signatureHeader);
   if (!ts || !v1) return false;
 
-  const manifestParts = [`id:${dataId}`];
+  const manifestParts: string[] = [];
+  if (dataId) manifestParts.push(`id:${dataId}`);
   if (requestId) manifestParts.push(`request-id:${requestId}`);
-  if (ts) manifestParts.push(`ts:${ts}`);
+  manifestParts.push(`ts:${ts}`);
+  if (!manifestParts.length) return false;
   const manifest = `${manifestParts.join(";")};`;
 
   const expectedSignature = createHmac("sha256", MERCADOPAGO_WEBHOOK_SECRET).update(manifest).digest("hex");
@@ -154,7 +156,27 @@ router.post("/webhook/:proveedor", async (req, res) => {
   let status = resolvePaymentStatus(body, query);
   let resolvedPayload: Record<string, unknown> = { body, query };
 
-  if (proveedor === "mercadopago" && providerPaymentId && (!orderId || !status)) {
+  if (proveedor === "mercadopago" && providerPaymentId && providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
+    try {
+      const order = await getMercadoPagoQrOrder(providerPaymentId);
+      orderId = orderId ?? order.orderId;
+      providerPaymentId = order.providerPaymentId ?? providerPaymentId;
+      status = status ?? resolvePaymentStatus(order.payload, {});
+      resolvedPayload = {
+        body,
+        query,
+        qr_order_lookup: order.payload,
+      };
+    } catch (error) {
+      recordSecurityEvent("pago_webhook_qr_order_lookup_fallido", req, {
+        proveedor,
+        providerPaymentId,
+        reason: error instanceof Error ? error.message : "lookup_error",
+      });
+    }
+  }
+
+  if (proveedor === "mercadopago" && providerPaymentId && !providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
     try {
       const payment = await getMercadoPagoPayment(providerPaymentId);
       orderId = orderId ?? payment.orderId;

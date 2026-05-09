@@ -1209,8 +1209,49 @@
   box-shadow: 0 0 0 2px rgba(168, 106, 61, 0.12);
 }
 
+.support-chat-list-item,
+.support-user-list-item {
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+
+.support-chat-list-item {
+  background: #fffaf3;
+}
+
+.support-chat-list-item.priority {
+  border-left: 4px solid #b85415;
+}
+
+.support-user-list-item {
+  background: #fffdf8;
+}
+
+.support-user-list-item:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.support-user-section-title {
+  border-bottom: 1px solid #e6d3b8;
+  border-top: 1px solid #e6d3b8;
+  color: #4a2c1a;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  margin-top: 0.35rem;
+  padding: 0.8rem 0.95rem;
+  text-transform: uppercase;
+}
+
 .support-list-messenger {
   margin-top: 0;
+  max-height: calc(100vh - 305px);
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  scrollbar-color: #c59b73 transparent;
+  scrollbar-width: thin;
 }
 
 .support-list-row {
@@ -1265,6 +1306,11 @@
 .support-state-cerrada {
   background: #ececec;
   color: #6b7280;
+}
+
+.support-state-archivada {
+  background: #f3e3d1;
+  color: #7a5a3c;
 }
 
 .support-thread-card {
@@ -1385,6 +1431,10 @@
   color: #fff;
 }
 
+.support-filter-row-messenger {
+  justify-content: flex-start;
+}
+
 .support-form-compact {
   margin-bottom: 0.6rem;
 }
@@ -1425,14 +1475,16 @@
 
 .support-shell-messenger {
   gap: 1.25rem;
-  grid-template-columns: minmax(340px, 390px) minmax(0, 1fr);
+  grid-template-columns: minmax(330px, 390px) minmax(0, 1fr);
   max-width: none;
   min-height: calc(100vh - 170px);
   width: 100%;
 }
 
 .support-sidebar-messenger {
-  grid-template-rows: auto 1fr;
+  align-self: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: calc(100vh - 170px);
 }
 
 .support-card-messenger,
@@ -1459,6 +1511,12 @@
   padding-right: 0;
 }
 
+.support-chat-avatar-client {
+  background: linear-gradient(180deg, #d9f8df 0%, #8de0a4 100%);
+  border-color: #80c990;
+  color: #17612c;
+}
+
 @media (max-width: 1100px) {
   .support-shell-staff,
   .support-reply-grid {
@@ -1467,6 +1525,14 @@
 
   .support-shell-messenger {
     min-height: auto;
+  }
+
+  .support-sidebar-messenger {
+    min-height: auto;
+  }
+
+  .support-list-messenger {
+    max-height: 46vh;
   }
 
   .support-thread-card-messenger {
@@ -1517,6 +1583,10 @@
   .support-list-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .support-filter-row-messenger {
+    justify-content: center;
   }
 
   .support-chat-row {
