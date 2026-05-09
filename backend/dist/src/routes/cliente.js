@@ -51,7 +51,7 @@ function profileMissingFields(perfil) {
     if (!perfil.dni || perfil.dni.trim().length < 6)
         missing.push("dni");
     if (!perfil.fecha_nacimiento)
-        missing.push("fecha_nacimiento");
+        missing.push("fecha nacimiento");
     if (!perfil.localidad || !perfil.localidad.trim())
         missing.push("localidad");
     if (!perfil.provincia || !perfil.provincia.trim())

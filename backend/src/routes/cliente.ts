@@ -218,7 +218,7 @@ function profileMissingFields(perfil?: PerfilCanje): string[] {
   if (!perfil.nombre || !perfil.nombre.trim()) missing.push("nombre");
   if (!perfil.email || !perfil.email.includes("@")) missing.push("email");
   if (!perfil.dni || perfil.dni.trim().length < 6) missing.push("dni");
-  if (!perfil.fecha_nacimiento) missing.push("fecha_nacimiento");
+  if (!perfil.fecha_nacimiento) missing.push("fecha nacimiento");
   if (!perfil.localidad || !perfil.localidad.trim()) missing.push("localidad");
   if (!perfil.provincia || !perfil.provincia.trim()) missing.push("provincia");
   return missing;

@@ -149,6 +149,9 @@ function mercadoPagoErrorMessage(error: unknown): string {
   const normalizeMessage = (raw: string): string => {
     const value = raw.trim();
     if (!value) return "";
+    if (value === "payment_method_not_allowed_types") {
+      return "Mercado Pago no tiene habilitado ese tipo de medio de pago para esta cuenta o este importe. Proba con otro medio o abrilo en Mercado Pago.";
+    }
     if (value === "empty_installments") {
       return "Mercado Pago no pudo calcular las cuotas para esta tarjeta. Revisa los datos y, si estas probando, confirma que la public key y el access token sean del mismo entorno.";
     }
@@ -276,7 +279,6 @@ function MercadoPagoBrick({
             paymentMethods: {
               creditCard: "all",
               debitCard: "all",
-              prepaidCard: "all",
               maxInstallments: 12,
             },
           },
@@ -809,7 +811,7 @@ export function CarritoTienda() {
                 >
                   {visiblePaymentOptions.map((option) => (
                     <option key={option.id} value={option.id} disabled={!option.enabled}>
-                      {option.label}{option.enabled ? "" : ` (${option.reason_disabled})`}
+                      {option.label}{option.enabled ? "" : " (no disponible)"}
                     </option>
                   ))}
                 </select>
