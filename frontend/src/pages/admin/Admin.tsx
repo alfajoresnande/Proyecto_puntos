@@ -465,7 +465,7 @@ function inventoryDraftFromRows(rows: InventarioSucursal[] | undefined, sucursal
   const draft: Record<string, number | null> = {};
   for (const sucursal of sucursales) {
     const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
-    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : 0;
+    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : null;
   }
   return draft;
 }
@@ -487,7 +487,7 @@ function ProductInventoryEditor({
   values: Record<string, number | null>;
   rows?: InventarioSucursal[];
   tip: string;
-  onChangeStock: (sucursalId: number, stock: number) => void;
+  onChangeStock: (sucursalId: number, stock: number | null) => void;
 }) {
   const activeSucursales = sucursales.filter((sucursal) => sucursal.activo);
   const [selectedSucursalId, setSelectedSucursalId] = useState(() => activeSucursales[0]?.id ? String(activeSucursales[0].id) : "");
@@ -507,7 +507,14 @@ function ProductInventoryEditor({
     ? rows?.find((item) => Number(item.sucursal_id) === Number(selectedSucursal.id))
     : undefined;
   const selectedKey = selectedSucursal ? String(selectedSucursal.id) : "";
-  const selectedStockDisponible = selectedKey ? values[selectedKey] ?? selectedRow?.stock_disponible ?? 0 : 0;
+  const hasDraftStock = selectedKey ? Object.prototype.hasOwnProperty.call(values, selectedKey) : false;
+  const selectedStockDisponible = selectedKey
+    ? hasDraftStock
+      ? values[selectedKey]
+      : selectedRow
+        ? Number(selectedRow.stock_disponible ?? 0)
+        : null
+    : null;
   const selectedStockReservado = Number(selectedRow?.stock_reservado ?? 0);
 
   return (
@@ -550,7 +557,7 @@ function ProductInventoryEditor({
                     min={0}
                     className="adm-input"
                     value={selectedStockDisponible ?? ""}
-                    onChange={(event) => onChangeStock(selectedSucursal.id, event.target.value ? Number(event.target.value) : 0)}
+                    onChange={(event) => onChangeStock(selectedSucursal.id, event.target.value ? Number(event.target.value) : null)}
                   />
                 </label>
                 <div className="adm-inventory-reserved-box">
