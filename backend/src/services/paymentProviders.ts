@@ -92,6 +92,32 @@ function toTwoDecimals(value: number): number {
   return Number((Math.round((value + Number.EPSILON) * 100) / 100).toFixed(2));
 }
 
+function toMercadoPagoAmount(value: number): string {
+  return toTwoDecimals(value).toFixed(2);
+}
+
+function mercadoPagoErrorDetail(payload: Record<string, unknown>, status: number): string {
+  const direct = firstString(payload.message, payload.error, payload.status_detail);
+  const causes = Array.isArray(payload.cause)
+    ? payload.cause
+      .map((item) => {
+        const cause = asRecord(item);
+        return firstString(cause.description, cause.message, cause.code);
+      })
+      .filter((item): item is string => Boolean(item))
+    : [];
+  const errors = Array.isArray(payload.errors)
+    ? payload.errors
+      .map((item) => {
+        const error = asRecord(item);
+        return firstString(error.message, error.description, error.code);
+      })
+      .filter((item): item is string => Boolean(item))
+    : [];
+
+  return [direct, ...causes, ...errors].filter(Boolean).join(" | ") || `HTTP ${status}`;
+}
+
 function isEnabled(choice: PaymentChoice): { enabled: boolean; reason: string | null } {
   if (choice.provider === "efectivo") {
     return { enabled: true, reason: null };
@@ -211,7 +237,7 @@ async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): P
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {
-    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    const detail = mercadoPagoErrorDetail(payload, response.status);
     throw new Error(`Mercado Pago: no se pudo crear la preferencia (${detail}).`);
   }
 
@@ -269,10 +295,11 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
   }
 
   const amount = toTwoDecimals(input.amount);
+  const amountText = toMercadoPagoAmount(amount);
   const qrMode = normalizeQrMode(MERCADOPAGO_QR_MODE);
   const body = {
     type: "qr",
-    total_amount: amount,
+    total_amount: amountText,
     description: input.description.slice(0, 150),
     external_reference: `orden_${input.orderId}`,
     expiration_time: MERCADOPAGO_QR_EXPIRATION_TIME,
@@ -285,14 +312,14 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
     transactions: {
       payments: [
         {
-          amount,
+          amount: amountText,
         },
       ],
     },
     items: [
       {
         title: input.description.slice(0, 150),
-        unit_price: amount,
+        unit_price: amountText,
         quantity: 1,
         unit_measure: "unit",
         external_code: `orden_${input.orderId}`,
@@ -312,11 +339,11 @@ async function createMercadoPagoQrSession(input: PaymentSessionInput): Promise<P
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {
-    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    const detail = mercadoPagoErrorDetail(payload, response.status);
     throw new Error(`Mercado Pago: no se pudo crear la order QR (${detail}).`);
   }
 
-  const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data);
+  const qrData = firstString(payload.qr_data, asRecord(payload.qr).qr_data, asRecord(payload.type_response).qr_data);
   const qrImage = qrData ? makeQrImageUrl(qrData) : null;
 
   return {
@@ -438,7 +465,7 @@ export async function getMercadoPagoPayment(paymentId: string | number): Promise
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {
-    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    const detail = mercadoPagoErrorDetail(payload, response.status);
     throw new Error(`Mercado Pago: no se pudo consultar el pago (${detail}).`);
   }
 
@@ -464,7 +491,7 @@ export async function getMercadoPagoQrOrder(orderId: string | number): Promise<M
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {
-    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    const detail = mercadoPagoErrorDetail(payload, response.status);
     throw new Error(`Mercado Pago: no se pudo consultar la order QR (${detail}).`);
   }
 
@@ -550,7 +577,7 @@ export async function processMercadoPagoApiPayment(input: MercadoPagoApiPaymentI
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {
-    const detail = typeof payload.message === "string" ? payload.message : `HTTP ${response.status}`;
+    const detail = mercadoPagoErrorDetail(payload, response.status);
     throw new Error(`Mercado Pago: no se pudo procesar el pago (${detail}).`);
   }
 
