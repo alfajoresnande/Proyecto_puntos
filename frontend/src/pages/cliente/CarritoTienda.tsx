@@ -599,6 +599,39 @@ export function CarritoTienda() {
 
   if (confirmed) {
     const estadoLabel = estadoPedidoLabel(confirmed.estado);
+    if (paymentApproved || confirmed.estado === "pagada") {
+      return (
+        <section className="catalog-page catalog-canje-page">
+          <div className="catalog-products-shell">
+            <div className="catalog-header">
+              <h1 className="catalog-title">Pago aprobado</h1>
+              <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
+            </div>
+
+            <div className="checkout-approved-card" role="status" aria-live="polite">
+              <img
+                src="/nande_muchas_gracias.webp"
+                alt="Pedido pagado con exito"
+                className="store-order-thanks-image"
+              />
+              <p className="checkout-approved-title">Muchas gracias por tu compra</p>
+              <p className="checkout-approved-text">
+                Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
+              </p>
+            </div>
+
+            <div className="catalog-confirm-branch-detail catalog-canje-block">
+              <p><strong>Estado:</strong> {estadoLabel}</p>
+              <div className="catalog-float-toast-actions catalog-canje-actions">
+                <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
+                <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
+              </div>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="catalog-page catalog-canje-page">
         <div className="catalog-products-shell">
