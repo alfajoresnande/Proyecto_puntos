@@ -143,6 +143,7 @@ export function Navbar() {
             {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
+            {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>Pedidos</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
 
@@ -216,6 +217,13 @@ export function Navbar() {
                           >
                             Cargar Puntos
                           </Link>
+                          <Link
+                            to="/vendedor/pedidos"
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Pedidos
+                          </Link>
                         </>
                       ) : null}
                       {user.rol === "admin" || user.rol === "superAdmin" ? (
@@ -269,6 +277,7 @@ export function Navbar() {
           {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mensajes</NavLink> : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Cargar Puntos</NavLink> : null}
+          {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Pedidos</NavLink> : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
 
           <div className="navbar-mobile-divider" />
@@ -297,6 +306,7 @@ export function Navbar() {
                   <div className="navbar-mobile-user-links">
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Cargar Puntos</Link>
+                    <Link to="/vendedor/pedidos" className="navbar-link" onClick={closeMenu}>Pedidos</Link>
                     {(user.rol === "admin" || user.rol === "superAdmin") ? (
                       <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
                     ) : null}
