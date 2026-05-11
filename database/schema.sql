@@ -292,6 +292,7 @@ CREATE TABLE IF NOT EXISTS carrito_items (
     modo_compra         ENUM('dinero','puntos') NOT NULL,
     precio_dinero_unit  DECIMAL(10,2)   NULL,
     precio_puntos_unit  INT             NULL,
+    puntaje_al_comprar_unitario INT     NOT NULL DEFAULT 0,
     subtotal_dinero     DECIMAL(10,2)   NOT NULL DEFAULT 0,
     subtotal_puntos     INT             NOT NULL DEFAULT 0,
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -347,6 +348,7 @@ CREATE TABLE IF NOT EXISTS orden_items (
     modo_compra         ENUM('dinero','puntos') NOT NULL,
     precio_dinero_unit  DECIMAL(10,2)   NULL,
     precio_puntos_unit  INT             NULL,
+    puntaje_al_comprar_unitario INT     NOT NULL DEFAULT 0,
     subtotal_dinero     DECIMAL(10,2)   NOT NULL DEFAULT 0,
     subtotal_puntos     INT             NOT NULL DEFAULT 0,
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -492,6 +494,7 @@ CREATE TABLE IF NOT EXISTS movimientos_puntos (
                             'referido_invitado',
                             'canje_producto',
                             'devolucion_canje',
+                            'acreditacion_compra',
                             'ajuste'
                         )               NOT NULL,
     puntos              INT             NOT NULL,
@@ -504,7 +507,9 @@ CREATE TABLE IF NOT EXISTS movimientos_puntos (
     CONSTRAINT fk_mov_usuario
         FOREIGN KEY (usuario_id)  REFERENCES usuarios(id),
     CONSTRAINT fk_mov_creador
-        FOREIGN KEY (creado_por)  REFERENCES usuarios(id)
+        FOREIGN KEY (creado_por)  REFERENCES usuarios(id),
+    CONSTRAINT uq_mov_referencia
+        UNIQUE (referencia_tipo, referencia_id, tipo)
 );
 
 -- ============================================================

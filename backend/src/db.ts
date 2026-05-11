@@ -837,6 +837,21 @@ async function ensureUbicacionesArgentinaSchema() {
   );
 }
 
+async function ensureAcreditacionPuntosSchema() {
+  await pool.query(
+    `ALTER TABLE carrito_items ADD COLUMN IF NOT EXISTS puntaje_al_comprar_unitario INT NOT NULL DEFAULT 0`
+  ).catch(() => {});
+  await pool.query(
+    `ALTER TABLE orden_items ADD COLUMN IF NOT EXISTS puntaje_al_comprar_unitario INT NOT NULL DEFAULT 0`
+  ).catch(() => {});
+  await pool.query(
+    `ALTER TABLE movimientos_puntos MODIFY COLUMN tipo ENUM('asignacion_manual','codigo_canje','referido_invitador','referido_invitado','canje_producto','devolucion_canje','acreditacion_compra','ajuste') NOT NULL`
+  ).catch(() => {});
+  await pool.query(
+    `ALTER TABLE movimientos_puntos ADD CONSTRAINT uq_mov_referencia UNIQUE (referencia_tipo, referencia_id, tipo)`
+  ).catch(() => {});
+}
+
 pool
   .getConnection()
   .then(async (conn) => {
@@ -911,6 +926,11 @@ pool
       await ensureEventosSeguridadSchema();
     } catch (err: any) {
       console.error("⚠️  Migración eventos de seguridad:", err.message);
+    }
+    try {
+      await ensureAcreditacionPuntosSchema();
+    } catch (err: any) {
+      console.error("⚠️  Migración acreditación puntos:", err.message);
     }
   })
   .catch((err) => {

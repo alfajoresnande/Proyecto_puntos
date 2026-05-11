@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { finalizeStockForCheckoutItems } from "../services/stock";
+import { acreditarPuntosPorCompra } from "../services/points";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -511,6 +512,9 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     }
 
     await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
+    if (estado === "pagada") {
+      await acreditarPuntosPorCompra(conn, orderId);
+    }
     await conn.commit();
     res.json({ ok: true });
   } catch (err) {

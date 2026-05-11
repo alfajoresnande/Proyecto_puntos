@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
@@ -3025,6 +3025,11 @@ export function Admin() {
                           <p className="admin-producto-sub">
                             Stock: {producto.track_stock === false ? "Sin control" : `${producto.stock_disponible ?? 0} disp. / ${producto.stock_reservado ?? 0} reservado`}
                           </p>
+                          {(producto.puntaje_al_comprar ?? 0) > 0 ? (
+                            <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
+                              Suma: {producto.puntaje_al_comprar} pts
+                            </p>
+                          ) : null}
                           <p className="admin-producto-sub">Imágenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
                         </div>
                         <div className="admin-producto-actions">

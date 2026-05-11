@@ -1,5 +1,6 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
 import { finalizeStockForCheckoutItems, releaseStockForCheckoutItems } from "./stock";
+import { acreditarPuntosPorCompra } from "./points";
 
 export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
 export type OrderLifecycleResult = {
@@ -193,6 +194,7 @@ export async function approvePaidOrder(
 
   await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
   await qRun(conn, "UPDATE ordenes SET estado = 'pagada' WHERE id = ?", [orderId]);
+  await acreditarPuntosPorCompra(conn, orderId);
   return { ok: true, orderId, previousState: order.estado, state: "pagada", changed: true };
 }
 

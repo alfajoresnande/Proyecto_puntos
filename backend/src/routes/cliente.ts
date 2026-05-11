@@ -1,4 +1,4 @@
-﻿import crypto from "crypto";
+import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun, type Queryable } from "../db";
@@ -99,6 +99,7 @@ type ProductoCarritoDB = {
   precio_puntos_effectivo: number | null;
   track_stock: number;
   imagen_url: string | null;
+  puntaje_al_comprar: number | null;
 };
 
 type CarritoItemDB = {
@@ -109,6 +110,7 @@ type CarritoItemDB = {
   modo_compra: ModoCompra;
   precio_dinero_unit: number | null;
   precio_puntos_unit: number | null;
+  puntaje_al_comprar_unitario: number | null;
   subtotal_dinero: number;
   subtotal_puntos: number;
   nombre: string;
@@ -386,7 +388,7 @@ async function getProductoForCart(conn: Queryable, productoId: number): Promise<
     conn,
     `SELECT id, nombre, activo, tipo_producto, precio_dinero,
             COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo,
-            track_stock, imagen_url
+            track_stock, imagen_url, puntaje_al_comprar
      FROM productos
      WHERE id = ?
      LIMIT 1`,
@@ -400,6 +402,7 @@ async function getProductoForCart(conn: Queryable, productoId: number): Promise<
     precio_puntos_effectivo:
       producto.precio_puntos_effectivo === null ? null : Number(producto.precio_puntos_effectivo),
     track_stock: Number(producto.track_stock ?? 0),
+    puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
   };
 }
 
@@ -467,7 +470,7 @@ async function getCarritoItems(conn: Queryable, usuarioId: number): Promise<Carr
   const rows = await qAll<CarritoItemDB>(
     conn,
     `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra,
-            ci.precio_dinero_unit, ci.precio_puntos_unit, ci.subtotal_dinero, ci.subtotal_puntos,
+            ci.precio_dinero_unit, ci.precio_puntos_unit, ci.puntaje_al_comprar_unitario, ci.subtotal_dinero, ci.subtotal_puntos,
             p.nombre, p.tipo_producto, p.imagen_url, p.track_stock, p.permite_envio
      FROM carrito_items ci
      JOIN carritos c ON c.id = ci.carrito_id
@@ -483,6 +486,7 @@ async function getCarritoItems(conn: Queryable, usuarioId: number): Promise<Carr
     cantidad: Number(row.cantidad),
     precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
     precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
+    puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
     subtotal_dinero: Number(row.subtotal_dinero),
     subtotal_puntos: Number(row.subtotal_puntos),
     track_stock: Number(row.track_stock ?? 0),
@@ -1169,6 +1173,7 @@ router.get("/carrito", async (req, res) => {
   const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
   const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
   const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+  const totalPuntosGanados = items.reduce((acc, item) => acc + (Number(item.cantidad || 0) * Number(item.puntaje_al_comprar_unitario || 0)), 0);
 
   res.json({
     items,
@@ -1177,6 +1182,7 @@ router.get("/carrito", async (req, res) => {
       total_unidades: totalUnidades,
       total_dinero: totalDinero,
       total_puntos: 0,
+      total_puntos_ganados: totalPuntosGanados,
     },
   });
 });
@@ -1233,17 +1239,17 @@ router.post("/carrito/items", async (req, res) => {
         conn,
         `UPDATE carrito_items
          SET cantidad = ?, precio_dinero_unit = ?, precio_puntos_unit = ?,
-             subtotal_dinero = ?, subtotal_puntos = ?
+             subtotal_dinero = ?, subtotal_puntos = ?, puntaje_al_comprar_unitario = ?
          WHERE id = ?`,
-        [nuevaCantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, Number(existente.id)],
+        [nuevaCantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0, Number(existente.id)],
       );
     } else {
       await qRun(
         conn,
         `INSERT INTO carrito_items
-          (carrito_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [carritoId, producto_id, nuevaCantidad, modo_compra, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos],
+          (carrito_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [carritoId, producto_id, nuevaCantidad, modo_compra, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0],
       );
     }
 
@@ -1324,9 +1330,9 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
       conn,
       `UPDATE carrito_items
        SET cantidad = ?, precio_dinero_unit = ?, precio_puntos_unit = ?,
-           subtotal_dinero = ?, subtotal_puntos = ?
+           subtotal_dinero = ?, subtotal_puntos = ?, puntaje_al_comprar_unitario = ?
        WHERE id = ?`,
-      [parsed.data.cantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, itemId],
+      [parsed.data.cantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0, itemId],
     );
     await qRun(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [Number(item.carrito_id)]);
 
@@ -1579,6 +1585,7 @@ router.post("/checkout/confirm", async (req, res) => {
       subtotal_dinero: number;
       subtotal_puntos: number;
       track_stock: number;
+      puntaje_al_comprar_unitario: number;
       nombre: string;
     }> = [];
 
@@ -1598,12 +1605,14 @@ router.post("/checkout/confirm", async (req, res) => {
         subtotal_dinero: toMoney((precioDineroUnit ?? 0) * Number(item.cantidad)),
         subtotal_puntos: 0,
         track_stock: Number(item.track_stock ?? 0),
+        puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,
         nombre: item.nombre,
       });
     }
 
     const totalDinero = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
     const totalPuntos = 0;
+    const totalPuntosGanados = itemsNormalizados.reduce((acc, item) => acc + (item.cantidad * item.puntaje_al_comprar_unitario), 0);
     const paymentChoice: PaymentChoice | null = totalDinero > 0 ? resolvePaymentChoice(parsed.data.pago ?? null) : null;
 
     if (paymentChoice) {
@@ -1658,8 +1667,8 @@ router.post("/checkout/confirm", async (req, res) => {
       await qRun(
         conn,
         `INSERT INTO orden_items
-          (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ordenId,
           item.producto_id,
@@ -1669,6 +1678,7 @@ router.post("/checkout/confirm", async (req, res) => {
           item.precio_puntos_unit,
           item.subtotal_dinero,
           item.subtotal_puntos,
+          item.puntaje_al_comprar_unitario,
         ],
       );
     }
@@ -1734,6 +1744,7 @@ router.post("/checkout/confirm", async (req, res) => {
       tipo_orden: tipoOrden,
       total_dinero: totalDinero,
       total_puntos: totalPuntos,
+      total_puntos_ganados: totalPuntosGanados,
       pago_pendiente: totalDinero > 0,
       pago: totalDinero > 0 ? {
         proveedor: paymentProvider,
@@ -1944,9 +1955,13 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     id: number;
     estado: string;
     total_dinero: number;
+    total_puntos_ganados: number;
   }>(
     pool,
-    `SELECT id, estado, total_dinero
+    `SELECT id, estado, total_dinero,
+            (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
+             FROM orden_items
+             WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
      FROM ordenes
      WHERE id = ? AND usuario_id = ?
      LIMIT 1`,
@@ -1992,6 +2007,7 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     orden_id: ordenId,
     estado: orden.estado,
     total_dinero: Number(orden.total_dinero),
+    total_puntos_ganados: Number(orden.total_puntos_ganados),
     pago_pendiente: true,
     pago: {
       proveedor: pago.proveedor,
@@ -2024,9 +2040,13 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
       id: number;
       usuario_id: number;
       estado: string;
+      total_puntos_ganados: number;
     }>(
       conn,
-      `SELECT id, usuario_id, estado
+      `SELECT id, usuario_id, estado,
+              (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
+               FROM orden_items
+               WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
        FROM ordenes
        WHERE id = ? AND usuario_id = ?
        LIMIT 1`,
@@ -2059,6 +2079,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         ok: orden.estado === "pagada",
         orden_id: ordenId,
         estado: orden.estado,
+        total_puntos_ganados: Number(orden.total_puntos_ganados),
         pago_estado: pago?.estado ?? null,
         provider_payment_id: pago?.provider_payment_id ?? null,
         status_detail: null,
@@ -2071,6 +2092,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         ok: false,
         orden_id: ordenId,
         estado: orden.estado,
+        total_puntos_ganados: Number(orden.total_puntos_ganados),
         pago_estado: pago.estado,
         provider_payment_id: pago.provider_payment_id,
         status_detail: null,

@@ -29,6 +29,7 @@ export type Producto = {
   categoria: string | null;
   puntos_requeridos: number;
   puntos_acumulables: number | null;
+  puntaje_al_comprar?: number | null;
   tipo_producto?: "canje" | "venta" | "mixto";
   precio_dinero?: number | string | null;
   precio_puntos?: number | null;

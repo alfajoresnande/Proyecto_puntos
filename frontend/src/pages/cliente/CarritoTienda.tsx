@@ -23,6 +23,7 @@ type CartResponse = {
     total_unidades: number;
     total_dinero: number;
     total_puntos: number;
+    total_puntos_ganados?: number;
   };
 };
 
@@ -54,6 +55,7 @@ type CheckoutConfirmResponse = {
   orden_id: number;
   estado: string;
   total_dinero: number;
+  total_puntos_ganados?: number;
   pago_pendiente: boolean;
   pago: null | {
     proveedor: string | null;
@@ -83,6 +85,7 @@ type OrdenCheckoutStatus = {
   orden_id?: number;
   id: number;
   estado: string;
+  total_puntos_ganados?: number;
   pago_estado?: string | null;
   provider_payment_id?: string | null;
   status_detail?: string | null;
@@ -479,16 +482,21 @@ export function CarritoTienda() {
     if (nextState === "pagada") {
       if (!paymentApproved || confirmed.estado !== "pagada") {
         setPaymentApproved(true);
+        const pts = Number(currentOrder.total_puntos_ganados ?? 0);
         setPaymentNotice({
           variant: "success",
-          msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+          msg: pts > 0
+            ? `Pago aprobado. Se acreditaron ${pts} puntos en tu cuenta.`
+            : "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
         });
         setConfirmed((prev) =>
           prev && Number(prev.orden_id) === Number(confirmed.orden_id)
-            ? { ...prev, estado: "pagada", pago_pendiente: false }
+            ? { ...prev, estado: "pagada", pago_pendiente: false, total_puntos_ganados: pts }
             : prev,
         );
         void queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+        void queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+        void queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
       }
       return;
     }
@@ -552,12 +560,18 @@ export function CarritoTienda() {
     onSuccess: async (data) => {
       setConfirmed(data);
       setPaymentApproved(data.estado === "pagada");
-      setPaymentNotice(data.estado === "pagada"
-        ? {
-            variant: "success",
-            msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
-          }
-        : null);
+      if (data.estado === "pagada") {
+        const pts = Number(data.total_puntos_ganados ?? 0);
+        setPaymentNotice({
+          variant: "success",
+          msg: pts > 0
+            ? `Pago aprobado. Se acreditaron ${pts} puntos en tu cuenta.`
+            : "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+        });
+        void queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
+      } else {
+        setPaymentNotice(null);
+      }
       setMessage(null);
       setNeedsProfile(false);
       await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
@@ -623,6 +637,11 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
+              {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
+                <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
+                  ✦ Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
+                </p>
+              ) : null}
             </div>
 
             <div className="catalog-confirm-branch-detail catalog-canje-block">
@@ -668,14 +687,29 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
+              {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
+                <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
+                  ✦ Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
+                </p>
+              ) : null}
             </div>
           ) : isCashOrder ? (
             <div className="catalog-canje-block" role="status" aria-live="polite">
               <p><strong>Reservamos tu pedido.</strong> Lo pagas en efectivo al retirar en sucursal.</p>
+              {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
+                <p style={{ marginTop: "0.4rem", color: "#8B5A30", fontWeight: 600 }}>
+                  Cuando el pedido sea marcado como pagado, se acreditarán {confirmed.total_puntos_ganados} puntos en tu cuenta.
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="catalog-canje-block" role="status" aria-live="polite">
               <p><strong>Tu pedido todavia no esta confirmado.</strong> Se confirma automaticamente cuando Mercado Pago aprueba el pago.</p>
+              {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
+                <p style={{ marginTop: "0.4rem", color: "#8B5A30", fontWeight: 600 }}>
+                  Con esta compra ganás {confirmed.total_puntos_ganados} puntos cuando el pago sea aprobado.
+                </p>
+              ) : null}
             </div>
           )}
           <div className="catalog-confirm-branch-detail catalog-canje-block">
@@ -723,10 +757,14 @@ export function CarritoTienda() {
               }
               onApproved={() => {
                 setPaymentApproved(true);
+                const pts = Number(confirmed.total_puntos_ganados ?? 0);
                 setPaymentNotice({
                   variant: "success",
-                  msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+                  msg: pts > 0
+                    ? `Pago aprobado. Se acreditaron ${pts} puntos en tu cuenta.`
+                    : "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
                 });
+                void queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
               }}
             />
           ) : null}
@@ -792,6 +830,11 @@ export function CarritoTienda() {
             <div className="catalog-confirm-branch-detail catalog-canje-block catalog-canje-summary">
               <p>Total de productos: <strong>{totalUnidades}</strong></p>
               <p>Total a pagar: <strong>{money(total)}</strong></p>
+              {(cartQuery.data?.resumen.total_puntos_ganados ?? 0) > 0 ? (
+                <p style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.2rem" }}>
+                  ✦ Con esta compra ganás {cartQuery.data?.resumen.total_puntos_ganados} puntos cuando el pago sea aprobado.
+                </p>
+              ) : null}
             </div>
 
             <div className="catalog-confirm-field catalog-canje-pickup">

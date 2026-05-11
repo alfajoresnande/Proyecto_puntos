@@ -39,6 +39,7 @@ type OnlineCartItem = {
   cantidad: number;
   modo_compra: "dinero" | "puntos";
   precio_dinero_unit: number | null;
+  puntaje_al_comprar_unitario?: number | null;
   subtotal_dinero: number;
   nombre: string;
   imagen_url: string | null;
@@ -51,6 +52,7 @@ type OnlineCartResponse = {
     total_unidades: number;
     total_dinero: number;
     total_puntos: number;
+    total_puntos_ganados?: number;
   };
 };
 
@@ -342,6 +344,7 @@ export function TiendaOnline() {
               cantidad,
               modo_compra: "dinero",
               precio_dinero_unit: precio,
+              puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,
               subtotal_dinero: precio * cantidad,
               nombre: producto.nombre,
               imagen_url: productImage(producto),
@@ -754,6 +757,19 @@ export function TiendaOnline() {
                         <span>{sucursalSeleccionada ? `Disponibilidad en ${sucursalSeleccionada.nombre}` : "Disponibilidad"}</span>
                         <span className={sinStock ? "store-stock-empty" : "earn"}>{availabilityLabel(producto)}</span>
                       </div>
+                      {(producto.puntaje_al_comprar ?? 0) > 0 ? (
+                        <>
+                          <div className="product-card-divider" />
+                          <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.9 }}>
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                              </svg>
+                              Sumás {producto.puntaje_al_comprar} puntos con este producto
+                            </span>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                     {user ? (
                       <div className="product-card-qty">

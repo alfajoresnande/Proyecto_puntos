@@ -20,6 +20,7 @@ import {
   releaseStockForCheckoutItems,
   releaseReservedStockForCanje,
 } from "../services/stock";
+import { acreditarPuntosPorCompra } from "../services/points";
 import { runReservationExpirations } from "../services/expirations";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
@@ -940,6 +941,7 @@ router.patch("/ordenes/:id", async (req, res) => {
     if (Number(orden.total_dinero ?? 0) > 0) {
       if (estado === "pagada") {
         await qRun(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+        await acreditarPuntosPorCompra(conn, orderId);
       } else if (estado === "cancelada" || estado === "expirada") {
         await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
       }
