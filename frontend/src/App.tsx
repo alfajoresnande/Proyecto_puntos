@@ -33,7 +33,7 @@ export default function App() {
       <div className="app-main">
         <main>
           <Routes>
-            <Route path="/" element={<Navigate to="/catalogo" replace />} />
+            <Route path="/" element={<Navigate to="/tienda" replace />} />
             <Route path="/catalogo" element={<Catalogo />} />
             <Route path="/tienda" element={<TiendaOnline />} />
             <Route path="/login" element={<Login />} />

@@ -191,7 +191,6 @@ export function ComprobanteCanje() {
         </div>
 
         <div className="comprobante-footer">
-          <p className="comprobante-disclaimer">Este documento no es válido como factura.</p>
           <p className="comprobante-thanks">Gracias por elegir Ñandé Alfajores Correntinos.</p>
         </div>
       </div>
