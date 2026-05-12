@@ -15,6 +15,20 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 /**
+ * RECONCILIACIÓN GLOBAL (SQL):
+ * Si necesitas reparar todos los saldos de la base de datos manualmente:
+ *
+ * UPDATE usuarios u
+ * LEFT JOIN (
+ *   SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
+ *   FROM movimientos_puntos
+ *   GROUP BY usuario_id
+ * ) mp ON mp.usuario_id = u.id
+ * SET u.puntos_saldo = COALESCE(mp.saldo_calculado, 0)
+ * WHERE u.puntos_saldo <> COALESCE(mp.saldo_calculado, 0);
+ */
+
+/**
  * Recalcula el saldo de puntos de un usuario sumando todos sus movimientos.
  * Es la fuente de verdad. Idempotente: puede llamarse múltiples veces.
  */
@@ -29,17 +43,23 @@ export async function recalcularSaldoPuntosUsuario(
      WHERE usuario_id = ?`,
     [usuarioId],
   );
-  const saldo = Number(row?.saldo ?? 0);
+  const saldoCalculado = Number(row?.saldo ?? 0);
+
+  const previo = await qOne<{ puntos_saldo: number }>(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
+  if (previo && Number(previo.puntos_saldo) !== saldoCalculado) {
+    console.log(`[recalcularSaldoPuntosUsuario] Corrigiendo saldo usuario #${usuarioId}: ${previo.puntos_saldo} -> ${saldoCalculado}`);
+  }
+
   await qRun(
     conn,
     "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?",
-    [saldo, usuarioId],
+    [saldoCalculado, usuarioId],
   );
-  console.log("[recalcularSaldoPuntosUsuario] Saldo recalculado correctamente", {
+  console.log("Saldo recalculado correctamente", {
     usuarioId,
-    saldo,
+    saldo: saldoCalculado,
   });
-  return saldo;
+  return saldoCalculado;
 }
 
 /**

@@ -843,9 +843,31 @@ async function crearCanjeCarrito(
 }
 
 router.get("/me", async (req, res) => {
+  const usuarioId = req.user!.id;
+  
+  // Recalcular saldo antes de devolver los datos (Option A)
+  try {
+    const conn = await pool.getConnection();
+    try {
+      const saldoCalculado = await recalcularSaldoPuntosUsuario(conn, usuarioId);
+      const actualEnDB = await qOne<{ puntos_saldo: number }>(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
+      
+      console.log(`[CLIENTE/ME] Recalculo de puntos`, {
+        usuario_id: usuarioId,
+        saldo_en_usuarios: actualEnDB?.puntos_saldo,
+        saldo_calculado_por_movimientos: saldoCalculado,
+        iguales: actualEnDB?.puntos_saldo === saldoCalculado
+      });
+    } finally {
+      conn.release();
+    }
+  } catch (err) {
+    console.error(`[CLIENTE/ME] Error recalculando saldo:`, err);
+  }
+
   const user = await qOne(pool,
     "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?",
-    [req.user!.id]
+    [usuarioId]
   );
   res.json(normalizeClienteUserRow(user));
 });
@@ -939,6 +961,9 @@ router.patch("/perfil", async (req, res) => {
         usuarioId
       ]
     );
+
+    // Recalcular saldo antes de devolver los datos actualizados
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
 
     const updated = await qOne(
       conn,
