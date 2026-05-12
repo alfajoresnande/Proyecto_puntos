@@ -14,6 +14,7 @@ import { CarritoTienda } from "./pages/cliente/CarritoTienda";
 import { ConfirmarCanje } from "./pages/cliente/ConfirmarCanje";
 import { MisCanjes } from "./pages/cliente/MisCanjes";
 import { MisPedidos } from "./pages/cliente/MisPedidos";
+import { ComprobantePedido } from "./pages/cliente/ComprobantePedido";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
 import { SoporteCliente } from "./pages/cliente/SoporteCliente";
 import { Catalogo } from "./pages/public/Catalogo";
@@ -83,6 +84,14 @@ export default function App() {
               element={
                 <ProtectedRoute rol="cliente">
                   <MisPedidos />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mis-pedidos/:id"
+              element={
+                <ProtectedRoute rol="cliente">
+                  <ComprobantePedido />
                 </ProtectedRoute>
               }
             />

@@ -1,0 +1,225 @@
+/* 
+  Contenedor A4 para visualización en pantalla
+*/
+.comprobante-wrapper {
+  padding: 2rem;
+  background-color: #f3f4f6;
+  min-height: calc(100vh - var(--navbar-height, 80px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.comprobante-actions {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  width: 100%;
+  max-width: 210mm;
+  justify-content: flex-end;
+}
+
+.comprobante-a4 {
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 15mm;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  color: #1f2937;
+  font-family: inherit;
+}
+
+.comprobante-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.comprobante-logo-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.comprobante-logo {
+  height: 60px;
+  object-fit: contain;
+  margin-bottom: 0.5rem;
+}
+
+.comprobante-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #D4621A;
+  margin-bottom: 0.25rem;
+}
+
+.comprobante-meta {
+  text-align: right;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.comprobante-meta strong {
+  color: #374151;
+}
+
+.comprobante-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.comprobante-box {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.comprobante-box h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.25rem;
+}
+
+.comprobante-box p {
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  color: #4b5563;
+}
+
+.comprobante-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2rem;
+}
+
+.comprobante-table th {
+  background-color: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  text-align: left;
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.comprobante-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.comprobante-table td.text-right,
+.comprobante-table th.text-right {
+  text-align: right;
+}
+
+.comprobante-totals {
+  width: 100%;
+  max-width: 300px;
+  margin-left: auto;
+  border-top: 2px solid #e5e7eb;
+  padding-top: 1rem;
+  margin-bottom: 2rem;
+}
+
+.comprobante-total-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #4b5563;
+}
+
+.comprobante-total-row.grand-total {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1f2937;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.comprobante-footer {
+  text-align: center;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 1.5rem;
+  margin-top: auto;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.comprobante-disclaimer {
+  font-weight: 600;
+  color: #D4621A;
+  margin-bottom: 0.5rem;
+}
+
+/* 
+  Estilos para impresión 
+*/
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .comprobante-a4, .comprobante-a4 * {
+    visibility: visible;
+  }
+
+  .comprobante-a4 {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  /* Ocultar elementos no imprimibles explícitamente */
+  .no-print, 
+  nav, 
+  footer, 
+  .catalog-float-toast,
+  .comprobante-actions {
+    display: none !important;
+  }
+
+  /* Evitar cortes feos dentro de filas de tabla o cajas */
+  .comprobante-table tr,
+  .comprobante-box {
+    page-break-inside: avoid;
+  }
+}
+
+/* Adaptación responsive para pantallas más pequeñas (antes de imprimir) */
+@media (max-width: 220mm) {
+  .comprobante-a4 {
+    width: 100%;
+    min-height: auto;
+    padding: 1rem;
+  }
+  
+  .comprobante-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}

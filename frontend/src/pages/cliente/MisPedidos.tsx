@@ -250,69 +250,11 @@ export function MisPedidos() {
                     <strong>{money(orden.total_dinero)}</strong>
                   </div>
                 </div>
-                <div className="store-order-receipt">
-                  <div className="store-order-receipt-row">
-                    <span>Comprobante</span>
-                    <strong>Pedido web #{orden.id}</strong>
-                  </div>
-                  <div className="store-order-receipt-row">
-                    <span>Pago</span>
-                    <strong>{paymentMethodLabel(orden.pago?.metodo)}</strong>
-                  </div>
-                  {orden.items?.length ? (
-                    <div className="store-order-items">
-                      {orden.items.map((item) => (
-                        <div key={`${orden.id}-${item.producto_id}-${item.nombre}`} className="store-order-item-row">
-                          <span>{item.nombre} x{item.cantidad}</span>
-                          <strong>{money(item.subtotal_dinero)}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div className="store-order-receipt-row">
-                    <span>Total</span>
-                    <strong>{money(orden.total_dinero)}</strong>
-                  </div>
-                  {orden.direccion_envio ? (
-                    <div className="store-order-detail-box">
-                      <p className="store-order-detail-title">Entrega</p>
-                      <p className="store-order-muted">
-                        Envio a {orden.direccion_envio.nombre || "-"} - {orden.direccion_envio.direccion}, {orden.direccion_envio.localidad} ({orden.direccion_envio.codigo_postal})
-                      </p>
-                    </div>
-                  ) : orden.sucursal?.nombre ? (
-                    <div className="store-order-detail-box">
-                      <p className="store-order-detail-title">Retiro en sucursal</p>
-                      <p className="store-order-muted">{branchLabel(orden.sucursal)}</p>
-                      {orden.comprobante?.dias_habiles ? (
-                        <p className="store-order-muted">Dias habiles: {orden.comprobante.dias_habiles}</p>
-                      ) : null}
-                      {orden.comprobante?.horario_habil ? (
-                        <p className="store-order-muted">Horario: {orden.comprobante.horario_habil}</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {orden.pago?.metodo === "cash" && orden.comprobante?.fecha_limite_efectivo ? (
-                    <div className="store-order-cash-box">
-                      <p className="store-order-detail-title">Reserva en efectivo</p>
-                      <p className="store-order-muted">
-                        Tienes {orden.comprobante.dias_vigencia_efectivo} dia(s) para acercarte, abonar y retirar tu pedido.
-                      </p>
-                      <p className="store-order-muted">
-                        Limite: {dateLabel(orden.comprobante.fecha_limite_efectivo)}
-                      </p>
-                    </div>
-                  ) : null}
-                  {orden.estado === "pendiente_pago" && orden.pago?.proveedor === "mercadopago" && orden.pago.estado === "iniciado" ? (
-                    <div className="catalog-float-toast-actions catalog-canje-actions">
-                      <Link className="catalog-float-toast-btn-primary" to={`/carrito-tienda?pagar_orden=${orden.id}`}>
-                        Continuar pago
-                      </Link>
-                    </div>
-                  ) : null}
-                  {orden.comprobante?.leyenda_no_factura ? (
-                    <p className="store-order-disclaimer">{orden.comprobante.leyenda_no_factura}</p>
-                  ) : null}
+                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span className="store-order-muted">Pago: {paymentMethodLabel(orden.pago?.metodo)}</span>
+                  <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
+                    Ver comprobante
+                  </Link>
                 </div>
               </article>
             ))}

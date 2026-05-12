@@ -185,6 +185,7 @@ type OrdenItemClienteRow = {
   precio_puntos_unit: number | null;
   subtotal_dinero: number;
   subtotal_puntos: number;
+  puntaje_al_comprar_unitario: number | null;
   nombre: string;
   imagen_url: string | null;
   track_stock: number;
@@ -537,6 +538,7 @@ async function getOrdenItems(conn: Queryable, ordenId: number): Promise<OrdenIte
     conn,
     `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
             oi.precio_dinero_unit, oi.precio_puntos_unit, oi.subtotal_dinero, oi.subtotal_puntos,
+            oi.puntaje_al_comprar_unitario,
             p.nombre, p.imagen_url, p.track_stock
      FROM orden_items oi
      JOIN productos p ON p.id = oi.producto_id
@@ -554,6 +556,7 @@ async function getOrdenItems(conn: Queryable, ordenId: number): Promise<OrdenIte
     precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
     subtotal_dinero: Number(row.subtotal_dinero),
     subtotal_puntos: Number(row.subtotal_puntos),
+    puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
     track_stock: Number(row.track_stock ?? 0),
   }));
 }
@@ -2422,6 +2425,7 @@ router.get("/ordenes", async (req, res) => {
     pool,
     `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
             oi.precio_dinero_unit, oi.precio_puntos_unit, oi.subtotal_dinero, oi.subtotal_puntos,
+            oi.puntaje_al_comprar_unitario,
             p.nombre, p.imagen_url, p.track_stock
      FROM orden_items oi
      JOIN productos p ON p.id = oi.producto_id
@@ -2464,6 +2468,7 @@ router.get("/ordenes", async (req, res) => {
       precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
       subtotal_dinero: Number(row.subtotal_dinero),
       subtotal_puntos: Number(row.subtotal_puntos),
+      puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
       track_stock: Number(row.track_stock ?? 0),
     });
     itemsMap.set(Number(row.orden_id), list);
