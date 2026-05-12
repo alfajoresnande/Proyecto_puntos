@@ -542,7 +542,9 @@ export function TiendaOnline() {
               <h3 className="catalog-filters-section-title" id="store-cat-label-desktop">
                 Categoria
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-cat-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>{categoriaActiva || "Todas"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-cat-label-desktop">
                 {[
                   { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
                   ...categorias.map((c) => ({
@@ -574,14 +576,25 @@ export function TiendaOnline() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <section className="catalog-filters-section">
               <h3 className="catalog-filters-section-title" id="store-orden-label-desktop">
                 Ordenar por
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-orden-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>
+                  {ordenProductos === "precio-asc"
+                    ? "Menor precio"
+                    : ordenProductos === "precio-desc"
+                      ? "Mayor precio"
+                      : ordenProductos === "nombre-asc"
+                        ? "Nombre A-Z"
+                        : "Recomendado"}
+                </summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-orden-label-desktop">
                 {[
                   { value: "", label: "Recomendado" },
                   { value: "precio-asc", label: "Menor precio" },
@@ -603,14 +616,17 @@ export function TiendaOnline() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <section className="catalog-filters-section">
               <h3 className="catalog-filters-section-title" id="store-price-label-desktop">
                 Rango de precio
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-price-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>{rangosPrecio.find((rango) => rango.id === rangoPrecioId)?.label ?? "Todos"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-price-label-desktop">
                 {rangosPrecio.map((rango) => {
                   const count = conteosPorPrecio[rango.id] ?? 0;
                   const checked = rangoPrecioId === rango.id;
@@ -636,14 +652,17 @@ export function TiendaOnline() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <section className="catalog-filters-section">
               <h3 className="catalog-filters-section-title" id="store-stock-label-desktop">
                 Disponibilidad
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-stock-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>{stockFilterId === "available" ? "Disponibles" : "Todos"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-stock-label-desktop">
                 {[
                   { value: "all" as StockFilterId, label: "Todos", count: conteosPorStock.all },
                   { value: "available" as StockFilterId, label: "Disponibles", count: conteosPorStock.available },
@@ -671,7 +690,8 @@ export function TiendaOnline() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <button

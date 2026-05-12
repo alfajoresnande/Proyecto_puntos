@@ -766,7 +766,9 @@ export function Catalogo() {
               <h3 className="catalog-filters-section-title" id="catalog-cat-label-desktop">
                 Categoria
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-cat-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>{categoriaActiva || "Todas"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-cat-label-desktop">
                 {[
                   { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
                   ...categorias.map((c) => ({
@@ -798,14 +800,23 @@ export function Catalogo() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <section className="catalog-filters-section">
               <h3 className="catalog-filters-section-title" id="catalog-orden-label-desktop">
                 Ordenar por
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-orden-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>
+                  {ordenProductos === "puntos-asc"
+                    ? "Menor puntaje"
+                    : ordenProductos === "puntos-desc"
+                      ? "Mayor puntaje"
+                      : "Recomendado"}
+                </summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-orden-label-desktop">
                 {[
                   { value: "", label: "Recomendado" },
                   { value: "puntos-asc", label: "Menor puntaje" },
@@ -826,14 +837,17 @@ export function Catalogo() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <section className="catalog-filters-section">
               <h3 className="catalog-filters-section-title" id="catalog-rango-label-desktop">
                 Rango de puntos
               </h3>
-              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-rango-label-desktop">
+              <details className="catalog-filter-dropdown">
+                <summary>{rangosPuntos.find((rango) => rango.id === rangoPuntosId)?.label ?? "Todos"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-rango-label-desktop">
                 {rangosPuntos.map((rango) => {
                   const count = conteosPorRango[rango.id] ?? 0;
                   const checked = rangoPuntosId === rango.id;
@@ -859,7 +873,8 @@ export function Catalogo() {
                     </label>
                   );
                 })}
-              </div>
+                </div>
+              </details>
             </section>
 
             <button
