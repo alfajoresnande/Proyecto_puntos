@@ -3,7 +3,7 @@ import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { finalizeStockForCheckoutItems } from "../services/stock";
-import { acreditarPuntosPorCompra } from "../services/points";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "../services/points";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -202,7 +202,7 @@ router.post("/cargar", async (req, res, next) => {
        VALUES (?, 'asignacion_manual', ?, ?, ?)`,
       [cliente.id, totalPuntos, descripcion ?? `Carga de puntos — ${items.length} producto(s)`, req.user!.id]
     );
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [totalPuntos, cliente.id]);
+    await recalcularSaldoPuntosUsuario(conn, cliente.id);
 
     await conn.commit();
 
@@ -298,8 +298,7 @@ router.patch("/canje/:codigo", async (req, res, next) => {
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`,
         [canje.usuario_id, canje.puntos_usados, `Devolución por canje ${motivo}`, canje.id, req.user!.id]
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?",
-        [canje.puntos_usados, canje.usuario_id]);
+      await recalcularSaldoPuntosUsuario(conn, Number(canje.usuario_id));
     }
 
     await conn.commit();

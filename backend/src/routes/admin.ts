@@ -20,7 +20,7 @@ import {
   releaseStockForCheckoutItems,
   releaseReservedStockForCanje,
 } from "../services/stock";
-import { acreditarPuntosPorCompra } from "../services/points";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "../services/points";
 import { runReservationExpirations } from "../services/expirations";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
@@ -481,7 +481,7 @@ router.post("/puntos", async (req, res) => {
       `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, creado_por) VALUES (?, ?, ?, ?, ?)`,
       [usuario_id, tipo, puntos, descripcion ?? null, req.user!.id]
     );
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [puntos, usuario_id]);
+    await recalcularSaldoPuntosUsuario(conn, Number(usuario_id));
 
     await conn.commit();
     res.json({ ok: true, nuevo_saldo: nuevoSaldo });
@@ -690,11 +690,7 @@ router.patch("/canjes/:id", async (req, res) => {
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`,
         [canje.usuario_id, canje.puntos_usados, `Devolucion por canje ${motivo}`, id, req.user!.id],
       );
-      await qRun(
-        conn,
-        "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?",
-        [canje.puntos_usados, canje.usuario_id],
-      );
+      await recalcularSaldoPuntosUsuario(conn, Number(canje.usuario_id));
     }
 
     await conn.commit();
@@ -926,10 +922,7 @@ router.patch("/ordenes/:id", async (req, res) => {
           req.user!.id,
         ],
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
-        Number(orden.total_puntos),
-        Number(orden.usuario_id),
-      ]);
+      await recalcularSaldoPuntosUsuario(conn, Number(orden.usuario_id));
     }
 
     await qRun(conn, "UPDATE ordenes SET estado = ?, notas = COALESCE(?, notas) WHERE id = ?", [
@@ -1600,6 +1593,68 @@ router.put("/paginas/:slug", async (req, res) => {
   );
   if (affectedRows === 0) { res.status(404).json({ error: "Página no encontrada" }); return; }
   res.json({ ok: true });
+});
+
+/**
+ * POST /admin/puntos/reconciliar-saldos
+ * Recalcula puntos_saldo de uno o todos los usuarios desde movimientos_puntos.
+ * Cuerpo opcional: { usuario_id: number } para reparar solo un usuario.
+ * Sin cuerpo: repara todos los usuarios que tengan movimientos.
+ */
+router.post("/puntos/reconciliar-saldos", requireAuth, requireRole("admin"), async (req, res) => {
+  const usuarioIdRaw = req.body?.usuario_id;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    if (usuarioIdRaw !== undefined) {
+      // Reparar solo un usuario
+      const usuarioId = Number(usuarioIdRaw);
+      if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+        await conn.rollback();
+        res.status(400).json({ error: "usuario_id inválido" });
+        return;
+      }
+      const saldo = await recalcularSaldoPuntosUsuario(conn, usuarioId);
+      await conn.commit();
+      res.json({ ok: true, usuario_id: usuarioId, saldo_recalculado: saldo });
+      return;
+    }
+
+    // Reparar todos los usuarios con movimientos registrados
+    const usuarios = await qAll<{ usuario_id: number; saldo_calculado: number }>(
+      conn,
+      `SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
+       FROM movimientos_puntos
+       GROUP BY usuario_id`,
+    );
+
+    const resultados: Array<{ usuario_id: number; saldo_anterior: number; saldo_nuevo: number }> = [];
+    for (const row of usuarios) {
+      const usuarioId = Number(row.usuario_id);
+      const saldoCalculado = Number(row.saldo_calculado);
+      const actual = await qOne<{ puntos_saldo: number }>(
+        conn,
+        "SELECT puntos_saldo FROM usuarios WHERE id = ?",
+        [usuarioId],
+      );
+      const saldoAnterior = Number(actual?.puntos_saldo ?? 0);
+      if (saldoAnterior !== saldoCalculado) {
+        await qRun(conn, "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?", [saldoCalculado, usuarioId]);
+        resultados.push({ usuario_id: usuarioId, saldo_anterior: saldoAnterior, saldo_nuevo: saldoCalculado });
+        console.info(`[reconciliar-saldos] Usuario #${usuarioId}: ${saldoAnterior} → ${saldoCalculado} pts`);
+      }
+    }
+
+    await conn.commit();
+    res.json({ ok: true, usuarios_reparados: resultados.length, detalle: resultados });
+  } catch (err: any) {
+    await conn.rollback();
+    console.error("[reconciliar-saldos] Error:", err);
+    res.status(500).json({ error: err?.message || "Error al reconciliar saldos" });
+  } finally {
+    conn.release();
+  }
 });
 
 export default router;

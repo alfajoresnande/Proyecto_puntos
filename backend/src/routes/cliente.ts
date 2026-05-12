@@ -5,6 +5,7 @@ import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { releaseStockForCheckoutItems, reserveStockForCanje, reserveStockForCheckoutItems } from "../services/stock";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
+import { recalcularSaldoPuntosUsuario } from "../services/points";
 import {
   createPaymentSession,
   getMercadoPagoPublicKey,
@@ -819,7 +820,7 @@ async function crearCanjeCarrito(
      VALUES (?, 'canje_producto', ?, ?, ?, 'canjes')`,
     [usuarioId, -puntosTotales, descripcionMovimiento, canjeId],
   );
-  await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo - ? WHERE id = ?", [puntosTotales, usuarioId]);
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
 
   const totalUnidades = itemsDetalle.reduce((acc, item) => acc + item.cantidad, 0);
 
@@ -1063,8 +1064,8 @@ router.post("/usar-codigo-invitacion", async (req, res) => {
       [usuarioId, pointsInvitado, `Bono por usar el codigo de ${invitador.nombre}`, refId]
     );
 
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [pointsInvitador, invitador.id]);
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [pointsInvitado, usuarioId]);
+    await recalcularSaldoPuntosUsuario(conn, invitador.id);
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
 
     await conn.commit();
 
@@ -2594,7 +2595,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes')`,
         [req.user!.id, totalPuntos, `Devolucion por cancelacion orden #${ordenId}`, ordenId],
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [totalPuntos, req.user!.id]);
+      await recalcularSaldoPuntosUsuario(conn, req.user!.id);
     }
 
     await qRun(conn, "UPDATE ordenes SET estado = 'cancelada' WHERE id = ?", [ordenId]);
@@ -2661,7 +2662,7 @@ router.post("/canjear-codigo", async (req, res) => {
        VALUES (?, 'codigo_canje', ?, ?, ?, 'codigos_puntos')`,
       [usuarioId, c.puntos_valor, `Codigo canjeado: ${codigo}`, c.id]
     );
-    await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [c.puntos_valor, usuarioId]);
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
 
     await conn.commit();
 

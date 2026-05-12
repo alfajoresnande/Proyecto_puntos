@@ -1,9 +1,10 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
+import { recalcularSaldoPuntosUsuario } from "../services/points";
 import { clearAuthCookie, getAuthPayload, setAuthCookie, signToken } from "../auth";
 import { sendPasswordResetEmail } from "../services/email";
 
@@ -198,14 +199,14 @@ router.post("/register", async (req, res) => {
          VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`,
         [invitador.id, ptsInv, `${nombre} se registro con tu codigo`, refId]
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [ptsInv, invitador.id]);
+      await recalcularSaldoPuntosUsuario(conn, invitador.id);
 
       await qRun(conn,
         `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
          VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`,
         [nuevoId, ptsNuev, `Bono de bienvenida por codigo de ${invitador.nombre}`, refId]
       );
-      await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [ptsNuev, nuevoId]);
+      await recalcularSaldoPuntosUsuario(conn, nuevoId);
     }
 
     await conn.commit();

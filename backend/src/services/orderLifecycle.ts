@@ -1,6 +1,6 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
 import { finalizeStockForCheckoutItems, releaseStockForCheckoutItems } from "./stock";
-import { acreditarPuntosPorCompra } from "./points";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "./points";
 
 export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
 export type OrderLifecycleResult = {
@@ -150,10 +150,7 @@ async function refundOrderPointsIfReserved(
      VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`,
     [order.usuario_id, order.total_puntos, descripcion, order.id, creadoPor],
   );
-  await qRun(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
-    order.total_puntos,
-    order.usuario_id,
-  ]);
+  await recalcularSaldoPuntosUsuario(conn, order.usuario_id);
 }
 
 export async function approvePaidOrder(
@@ -170,6 +167,7 @@ export async function approvePaidOrder(
     payload?: unknown;
   },
 ): Promise<OrderLifecycleResult> {
+  console.log("[approvePaidOrder] ejecutado", { orderId });
   const order = await getOrderForLifecycle(conn, orderId);
   if (!order) {
     throw new Error("Orden no encontrada.");
@@ -177,6 +175,10 @@ export async function approvePaidOrder(
 
   if (order.estado !== "pendiente_pago") {
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
+    console.log("[approvePaidOrder] Orden ya no estaba en pendiente_pago, se omite cambio", {
+      orderId,
+      estado: order.estado,
+    });
     return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
   }
 
@@ -194,7 +196,10 @@ export async function approvePaidOrder(
 
   await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
   await qRun(conn, "UPDATE ordenes SET estado = 'pagada' WHERE id = ?", [orderId]);
+  
+  // Acreditación automática de puntos
   await acreditarPuntosPorCompra(conn, orderId);
+  
   return { ok: true, orderId, previousState: order.estado, state: "pagada", changed: true };
 }
 
