@@ -374,6 +374,8 @@ export function CarritoTienda() {
   const cartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<CartResponse>("/cliente/carrito"),
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const sucursalesQuery = useQuery({

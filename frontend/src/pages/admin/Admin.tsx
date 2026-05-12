@@ -1263,7 +1263,7 @@ export function Admin() {
 
       setNuevoProducto(emptyProductoForm());
       setOkMsg("Producto creado correctamente.");
-      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"]]);
+      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"], ["productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -1332,7 +1332,7 @@ export function Admin() {
 
       setEditId(null);
       setOkMsg("Producto actualizado.");
-      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"]]);
+      await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -1348,7 +1348,7 @@ export function Admin() {
         path: `/admin/productos/${producto.id}/activo`,
         body: { activo: !producto.activo },
       });
-      await refreshQueries([["admin", "productos"], ["admin", "stats"]]);
+      await refreshQueries([["admin", "productos"], ["admin", "stats"], ["productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     }

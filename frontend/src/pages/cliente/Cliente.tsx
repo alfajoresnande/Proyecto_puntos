@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -47,7 +47,7 @@ export function Cliente() {
   const updateUserPoints = useAuthStore((state) => state.updateUserPoints);
 
   const meQuery = useQuery({
-    queryKey: ["cliente", "me"],
+    queryKey: ["cliente", "perfil"],
     queryFn: () => api.get<ClienteMe>("/cliente/me"),
   });
 
@@ -68,7 +68,7 @@ export function Cliente() {
       updateUserPoints(result.nuevo_saldo);
 
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["cliente", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] }),
         queryClient.invalidateQueries({ queryKey: ["cliente", "movimientos"] }),
       ]);
     },
@@ -106,6 +106,13 @@ export function Cliente() {
       canjearCodigoRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
   }, []);
+
+  // Sincronizar el saldo de puntos en authStore cuando React Query recibe datos frescos
+  useEffect(() => {
+    if (meQuery.data?.puntos_saldo !== undefined) {
+      updateUserPoints(meQuery.data.puntos_saldo);
+    }
+  }, [meQuery.data, updateUserPoints]);
 
   useEffect(() => {
     setMovimientosPage(1);

@@ -13,10 +13,22 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
     if (orden.estado !== "pagada") return;
     if (Number(orden.total_dinero) <= 0) return;
 
-    // Obtener los ítems comprados con dinero
+    // Obtener los ítems comprados con dinero.
+    // Usar COALESCE para proteger contra snapshots que llegaron en 0 por carritos viejos:
+    //   1. Si puntaje_al_comprar_unitario > 0 → usar ese (snapshot histórico correcto).
+    //   2. Si es 0 → intentar obtener puntaje_al_comprar del producto actual como fallback.
+    //   3. Si el producto tampoco tiene → 0.
     const items = await qAll<{ cantidad: number; puntaje_al_comprar_unitario: number }>(
       conn,
-      "SELECT cantidad, puntaje_al_comprar_unitario FROM orden_items WHERE orden_id = ? AND modo_compra = 'dinero'",
+      `SELECT oi.cantidad,
+              COALESCE(
+                NULLIF(oi.puntaje_al_comprar_unitario, 0),
+                p.puntaje_al_comprar,
+                0
+              ) AS puntaje_al_comprar_unitario
+       FROM orden_items oi
+       LEFT JOIN productos p ON p.id = oi.producto_id
+       WHERE oi.orden_id = ? AND oi.modo_compra = 'dinero'`,
       [orderId]
     );
 
@@ -25,7 +37,22 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
       return acc + (Number(item.cantidad) * pts);
     }, 0);
 
-    if (puntosASumar <= 0) return;
+    if (puntosASumar <= 0) {
+      // Log seguro: orden pagada pero sin puntos acreditables
+      const totalItems = items.length;
+      const sumaPuntaje = items.reduce((acc, item) => acc + Number(item.puntaje_al_comprar_unitario || 0), 0);
+      console.info(
+        `[acreditarPuntosPorCompra] Orden pagada sin puntos acreditables:`,
+        {
+          orden_id: orderId,
+          usuario_id: orden.usuario_id,
+          cantidad_items: totalItems,
+          suma_puntaje_unitario: sumaPuntaje,
+          mensaje: "Orden pagada sin puntos acreditables (productos sin puntaje_al_comprar o solo canjes)",
+        }
+      );
+      return;
+    }
 
     // Verificar si ya se acreditó (aunque el UNIQUE constraint también protege)
     const existente = await qOne(
@@ -57,6 +84,8 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
       "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?",
       [puntosASumar, orden.usuario_id]
     );
+
+    console.info(`[acreditarPuntosPorCompra] Acreditados ${puntosASumar} puntos para orden #${orderId} (usuario #${orden.usuario_id})`);
 
   } catch (error) {
     // Capturar el error y loguearlo de forma segura sin propagarlo

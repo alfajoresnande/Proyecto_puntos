@@ -850,6 +850,16 @@ async function ensureAcreditacionPuntosSchema() {
   await pool.query(
     `ALTER TABLE movimientos_puntos ADD CONSTRAINT uq_mov_referencia UNIQUE (referencia_tipo, referencia_id, tipo)`
   ).catch(() => {});
+  // Backfill: carrito_items que quedaron en 0 antes de que se implementara el snapshot.
+  // Usa el puntaje actual del producto como fallback seguro.
+  await pool.query(
+    `UPDATE carrito_items ci
+     JOIN productos p ON p.id = ci.producto_id
+     SET ci.puntaje_al_comprar_unitario = COALESCE(p.puntaje_al_comprar, 0)
+     WHERE ci.modo_compra = 'dinero'
+       AND ci.puntaje_al_comprar_unitario = 0
+       AND COALESCE(p.puntaje_al_comprar, 0) > 0`
+  ).catch(() => {});
 }
 
 pool

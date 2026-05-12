@@ -26,7 +26,7 @@ export async function expireStalePendingOrders(): Promise<number> {
   const cashDays = await cashOrderValidityDays();
   const rows = await qAll<{ id: number }>(
     pool,
-    `SELECT id
+    `SELECT o.id
      FROM ordenes o
      LEFT JOIN pagos p_cash
        ON p_cash.orden_id = o.id

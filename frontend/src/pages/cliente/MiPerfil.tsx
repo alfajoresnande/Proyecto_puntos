@@ -100,7 +100,7 @@ export function MiPerfil() {
   const codigoSectionRef = useRef<HTMLDivElement | null>(null);
 
   const meQuery = useQuery({
-    queryKey: ["cliente", "me"],
+    queryKey: ["cliente", "perfil"],
     queryFn: () => api.get<ClienteMe>("/cliente/me"),
   });
 
@@ -143,6 +143,13 @@ export function MiPerfil() {
     setLocalidad(me.localidad || "");
     setProvincia(me.provincia || "");
   }, [meQuery.data]);
+
+  // Sincronizar authStore cuando React Query recibe datos frescos del perfil
+  useEffect(() => {
+    if (meQuery.data?.puntos_saldo !== undefined) {
+      updateUserPoints(meQuery.data.puntos_saldo);
+    }
+  }, [meQuery.data, updateUserPoints]);
 
   useEffect(() => {
     if (!provincia || !provincias.length) {
@@ -192,7 +199,7 @@ export function MiPerfil() {
         localidad: result.user.localidad || null,
         provincia: result.user.provincia || null,
       });
-      await queryClient.invalidateQueries({ queryKey: ["cliente", "me"] });
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
     },
     onError: (error: Error) => {
       setPerfilOk("");
@@ -212,7 +219,7 @@ export function MiPerfil() {
       updateUserPoints(result.nuevo_saldo);
 
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["cliente", "me"] }),
+        queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] }),
         queryClient.invalidateQueries({ queryKey: ["cliente", "mi-codigo"] }),
         queryClient.invalidateQueries({ queryKey: ["cliente", "movimientos"] }),
       ]);

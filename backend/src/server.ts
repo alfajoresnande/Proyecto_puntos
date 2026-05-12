@@ -214,6 +214,11 @@ const uploadsStatic = express.static(uploadsPath, {
 app.use("/uploads", uploadsStatic);
 app.use("/api/uploads", uploadsStatic);
 
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 app.use("/api", csrfProtection);
 
 // Rutas

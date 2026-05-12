@@ -112,6 +112,8 @@ export function TiendaOnline() {
       if (sucursalId) qs.set("sucursal_id", sucursalId);
       return api.get<Producto[]>(`/productos?${qs.toString()}`);
     },
+    staleTime: 0,
+    refetchOnMount: true,
   });
 
   const sucursalesQuery = useQuery({
