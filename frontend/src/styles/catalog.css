@@ -3452,6 +3452,9 @@ body.catalogo-background .pagina-page {
 .store-page .catalog-products-shell {
   max-width: 1760px;
   padding: 1.25rem;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .catalog-layout-shell {
