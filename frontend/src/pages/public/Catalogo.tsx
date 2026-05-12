@@ -170,12 +170,6 @@ export function Catalogo() {
   const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
   const productoModalTieneCarousel = productoModalImagenes.length > 1;
 
-  const puntosMax = useMemo(() => {
-    if (!productos.length) return 1000;
-    const maxRaw = Math.max(...productos.map((producto) => producto.puntos_requeridos || 0));
-    return Math.max(50, Math.ceil(maxRaw / 50) * 50);
-  }, [productos]);
-
   const saldoUsuario = isCliente ? user?.puntos_saldo ?? 0 : 0;
 
   useEffect(() => {
@@ -193,8 +187,13 @@ export function Catalogo() {
 
   const rangosPuntos = useMemo<RangoPuntos[]>(() => {
     const out: RangoPuntos[] = [];
+    const puntos = productos
+      .map((producto) => Number(producto.puntos_requeridos || 0))
+      .filter((valor) => Number.isFinite(valor) && valor > 0);
+    const totalProductosConPuntos = puntos.length;
+    const productosCanjeables = puntos.filter((valor) => valor <= saldoUsuario).length;
 
-    if (isCliente && saldoUsuario > 0) {
+    if (isCliente && saldoUsuario > 0 && productosCanjeables > 0 && productosCanjeables < totalProductosConPuntos) {
       out.push({
         id: "afford",
         label: "Lo que puedo canjear",
@@ -205,18 +204,26 @@ export function Catalogo() {
 
     out.push({ id: "all", label: "Todos", match: () => true });
 
-    const q = Math.max(100, puntosMax) / 4;
+    if (!puntos.length) return out;
+
+    const puntosMax = Math.max(...puntos);
+    const q = Math.max(100, Math.ceil(puntosMax / 50) * 50) / 4;
     const t1 = niceRoundPuntos(q);
     const t2 = Math.max(t1 + 25, niceRoundPuntos(q * 2));
     const t3 = Math.max(t2 + 25, niceRoundPuntos(q * 3));
 
-    out.push({ id: "low", label: `Hasta ${t1} pts`, match: (p) => p <= t1 });
-    out.push({ id: "mid-low", label: `${t1}–${t2} pts`, match: (p) => p > t1 && p <= t2 });
-    out.push({ id: "mid-high", label: `${t2}–${t3} pts`, match: (p) => p > t2 && p <= t3 });
-    out.push({ id: "high", label: `Más de ${t3} pts`, match: (p) => p > t3 });
+    const candidates: RangoPuntos[] = [
+      { id: "low", label: `Hasta ${t1} pts`, match: (p) => p <= t1 },
+      { id: "mid-low", label: `${t1}–${t2} pts`, match: (p) => p > t1 && p <= t2 },
+      { id: "mid-high", label: `${t2}–${t3} pts`, match: (p) => p > t2 && p <= t3 },
+      { id: "high", label: `Más de ${t3} pts`, match: (p) => p > t3 },
+    ];
+
+    const usefulRanges = candidates.filter((range) => puntos.some(range.match));
+    if (usefulRanges.length > 1) out.push(...usefulRanges);
 
     return out;
-  }, [puntosMax, isCliente, saldoUsuario]);
+  }, [productos, isCliente, saldoUsuario]);
 
   useEffect(() => {
     if (!rangosPuntos.some((r) => r.id === rangoPuntosId)) {
@@ -748,6 +755,128 @@ export function Catalogo() {
           </div>
         ) : null}
 
+        <div className="catalog-layout-shell">
+          <aside className="catalog-sidebar" aria-label="Filtros de canjes">
+            <div className="catalog-sidebar-head">
+              <p className="catalog-sidebar-title">Filtros</p>
+              <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? "producto" : "productos"}</span>
+            </div>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-cat-label-desktop">
+                Categoria
+              </h3>
+              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-cat-label-desktop">
+                {[
+                  { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
+                  ...categorias.map((c) => ({
+                    value: c,
+                    label: c,
+                    count: conteosPorCategoria[c] ?? 0,
+                  })),
+                ].map((opt) => {
+                  const checked = categoriaActiva === opt.value;
+                  const isEmpty = opt.count === 0 && !checked;
+                  return (
+                    <label
+                      key={opt.value || "__all"}
+                      className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="catalog-categoria-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setCategoriaActiva(opt.value)}
+                        aria-label={`${opt.label}, ${opt.count} ${opt.count === 1 ? "producto" : "productos"}`}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                      <span className="catalog-filter-chip-count" aria-hidden="true">
+                        {opt.count}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-orden-label-desktop">
+                Ordenar por
+              </h3>
+              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-orden-label-desktop">
+                {[
+                  { value: "", label: "Recomendado" },
+                  { value: "puntos-asc", label: "Menor puntaje" },
+                  { value: "puntos-desc", label: "Mayor puntaje" },
+                ].map((opt) => {
+                  const checked = ordenProductos === opt.value;
+                  return (
+                    <label key={opt.value || "__rec"} className={`catalog-filter-chip${checked ? " is-active" : ""}`}>
+                      <input
+                        type="radio"
+                        name="catalog-orden-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setOrdenProductos(opt.value)}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-rango-label-desktop">
+                Rango de puntos
+              </h3>
+              <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-rango-label-desktop">
+                {rangosPuntos.map((rango) => {
+                  const count = conteosPorRango[rango.id] ?? 0;
+                  const checked = rangoPuntosId === rango.id;
+                  const isEmpty = count === 0 && !checked;
+                  return (
+                    <label
+                      key={rango.id}
+                      className={`catalog-filter-chip${checked ? " is-active" : ""}${rango.emphasize ? " is-emphasis" : ""}${isEmpty ? " is-empty" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="catalog-rango-puntos-desktop"
+                        className="catalog-filter-chip-input"
+                        value={rango.id}
+                        checked={checked}
+                        onChange={() => setRangoPuntosId(rango.id)}
+                        aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
+                      />
+                      <span className="catalog-filter-chip-label">{rango.label}</span>
+                      <span className="catalog-filter-chip-count" aria-hidden="true">
+                        {count}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+
+            <button
+              type="button"
+              className="catalog-filter-clear catalog-sidebar-clear"
+              onClick={() => {
+                setCategoriaActiva("");
+                setRangoPuntosId("all");
+                setOrdenProductos("");
+              }}
+              disabled={filtrosActivos === 0}
+            >
+              Limpiar filtros
+            </button>
+          </aside>
+
+          <div className="catalog-results-column">
         {filtrosOpen ? (
           <div
             className="catalog-filters-overlay"
@@ -1096,6 +1225,8 @@ export function Catalogo() {
             })}
           </div>
         )}
+          </div>
+        </div>
       </div>
       {canjeConfirmOpen ? (
         <div className="catalog-confirm-overlay" onClick={() => setCanjeConfirmOpen(false)}>
