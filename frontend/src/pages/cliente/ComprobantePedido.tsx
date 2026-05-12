@@ -212,26 +212,28 @@ export function ComprobantePedido() {
         </div>
 
         {orden.items && orden.items.length > 0 && (
-          <table className="comprobante-table">
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>Producto</th>
-                <th className="text-center" style={{ width: "80px" }}>Cant.</th>
-                <th className="text-right" style={{ width: "120px" }}>Precio Un.</th>
-                <th className="text-right" style={{ width: "120px" }}>Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orden.items.map((item, idx) => (
-                <tr key={`${item.producto_id}-${idx}`}>
-                  <td>{item.nombre}</td>
-                  <td className="text-center">{item.cantidad}</td>
-                  <td className="text-right">{money(item.precio_dinero_unit)}</td>
-                  <td className="text-right">{money(item.subtotal_dinero)}</td>
+          <div className="comprobante-table-wrapper">
+            <table className="comprobante-table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Producto</th>
+                  <th className="text-center" style={{ width: "80px" }}>Cant.</th>
+                  <th className="text-right" style={{ width: "120px" }}>Precio Un.</th>
+                  <th className="text-right" style={{ width: "120px" }}>Subtotal</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orden.items.map((item, idx) => (
+                  <tr key={`${item.producto_id}-${idx}`}>
+                    <td>{item.nombre}</td>
+                    <td className="text-center">{item.cantidad}</td>
+                    <td className="text-right">{money(item.precio_dinero_unit)}</td>
+                    <td className="text-right">{money(item.subtotal_dinero)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
 
         <div className="comprobante-totals">
