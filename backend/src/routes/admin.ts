@@ -20,8 +20,13 @@ import {
   releaseStockForCheckoutItems,
   releaseReservedStockForCanje,
 } from "../services/stock";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "../services/points";
+import {
+  acreditarPuntosPorCompra,
+  recalcularSaldoPuntosUsuario,
+  registrarMovimientoPuntos,
+} from "../services/points";
 import { runReservationExpirations } from "../services/expirations";
+import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -474,14 +479,13 @@ router.post("/puntos", async (req, res) => {
     const userRow = await qOne(conn, "SELECT id, puntos_saldo FROM usuarios WHERE id = ? AND rol = 'cliente'", [usuario_id]);
     if (!userRow) { res.status(404).json({ error: "Cliente no encontrado" }); return; }
 
-    const nuevoSaldo = userRow.puntos_saldo + puntos;
-    if (nuevoSaldo < 0) { res.status(400).json({ error: "El saldo no puede quedar negativo" }); return; }
-
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, creado_por) VALUES (?, ?, ?, ?, ?)`,
-      [usuario_id, tipo, puntos, descripcion ?? null, req.user!.id]
-    );
-    await recalcularSaldoPuntosUsuario(conn, Number(usuario_id));
+    const nuevoSaldo = await registrarMovimientoPuntos(conn, {
+      usuarioId: usuario_id,
+      tipo,
+      puntos,
+      descripcion: descripcion ?? undefined,
+      creadoPor: req.user!.id
+    });
 
     await conn.commit();
     res.json({ ok: true, nuevo_saldo: nuevoSaldo });
@@ -847,9 +851,23 @@ router.patch("/ordenes/:id", async (req, res) => {
       return;
     }
 
+    // FLUJO CENTRALIZADO PARA PAGO
+    if (estado === "pagada" && orden.estado === "pendiente_pago") {
+      console.log(`[ADMIN/ORDENES] Aprobando pago para orden #${orderId} vía flujo central`);
+      await approvePaidOrder(conn, {
+        orderId,
+        provider: "admin",
+        creadoPor: req.user!.id,
+      });
+      await conn.commit();
+      res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+      return;
+    }
+
+    // RESTO DE TRANSICIONES (preparada, enviada, entregada, cancelada, expirada)
     const allowedTransitions: Record<string, string[]> = {
       borrador: ["pendiente_pago", "cancelada"],
-      pendiente_pago: ["pagada", "cancelada", "expirada"],
+      pendiente_pago: ["cancelada", "expirada"], // 'pagada' ya se manejó arriba
       pagada: ["preparada", "enviada", "entregada", "cancelada"],
       preparada: ["enviada", "entregada", "cancelada"],
       enviada: ["entregada", "cancelada"],
@@ -881,9 +899,8 @@ router.patch("/ordenes/:id", async (req, res) => {
         }));
 
       if (stockItems.length) {
-        const shouldFinalizeStock =
-          (estado === "pagada" && Number(orden.total_dinero ?? 0) > 0) ||
-          (estado === "entregada" && orden.estado !== "pagada");
+        // En este bloque ya no entra 'pagada' porque se manejó arriba con approvePaidOrder
+        const shouldFinalizeStock = (estado === "entregada" && orden.estado !== "pagada");
         const shouldReleaseReservedStock =
           (estado === "cancelada" || estado === "expirada") &&
           (orden.estado === "pendiente_pago" || orden.estado === "preparada");
@@ -909,20 +926,15 @@ router.patch("/ordenes/:id", async (req, res) => {
     }
 
     if ((estado === "cancelada" || estado === "expirada") && Number(orden.total_puntos ?? 0) > 0) {
-      await qRun(
-        conn,
-        `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`,
-        [
-          Number(orden.usuario_id),
-          Number(orden.total_puntos),
-          `Devolucion puntos por ${estado} orden #${orderId}`,
-          orderId,
-          req.user!.id,
-        ],
-      );
-      await recalcularSaldoPuntosUsuario(conn, Number(orden.usuario_id));
+      await registrarMovimientoPuntos(conn, {
+        usuarioId: Number(orden.usuario_id),
+        tipo: 'devolucion_canje',
+        puntos: Number(orden.total_puntos),
+        descripcion: `Devolucion puntos por ${estado} orden #${orderId}`,
+        referenciaId: orderId,
+        referenciaTipo: 'ordenes',
+        creadoPor: req.user!.id
+      });
     }
 
     await qRun(conn, "UPDATE ordenes SET estado = ?, notas = COALESCE(?, notas) WHERE id = ?", [
@@ -932,10 +944,8 @@ router.patch("/ordenes/:id", async (req, res) => {
     ]);
 
     if (Number(orden.total_dinero ?? 0) > 0) {
-      if (estado === "pagada") {
-        await qRun(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
-        await acreditarPuntosPorCompra(conn, orderId);
-      } else if (estado === "cancelada" || estado === "expirada") {
+      // 'pagada' ya se manejó arriba. Aquí solo cancelaciones/expiraciones.
+      if (estado === "cancelada" || estado === "expirada") {
         await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
       }
     }

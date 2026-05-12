@@ -63,17 +63,68 @@ export async function recalcularSaldoPuntosUsuario(
 }
 
 /**
+ * Centraliza la creación de movimientos de puntos y el recálculo del saldo del usuario.
+ * Única puerta de entrada para modificar puntos en el sistema.
+ * 
+ * @param conn Conexión (preferiblemente transaccional)
+ * @param params Datos del movimiento
+ * @returns El nuevo saldo calculado
+ */
+export async function registrarMovimientoPuntos(
+  conn: Queryable,
+  params: {
+    usuarioId: number;
+    tipo: 'asignacion_manual' | 'codigo_canje' | 'referido_invitador' | 'referido_invitado' | 'canje_producto' | 'devolucion_canje' | 'acreditacion_compra' | 'ajuste';
+    puntos: number;
+    descripcion?: string;
+    referenciaId?: number;
+    referenciaTipo?: string;
+    creadoPor?: number;
+  }
+): Promise<number> {
+  const { usuarioId, tipo, puntos, descripcion, referenciaId, referenciaTipo, creadoPor } = params;
+
+  if (puntos === 0) {
+    console.log(`[registrarMovimientoPuntos] Omitiendo movimiento de 0 puntos para usuario #${usuarioId} (${tipo})`);
+    return await recalcularSaldoPuntosUsuario(conn, usuarioId);
+  }
+
+  try {
+    // Intentar insertar el movimiento. La clave única (referencia_tipo, referencia_id, tipo) protege contra duplicados.
+    await qRun(
+      conn,
+      `INSERT INTO movimientos_puntos 
+        (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        usuarioId,
+        tipo,
+        puntos,
+        descripcion || null,
+        referenciaId || null,
+        referenciaTipo || null,
+        creadoPor || null,
+      ]
+    );
+    console.log(`[registrarMovimientoPuntos] Movimiento creado: ${tipo} (${puntos} pts) para usuario #${usuarioId}`);
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      console.log(`[registrarMovimientoPuntos] Movimiento duplicado detectado e ignorado: ${tipo} para #${usuarioId} (Ref: ${referenciaTipo} ${referenciaId})`);
+    } else {
+      console.error(`[registrarMovimientoPuntos] Error crítico al insertar movimiento:`, error);
+      throw error; // Re-lanzar para que la transacción externa falle si es necesario
+    }
+  }
+
+  // SIEMPRE recalcular saldo tras un intento de movimiento (sea nuevo o duplicado ignorado)
+  return await recalcularSaldoPuntosUsuario(conn, usuarioId);
+}
+
+/**
  * Acredita puntos por compra de una orden pagada.
- *
- * Garantías:
- * - No duplica movimientos (UNIQUE constraint + check previo).
- * - Si el movimiento ya existía (webhook repetido, race condition), recalcula el saldo igualmente.
- * - Si el INSERT falla por duplicate key (race condition extrema), trata el caso como "ya existía".
- * - Siempre llama a recalcularSaldoPuntosUsuario antes de terminar si hay puntos a acreditar.
- * - El outer try/catch solo captura errores inesperados, no toca el flujo normal.
  */
 export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number): Promise<void> {
-  console.log("Iniciando acreditacion de puntos", { orderId });
+  console.log("[puntos] iniciando acreditacion", { orderId });
 
   try {
     const orden = await qOne<{ id: number; usuario_id: number; estado: string; total_dinero: number }>(
@@ -83,136 +134,58 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
     );
 
     if (!orden) {
-      console.log("[acreditarPuntosPorCompra] Orden no encontrada", { orderId });
+      console.error("[puntos] ERROR: Orden no encontrada", { orderId });
       return;
     }
-    if (orden.estado !== "pagada") {
-      console.log("[acreditarPuntosPorCompra] Orden no está en estado pagada, se omite", {
-        orderId,
-        estado: orden.estado,
-      });
-      return;
-    }
-    if (Number(orden.total_dinero) <= 0) {
-      console.log("[acreditarPuntosPorCompra] Orden sin total en dinero, se omite", { orderId });
-      return;
-    }
-
+    
     const usuarioId = Number(orden.usuario_id);
+    const estado = orden.estado;
+    console.log("[puntos] orden encontrada", { orderId, usuarioId, estado });
 
-    // COALESCE multicapa: snapshot histórico → puntaje actual del producto → 0
+    if (estado !== "pagada") {
+      console.log(`[puntos] omitiendo: orden #${orderId} esta en estado ${estado} (debe ser pagada).`);
+      return;
+    }
+
+    // Calcular puntos (snapshot → producto → 0)
     const items = await qAll<{ cantidad: number; puntaje_al_comprar_unitario: number }>(
       conn,
       `SELECT oi.cantidad,
-              COALESCE(
-                NULLIF(oi.puntaje_al_comprar_unitario, 0),
-                p.puntaje_al_comprar,
-                0
-              ) AS puntaje_al_comprar_unitario
+              COALESCE(NULLIF(oi.puntaje_al_comprar_unitario, 0), p.puntaje_al_comprar, 0) AS puntaje_al_comprar_unitario
        FROM orden_items oi
        LEFT JOIN productos p ON p.id = oi.producto_id
        WHERE oi.orden_id = ? AND oi.modo_compra = 'dinero'`,
       [orderId],
     );
 
-    const puntosASumar = items.reduce((acc, item) => {
-      return acc + Number(item.cantidad) * (Number(item.puntaje_al_comprar_unitario) || 0);
-    }, 0);
+    const puntos = items.reduce((acc, item) => acc + (Number(item.cantidad) * Number(item.puntaje_al_comprar_unitario)), 0);
+    console.log("[puntos] puntos calculados", { orderId, usuarioId, puntos });
 
-    console.log("Puntos calculados", {
-      orderId,
-      usuarioId,
-      puntos: puntosASumar,
-    });
-
-    if (puntosASumar <= 0) {
-      console.log("[acreditarPuntosPorCompra] Orden pagada sin puntos acreditables", {
-        orden_id: orderId,
-        usuario_id: usuarioId,
-        cantidad_items: items.length,
-        mensaje: "Productos sin puntaje_al_comprar configurado o solo canjes",
-      });
+    if (puntos <= 0) {
+      console.log("[puntos] la orden no suma puntos (productos sin puntaje o solo canjes)", { orderId });
       return;
     }
 
-    // ─── Verificar idempotencia: ¿ya existe el movimiento? ───────────────────
-    const existente = await qOne<{ id: number }>(
-      conn,
-      `SELECT id FROM movimientos_puntos
-       WHERE referencia_tipo = 'ordenes'
-         AND referencia_id = ?
-         AND tipo = 'acreditacion_compra'
-       LIMIT 1`,
-      [orderId],
-    );
-
-    if (existente) {
-      // Movimiento ya existe (webhook repetido, polling que llegó tarde, etc.)
-      // No crear otro. Sí recalcular el saldo por si quedó desincronizado.
-      console.log("Movimiento creado o ya existente", {
-        orderId,
-        usuarioId,
-      });
-      const saldo = await recalcularSaldoPuntosUsuario(conn, usuarioId);
-      return;
-    }
-
-    // ─── Intentar insertar el movimiento ─────────────────────────────────────
-    // Aislamos este bloque para poder tratar ER_DUP_ENTRY como caso normal
-    // (race condition: dos webhooks simultáneos superaron el check de existente).
-    let movimientoInsertado = false;
-    try {
-      await qRun(
-        conn,
-        `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'acreditacion_compra', ?, ?, ?, 'ordenes', ?)`,
-        [
-          usuarioId,
-          puntosASumar,
-          `Puntos acreditados por compra de orden #${orderId}`,
-          orderId,
-          usuarioId,
-        ],
-      );
-      movimientoInsertado = true;
-      console.log("Movimiento creado o ya existente", {
-        orderId,
-        usuarioId,
-      });
-    } catch (insertError) {
-      if (isDuplicateKeyError(insertError)) {
-        // Race condition: otro proceso ya insertó el movimiento entre nuestro SELECT y este INSERT.
-        // No es un error real, continúa al recálculo del saldo.
-        console.log("Movimiento creado o ya existente", {
-          orderId,
-          usuarioId,
-        });
-      } else {
-        // Error real (conexión, permisos, etc.) — propagarlo para que el outer catch lo registre.
-        throw insertError;
-      }
-    }
-
-    // ─── Recalcular saldo SIEMPRE (movimiento nuevo o ya existía por race) ───
-    console.log("Recalculando saldo de puntos", { usuarioId });
-    const saldoFinal = await recalcularSaldoPuntosUsuario(conn, usuarioId);
-    console.log("[acreditarPuntosPorCompra] Acreditacion completada", {
-      orderId,
+    // Usar la función central
+    console.log("[puntos] creando movimiento", { orderId, usuarioId, puntos });
+    const saldo = await registrarMovimientoPuntos(conn, {
       usuarioId,
-      puntos: movimientoInsertado ? puntosASumar : 0,
-      saldo_final: saldoFinal,
+      tipo: 'acreditacion_compra',
+      puntos: puntos,
+      descripcion: `Puntos acreditados por compra de orden #${orderId}`,
+      referenciaId: orderId,
+      referenciaTipo: 'ordenes',
+      creadoPor: usuarioId
     });
+
+    console.log("[puntos] movimiento creado o existente", { orderId, usuarioId });
+    console.log("[puntos] saldo recalculado", { usuarioId, saldo });
+
   } catch (error) {
-    // Solo llega aquí si ocurrió un error inesperado (no duplicate key, no flujo normal).
-    // Se loguea y se captura para no romper el flujo de pago del usuario.
+    console.error(`[puntos] ERROR CRÍTICO procesando orden #${orderId}:`, error);
     recordSecurityEvent("error_acreditacion_puntos", null as any, {
       orderId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    console.error("[acreditarPuntosPorCompra] Error inesperado procesando orden", {
-      orderId,
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? error.message : String(error)
     });
   }
 }

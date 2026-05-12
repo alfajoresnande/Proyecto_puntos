@@ -1,6 +1,6 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
 import { finalizeStockForCheckoutItems, releaseStockForCheckoutItems } from "./stock";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "./points";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
 
 export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
 export type OrderLifecycleResult = {
@@ -123,14 +123,23 @@ async function updatePaymentRows(
   );
 
   if (result.affectedRows === 0 && provider && providerPaymentId) {
-    await qRun(
+    // Evitar duplicados: Si ya existe una fila aprobada con el mismo provider_payment_id para esta orden, no insertamos otra.
+    const yaExiste = await qOne<{ id: number }>(
       conn,
-      `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-       SELECT id, ?, NULL, ?, total_dinero, moneda, ?, ?
-       FROM ordenes
-       WHERE id = ?`,
-      [provider, estado, providerPaymentId, payloadJson, orderId],
+      "SELECT id FROM pagos WHERE orden_id = ? AND provider_payment_id = ? AND estado = 'aprobado' LIMIT 1",
+      [orderId, providerPaymentId]
     );
+
+    if (!yaExiste) {
+      await qRun(
+        conn,
+        `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
+         SELECT id, ?, NULL, ?, total_dinero, moneda, ?, ?
+         FROM ordenes
+         WHERE id = ?`,
+        [provider, estado, providerPaymentId, payloadJson, orderId],
+      );
+    }
   }
 }
 
@@ -143,14 +152,15 @@ async function refundOrderPointsIfReserved(
   if (Number(order.total_puntos ?? 0) <= 0) return;
   if (!(order.estado === "pendiente_pago" || order.estado === "preparada")) return;
 
-  await qRun(
-    conn,
-    `INSERT INTO movimientos_puntos
-      (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-     VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`,
-    [order.usuario_id, order.total_puntos, descripcion, order.id, creadoPor],
-  );
-  await recalcularSaldoPuntosUsuario(conn, order.usuario_id);
+  await registrarMovimientoPuntos(conn, {
+    usuarioId: order.usuario_id,
+    tipo: 'devolucion_canje',
+    puntos: order.total_puntos,
+    descripcion,
+    referenciaId: order.id,
+    referenciaTipo: 'ordenes',
+    creadoPor: creadoPor ?? undefined
+  });
 }
 
 export async function approvePaidOrder(
@@ -160,11 +170,13 @@ export async function approvePaidOrder(
     provider,
     providerPaymentId,
     payload,
+    creadoPor = null,
   }: {
     orderId: number;
     provider?: string | null;
     providerPaymentId?: string | null;
     payload?: unknown;
+    creadoPor?: number | null;
   },
 ): Promise<OrderLifecycleResult> {
   console.log("[approvePaidOrder] ejecutado", { orderId });
@@ -175,10 +187,12 @@ export async function approvePaidOrder(
 
   if (order.estado !== "pendiente_pago") {
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
-    console.log("[approvePaidOrder] Orden ya no estaba en pendiente_pago, se omite cambio", {
+    console.log("[approvePaidOrder] Orden ya no estaba en pendiente_pago, verificando puntos igualmente", {
       orderId,
       estado: order.estado,
     });
+    // Intentar acreditar puntos igualmente por si el proceso anterior falló (idempotente)
+    await acreditarPuntosPorCompra(conn, orderId);
     return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
   }
 
@@ -190,6 +204,7 @@ export async function approvePaidOrder(
         items,
         referencia: `orden #${orderId}`,
         ordenId: orderId,
+        creadoPor,
       });
     }
   }

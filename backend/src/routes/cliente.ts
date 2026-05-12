@@ -5,7 +5,11 @@ import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { releaseStockForCheckoutItems, reserveStockForCanje, reserveStockForCheckoutItems } from "../services/stock";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
-import { recalcularSaldoPuntosUsuario } from "../services/points";
+import {
+  acreditarPuntosPorCompra,
+  recalcularSaldoPuntosUsuario,
+  registrarMovimientoPuntos,
+} from "../services/points";
 import {
   createPaymentSession,
   getMercadoPagoPublicKey,
@@ -814,13 +818,14 @@ async function crearCanjeCarrito(
   const descripcionMovimiento =
     descripcionItems.length > 210 ? `Canje carrito: ${descripcionItems.slice(0, 207)}...` : `Canje carrito: ${descripcionItems}`;
 
-  await qRun(
-    conn,
-    `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'canje_producto', ?, ?, ?, 'canjes')`,
-    [usuarioId, -puntosTotales, descripcionMovimiento, canjeId],
-  );
-    await recalcularSaldoPuntosUsuario(conn, usuarioId);
+  await registrarMovimientoPuntos(conn, {
+    usuarioId,
+    tipo: 'canje_producto',
+    puntos: -puntosTotales,
+    descripcion: descripcionMovimiento,
+    referenciaId: canjeId,
+    referenciaTipo: 'canjes'
+  });
 
   const totalUnidades = itemsDetalle.reduce((acc, item) => acc + item.cantidad, 0);
 
@@ -1077,20 +1082,23 @@ router.post("/usar-codigo-invitacion", async (req, res) => {
       return;
     }
 
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`,
-      [invitador.id, pointsInvitador, `${usuario.nombre || "Un cliente"} uso tu codigo de invitacion`, refId]
-    );
+    await registrarMovimientoPuntos(conn, {
+      usuarioId: Number(invitador.id),
+      tipo: 'referido_invitador',
+      puntos: pointsInvitador,
+      descripcion: `${usuario.nombre || "Un cliente"} uso tu codigo de invitacion`,
+      referenciaId: Number(refId),
+      referenciaTipo: 'referidos'
+    });
 
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`,
-      [usuarioId, pointsInvitado, `Bono por usar el codigo de ${invitador.nombre}`, refId]
-    );
-
-    await recalcularSaldoPuntosUsuario(conn, invitador.id);
-    await recalcularSaldoPuntosUsuario(conn, usuarioId);
+    await registrarMovimientoPuntos(conn, {
+      usuarioId: usuarioId,
+      tipo: 'referido_invitado',
+      puntos: pointsInvitado,
+      descripcion: `Bono por usar el codigo de ${invitador.nombre}`,
+      referenciaId: Number(refId),
+      referenciaTipo: 'referidos'
+    });
 
     await conn.commit();
 
@@ -2593,42 +2601,11 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
       throw new HttpError(400, `No se puede cancelar una orden en estado '${orden.estado}'.`);
     }
 
-    const items = await getOrdenItems(conn, ordenId);
-    if (orden.sucursal_retiro_id && items.length) {
-      await releaseStockForCheckoutItems(conn, {
-        sucursalId: Number(orden.sucursal_retiro_id),
-        items: items
-          .filter((item) => Number(item.track_stock) === 1)
-          .map((item) => ({
-            producto_id: Number(item.producto_id),
-            cantidad: Number(item.cantidad),
-            origen: item.modo_compra === "dinero" ? "compra" : "canje",
-            descripcion: `Cancelación de orden #${ordenId}`,
-          })),
-        referencia: `cancelación orden #${ordenId}`,
-        creadoPor: req.user!.id,
-        ordenId,
-      });
-    }
-
-    const totalPuntos = Number(orden.total_puntos ?? 0);
-    if (totalPuntos > 0) {
-      await qRun(
-        conn,
-        `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes')`,
-        [req.user!.id, totalPuntos, `Devolucion por cancelacion orden #${ordenId}`, ordenId],
-      );
-      await recalcularSaldoPuntosUsuario(conn, req.user!.id);
-    }
-
-    await qRun(conn, "UPDATE ordenes SET estado = 'cancelada' WHERE id = ?", [ordenId]);
-    await qRun(
-      conn,
-      "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado IN ('iniciado')",
-      [ordenId],
-    );
+    const result = await rejectOrExpirePendingOrder(conn, {
+      orderId: ordenId,
+      nextState: "cancelada",
+      creadoPor: req.user!.id
+    });
 
     await conn.commit();
     res.json({ ok: true, orden_id: ordenId, estado: "cancelada" });
@@ -2682,12 +2659,14 @@ router.post("/canjear-codigo", async (req, res) => {
 
     await qRun(conn, "INSERT INTO usos_codigos (codigo_id, usuario_id) VALUES (?, ?)", [c.id, usuarioId]);
     await qRun(conn, "UPDATE codigos_puntos SET usos_actuales = usos_actuales + 1 WHERE id = ?", [c.id]);
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'codigo_canje', ?, ?, ?, 'codigos_puntos')`,
-      [usuarioId, c.puntos_valor, `Codigo canjeado: ${codigo}`, c.id]
-    );
-    await recalcularSaldoPuntosUsuario(conn, usuarioId);
+    await registrarMovimientoPuntos(conn, {
+      usuarioId,
+      tipo: 'codigo_canje',
+      puntos: c.puntos_valor,
+      descripcion: `Codigo canjeado: ${codigo}`,
+      referenciaId: c.id,
+      referenciaTipo: 'codigos_puntos'
+    });
 
     await conn.commit();
 

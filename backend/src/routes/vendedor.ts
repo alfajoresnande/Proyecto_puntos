@@ -3,7 +3,12 @@ import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { finalizeStockForCheckoutItems } from "../services/stock";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "../services/points";
+import {
+  acreditarPuntosPorCompra,
+  recalcularSaldoPuntosUsuario,
+  registrarMovimientoPuntos,
+} from "../services/points";
+import { approvePaidOrder } from "../services/orderLifecycle";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -197,12 +202,13 @@ router.post("/cargar", async (req, res, next) => {
       return;
     }
 
-    await qRun(conn,
-      `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, creado_por)
-       VALUES (?, 'asignacion_manual', ?, ?, ?)`,
-      [cliente.id, totalPuntos, descripcion ?? `Carga de puntos — ${items.length} producto(s)`, req.user!.id]
-    );
-    await recalcularSaldoPuntosUsuario(conn, cliente.id);
+    await registrarMovimientoPuntos(conn, {
+      usuarioId: Number(cliente.id),
+      tipo: 'asignacion_manual',
+      puntos: totalPuntos,
+      descripcion: descripcion || `Carga de puntos — ${items.length} producto(s)`,
+      creadoPor: req.user!.id
+    });
 
     await conn.commit();
 
@@ -479,41 +485,19 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     }
 
     if (orden.estado === "pendiente_pago" && estado === "pagada") {
-      const items = await qAll<OrdenVendedorItem>(
-        conn,
-        `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
-                oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
-         FROM orden_items oi
-         JOIN productos p ON p.id = oi.producto_id
-         WHERE oi.orden_id = ?
-         ORDER BY oi.id ASC`,
-        [orderId],
-      );
-      const stockItems = items
-        .filter((item) => Number(item.track_stock ?? 0) === 1)
-        .map((item) => ({
-          producto_id: Number(item.producto_id),
-          cantidad: Number(item.cantidad),
-          origen: item.modo_compra === "dinero" ? ("compra" as const) : ("canje" as const),
-          descripcion: `Pago en efectivo orden #${orderId}`,
-        }));
-
-      if (orden.sucursal_retiro_id && stockItems.length) {
-        await finalizeStockForCheckoutItems(conn, {
-          sucursalId: Number(orden.sucursal_retiro_id),
-          items: stockItems,
-          referencia: `orden #${orderId}`,
-          creadoPor: req.user!.id,
-          ordenId: orderId,
-        });
-      }
-      await qRun(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+      console.log(`[VENDEDOR/ORDENES] Aprobando pago para orden #${orderId} vía flujo central`);
+      await approvePaidOrder(conn, {
+        orderId,
+        provider: "vendedor",
+        creadoPor: req.user!.id,
+      });
+      await conn.commit();
+      res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+      return;
     }
 
+    // RESTO DE TRANSICIONES
     await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
-    if (estado === "pagada") {
-      await acreditarPuntosPorCompra(conn, orderId);
-    }
     await conn.commit();
     res.json({ ok: true });
   } catch (err) {
