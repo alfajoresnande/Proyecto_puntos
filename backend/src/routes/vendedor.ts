@@ -472,8 +472,9 @@ router.patch("/ordenes/:id", async (req, res, next) => {
       [orderId],
     );
     const isCashPayment = pago?.proveedor === "efectivo" || pago?.metodo === "cash";
+    const paidStates = ["pagada", "preparada", "enviada", "entregada"];
     const allowedTransitions: Record<string, string[]> = {
-      pendiente_pago: isCashPayment ? ["pagada"] : [],
+      pendiente_pago: isCashPayment ? paidStates : [],
       pagada: ["preparada", "enviada", "entregada"],
       preparada: ["enviada", "entregada"],
       enviada: ["entregada"],
@@ -484,16 +485,21 @@ router.patch("/ordenes/:id", async (req, res, next) => {
       return;
     }
 
-    if (orden.estado === "pendiente_pago" && estado === "pagada") {
-      console.log(`[VENDEDOR/ORDENES] Aprobando pago para orden #${orderId} vía flujo central`);
+    // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO (Efectivo)
+    if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
+      console.log(`[VENDEDOR/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
       await approvePaidOrder(conn, {
         orderId,
         provider: "vendedor",
         creadoPor: req.user!.id,
       });
-      await conn.commit();
-      res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
-      return;
+      
+      if (estado === "pagada") {
+        await conn.commit();
+        res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+        return;
+      }
+      // Si es otro estado, seguimos abajo para el UPDATE final de estado
     }
 
     // RESTO DE TRANSICIONES

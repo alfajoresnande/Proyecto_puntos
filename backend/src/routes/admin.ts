@@ -851,27 +851,36 @@ router.patch("/ordenes/:id", async (req, res) => {
       return;
     }
 
-    // FLUJO CENTRALIZADO PARA PAGO
-    if (estado === "pagada" && orden.estado === "pendiente_pago") {
-      console.log(`[ADMIN/ORDENES] Aprobando pago para orden #${orderId} vía flujo central`);
+    // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO
+    // Si la orden está pendiente y se mueve a un estado que implica cobro (pagada, preparada, enviada, entregada)
+    const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+    if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
+      console.log(`[ADMIN/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
       await approvePaidOrder(conn, {
         orderId,
         provider: "admin",
         creadoPor: req.user!.id,
       });
-      await conn.commit();
-      res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
-      return;
+      // NO hacemos commit/return aquí todavía si el estado final deseado NO es 'pagada'
+      // Si el estado es 'pagada', ya terminamos.
+      if (estado === "pagada") {
+        await conn.commit();
+        res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+        return;
+      }
+      // Si el estado es otro (preparada, entregada, etc), seguimos abajo para el UPDATE de estado final
+      // Pero 'orden.estado' sigue siendo 'pendiente_pago' en memoria, hay que tener cuidado con las validaciones de abajo.
     }
 
-    // RESTO DE TRANSICIONES (preparada, enviada, entregada, cancelada, expirada)
+    // RESTO DE TRANSICIONES
     const allowedTransitions: Record<string, string[]> = {
       borrador: ["pendiente_pago", "cancelada"],
-      pendiente_pago: ["cancelada", "expirada"], // 'pagada' ya se manejó arriba
+      pendiente_pago: ["pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"],
       pagada: ["preparada", "enviada", "entregada", "cancelada"],
       preparada: ["enviada", "entregada", "cancelada"],
       enviada: ["entregada", "cancelada"],
     };
+
     if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
       res.status(400).json({ error: `No se puede pasar una orden de '${orden.estado}' a '${estado}'.` });
       return;
@@ -899,8 +908,12 @@ router.patch("/ordenes/:id", async (req, res) => {
         }));
 
       if (stockItems.length) {
-        // En este bloque ya no entra 'pagada' porque se manejó arriba con approvePaidOrder
-        const shouldFinalizeStock = (estado === "entregada" && orden.estado !== "pagada");
+        // Si ya pasó por approvePaidOrder (estado inicial pendiente_pago y final en paidStates), 
+        // approvePaidOrder ya ejecutó finalizeStockForCheckoutItems. 
+        // No debemos duplicarlo.
+        const skipStockIfPaidNow = (orden.estado === "pendiente_pago" && paidStates.includes(estado));
+        
+        const shouldFinalizeStock = !skipStockIfPaidNow && (estado === "entregada" && orden.estado !== "pagada");
         const shouldReleaseReservedStock =
           (estado === "cancelada" || estado === "expirada") &&
           (orden.estado === "pendiente_pago" || orden.estado === "preparada");
@@ -944,7 +957,6 @@ router.patch("/ordenes/:id", async (req, res) => {
     ]);
 
     if (Number(orden.total_dinero ?? 0) > 0) {
-      // 'pagada' ya se manejó arriba. Aquí solo cancelaciones/expiraciones.
       if (estado === "cancelada" || estado === "expirada") {
         await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
       }

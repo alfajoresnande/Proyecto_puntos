@@ -93,7 +93,9 @@ async function updatePaymentRows(
     payload?: unknown;
   },
 ) {
+  const isManualApproval = provider === "admin" || provider === "vendedor";
   const payloadJson = payload === undefined ? null : JSON.stringify(payload);
+  
   const params: unknown[] = [estado];
   const setParts = ["estado = ?"];
 
@@ -108,7 +110,9 @@ async function updatePaymentRows(
 
   params.push(orderId);
   const whereParts = ["orden_id = ?"];
-  if (provider) {
+  
+  // Si no es aprobación manual, restringimos por el proveedor específico (ej. mercadopago)
+  if (provider && !isManualApproval) {
     whereParts.push("proveedor = ?");
     params.push(provider);
   }
@@ -122,23 +126,29 @@ async function updatePaymentRows(
     params,
   );
 
-  if (result.affectedRows === 0 && provider && providerPaymentId) {
-    // Evitar duplicados: Si ya existe una fila aprobada con el mismo provider_payment_id para esta orden, no insertamos otra.
-    const yaExiste = await qOne<{ id: number }>(
-      conn,
-      "SELECT id FROM pagos WHERE orden_id = ? AND provider_payment_id = ? AND estado = 'aprobado' LIMIT 1",
-      [orderId, providerPaymentId]
-    );
+  if (result.affectedRows === 0 && provider) {
+    // Si es aprobación manual y no hay fila iniciada, creamos una de efectivo
+    const effectiveProvider = isManualApproval ? "efectivo" : provider;
+    const effectiveMethod = isManualApproval ? "cash" : null;
+    const effectivePaymentId = providerPaymentId || (isManualApproval ? `manual_${orderId}_${Date.now()}` : null);
 
-    if (!yaExiste) {
-      await qRun(
+    if (effectivePaymentId) {
+      const yaExiste = await qOne<{ id: number }>(
         conn,
-        `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-         SELECT id, ?, NULL, ?, total_dinero, moneda, ?, ?
-         FROM ordenes
-         WHERE id = ?`,
-        [provider, estado, providerPaymentId, payloadJson, orderId],
+        "SELECT id FROM pagos WHERE orden_id = ? AND provider_payment_id = ? AND estado = 'aprobado' LIMIT 1",
+        [orderId, effectivePaymentId]
       );
+
+      if (!yaExiste) {
+        await qRun(
+          conn,
+          `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
+           SELECT id, ?, ?, ?, total_dinero, moneda, ?, ?
+           FROM ordenes
+           WHERE id = ?`,
+          [effectiveProvider, effectiveMethod, estado, effectivePaymentId, payloadJson, orderId],
+        );
+      }
     }
   }
 }

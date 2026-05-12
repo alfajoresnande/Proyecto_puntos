@@ -142,8 +142,9 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
     const estado = orden.estado;
     console.log("[puntos] orden encontrada", { orderId, usuarioId, estado });
 
-    if (estado !== "pagada") {
-      console.log(`[puntos] omitiendo: orden #${orderId} esta en estado ${estado} (debe ser pagada).`);
+    const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+    if (!paidStates.includes(estado)) {
+      console.log(`[puntos] omitiendo: orden #${orderId} esta en estado ${estado} (debe ser uno de: ${paidStates.join(", ")}).`);
       return;
     }
 
