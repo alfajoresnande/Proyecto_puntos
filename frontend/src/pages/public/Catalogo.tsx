@@ -82,11 +82,6 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
-function availabilityLabel(producto: Producto): string {
-  if (producto.track_stock === false) return "Consultar";
-  return productHasStock(producto) ? "Disponible" : "Sin stock";
-}
-
 type RangoPuntosId = "afford" | "all" | "low" | "mid-low" | "mid-high" | "high";
 
 type RangoPuntos = {
@@ -101,6 +96,23 @@ function niceRoundPuntos(n: number): number {
   if (n < 1000) return Math.round(n / 50) * 50;
   if (n < 5000) return Math.round(n / 100) * 100;
   return Math.round(n / 500) * 500;
+}
+
+function pointsRangeVisualBounds(id: RangoPuntosId): { start: number; end: number } {
+  switch (id) {
+    case "afford":
+      return { start: 0, end: 50 };
+    case "low":
+      return { start: 0, end: 25 };
+    case "mid-low":
+      return { start: 25, end: 50 };
+    case "mid-high":
+      return { start: 50, end: 75 };
+    case "high":
+      return { start: 75, end: 100 };
+    default:
+      return { start: 0, end: 100 };
+  }
 }
 
 export function Catalogo() {
@@ -163,6 +175,15 @@ export function Catalogo() {
   const productos = productosQuery.data ?? [];
   const categorias = categoriasQuery.data ?? [];
   const sucursalesRetiro = sucursalesQuery.data ?? [];
+  const puntosCatalogo = useMemo(
+    () =>
+      productos
+        .map((producto) => Number(producto.puntos_requeridos || 0))
+        .filter((puntos) => Number.isFinite(puntos) && puntos > 0),
+    [productos],
+  );
+  const puntosMin = puntosCatalogo.length ? Math.min(...puntosCatalogo) : 0;
+  const puntosMax = puntosCatalogo.length ? Math.max(...puntosCatalogo) : 0;
   const sucursalRetiroSeleccionada =
     (sucursalRetiroId ? sucursalesRetiro.find((item) => String(item.id) === sucursalRetiroId) : undefined) ||
     (sucursalesRetiro.length === 1 ? sucursalesRetiro[0] : undefined);
@@ -691,75 +712,11 @@ export function Catalogo() {
         </div>
       </div>
       <div className="catalog-products-shell">
-        {!loading ? (
-          <div className="catalog-filters">
-            <div className="catalog-filter-search">
-              <input
-                className="catalog-filter-search-input"
-                placeholder="Buscar producto..."
-                value={busquedaProducto}
-                onChange={(event) => setBusquedaProducto(event.target.value)}
-                aria-label="Buscar producto"
-              />
-            </div>
-
-            <div className="catalog-filters-bar">
-              <button
-                ref={filtrosTriggerRef}
-                type="button"
-                className={`catalog-filters-trigger${filtrosActivos > 0 ? " has-active" : ""}`}
-                aria-haspopup="dialog"
-                aria-expanded={filtrosOpen}
-                aria-controls="catalog-filters-panel"
-                onClick={() => setFiltrosOpen(true)}
-              >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <circle cx="9" cy="6" r="2" />
-                  <line x1="4" y1="12" x2="20" y2="12" />
-                  <circle cx="15" cy="12" r="2" />
-                  <line x1="4" y1="18" x2="20" y2="18" />
-                  <circle cx="9" cy="18" r="2" />
-                </svg>
-                <span>Filtros</span>
-                {filtrosActivos > 0 ? (
-                  <span
-                    className="catalog-filters-trigger-badge"
-                    aria-label={`${filtrosActivos} filtros activos`}
-                  >
-                    {filtrosActivos}
-                  </span>
-                ) : null}
-              </button>
-
-              <span
-                className="catalog-filter-results"
-                role="status"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                {productosFiltrados.length}{" "}
-                {productosFiltrados.length === 1 ? "producto" : "productos"}
-              </span>
-            </div>
-          </div>
-        ) : null}
-
         <div className="catalog-layout-shell">
           <aside className="catalog-sidebar" aria-label="Filtros de canjes">
             <div className="catalog-sidebar-head">
               <p className="catalog-sidebar-title">Filtros</p>
-              <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? "producto" : "productos"}</span>
+              <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? "producto encontrado" : "productos encontrados"}</span>
             </div>
 
             <section className="catalog-filters-section">
@@ -845,36 +802,43 @@ export function Catalogo() {
               <h3 className="catalog-filters-section-title" id="catalog-rango-label-desktop">
                 Rango de puntos
               </h3>
-              <details className="catalog-filter-dropdown">
-                <summary>{rangosPuntos.find((rango) => rango.id === rangoPuntosId)?.label ?? "Todos"}</summary>
-                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-rango-label-desktop">
+              <div className="catalog-range-control" role="radiogroup" aria-labelledby="catalog-rango-label-desktop">
+                <div className="catalog-range-track" aria-hidden="true">
+                  <span
+                    className="catalog-range-fill"
+                    style={{
+                      left: `${pointsRangeVisualBounds(rangoPuntosId).start}%`,
+                      right: `${100 - pointsRangeVisualBounds(rangoPuntosId).end}%`,
+                    }}
+                  />
+                </div>
+                <div className="catalog-range-options">
                 {rangosPuntos.map((rango) => {
                   const count = conteosPorRango[rango.id] ?? 0;
                   const checked = rangoPuntosId === rango.id;
                   const isEmpty = count === 0 && !checked;
+                  const bounds = pointsRangeVisualBounds(rango.id);
                   return (
-                    <label
+                    <button
                       key={rango.id}
-                      className={`catalog-filter-chip${checked ? " is-active" : ""}${rango.emphasize ? " is-emphasis" : ""}${isEmpty ? " is-empty" : ""}`}
+                      type="button"
+                      className={`catalog-range-point${checked ? " is-active" : ""}${rango.emphasize ? " is-emphasis" : ""}${isEmpty ? " is-empty" : ""}`}
+                      style={{ left: `${(bounds.start + bounds.end) / 2}%` }}
+                      onClick={() => setRangoPuntosId(rango.id)}
+                      disabled={isEmpty}
+                      aria-pressed={checked}
+                      aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
                     >
-                      <input
-                        type="radio"
-                        name="catalog-rango-puntos-desktop"
-                        className="catalog-filter-chip-input"
-                        value={rango.id}
-                        checked={checked}
-                        onChange={() => setRangoPuntosId(rango.id)}
-                        aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
-                      />
-                      <span className="catalog-filter-chip-label">{rango.label}</span>
-                      <span className="catalog-filter-chip-count" aria-hidden="true">
-                        {count}
-                      </span>
-                    </label>
+                      <span>{rango.label}</span>
+                    </button>
                   );
                 })}
                 </div>
-              </details>
+                <div className="catalog-range-values">
+                  <span>{puntosMin} pts<small>min</small></span>
+                  <span>{puntosMax} pts<small>max</small></span>
+                </div>
+              </div>
             </section>
 
             <button
@@ -892,6 +856,69 @@ export function Catalogo() {
           </aside>
 
           <div className="catalog-results-column">
+        {!loading ? (
+          <div className="catalog-filters">
+            <div className="catalog-filter-search">
+              <input
+                className="catalog-filter-search-input"
+                placeholder="Buscar producto..."
+                value={busquedaProducto}
+                onChange={(event) => setBusquedaProducto(event.target.value)}
+                aria-label="Buscar producto"
+              />
+            </div>
+
+            <div className="catalog-filters-bar">
+              <button
+                ref={filtrosTriggerRef}
+                type="button"
+                className={`catalog-filters-trigger${filtrosActivos > 0 ? " has-active" : ""}`}
+                aria-haspopup="dialog"
+                aria-expanded={filtrosOpen}
+                aria-controls="catalog-filters-panel"
+                onClick={() => setFiltrosOpen(true)}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <circle cx="9" cy="6" r="2" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <circle cx="15" cy="12" r="2" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                  <circle cx="9" cy="18" r="2" />
+                </svg>
+                <span>Filtros</span>
+                {filtrosActivos > 0 ? (
+                  <span
+                    className="catalog-filters-trigger-badge"
+                    aria-label={`${filtrosActivos} filtros activos`}
+                  >
+                    {filtrosActivos}
+                  </span>
+                ) : null}
+              </button>
+
+              <span
+                className="catalog-filter-results"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {productosFiltrados.length}{" "}
+                {productosFiltrados.length === 1 ? "producto" : "productos"}
+              </span>
+            </div>
+          </div>
+        ) : null}
         {filtrosOpen ? (
           <div
             className="catalog-filters-overlay"
@@ -1169,15 +1196,6 @@ export function Catalogo() {
                         </div>
                       </>
                     ) : null}
-                    <div className="product-card-divider" />
-                    <div className="product-card-row product-card-points-tile">
-                      <span className="product-points-copy">
-                        <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}:` : "Disponibilidad:"}</span>
-                        <span className={sinStock ? "store-stock-empty" : "earn"}>
-                          {availabilityLabel(producto)}
-                        </span>
-                      </span>
-                    </div>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-ver"
@@ -1511,13 +1529,6 @@ export function Catalogo() {
                     </div>
                   </>
                 ) : null}
-                <div className="product-card-divider" />
-                <div className="product-card-row">
-                  <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}` : "Disponibilidad"}</span>
-                  <span className={productoModalSinStock ? "store-stock-empty" : "earn"}>
-                    {availabilityLabel(productoModal)}
-                  </span>
-                </div>
               </div>
 
               {user ? (
