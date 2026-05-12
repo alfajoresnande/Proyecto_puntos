@@ -151,7 +151,6 @@ export function Navbar() {
             {canSeeCliente ? (
               <NavLink to="/cliente" className={({ isActive }) => `navbar-points-action${isActive ? " active" : ""}`}>
                 Mis Puntos
-                <span aria-hidden="true">☆</span>
               </NavLink>
             ) : null}
             {user ? (

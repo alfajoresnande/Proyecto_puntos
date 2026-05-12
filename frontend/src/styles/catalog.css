@@ -429,8 +429,7 @@
   color: #231208;
 }
 
-.catalog-user-icon svg,
-.catalog-points-star svg {
+.catalog-user-icon svg {
   width: 100%;
   height: 100%;
   fill: currentColor;
@@ -438,21 +437,10 @@
 
 .catalog-points-summary {
   display: grid;
-  grid-template-columns: 25px auto;
   grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 0.2rem;
   margin-left: auto;
   text-align: right;
-}
-
-.catalog-points-star {
-  grid-row: 1 / span 2;
-  display: inline-flex;
-  width: 25px;
-  height: 25px;
-  color: #E5B23F;
-  filter: drop-shadow(0 1px 1px rgba(80, 44, 11, 0.18));
 }
 
 .catalog-redemption-account .banner-pts {
@@ -3253,12 +3241,23 @@ body.catalogo-background .pagina-page {
 
 .catalog-redemption-page .product-card-row,
 .store-page .product-card-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
   min-height: 28px;
+  min-width: 0;
   padding-top: 0.55rem;
   border-top: 1px solid #E6D3B8;
   color: #593927;
   font-size: 0.78rem;
+  justify-content: space-between;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.catalog-redemption-page .product-card-row > span,
+.store-page .product-card-row > span {
+  min-width: 0;
 }
 
 .catalog-redemption-page .product-card-divider,
@@ -3269,15 +3268,19 @@ body.catalogo-background .pagina-page {
 .catalog-redemption-page .product-card-row .cost,
 .store-page .product-card-row .cost {
   color: #1F1008;
+  flex: 0 0 auto;
   font-size: 1.02rem;
   font-weight: 900;
+  text-align: right;
 }
 
 .catalog-redemption-page .product-card-row .earn,
 .store-page .product-card-row .earn {
   color: #137E45;
+  flex: 0 0 auto;
   font-size: 0.82rem;
   font-weight: 900;
+  text-align: right;
 }
 
 .catalog-redemption-page .store-stock-empty,
@@ -3413,6 +3416,23 @@ body.catalogo-background .pagina-page {
   .catalog-redemption-page .product-card-body,
   .store-page .product-card-body {
     padding: 2.4rem 1rem 1rem;
+  }
+
+  .catalog-redemption-page .product-card-points,
+  .store-page .product-card-points {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catalog-redemption-page .product-card-row,
+  .store-page .product-card-row {
+    flex-wrap: wrap;
+  }
+
+  .catalog-redemption-page .product-card-row .cost,
+  .catalog-redemption-page .product-card-row .earn,
+  .store-page .product-card-row .cost,
+  .store-page .product-card-row .earn {
+    text-align: left;
   }
 
   .catalog-redemption-page .product-card-name,

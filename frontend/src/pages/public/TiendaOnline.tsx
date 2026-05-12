@@ -440,11 +440,6 @@ export function TiendaOnline() {
                 </div>
               </div>
               <div className="catalog-points-summary">
-                <span className="catalog-points-star" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
-                  </svg>
-                </span>
                 <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
                 <p className="banner-pts-label">puntos</p>
               </div>
@@ -764,9 +759,6 @@ export function TiendaOnline() {
                           <div className="product-card-divider" />
                           <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.9 }}>
-                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                              </svg>
                               Sumás {producto.puntaje_al_comprar} puntos con este producto
                             </span>
                           </div>

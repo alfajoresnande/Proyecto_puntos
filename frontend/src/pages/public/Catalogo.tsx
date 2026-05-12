@@ -659,11 +659,6 @@ export function Catalogo() {
                 </div>
               </div>
               <div className="catalog-points-summary">
-                <span className="catalog-points-star" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
-                  </svg>
-                </span>
                 <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
                 <p className="banner-pts-label">puntos</p>
               </div>
@@ -896,11 +891,6 @@ export function Catalogo() {
                               count === 1 ? "producto" : "productos"
                             }`}
                           />
-                          {rango.emphasize ? (
-                            <span className="catalog-filter-chip-icon" aria-hidden="true">
-                              ★
-                            </span>
-                          ) : null}
                           <span className="catalog-filter-chip-label">{rango.label}</span>
                           <span className="catalog-filter-chip-count" aria-hidden="true">
                             {count}
