@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api";
 
 type Canje = {
@@ -67,7 +68,6 @@ export function MisCanjes() {
   const [canjeFilter, setCanjeFilter] = useState<CanjeFilter>("todos");
   const [canjePage, setCanjePage] = useState(1);
   const [copiadoCanjeId, setCopiadoCanjeId] = useState<number | null>(null);
-  const [detalleAbiertoId, setDetalleAbiertoId] = useState<number | null>(null);
 
   const canjesQuery = useQuery({
     queryKey: ["cliente", "canjes"],
@@ -180,109 +180,33 @@ export function MisCanjes() {
                   src={canje.producto_imagen || "https://via.placeholder.com/48"}
                   className="w-12 h-12 rounded-lg object-cover bg-ios-gray6 flex-shrink-0"
                 />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: "#5D3A1A" }}>
-                    {canje.producto_nombre}
-                  </p>
-                  {canje.items && canje.items.length > 1 ? (
-                    <p className="text-[11px] mt-1" style={{ color: "#A08060" }}>
-                      {canje.items.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(" | ")}
+                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold truncate" style={{ color: "#5D3A1A" }}>
+                      {canje.producto_nombre}
                     </p>
-                  ) : null}
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="cliente-estado-chip">{estadoLabel(canje.estado)}</span>
-                    <span className="text-[10px]" style={{ color: "#A08060" }}>
-                      {formatDate(canje.created_at)}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
-                    <p className="text-[10px] uppercase font-bold tracking-wider" style={{ color: "#A08060", margin: 0 }}>
-                      Codigo: <span className="text-sm" style={{ color: "#D4621A" }}>{getCanjeCode(canje)}</span>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void copiarCodigoCanje(canje)}
-                      disabled={getCanjeCode(canje) === "Generando..."}
-                      style={{
-                        border: "1px solid #E6D3B8",
-                        borderRadius: "8px",
-                        background: "#FFF8F0",
-                        color: "#6B3E26",
-                        fontWeight: 700,
-                        fontSize: "0.7rem",
-                        padding: "0.2rem 0.45rem",
-                        cursor: getCanjeCode(canje) === "Generando..." ? "default" : "pointer",
-                      }}
-                    >
-                      {copiadoCanjeId === canje.id ? "Copiado" : "Copiar"}
-                    </button>
-                  </div>
-                  <p className="text-xs mt-1" style={{ color: "#A08060" }}>
-                    Puntos usados: <strong style={{ color: "#5D3A1A" }}>{canje.puntos_usados}</strong>
-                  </p>
-                  {canje.sucursal_nombre ? (
-                    <p className="text-xs mt-1" style={{ color: "#A08060" }}>
-                      Retiro en:{" "}
-                      <strong style={{ color: "#5D3A1A" }}>
-                        {canje.sucursal_nombre}
-                        {" - "}
-                        {canje.sucursal_direccion}
-                        {canje.sucursal_piso ? `, Piso ${canje.sucursal_piso}` : ""}
-                        {canje.sucursal_localidad ? `, ${canje.sucursal_localidad}` : ""}
-                        {canje.sucursal_provincia ? `, ${canje.sucursal_provincia}` : ""}
-                      </strong>
-                    </p>
-                  ) : null}
-                  {canje.estado === "expirado" ? (
-                    <div className="cliente-canje-expired-actions">
-                      <button
-                        type="button"
-                        className="cliente-canje-detail-btn"
-                        onClick={() => setDetalleAbiertoId((prev) => (prev === canje.id ? null : canje.id))}
-                      >
-                        {detalleAbiertoId === canje.id ? "Ocultar detalle" : "Ver detalle"}
-                      </button>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="cliente-estado-chip">{estadoLabel(canje.estado)}</span>
+                      <span className="text-[10px]" style={{ color: "#A08060" }}>
+                        {formatDate(canje.created_at)}
+                      </span>
                     </div>
-                  ) : null}
+                  </div>
+                  
+                  <div className="flex flex-col sm:items-end mt-2 sm:mt-0">
+                    <p className="text-xs font-semibold mb-2" style={{ color: "#5D3A1A" }}>
+                      {canje.puntos_usados} pts
+                    </p>
+                    <Link
+                      to={`/mis-canjes/${canje.id}`}
+                      className="catalog-float-toast-btn-secondary"
+                      style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem", height: "auto", textDecoration: "none" }}
+                    >
+                      Ver comprobante
+                    </Link>
+                  </div>
                 </div>
               </div>
-
-              {canje.estado === "pendiente" && canje.fecha_limite_retiro ? (
-                <div className="cliente-limite-box">
-                  Retirar antes del: <strong style={{ color: "#D4621A" }}>{formatDate(canje.fecha_limite_retiro)}</strong>
-                </div>
-              ) : null}
-
-              {canje.estado === "expirado" && detalleAbiertoId === canje.id ? (
-                <div className="cliente-canje-detail-box">
-                  <p className="cliente-canje-detail-title">Detalle del canje expirado</p>
-                  {canje.fecha_limite_retiro ? (
-                    <p className="text-xs" style={{ color: "#8B5A30", margin: "0 0 0.45rem" }}>
-                      Expiró el: <strong>{formatDate(canje.fecha_limite_retiro)}</strong>
-                    </p>
-                  ) : null}
-                  {canje.items && canje.items.length > 0 ? (
-                    <div className="cliente-canje-detail-list">
-                      {canje.items.map((item) => (
-                        <div key={`${canje.id}-${item.producto_id}`} className="cliente-canje-detail-row">
-                          <span>{item.producto_nombre}</span>
-                          <strong>x{item.cantidad}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs" style={{ color: "#8B5A30", margin: 0 }}>
-                      Producto: <strong>{canje.producto_nombre}</strong>
-                    </p>
-                  )}
-                </div>
-              ) : null}
-
-              {canje.notas ? (
-                <p className="text-xs mt-2" style={{ color: "#A08060" }}>
-                  Nota: {canje.notas}
-                </p>
-              ) : null}
             </div>
           ))}
         </div>

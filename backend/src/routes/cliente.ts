@@ -1195,6 +1195,58 @@ router.get("/canjes", async (req, res) => {
   res.json(payload);
 });
 
+router.get("/canjes/:id", async (req, res) => {
+  const canjeId = Number(req.params.id);
+  if (!Number.isFinite(canjeId) || canjeId <= 0) {
+    res.status(400).json({ error: "ID de canje inválido." });
+    return;
+  }
+
+  const row = await qOne<ClienteCanjeRow>(
+    pool,
+    `SELECT c.id, c.codigo_retiro, c.puntos_usados, c.estado, c.fecha_limite_retiro, c.notas, c.created_at,
+            p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
+            s.id AS sucursal_id, s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
+            s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia
+     FROM canjes c
+     JOIN productos p ON p.id = c.producto_id
+     LEFT JOIN sucursales s ON s.id = c.sucursal_id
+     WHERE c.id = ? AND c.usuario_id = ?
+     LIMIT 1`,
+    [canjeId, req.user!.id]
+  );
+
+  if (!row) {
+    res.status(404).json({ error: "Canje no encontrado." });
+    return;
+  }
+
+  const itemsMap = await getCanjeItemsByCanjeIds(pool, [Number(row.id)]);
+  const fallbackItem: CanjeItemDetalle = {
+    producto_id: 0,
+    producto_nombre: row.producto_nombre,
+    producto_imagen: row.producto_imagen ?? null,
+    cantidad: 1,
+    puntos_unitarios: Number(row.puntos_usados),
+    puntos_total: Number(row.puntos_usados),
+  };
+  const items = itemsMap.get(Number(row.id)) ?? [fallbackItem];
+  const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad), 0);
+  const productosDetalle = items.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(" | ");
+  const primerItem = items[0];
+  const productoNombreVista = items.length > 1 ? `${primerItem.producto_nombre} +${items.length - 1} mas` : primerItem.producto_nombre;
+
+  res.json({
+    ...row,
+    producto_nombre: productoNombreVista,
+    producto_imagen: primerItem.producto_imagen ?? row.producto_imagen ?? null,
+    items,
+    total_items: items.length,
+    total_unidades: totalUnidades,
+    productos_detalle: productosDetalle,
+  });
+});
+
 router.get("/sucursales", async (_req, res) => {
   const rows = await qAll<SucursalRetiro>(
     pool,
