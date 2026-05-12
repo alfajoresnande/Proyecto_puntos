@@ -20,22 +20,24 @@
 }
 
 .comprobante-a4 {
-  background: white;
+  background: #ffffff;
   width: 210mm;
   min-height: 297mm;
   padding: 15mm;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid #d8c4ad;
   border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   color: #1f2937;
   font-family: inherit;
+  box-sizing: border-box;
 }
 
 .comprobante-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 2px solid #e5e7eb;
-  padding-bottom: 1rem;
+  border-bottom: 2px solid #d8c4ad;
+  padding-bottom: 1.5rem;
   margin-bottom: 2rem;
 }
 
@@ -45,26 +47,31 @@
 }
 
 .comprobante-logo {
-  height: 60px;
+  height: 70px;
   object-fit: contain;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .comprobante-title {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 700;
   color: #D4621A;
-  margin-bottom: 0.25rem;
+  margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .comprobante-meta {
   text-align: right;
-  font-size: 0.9rem;
-  color: #6b7280;
+  font-size: 0.95rem;
+  color: #4b5563;
+}
+
+.comprobante-meta p {
+  margin: 0.2rem 0;
 }
 
 .comprobante-meta strong {
-  color: #374151;
+  color: #1f2937;
 }
 
 .comprobante-grid {
@@ -75,45 +82,46 @@
 }
 
 .comprobante-box {
-  background-color: #f9fafb;
+  background-color: #faf9f7;
   border: 1px solid #e5e7eb;
-  padding: 1rem;
+  padding: 1.25rem;
   border-radius: 6px;
 }
 
 .comprobante-box h3 {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: #374151;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
   border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 0.25rem;
+  padding-bottom: 0.5rem;
 }
 
 .comprobante-box p {
   font-size: 0.9rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.4rem;
   color: #4b5563;
+  line-height: 1.4;
 }
 
 .comprobante-table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 2rem;
+  border: 1px solid #e5e7eb;
 }
 
 .comprobante-table th {
-  background-color: #f9fafb;
+  background-color: #f3f4f6;
   border-bottom: 2px solid #e5e7eb;
-  text-align: left;
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   font-size: 0.9rem;
   font-weight: 600;
   color: #374151;
 }
 
 .comprobante-table td {
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid #e5e7eb;
   font-size: 0.9rem;
   color: #4b5563;
@@ -124,11 +132,16 @@
   text-align: right;
 }
 
+.comprobante-table td.text-center,
+.comprobante-table th.text-center {
+  text-align: center;
+}
+
 .comprobante-totals {
   width: 100%;
-  max-width: 300px;
+  max-width: 350px;
   margin-left: auto;
-  border-top: 2px solid #e5e7eb;
+  border-top: 2px solid #d8c4ad;
   padding-top: 1rem;
   margin-bottom: 2rem;
 }
@@ -136,18 +149,18 @@
 .comprobante-total-row {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.6rem;
   font-size: 0.95rem;
   color: #4b5563;
 }
 
 .comprobante-total-row.grand-total {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   font-weight: 700;
   color: #1f2937;
-  border-top: 1px solid #e5e7eb;
-  padding-top: 0.5rem;
-  margin-top: 0.5rem;
+  border-top: 2px solid #e5e7eb;
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
 }
 
 .comprobante-footer {
@@ -161,8 +174,13 @@
 
 .comprobante-disclaimer {
   font-weight: 600;
-  color: #D4621A;
-  margin-bottom: 0.5rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.comprobante-thanks {
+  color: #4b5563;
+  font-weight: 500;
 }
 
 /* 
@@ -191,6 +209,7 @@
     padding: 0;
     box-shadow: none;
     border-radius: 0;
+    border: 1px solid #ccc;
     background: transparent;
   }
 
@@ -205,7 +224,8 @@
 
   /* Evitar cortes feos dentro de filas de tabla o cajas */
   .comprobante-table tr,
-  .comprobante-box {
+  .comprobante-box,
+  .comprobante-totals {
     page-break-inside: avoid;
   }
 }

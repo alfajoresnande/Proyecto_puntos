@@ -84,11 +84,19 @@ function estadoPedidoLabel(estado: string): string {
 }
 
 function paymentMethodLabel(metodo: string | null | undefined): string {
-  if (metodo === "cash") return "Efectivo al retirar";
-  if (metodo === "wallet") return "Mercado Pago";
-  if (metodo === "qr") return "QR Mercado Pago";
-  if (metodo === "brick") return "Tarjeta";
+  const normalized = (metodo || "").trim().toLowerCase();
+  if (normalized === "cash" || normalized === "efectivo") return "Efectivo al retirar";
+  if (normalized === "wallet") return "Mercado Pago";
+  if (normalized === "qr") return "Mercado Pago QR";
+  if (normalized === "brick") return "Tarjeta";
   return "Sin definir";
+}
+
+function paymentProviderLabel(proveedor: string | null | undefined): string {
+  const normalized = (proveedor || "").trim().toLowerCase();
+  if (normalized === "mercadopago") return "Mercado Pago";
+  if (normalized === "cash" || normalized === "efectivo") return "Efectivo";
+  return proveedor || "Sin definir";
 }
 
 export function ComprobantePedido() {
@@ -157,16 +165,15 @@ export function ComprobantePedido() {
         <div className="comprobante-header">
           <div className="comprobante-logo-container">
             <img src="/logo.png" alt="Ñandé" className="comprobante-logo" />
-            <h1 className="comprobante-title">Comprobante de pedido</h1>
           </div>
           <div className="comprobante-meta">
+            <h1 className="comprobante-title">Comprobante de pedido</h1>
             <p><strong>Pedido web #{orden.id}</strong></p>
             <p>{dateLabel(orden.created_at)}</p>
-            <p style={{ marginTop: "0.5rem" }}>Estado: <strong>{estadoPedidoLabel(orden.estado)}</strong></p>
           </div>
         </div>
 
-        <div className="comprobante-grid">
+        <div className="comprobante-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
           <div className="comprobante-box">
             <h3>Datos del Cliente</h3>
             <p><strong>Nombre:</strong> {clienteNombre}</p>
@@ -176,22 +183,30 @@ export function ComprobantePedido() {
           </div>
 
           <div className="comprobante-box">
-            <h3>Detalles de la Operación</h3>
+            <h3>Resumen de pago</h3>
+            <p><strong>Estado:</strong> {estadoPedidoLabel(orden.estado)}</p>
             <p><strong>Método de pago:</strong> {paymentMethodLabel(orden.pago?.metodo)}</p>
+            <p><strong>Proveedor:</strong> {paymentProviderLabel(orden.pago?.proveedor)}</p>
+            <p><strong>Total pagado:</strong> {money(orden.pago?.monto || orden.total_dinero)}</p>
+          </div>
+
+          <div className="comprobante-box">
+            <h3>Detalles de entrega</h3>
             {orden.direccion_envio ? (
               <>
-                <p><strong>Forma de entrega:</strong> Envío a domicilio</p>
-                <p><strong>Dirección:</strong> {orden.direccion_envio.direccion}, {orden.direccion_envio.localidad}, {orden.direccion_envio.provincia} ({orden.direccion_envio.codigo_postal})</p>
+                <p><strong>Forma:</strong> Envío a domicilio</p>
+                <p><strong>Dirección:</strong> {orden.direccion_envio.direccion}</p>
+                <p><strong>Localidad:</strong> {orden.direccion_envio.localidad}, {orden.direccion_envio.provincia} ({orden.direccion_envio.codigo_postal})</p>
               </>
             ) : orden.sucursal?.nombre ? (
               <>
-                <p><strong>Forma de entrega:</strong> Retiro en sucursal</p>
+                <p><strong>Forma:</strong> Retiro en sucursal</p>
                 <p><strong>Sucursal:</strong> {orden.sucursal.nombre}</p>
                 <p><strong>Dirección:</strong> {orden.sucursal.direccion}, {orden.sucursal.localidad}, {orden.sucursal.provincia}</p>
                 {orden.comprobante?.horario_habil && <p><strong>Horario:</strong> {orden.comprobante.horario_habil}</p>}
               </>
             ) : (
-              <p><strong>Forma de entrega:</strong> A convenir</p>
+              <p><strong>Forma:</strong> A convenir</p>
             )}
           </div>
         </div>
@@ -200,17 +215,17 @@ export function ComprobantePedido() {
           <table className="comprobante-table">
             <thead>
               <tr>
-                <th>Producto</th>
-                <th className="text-right">Cant.</th>
-                <th className="text-right">Precio Un.</th>
-                <th className="text-right">Subtotal</th>
+                <th style={{ textAlign: "left" }}>Producto</th>
+                <th className="text-center" style={{ width: "80px" }}>Cant.</th>
+                <th className="text-right" style={{ width: "120px" }}>Precio Un.</th>
+                <th className="text-right" style={{ width: "120px" }}>Subtotal</th>
               </tr>
             </thead>
             <tbody>
               {orden.items.map((item, idx) => (
                 <tr key={`${item.producto_id}-${idx}`}>
                   <td>{item.nombre}</td>
-                  <td className="text-right">{item.cantidad}</td>
+                  <td className="text-center">{item.cantidad}</td>
                   <td className="text-right">{money(item.precio_dinero_unit)}</td>
                   <td className="text-right">{money(item.subtotal_dinero)}</td>
                 </tr>
@@ -244,7 +259,7 @@ export function ComprobantePedido() {
 
         <div className="comprobante-footer">
           <p className="comprobante-disclaimer">Este documento no es válido como factura.</p>
-          <p>¡Muchas gracias por elegir a Ñandé Alfajores Correntinos!</p>
+          <p className="comprobante-thanks">Gracias por elegir Ñandé Alfajores Correntinos.</p>
         </div>
       </div>
     </div>
