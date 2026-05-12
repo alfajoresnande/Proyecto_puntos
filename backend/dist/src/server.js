@@ -189,6 +189,10 @@ const uploadsStatic = express_1.default.static(uploadsPath, {
 });
 app.use("/uploads", uploadsStatic);
 app.use("/api/uploads", uploadsStatic);
+app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    next();
+});
 app.use("/api", csrfProtection);
 // Rutas
 app.get("/", (_req, res) => {
@@ -220,6 +224,7 @@ app.use((err, req, res, _next) => {
 });
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {
+    console.log("BUILD_VERSION puntos-fix-2026-05-12");
     console.log(`API en http://localhost:${PORT}`);
     (0, expirations_1.startReservationExpirationWorker)();
 });

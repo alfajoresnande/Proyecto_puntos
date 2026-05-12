@@ -1,0 +1,143 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.recalcularSaldoPuntosUsuario = recalcularSaldoPuntosUsuario;
+exports.registrarMovimientoPuntos = registrarMovimientoPuntos;
+exports.acreditarPuntosPorCompra = acreditarPuntosPorCompra;
+const db_1 = require("../db");
+const securityMonitor_1 = require("../securityMonitor");
+/** Código de error MySQL para UNIQUE constraint violation */
+const MYSQL_DUPLICATE_ENTRY = 1062;
+function isDuplicateKeyError(error) {
+    return (typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error.code === "ER_DUP_ENTRY" ||
+            error.errno === MYSQL_DUPLICATE_ENTRY));
+}
+/**
+ * RECONCILIACIÓN GLOBAL (SQL):
+ * Si necesitas reparar todos los saldos de la base de datos manualmente:
+ *
+ * UPDATE usuarios u
+ * LEFT JOIN (
+ *   SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
+ *   FROM movimientos_puntos
+ *   GROUP BY usuario_id
+ * ) mp ON mp.usuario_id = u.id
+ * SET u.puntos_saldo = COALESCE(mp.saldo_calculado, 0)
+ * WHERE u.puntos_saldo <> COALESCE(mp.saldo_calculado, 0);
+ */
+/**
+ * Recalcula el saldo de puntos de un usuario sumando todos sus movimientos.
+ * Es la fuente de verdad. Idempotente: puede llamarse múltiples veces.
+ */
+async function recalcularSaldoPuntosUsuario(conn, usuarioId) {
+    const row = await (0, db_1.qOne)(conn, `SELECT COALESCE(SUM(puntos), 0) AS saldo
+     FROM movimientos_puntos
+     WHERE usuario_id = ?`, [usuarioId]);
+    const saldoCalculado = Number(row?.saldo ?? 0);
+    const previo = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
+    if (previo && Number(previo.puntos_saldo) !== saldoCalculado) {
+        console.log(`[recalcularSaldoPuntosUsuario] Corrigiendo saldo usuario #${usuarioId}: ${previo.puntos_saldo} -> ${saldoCalculado}`);
+    }
+    await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?", [saldoCalculado, usuarioId]);
+    console.log("Saldo recalculado correctamente", {
+        usuarioId,
+        saldo: saldoCalculado,
+    });
+    return saldoCalculado;
+}
+/**
+ * Centraliza la creación de movimientos de puntos y el recálculo del saldo del usuario.
+ * Única puerta de entrada para modificar puntos en el sistema.
+ *
+ * @param conn Conexión (preferiblemente transaccional)
+ * @param params Datos del movimiento
+ * @returns El nuevo saldo calculado
+ */
+async function registrarMovimientoPuntos(conn, params) {
+    const { usuarioId, tipo, puntos, descripcion, referenciaId, referenciaTipo, creadoPor } = params;
+    if (puntos === 0) {
+        console.log(`[registrarMovimientoPuntos] Omitiendo movimiento de 0 puntos para usuario #${usuarioId} (${tipo})`);
+        return await recalcularSaldoPuntosUsuario(conn, usuarioId);
+    }
+    try {
+        // Intentar insertar el movimiento. La clave única (referencia_tipo, referencia_id, tipo) protege contra duplicados.
+        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos 
+        (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+            usuarioId,
+            tipo,
+            puntos,
+            descripcion || null,
+            referenciaId || null,
+            referenciaTipo || null,
+            creadoPor || null,
+        ]);
+        console.log(`[registrarMovimientoPuntos] Movimiento creado: ${tipo} (${puntos} pts) para usuario #${usuarioId}`);
+    }
+    catch (error) {
+        if (isDuplicateKeyError(error)) {
+            console.log(`[registrarMovimientoPuntos] Movimiento duplicado detectado e ignorado: ${tipo} para #${usuarioId} (Ref: ${referenciaTipo} ${referenciaId})`);
+        }
+        else {
+            console.error(`[registrarMovimientoPuntos] Error crítico al insertar movimiento:`, error);
+            throw error; // Re-lanzar para que la transacción externa falle si es necesario
+        }
+    }
+    // SIEMPRE recalcular saldo tras un intento de movimiento (sea nuevo o duplicado ignorado)
+    return await recalcularSaldoPuntosUsuario(conn, usuarioId);
+}
+/**
+ * Acredita puntos por compra de una orden pagada.
+ */
+async function acreditarPuntosPorCompra(conn, orderId) {
+    console.log("[puntos] iniciando acreditacion", { orderId });
+    try {
+        const orden = await (0, db_1.qOne)(conn, "SELECT id, usuario_id, estado, total_dinero FROM ordenes WHERE id = ?", [orderId]);
+        if (!orden) {
+            console.error("[puntos] ERROR: Orden no encontrada", { orderId });
+            return;
+        }
+        const usuarioId = Number(orden.usuario_id);
+        const estado = orden.estado;
+        console.log("[puntos] orden encontrada", { orderId, usuarioId, estado });
+        const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+        if (!paidStates.includes(estado)) {
+            console.log(`[puntos] omitiendo: orden #${orderId} esta en estado ${estado} (debe ser uno de: ${paidStates.join(", ")}).`);
+            return;
+        }
+        // Calcular puntos (snapshot → producto → 0)
+        const items = await (0, db_1.qAll)(conn, `SELECT oi.cantidad,
+              COALESCE(NULLIF(oi.puntaje_al_comprar_unitario, 0), p.puntaje_al_comprar, 0) AS puntaje_al_comprar_unitario
+       FROM orden_items oi
+       LEFT JOIN productos p ON p.id = oi.producto_id
+       WHERE oi.orden_id = ? AND oi.modo_compra = 'dinero'`, [orderId]);
+        const puntos = items.reduce((acc, item) => acc + (Number(item.cantidad) * Number(item.puntaje_al_comprar_unitario)), 0);
+        console.log("[puntos] puntos calculados", { orderId, usuarioId, puntos });
+        if (puntos <= 0) {
+            console.log("[puntos] la orden no suma puntos (productos sin puntaje o solo canjes)", { orderId });
+            return;
+        }
+        // Usar la función central
+        console.log("[puntos] creando movimiento", { orderId, usuarioId, puntos });
+        const saldo = await registrarMovimientoPuntos(conn, {
+            usuarioId,
+            tipo: 'acreditacion_compra',
+            puntos: puntos,
+            descripcion: `Puntos acreditados por compra de orden #${orderId}`,
+            referenciaId: orderId,
+            referenciaTipo: 'ordenes',
+            creadoPor: usuarioId
+        });
+        console.log("[puntos] movimiento creado o existente", { orderId, usuarioId });
+        console.log("[puntos] saldo recalculado", { usuarioId, saldo });
+    }
+    catch (error) {
+        console.error(`[puntos] ERROR CRÍTICO procesando orden #${orderId}:`, error);
+        (0, securityMonitor_1.recordSecurityEvent)("error_acreditacion_puntos", null, {
+            orderId,
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
+}

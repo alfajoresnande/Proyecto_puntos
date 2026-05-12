@@ -17,7 +17,9 @@ const securityMonitor_1 = require("../securityMonitor");
 const uploadSecurity_1 = require("../uploadSecurity");
 const backup_1 = require("../services/backup");
 const stock_1 = require("../services/stock");
+const points_1 = require("../services/points");
 const expirations_1 = require("../services/expirations");
+const orderLifecycle_1 = require("../services/orderLifecycle");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -405,13 +407,13 @@ router.post("/puntos", async (req, res) => {
             res.status(404).json({ error: "Cliente no encontrado" });
             return;
         }
-        const nuevoSaldo = userRow.puntos_saldo + puntos;
-        if (nuevoSaldo < 0) {
-            res.status(400).json({ error: "El saldo no puede quedar negativo" });
-            return;
-        }
-        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, creado_por) VALUES (?, ?, ?, ?, ?)`, [usuario_id, tipo, puntos, descripcion ?? null, req.user.id]);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [puntos, usuario_id]);
+        const nuevoSaldo = await (0, points_1.registrarMovimientoPuntos)(conn, {
+            usuarioId: usuario_id,
+            tipo,
+            puntos,
+            descripcion: descripcion ?? undefined,
+            creadoPor: req.user.id
+        });
         await conn.commit();
         res.json({ ok: true, nuevo_saldo: nuevoSaldo });
     }
@@ -592,7 +594,7 @@ router.patch("/canjes/:id", async (req, res) => {
             await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
            (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`, [canje.usuario_id, canje.puntos_usados, `Devolucion por canje ${motivo}`, id, req.user.id]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [canje.puntos_usados, canje.usuario_id]);
+            await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(canje.usuario_id));
         }
         await conn.commit();
         res.json({ ok: true });
@@ -702,9 +704,30 @@ router.patch("/ordenes/:id", async (req, res) => {
             res.status(400).json({ error: `No se puede modificar una orden en estado '${orden.estado}'.` });
             return;
         }
+        // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO
+        // Si la orden está pendiente y se mueve a un estado que implica cobro (pagada, preparada, enviada, entregada)
+        const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+        if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
+            console.log(`[ADMIN/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
+            await (0, orderLifecycle_1.approvePaidOrder)(conn, {
+                orderId,
+                provider: "admin",
+                creadoPor: req.user.id,
+            });
+            // NO hacemos commit/return aquí todavía si el estado final deseado NO es 'pagada'
+            // Si el estado es 'pagada', ya terminamos.
+            if (estado === "pagada") {
+                await conn.commit();
+                res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+                return;
+            }
+            // Si el estado es otro (preparada, entregada, etc), seguimos abajo para el UPDATE de estado final
+            // Pero 'orden.estado' sigue siendo 'pendiente_pago' en memoria, hay que tener cuidado con las validaciones de abajo.
+        }
+        // RESTO DE TRANSICIONES
         const allowedTransitions = {
             borrador: ["pendiente_pago", "cancelada"],
-            pendiente_pago: ["pagada", "cancelada", "expirada"],
+            pendiente_pago: ["pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"],
             pagada: ["preparada", "enviada", "entregada", "cancelada"],
             preparada: ["enviada", "entregada", "cancelada"],
             enviada: ["entregada", "cancelada"],
@@ -729,8 +752,11 @@ router.patch("/ordenes/:id", async (req, res) => {
                 descripcion: `Orden #${orderId} -> ${estado}`,
             }));
             if (stockItems.length) {
-                const shouldFinalizeStock = (estado === "pagada" && Number(orden.total_dinero ?? 0) > 0) ||
-                    (estado === "entregada" && orden.estado !== "pagada");
+                // Si ya pasó por approvePaidOrder (estado inicial pendiente_pago y final en paidStates), 
+                // approvePaidOrder ya ejecutó finalizeStockForCheckoutItems. 
+                // No debemos duplicarlo.
+                const skipStockIfPaidNow = (orden.estado === "pendiente_pago" && paidStates.includes(estado));
+                const shouldFinalizeStock = !skipStockIfPaidNow && (estado === "entregada" && orden.estado !== "pagada");
                 const shouldReleaseReservedStock = (estado === "cancelada" || estado === "expirada") &&
                     (orden.estado === "pendiente_pago" || orden.estado === "preparada");
                 if (shouldFinalizeStock) {
@@ -754,19 +780,15 @@ router.patch("/ordenes/:id", async (req, res) => {
             }
         }
         if ((estado === "cancelada" || estado === "expirada") && Number(orden.total_puntos ?? 0) > 0) {
-            await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`, [
-                Number(orden.usuario_id),
-                Number(orden.total_puntos),
-                `Devolucion puntos por ${estado} orden #${orderId}`,
-                orderId,
-                req.user.id,
-            ]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
-                Number(orden.total_puntos),
-                Number(orden.usuario_id),
-            ]);
+            await (0, points_1.registrarMovimientoPuntos)(conn, {
+                usuarioId: Number(orden.usuario_id),
+                tipo: 'devolucion_canje',
+                puntos: Number(orden.total_puntos),
+                descripcion: `Devolucion puntos por ${estado} orden #${orderId}`,
+                referenciaId: orderId,
+                referenciaTipo: 'ordenes',
+                creadoPor: req.user.id
+            });
         }
         await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ?, notas = COALESCE(?, notas) WHERE id = ?", [
             estado,
@@ -774,10 +796,7 @@ router.patch("/ordenes/:id", async (req, res) => {
             orderId,
         ]);
         if (Number(orden.total_dinero ?? 0) > 0) {
-            if (estado === "pagada") {
-                await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
-            }
-            else if (estado === "cancelada" || estado === "expirada") {
+            if (estado === "cancelada" || estado === "expirada") {
                 await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
             }
         }
@@ -1353,5 +1372,57 @@ router.put("/paginas/:slug", async (req, res) => {
         return;
     }
     res.json({ ok: true });
+});
+/**
+ * POST /admin/puntos/reconciliar-saldos
+ * Recalcula puntos_saldo de uno o todos los usuarios desde movimientos_puntos.
+ * Cuerpo opcional: { usuario_id: number } para reparar solo un usuario.
+ * Sin cuerpo: repara todos los usuarios que tengan movimientos.
+ */
+router.post("/puntos/reconciliar-saldos", auth_1.requireAuth, (0, auth_1.requireRole)("admin"), async (req, res) => {
+    const usuarioIdRaw = req.body?.usuario_id;
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        if (usuarioIdRaw !== undefined) {
+            // Reparar solo un usuario
+            const usuarioId = Number(usuarioIdRaw);
+            if (!Number.isInteger(usuarioId) || usuarioId <= 0) {
+                await conn.rollback();
+                res.status(400).json({ error: "usuario_id inválido" });
+                return;
+            }
+            const saldo = await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
+            await conn.commit();
+            res.json({ ok: true, usuario_id: usuarioId, saldo_recalculado: saldo });
+            return;
+        }
+        // Reparar todos los usuarios con movimientos registrados
+        const usuarios = await (0, db_1.qAll)(conn, `SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
+       FROM movimientos_puntos
+       GROUP BY usuario_id`);
+        const resultados = [];
+        for (const row of usuarios) {
+            const usuarioId = Number(row.usuario_id);
+            const saldoCalculado = Number(row.saldo_calculado);
+            const actual = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
+            const saldoAnterior = Number(actual?.puntos_saldo ?? 0);
+            if (saldoAnterior !== saldoCalculado) {
+                await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?", [saldoCalculado, usuarioId]);
+                resultados.push({ usuario_id: usuarioId, saldo_anterior: saldoAnterior, saldo_nuevo: saldoCalculado });
+                console.info(`[reconciliar-saldos] Usuario #${usuarioId}: ${saldoAnterior} → ${saldoCalculado} pts`);
+            }
+        }
+        await conn.commit();
+        res.json({ ok: true, usuarios_reparados: resultados.length, detalle: resultados });
+    }
+    catch (err) {
+        await conn.rollback();
+        console.error("[reconciliar-saldos] Error:", err);
+        res.status(500).json({ error: err?.message || "Error al reconciliar saldos" });
+    }
+    finally {
+        conn.release();
+    }
 });
 exports.default = router;

@@ -9,6 +9,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const google_auth_library_1 = require("google-auth-library");
 const zod_1 = require("zod");
 const db_1 = require("../db");
+const points_1 = require("../services/points");
 const auth_1 = require("../auth");
 const email_1 = require("../services/email");
 const router = (0, express_1.Router)();
@@ -172,10 +173,10 @@ router.post("/register", async (req, res) => {
          VALUES (?, ?, ?, ?)`, [invitador.id, nuevoId, ptsInv, ptsNuev]);
             await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
          VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`, [invitador.id, ptsInv, `${nombre} se registro con tu codigo`, refId]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [ptsInv, invitador.id]);
+            await (0, points_1.recalcularSaldoPuntosUsuario)(conn, invitador.id);
             await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
          VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`, [nuevoId, ptsNuev, `Bono de bienvenida por codigo de ${invitador.nombre}`, refId]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [ptsNuev, nuevoId]);
+            await (0, points_1.recalcularSaldoPuntosUsuario)(conn, nuevoId);
         }
         await conn.commit();
         const u = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion FROM usuarios WHERE id = ?", [nuevoId]);
@@ -316,6 +317,26 @@ router.get("/me", async (req, res) => {
         (0, auth_1.clearAuthCookie)(res);
         res.json({ user: null });
         return;
+    }
+    // Recalcular saldo antes de devolver los datos (Option A)
+    try {
+        const conn = await db_1.pool.getConnection();
+        try {
+            const saldoCalculado = await (0, points_1.recalcularSaldoPuntosUsuario)(conn, auth.id);
+            const actualEnDB = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [auth.id]);
+            console.log(`[AUTH/ME] Recalculo de puntos`, {
+                usuario_id: auth.id,
+                saldo_en_usuarios: actualEnDB?.puntos_saldo,
+                saldo_calculado_por_movimientos: saldoCalculado,
+                iguales: actualEnDB?.puntos_saldo === saldoCalculado
+            });
+        }
+        finally {
+            conn.release();
+        }
+    }
+    catch (err) {
+        console.error(`[AUTH/ME] Error recalculando saldo:`, err);
     }
     const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo
      FROM usuarios

@@ -659,6 +659,20 @@ async function ensureUbicacionesArgentinaSchema() {
       INDEX idx_argentina_localidades_provincia_nombre (provincia_id, nombre)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 }
+async function ensureAcreditacionPuntosSchema() {
+    await exports.pool.query(`ALTER TABLE carrito_items ADD COLUMN IF NOT EXISTS puntaje_al_comprar_unitario INT NOT NULL DEFAULT 0`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE orden_items ADD COLUMN IF NOT EXISTS puntaje_al_comprar_unitario INT NOT NULL DEFAULT 0`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE movimientos_puntos MODIFY COLUMN tipo ENUM('asignacion_manual','codigo_canje','referido_invitador','referido_invitado','canje_producto','devolucion_canje','acreditacion_compra','ajuste') NOT NULL`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE movimientos_puntos ADD CONSTRAINT uq_mov_referencia UNIQUE (referencia_tipo, referencia_id, tipo)`).catch(() => { });
+    // Backfill: carrito_items que quedaron en 0 antes de que se implementara el snapshot.
+    // Usa el puntaje actual del producto como fallback seguro.
+    await exports.pool.query(`UPDATE carrito_items ci
+     JOIN productos p ON p.id = ci.producto_id
+     SET ci.puntaje_al_comprar_unitario = COALESCE(p.puntaje_al_comprar, 0)
+     WHERE ci.modo_compra = 'dinero'
+       AND ci.puntaje_al_comprar_unitario = 0
+       AND COALESCE(p.puntaje_al_comprar, 0) > 0`).catch(() => { });
+}
 exports.pool
     .getConnection()
     .then(async (conn) => {
@@ -747,6 +761,12 @@ exports.pool
     }
     catch (err) {
         console.error("⚠️  Migración eventos de seguridad:", err.message);
+    }
+    try {
+        await ensureAcreditacionPuntosSchema();
+    }
+    catch (err) {
+        console.error("⚠️  Migración acreditación puntos:", err.message);
     }
 })
     .catch((err) => {

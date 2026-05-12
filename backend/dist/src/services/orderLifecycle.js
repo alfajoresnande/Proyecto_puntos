@@ -5,6 +5,7 @@ exports.approvePaidOrder = approvePaidOrder;
 exports.rejectOrExpirePendingOrder = rejectOrExpirePendingOrder;
 const db_1 = require("../db");
 const stock_1 = require("./stock");
+const points_1 = require("./points");
 function checkoutStockItems(items, descripcion) {
     return items
         .filter((item) => Number(item.track_stock ?? 0) === 1)
@@ -46,6 +47,7 @@ async function getOrderStockItems(conn, orderId) {
     }));
 }
 async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado, payload, }) {
+    const isManualApproval = provider === "admin" || provider === "vendedor";
     const payloadJson = payload === undefined ? null : JSON.stringify(payload);
     const params = [estado];
     const setParts = ["estado = ?"];
@@ -59,7 +61,8 @@ async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, e
     }
     params.push(orderId);
     const whereParts = ["orden_id = ?"];
-    if (provider) {
+    // Si no es aprobación manual, restringimos por el proveedor específico (ej. mercadopago)
+    if (provider && !isManualApproval) {
         whereParts.push("proveedor = ?");
         params.push(provider);
     }
@@ -67,11 +70,20 @@ async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, e
      SET ${setParts.join(", ")}
      WHERE ${whereParts.join(" AND ")}
        AND estado = 'iniciado'`, params);
-    if (result.affectedRows === 0 && provider && providerPaymentId) {
-        await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-       SELECT id, ?, NULL, ?, total_dinero, moneda, ?, ?
-       FROM ordenes
-       WHERE id = ?`, [provider, estado, providerPaymentId, payloadJson, orderId]);
+    if (result.affectedRows === 0 && provider) {
+        // Si es aprobación manual y no hay fila iniciada, creamos una de efectivo
+        const effectiveProvider = isManualApproval ? "efectivo" : provider;
+        const effectiveMethod = isManualApproval ? "cash" : null;
+        const effectivePaymentId = providerPaymentId || (isManualApproval ? `manual_${orderId}_${Date.now()}` : null);
+        if (effectivePaymentId) {
+            const yaExiste = await (0, db_1.qOne)(conn, "SELECT id FROM pagos WHERE orden_id = ? AND provider_payment_id = ? AND estado = 'aprobado' LIMIT 1", [orderId, effectivePaymentId]);
+            if (!yaExiste) {
+                await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
+           SELECT id, ?, ?, ?, total_dinero, moneda, ?, ?
+           FROM ordenes
+           WHERE id = ?`, [effectiveProvider, effectiveMethod, estado, effectivePaymentId, payloadJson, orderId]);
+            }
+        }
     }
 }
 async function refundOrderPointsIfReserved(conn, order, descripcion, creadoPor) {
@@ -79,21 +91,30 @@ async function refundOrderPointsIfReserved(conn, order, descripcion, creadoPor) 
         return;
     if (!(order.estado === "pendiente_pago" || order.estado === "preparada"))
         return;
-    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
-      (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-     VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes', ?)`, [order.usuario_id, order.total_puntos, descripcion, order.id, creadoPor]);
-    await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [
-        order.total_puntos,
-        order.usuario_id,
-    ]);
+    await (0, points_1.registrarMovimientoPuntos)(conn, {
+        usuarioId: order.usuario_id,
+        tipo: 'devolucion_canje',
+        puntos: order.total_puntos,
+        descripcion,
+        referenciaId: order.id,
+        referenciaTipo: 'ordenes',
+        creadoPor: creadoPor ?? undefined
+    });
 }
-async function approvePaidOrder(conn, { orderId, provider, providerPaymentId, payload, }) {
+async function approvePaidOrder(conn, { orderId, provider, providerPaymentId, payload, creadoPor = null, }) {
+    console.log("[approvePaidOrder] ejecutado", { orderId });
     const order = await getOrderForLifecycle(conn, orderId);
     if (!order) {
         throw new Error("Orden no encontrada.");
     }
     if (order.estado !== "pendiente_pago") {
         await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
+        console.log("[approvePaidOrder] Orden ya no estaba en pendiente_pago, verificando puntos igualmente", {
+            orderId,
+            estado: order.estado,
+        });
+        // Intentar acreditar puntos igualmente por si el proceso anterior falló (idempotente)
+        await (0, points_1.acreditarPuntosPorCompra)(conn, orderId);
         return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
     }
     if (order.sucursal_retiro_id) {
@@ -104,11 +125,14 @@ async function approvePaidOrder(conn, { orderId, provider, providerPaymentId, pa
                 items,
                 referencia: `orden #${orderId}`,
                 ordenId: orderId,
+                creadoPor,
             });
         }
     }
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
     await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = 'pagada' WHERE id = ?", [orderId]);
+    // Acreditación automática de puntos
+    await (0, points_1.acreditarPuntosPorCompra)(conn, orderId);
     return { ok: true, orderId, previousState: order.estado, state: "pagada", changed: true };
 }
 async function rejectOrExpirePendingOrder(conn, { orderId, nextState, provider, providerPaymentId, payload, creadoPor = null, }) {

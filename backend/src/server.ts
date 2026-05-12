@@ -255,6 +255,7 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {
+  console.log("BUILD_VERSION puntos-fix-2026-05-12");
   console.log(`API en http://localhost:${PORT}`);
   startReservationExpirationWorker();
 });

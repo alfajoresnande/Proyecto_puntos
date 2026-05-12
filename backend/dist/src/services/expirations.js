@@ -25,7 +25,7 @@ async function cashOrderValidityDays() {
 async function expireStalePendingOrders() {
     const minutes = checkoutReservationMinutes();
     const cashDays = await cashOrderValidityDays();
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id
      FROM ordenes o
      LEFT JOIN pagos p_cash
        ON p_cash.orden_id = o.id

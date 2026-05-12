@@ -10,6 +10,7 @@ const db_1 = require("../db");
 const auth_1 = require("../auth");
 const stock_1 = require("../services/stock");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const points_1 = require("../services/points");
 const paymentProviders_1 = require("../services/paymentProviders");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("cliente"));
@@ -198,7 +199,7 @@ async function getActiveCartId(conn, usuarioId) {
 async function getProductoForCart(conn, productoId) {
     const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, tipo_producto, precio_dinero,
             COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo,
-            track_stock, imagen_url
+            track_stock, imagen_url, puntaje_al_comprar
      FROM productos
      WHERE id = ?
      LIMIT 1`, [productoId]);
@@ -210,6 +211,7 @@ async function getProductoForCart(conn, productoId) {
         precio_dinero: producto.precio_dinero === null ? null : Number(producto.precio_dinero),
         precio_puntos_effectivo: producto.precio_puntos_effectivo === null ? null : Number(producto.precio_puntos_effectivo),
         track_stock: Number(producto.track_stock ?? 0),
+        puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
     };
 }
 function validateProductoForMode(producto, modoCompra) {
@@ -252,7 +254,7 @@ async function assertCartQuantityWithinStock(conn, { producto, cantidad, sucursa
 }
 async function getCarritoItems(conn, usuarioId) {
     const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra,
-            ci.precio_dinero_unit, ci.precio_puntos_unit, ci.subtotal_dinero, ci.subtotal_puntos,
+            ci.precio_dinero_unit, ci.precio_puntos_unit, ci.puntaje_al_comprar_unitario, ci.subtotal_dinero, ci.subtotal_puntos,
             p.nombre, p.tipo_producto, p.imagen_url, p.track_stock, p.permite_envio
      FROM carrito_items ci
      JOIN carritos c ON c.id = ci.carrito_id
@@ -266,6 +268,7 @@ async function getCarritoItems(conn, usuarioId) {
         cantidad: Number(row.cantidad),
         precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
         precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
+        puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
         subtotal_dinero: Number(row.subtotal_dinero),
         subtotal_puntos: Number(row.subtotal_puntos),
         track_stock: Number(row.track_stock ?? 0),
@@ -510,9 +513,14 @@ async function crearCanjeCarrito(conn, { usuarioId, items, sucursalId, }) {
     }
     const descripcionItems = itemsDetalle.map((item) => `${item.producto_nombre} x${item.cantidad}`).join(", ");
     const descripcionMovimiento = descripcionItems.length > 210 ? `Canje carrito: ${descripcionItems.slice(0, 207)}...` : `Canje carrito: ${descripcionItems}`;
-    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'canje_producto', ?, ?, ?, 'canjes')`, [usuarioId, -puntosTotales, descripcionMovimiento, canjeId]);
-    await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo - ? WHERE id = ?", [puntosTotales, usuarioId]);
+    await (0, points_1.registrarMovimientoPuntos)(conn, {
+        usuarioId,
+        tipo: 'canje_producto',
+        puntos: -puntosTotales,
+        descripcion: descripcionMovimiento,
+        referenciaId: canjeId,
+        referenciaTipo: 'canjes'
+    });
     const totalUnidades = itemsDetalle.reduce((acc, item) => acc + item.cantidad, 0);
     return {
         ok: true,
@@ -532,7 +540,28 @@ async function crearCanjeCarrito(conn, { usuarioId, items, sucursalId, }) {
     };
 }
 router.get("/me", async (req, res) => {
-    const user = await (0, db_1.qOne)(db_1.pool, "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?", [req.user.id]);
+    const usuarioId = req.user.id;
+    // Recalcular saldo antes de devolver los datos (Option A)
+    try {
+        const conn = await db_1.pool.getConnection();
+        try {
+            const saldoCalculado = await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
+            const actualEnDB = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
+            console.log(`[CLIENTE/ME] Recalculo de puntos`, {
+                usuario_id: usuarioId,
+                saldo_en_usuarios: actualEnDB?.puntos_saldo,
+                saldo_calculado_por_movimientos: saldoCalculado,
+                iguales: actualEnDB?.puntos_saldo === saldoCalculado
+            });
+        }
+        finally {
+            conn.release();
+        }
+    }
+    catch (err) {
+        console.error(`[CLIENTE/ME] Error recalculando saldo:`, err);
+    }
+    const user = await (0, db_1.qOne)(db_1.pool, "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?", [usuarioId]);
     res.json(normalizeClienteUserRow(user));
 });
 router.patch("/perfil", async (req, res) => {
@@ -603,6 +632,8 @@ router.patch("/perfil", async (req, res) => {
             provincia ?? null,
             usuarioId
         ]);
+        // Recalcular saldo antes de devolver los datos actualizados
+        await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
         const updated = await (0, db_1.qOne)(conn, "SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, referido_por FROM usuarios WHERE id = ?", [usuarioId]);
         await conn.commit();
         res.json({ ok: true, user: normalizeClienteUserRow(updated) });
@@ -679,12 +710,22 @@ router.post("/usar-codigo-invitacion", async (req, res) => {
             res.status(400).json({ error: "Ya usaste un codigo de invitacion anteriormente" });
             return;
         }
-        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`, [invitador.id, pointsInvitador, `${usuario.nombre || "Un cliente"} uso tu codigo de invitacion`, refId]);
-        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`, [usuarioId, pointsInvitado, `Bono por usar el codigo de ${invitador.nombre}`, refId]);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [pointsInvitador, invitador.id]);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [pointsInvitado, usuarioId]);
+        await (0, points_1.registrarMovimientoPuntos)(conn, {
+            usuarioId: Number(invitador.id),
+            tipo: 'referido_invitador',
+            puntos: pointsInvitador,
+            descripcion: `${usuario.nombre || "Un cliente"} uso tu codigo de invitacion`,
+            referenciaId: Number(refId),
+            referenciaTipo: 'referidos'
+        });
+        await (0, points_1.registrarMovimientoPuntos)(conn, {
+            usuarioId: usuarioId,
+            tipo: 'referido_invitado',
+            puntos: pointsInvitado,
+            descripcion: `Bono por usar el codigo de ${invitador.nombre}`,
+            referenciaId: Number(refId),
+            referenciaTipo: 'referidos'
+        });
         await conn.commit();
         const updated = await (0, db_1.qOne)(db_1.pool, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
         res.json({
@@ -769,6 +810,7 @@ router.get("/carrito", async (req, res) => {
     const items = (await getCarritoItems(db_1.pool, req.user.id)).filter((item) => item.modo_compra === "dinero");
     const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
     const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
+    const totalPuntosGanados = items.reduce((acc, item) => acc + (Number(item.cantidad || 0) * Number(item.puntaje_al_comprar_unitario || 0)), 0);
     res.json({
         items,
         resumen: {
@@ -776,6 +818,7 @@ router.get("/carrito", async (req, res) => {
             total_unidades: totalUnidades,
             total_dinero: totalDinero,
             total_puntos: 0,
+            total_puntos_ganados: totalPuntosGanados,
         },
     });
 });
@@ -819,13 +862,13 @@ router.post("/carrito/items", async (req, res) => {
         if (existente?.id) {
             await (0, db_1.qRun)(conn, `UPDATE carrito_items
          SET cantidad = ?, precio_dinero_unit = ?, precio_puntos_unit = ?,
-             subtotal_dinero = ?, subtotal_puntos = ?
-         WHERE id = ?`, [nuevaCantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, Number(existente.id)]);
+             subtotal_dinero = ?, subtotal_puntos = ?, puntaje_al_comprar_unitario = ?
+         WHERE id = ?`, [nuevaCantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0, Number(existente.id)]);
         }
         else {
             await (0, db_1.qRun)(conn, `INSERT INTO carrito_items
-          (carrito_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [carritoId, producto_id, nuevaCantidad, modo_compra, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos]);
+          (carrito_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [carritoId, producto_id, nuevaCantidad, modo_compra, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0]);
         }
         await (0, db_1.qRun)(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carritoId]);
         await conn.commit();
@@ -889,8 +932,8 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
         const subtotalPuntos = 0;
         await (0, db_1.qRun)(conn, `UPDATE carrito_items
        SET cantidad = ?, precio_dinero_unit = ?, precio_puntos_unit = ?,
-           subtotal_dinero = ?, subtotal_puntos = ?
-       WHERE id = ?`, [parsed.data.cantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, itemId]);
+           subtotal_dinero = ?, subtotal_puntos = ?, puntaje_al_comprar_unitario = ?
+       WHERE id = ?`, [parsed.data.cantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0, itemId]);
         await (0, db_1.qRun)(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [Number(item.carrito_id)]);
         await conn.commit();
         res.json({ ok: true });
@@ -1120,11 +1163,13 @@ router.post("/checkout/confirm", async (req, res) => {
                 subtotal_dinero: toMoney((precioDineroUnit ?? 0) * Number(item.cantidad)),
                 subtotal_puntos: 0,
                 track_stock: Number(item.track_stock ?? 0),
+                puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,
                 nombre: item.nombre,
             });
         }
         const totalDinero = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
         const totalPuntos = 0;
+        const totalPuntosGanados = itemsNormalizados.reduce((acc, item) => acc + (item.cantidad * item.puntaje_al_comprar_unitario), 0);
         const paymentChoice = totalDinero > 0 ? (0, paymentProviders_1.resolvePaymentChoice)(parsed.data.pago ?? null) : null;
         if (paymentChoice) {
             if (paymentChoice.provider === "efectivo" && metodoEntrega !== "retiro") {
@@ -1168,8 +1213,8 @@ router.post("/checkout/confirm", async (req, res) => {
         }
         for (const item of itemsNormalizados) {
             await (0, db_1.qRun)(conn, `INSERT INTO orden_items
-          (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+          (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
                 ordenId,
                 item.producto_id,
                 item.cantidad,
@@ -1178,6 +1223,7 @@ router.post("/checkout/confirm", async (req, res) => {
                 item.precio_puntos_unit,
                 item.subtotal_dinero,
                 item.subtotal_puntos,
+                item.puntaje_al_comprar_unitario,
             ]);
         }
         let checkoutUrl = null;
@@ -1233,6 +1279,7 @@ router.post("/checkout/confirm", async (req, res) => {
             tipo_orden: tipoOrden,
             total_dinero: totalDinero,
             total_puntos: totalPuntos,
+            total_puntos_ganados: totalPuntosGanados,
             pago_pendiente: totalDinero > 0,
             pago: totalDinero > 0 ? {
                 proveedor: paymentProvider,
@@ -1408,7 +1455,10 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
         res.status(400).json({ error: "ID de orden invalido." });
         return;
     }
-    const orden = await (0, db_1.qOne)(db_1.pool, `SELECT id, estado, total_dinero
+    const orden = await (0, db_1.qOne)(db_1.pool, `SELECT id, estado, total_dinero,
+            (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
+             FROM orden_items
+             WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
      FROM ordenes
      WHERE id = ? AND usuario_id = ?
      LIMIT 1`, [ordenId, req.user.id]);
@@ -1445,6 +1495,7 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
         orden_id: ordenId,
         estado: orden.estado,
         total_dinero: Number(orden.total_dinero),
+        total_puntos_ganados: Number(orden.total_puntos_ganados),
         pago_pendiente: true,
         pago: {
             proveedor: pago.proveedor,
@@ -1471,7 +1522,10 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     let transactionOpen = false;
     try {
-        const orden = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado
+        const orden = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado,
+              (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
+               FROM orden_items
+               WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
        FROM ordenes
        WHERE id = ? AND usuario_id = ?
        LIMIT 1`, [ordenId, req.user.id]);
@@ -1488,6 +1542,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
                 ok: orden.estado === "pagada",
                 orden_id: ordenId,
                 estado: orden.estado,
+                total_puntos_ganados: Number(orden.total_puntos_ganados),
                 pago_estado: pago?.estado ?? null,
                 provider_payment_id: pago?.provider_payment_id ?? null,
                 status_detail: null,
@@ -1499,6 +1554,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
                 ok: false,
                 orden_id: ordenId,
                 estado: orden.estado,
+                total_puntos_ganados: Number(orden.total_puntos_ganados),
                 pago_estado: pago.estado,
                 provider_payment_id: pago.provider_payment_id,
                 status_detail: null,
@@ -1891,32 +1947,11 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
         if (!(orden.estado === "pendiente_pago" || orden.estado === "preparada")) {
             throw new HttpError(400, `No se puede cancelar una orden en estado '${orden.estado}'.`);
         }
-        const items = await getOrdenItems(conn, ordenId);
-        if (orden.sucursal_retiro_id && items.length) {
-            await (0, stock_1.releaseStockForCheckoutItems)(conn, {
-                sucursalId: Number(orden.sucursal_retiro_id),
-                items: items
-                    .filter((item) => Number(item.track_stock) === 1)
-                    .map((item) => ({
-                    producto_id: Number(item.producto_id),
-                    cantidad: Number(item.cantidad),
-                    origen: item.modo_compra === "dinero" ? "compra" : "canje",
-                    descripcion: `Cancelación de orden #${ordenId}`,
-                })),
-                referencia: `cancelación orden #${ordenId}`,
-                creadoPor: req.user.id,
-                ordenId,
-            });
-        }
-        const totalPuntos = Number(orden.total_puntos ?? 0);
-        if (totalPuntos > 0) {
-            await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
-          (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'ordenes')`, [req.user.id, totalPuntos, `Devolucion por cancelacion orden #${ordenId}`, ordenId]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [totalPuntos, req.user.id]);
-        }
-        await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = 'cancelada' WHERE id = ?", [ordenId]);
-        await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado IN ('iniciado')", [ordenId]);
+        const result = await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
+            orderId: ordenId,
+            nextState: "cancelada",
+            creadoPor: req.user.id
+        });
         await conn.commit();
         res.json({ ok: true, orden_id: ordenId, estado: "cancelada" });
     }
@@ -1974,9 +2009,14 @@ router.post("/canjear-codigo", async (req, res) => {
         }
         await (0, db_1.qRun)(conn, "INSERT INTO usos_codigos (codigo_id, usuario_id) VALUES (?, ?)", [c.id, usuarioId]);
         await (0, db_1.qRun)(conn, "UPDATE codigos_puntos SET usos_actuales = usos_actuales + 1 WHERE id = ?", [c.id]);
-        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-       VALUES (?, 'codigo_canje', ?, ?, ?, 'codigos_puntos')`, [usuarioId, c.puntos_valor, `Codigo canjeado: ${codigo}`, c.id]);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [c.puntos_valor, usuarioId]);
+        await (0, points_1.registrarMovimientoPuntos)(conn, {
+            usuarioId,
+            tipo: 'codigo_canje',
+            puntos: c.puntos_valor,
+            descripcion: `Codigo canjeado: ${codigo}`,
+            referenciaId: c.id,
+            referenciaTipo: 'codigos_puntos'
+        });
         await conn.commit();
         const updated = await (0, db_1.qOne)(db_1.pool, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
         res.json({ ok: true, puntos_ganados: c.puntos_valor, nuevo_saldo: updated?.puntos_saldo });

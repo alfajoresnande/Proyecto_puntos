@@ -4,7 +4,8 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
-const stock_1 = require("../services/stock");
+const points_1 = require("../services/points");
+const orderLifecycle_1 = require("../services/orderLifecycle");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
 function parseJsonField(value) {
@@ -150,9 +151,13 @@ router.post("/cargar", async (req, res, next) => {
             await conn.rollback();
             return;
         }
-        await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, creado_por)
-       VALUES (?, 'asignacion_manual', ?, ?, ?)`, [cliente.id, totalPuntos, descripcion ?? `Carga de puntos — ${items.length} producto(s)`, req.user.id]);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [totalPuntos, cliente.id]);
+        await (0, points_1.registrarMovimientoPuntos)(conn, {
+            usuarioId: Number(cliente.id),
+            tipo: 'asignacion_manual',
+            puntos: totalPuntos,
+            descripcion: descripcion || `Carga de puntos — ${items.length} producto(s)`,
+            creadoPor: req.user.id
+        });
         await conn.commit();
         res.status(201).json({
             ok: true,
@@ -245,7 +250,7 @@ router.patch("/canje/:codigo", async (req, res, next) => {
             await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
            (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
          VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`, [canje.usuario_id, canje.puntos_usados, `Devolución por canje ${motivo}`, canje.id, req.user.id]);
-            await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = puntos_saldo + ? WHERE id = ?", [canje.puntos_usados, canje.usuario_id]);
+            await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(canje.usuario_id));
         }
         await conn.commit();
         res.json({ ok: true, estado });
@@ -367,8 +372,9 @@ router.patch("/ordenes/:id", async (req, res, next) => {
        LIMIT 1
        FOR UPDATE`, [orderId]);
         const isCashPayment = pago?.proveedor === "efectivo" || pago?.metodo === "cash";
+        const paidStates = ["pagada", "preparada", "enviada", "entregada"];
         const allowedTransitions = {
-            pendiente_pago: isCashPayment ? ["pagada"] : [],
+            pendiente_pago: isCashPayment ? paidStates : [],
             pagada: ["preparada", "enviada", "entregada"],
             preparada: ["enviada", "entregada"],
             enviada: ["entregada"],
@@ -378,32 +384,22 @@ router.patch("/ordenes/:id", async (req, res, next) => {
             res.status(400).json({ error: `No se puede pasar una orden de '${orden.estado}' a '${estado}' desde el panel vendedor.` });
             return;
         }
-        if (orden.estado === "pendiente_pago" && estado === "pagada") {
-            const items = await (0, db_1.qAll)(conn, `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
-                oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
-         FROM orden_items oi
-         JOIN productos p ON p.id = oi.producto_id
-         WHERE oi.orden_id = ?
-         ORDER BY oi.id ASC`, [orderId]);
-            const stockItems = items
-                .filter((item) => Number(item.track_stock ?? 0) === 1)
-                .map((item) => ({
-                producto_id: Number(item.producto_id),
-                cantidad: Number(item.cantidad),
-                origen: item.modo_compra === "dinero" ? "compra" : "canje",
-                descripcion: `Pago en efectivo orden #${orderId}`,
-            }));
-            if (orden.sucursal_retiro_id && stockItems.length) {
-                await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
-                    sucursalId: Number(orden.sucursal_retiro_id),
-                    items: stockItems,
-                    referencia: `orden #${orderId}`,
-                    creadoPor: req.user.id,
-                    ordenId: orderId,
-                });
+        // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO (Efectivo)
+        if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
+            console.log(`[VENDEDOR/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
+            await (0, orderLifecycle_1.approvePaidOrder)(conn, {
+                orderId,
+                provider: "vendedor",
+                creadoPor: req.user.id,
+            });
+            if (estado === "pagada") {
+                await conn.commit();
+                res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
+                return;
             }
-            await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'aprobado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+            // Si es otro estado, seguimos abajo para el UPDATE final de estado
         }
+        // RESTO DE TRANSICIONES
         await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
         await conn.commit();
         res.json({ ok: true });
