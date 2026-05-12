@@ -49,19 +49,19 @@ export function Navbar() {
         .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
     [onlineCartQuery.data?.items],
   );
-  const isStoreCartSection = ["/tienda", "/carrito-tienda", "/mis-pedidos"].some((path) => location.pathname.startsWith(path));
-  const activeCart = isStoreCartSection
+  const isRedemptionCatalog = location.pathname.startsWith("/catalogo");
+  const activeCart = isRedemptionCatalog
     ? {
-        target: "/carrito-tienda",
-        count: onlineCartCount,
-        label: "Carrito de compras",
-        className: "navbar-cart-btn navbar-cart-btn-store",
-      }
-    : {
         target: "/carrito-canjes",
         count: canjeCartCount,
         label: "Carrito de canjes",
         className: "navbar-cart-btn navbar-cart-btn-canje",
+      }
+    : {
+        target: "/carrito-tienda",
+        count: onlineCartCount,
+        label: "Carrito de compras",
+        className: "navbar-cart-btn navbar-cart-btn-store",
       };
 
   const closeMenu = () => setMenuOpen(false);

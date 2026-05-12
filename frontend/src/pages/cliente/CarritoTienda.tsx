@@ -540,6 +540,12 @@ export function CarritoTienda() {
     mutationFn: (itemId: number) => api.delete<{ ok: true }>(`/cliente/carrito/items/${itemId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
   });
+  
+  const clearCart = useMutation({
+    mutationFn: () => api.delete<{ ok: true }>("/cliente/carrito/vaciar"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
+    onError: (error: Error) => setMessage(error.message || "No se pudo vaciar el carrito."),
+  });
 
   const confirmCheckout = useMutation({
     mutationFn: () =>
@@ -802,6 +808,21 @@ export function CarritoTienda() {
         ) : (
           <>
             <div className="catalog-confirm-branch-detail catalog-canje-block catalog-canje-list">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", paddingBottom: "0.5rem", borderBottom: "1px solid #f0dfca" }}>
+                <h2 style={{ fontSize: "1.1rem", color: "#4A2C1A", margin: 0 }}>Tus productos</h2>
+                <button 
+                  className="adm-btn-danger" 
+                  style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem" }}
+                  disabled={clearCart.isPending || cartItems.length === 0}
+                  onClick={() => {
+                    if (window.confirm("¿Estás seguro de que quieres vaciar el carrito?")) {
+                      clearCart.mutate();
+                    }
+                  }}
+                >
+                  Vaciar carrito
+                </button>
+              </div>
               {cartItems.map((item) => (
                 <div key={item.id} className="catalog-canje-item">
                   <div>

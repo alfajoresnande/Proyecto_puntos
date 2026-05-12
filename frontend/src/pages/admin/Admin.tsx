@@ -700,6 +700,7 @@ export function Admin() {
   });
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
   const [busquedaProductos, setBusquedaProductos] = useState("");
+  const [filtroTipoProducto, setFiltroTipoProducto] = useState("");
   const [movimientosInicioPage, setMovimientosInicioPage] = useState(1);
   const [usuariosPage, setUsuariosPage] = useState(1);
   const [productosPage, setProductosPage] = useState(1);
@@ -981,8 +982,9 @@ export function Admin() {
 
   const productosFiltrados = useMemo(() => {
     const q = busquedaProductos.trim().toLowerCase();
-    if (!q) return productos;
     return productos.filter((producto) => {
+      if (filtroTipoProducto && producto.tipo_producto !== filtroTipoProducto) return false;
+      if (!q) return true;
       const haystack = [
         producto.nombre,
         producto.sku || "",
@@ -997,7 +999,7 @@ export function Admin() {
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [productos, busquedaProductos]);
+  }, [productos, busquedaProductos, filtroTipoProducto]);
 
   const inventarioFiltrado = useMemo(() => {
     const q = busquedaInventario.trim().toLowerCase();
@@ -2810,13 +2812,25 @@ export function Admin() {
               </div>
 
               <SectionTitle title="Productos existentes" />
-              <div className="adm-list-search">
+              <div className="adm-list-search" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
                 <input
                   className="adm-input"
+                  style={{ flex: "1", minWidth: "200px" }}
                   placeholder="Buscar producto por nombre, categoria, descripcion o puntos..."
                   value={busquedaProductos}
                   onChange={(event) => setBusquedaProductos(event.target.value)}
                 />
+                <select
+                  className="adm-input"
+                  style={{ width: "auto", minWidth: "160px", flex: "0 0 auto" }}
+                  value={filtroTipoProducto}
+                  onChange={(event) => { setFiltroTipoProducto(event.target.value); setProductosPage(1); }}
+                >
+                  <option value="">Todos los tipos</option>
+                  <option value="canje">Solo canje</option>
+                  <option value="venta">Solo tienda</option>
+                  <option value="mixto">Mixto</option>
+                </select>
               </div>
               <div className="admin-card">
                 {productosFiltrados.length === 0 ? <div className="adm-empty">No hay productos que coincidan con la busqueda.</div> : null}

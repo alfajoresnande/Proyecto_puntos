@@ -1476,6 +1476,32 @@ router.delete("/carrito/items/:itemId", async (req, res) => {
   }
 });
 
+router.delete("/carrito/vaciar", async (req, res) => {
+  const usuarioId = req.user!.id;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const carrito = await qOne<{ id: number }>(
+      conn,
+      "SELECT id FROM carritos WHERE usuario_id = ? AND estado = 'activo' LIMIT 1",
+      [usuarioId]
+    );
+
+    if (carrito) {
+      await qRun(conn, "DELETE FROM carrito_items WHERE carrito_id = ?", [carrito.id]);
+      await qRun(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carrito.id]);
+    }
+
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+});
+
 router.post("/checkout/preview", async (req, res) => {
   const schema = z.object({
     sucursal_id: z.number().int().positive().optional().nullable(),

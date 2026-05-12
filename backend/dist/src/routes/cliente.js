@@ -1027,6 +1027,27 @@ router.delete("/carrito/items/:itemId", async (req, res) => {
         conn.release();
     }
 });
+router.delete("/carrito/vaciar", async (req, res) => {
+    const usuarioId = req.user.id;
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const carrito = await (0, db_1.qOne)(conn, "SELECT id FROM carritos WHERE usuario_id = ? AND estado = 'activo' LIMIT 1", [usuarioId]);
+        if (carrito) {
+            await (0, db_1.qRun)(conn, "DELETE FROM carrito_items WHERE carrito_id = ?", [carrito.id]);
+            await (0, db_1.qRun)(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carrito.id]);
+        }
+        await conn.commit();
+        res.json({ ok: true });
+    }
+    catch (err) {
+        await conn.rollback();
+        throw err;
+    }
+    finally {
+        conn.release();
+    }
+});
 router.post("/checkout/preview", async (req, res) => {
     const schema = zod_1.z.object({
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
