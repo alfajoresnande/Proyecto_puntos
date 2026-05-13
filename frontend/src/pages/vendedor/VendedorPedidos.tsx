@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api";
 
 type OrdenVendedor = {
@@ -215,6 +216,13 @@ export function VendedorPedidos() {
                 >
                   {ordenExpandidaId === orden.id ? "Ocultar detalle" : "Ver detalle"}
                 </button>
+                <Link
+                  to={`/vendedor/pedidos/${orden.id}`}
+                  className="ios-btn-secondary"
+                  style={{ width: "auto", padding: "0.55rem 0.85rem", textDecoration: "none" }}
+                >
+                  Ver comprobante
+                </Link>
                 {puedeMarcarPagada(orden) ? (
                   <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "pagada")}>
                     Cobrado
