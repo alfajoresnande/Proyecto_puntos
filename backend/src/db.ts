@@ -134,6 +134,44 @@ async function ensureUsuarioDemographicsSchema() {
   }
 }
 
+async function ensureEmailVerificationSchema() {
+  const [verifiedRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'email_verificado'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!verifiedRows.length) {
+    await pool.query("ALTER TABLE usuarios ADD COLUMN email_verificado TINYINT(1) NOT NULL DEFAULT 1 AFTER email");
+  }
+
+  const [verifiedAtRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'email_verificado_at'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!verifiedAtRows.length) {
+    await pool.query("ALTER TABLE usuarios ADD COLUMN email_verificado_at DATETIME NULL AFTER email_verificado");
+  }
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS email_verification_codes (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      codigo_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      requested_ip VARCHAR(64) NULL,
+      requested_user_agent VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_email_verification_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      INDEX idx_email_verification_usuario_estado (usuario_id, used_at, expires_at)
+    )`
+  );
+}
+
 async function ensureUsuarioRolesSchema() {
   const [roleRows] = await pool.query(
     `SELECT COLUMN_TYPE
@@ -881,6 +919,11 @@ pool
       await ensureUsuarioDemographicsSchema();
     } catch (err: any) {
       console.error("Migracion datos demograficos de usuarios:", err.message);
+    }
+    try {
+      await ensureEmailVerificationSchema();
+    } catch (err: any) {
+      console.error("Migracion verificacion de email:", err.message);
     }
     try {
       await ensureUbicacionesArgentinaSchema();

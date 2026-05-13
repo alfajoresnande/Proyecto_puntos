@@ -7,6 +7,13 @@ type PasswordResetEmailInput = {
   expiresMinutes: number;
 };
 
+type EmailVerificationCodeInput = {
+  to: string;
+  nombre: string;
+  code: string;
+  expiresMinutes: number;
+};
+
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -16,11 +23,78 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
-export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void> {
+async function sendResendEmail(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  devLog: string;
+}): Promise<void> {
   const resendApiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM || process.env.EMAIL_FROM || "Nand\u00e9 <no-reply@nande.local>";
   const replyTo = process.env.RESEND_REPLY_TO || undefined;
 
+  if (!resendApiKey) {
+    console.warn(input.devLog);
+    return;
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      ...(replyTo ? { reply_to: replyTo } : {}),
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Error enviando email (${res.status}): ${body || "sin detalle"}`);
+  }
+}
+
+export async function sendEmailVerificationCode(input: EmailVerificationCodeInput): Promise<void> {
+  const safeName = escapeHtml(input.nombre || "Usuario");
+  const safeCode = escapeHtml(input.code);
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #2D1200;">
+      <h2 style="color:#D4621A;">Verificacion de correo</h2>
+      <p>Hola ${safeName},</p>
+      <p>Usa este codigo para activar tu cuenta:</p>
+      <p style="font-size:28px;letter-spacing:6px;font-weight:700;color:#2D1200;margin:24px 0;">${safeCode}</p>
+      <p>Este codigo vence en <strong>${input.expiresMinutes} minutos</strong>.</p>
+      <p style="font-size:13px;color:#8B5A30;">
+        Si no creaste una cuenta en Nande, podes ignorar este correo.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Verificacion de correo",
+    `Hola ${input.nombre || "Usuario"},`,
+    `Tu codigo de verificacion es: ${input.code}`,
+    `Vence en ${input.expiresMinutes} minutos.`,
+    "Si no creaste una cuenta en Nande, ignora este correo.",
+  ].join("\n");
+
+  await sendResendEmail({
+    to: input.to,
+    subject: "Verifica tu correo - Nande",
+    html,
+    text,
+    devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Codigo de verificacion: to=${input.to} code=${input.code}`,
+  });
+}
+
+export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Promise<void> {
   const safeName = escapeHtml(input.nombre || "Usuario");
   const safeLink = escapeHtml(input.resetLink);
   const html = `
@@ -54,30 +128,11 @@ export async function sendPasswordResetEmail(input: PasswordResetEmailInput): Pr
     "Si no hiciste esta solicitud, ignora este correo.",
   ].join("\n");
 
-  if (!resendApiKey) {
-    console.warn("[MAIL][DEV] RESEND_API_KEY no configurada. Link de reset:");
-    console.warn(`to=${input.to} link=${input.resetLink}`);
-    return;
-  }
-
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-      to: input.to,
-      subject: "Restablecer contrase\u00f1a - Nand\u00e9",
-      html,
-      text,
-    }),
+  await sendResendEmail({
+    to: input.to,
+    subject: "Restablecer contrase\u00f1a - Nand\u00e9",
+    html,
+    text,
+    devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Link de reset: to=${input.to} link=${input.resetLink}`,
   });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Error enviando email de reset (${res.status}): ${body || "sin detalle"}`);
-  }
 }

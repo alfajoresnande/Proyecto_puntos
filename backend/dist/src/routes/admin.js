@@ -288,8 +288,9 @@ router.post("/usuarios", async (req, res) => {
             const longitud = await getInviteCodeLength();
             codigo = await uniqueInviteCode(longitud);
         }
-        const { insertId } = await (0, db_1.qRun)(db_1.pool, `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
-       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`, [nombre, email, hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]);
+        const { insertId } = await (0, db_1.qRun)(db_1.pool, `INSERT INTO usuarios
+         (nombre, email, email_verificado, email_verificado_at, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+       VALUES (?, ?, 1, NOW(), ?, ?, ?, NULL, ?, ?, ?, ?)`, [nombre, email.trim().toLowerCase(), hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]);
         res.status(201).json({ id: insertId });
     }
     catch (err) {

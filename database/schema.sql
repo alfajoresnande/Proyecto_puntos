@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
     nombre              VARCHAR(100)    NOT NULL,
     email               VARCHAR(150)    NOT NULL UNIQUE,
+    email_verificado    TINYINT(1)      NOT NULL DEFAULT 0,
+    email_verificado_at DATETIME        NULL,
     google_id           VARCHAR(255)    NULL UNIQUE,
     password_hash       VARCHAR(255)    NOT NULL,
     rol                 ENUM('admin','superAdmin','vendedor','cliente') NOT NULL DEFAULT 'cliente',
@@ -31,6 +33,30 @@ CREATE TABLE IF NOT EXISTS usuarios (
         FOREIGN KEY (referido_por) REFERENCES usuarios(id)
         ON DELETE SET NULL
 );
+
+-- ============================================================
+-- TABLA: email_verification_codes
+-- Codigos de un solo uso para verificar el email al registrarse.
+-- Se almacena hash del codigo (nunca el codigo en claro).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id                      BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    usuario_id              INT             NOT NULL,
+    codigo_hash             CHAR(64)        NOT NULL,
+    expires_at              DATETIME        NOT NULL,
+    used_at                 DATETIME        NULL,
+    attempts                TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    requested_ip            VARCHAR(64)     NULL,
+    requested_user_agent    VARCHAR(255)    NULL,
+    created_at              DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_email_verification_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_email_verification_usuario_estado
+    ON email_verification_codes (usuario_id, used_at, expires_at);
 
 -- ============================================================
 -- TABLA: password_reset_tokens
@@ -606,10 +632,12 @@ ON DUPLICATE KEY UPDATE slug = slug;
 -- NandeAlfajoresCorrentinos1@protonmail.com / Nande_2026_Alfajores1
 -- NandeAlfajoresCorrentinos2@protonmail.com / Nande_2026_Alfajores2
 -- ============================================================
-INSERT INTO usuarios (nombre, email, password_hash, rol, activo) VALUES
+INSERT INTO usuarios (nombre, email, email_verificado, email_verificado_at, password_hash, rol, activo) VALUES
 (
     'Administrador 1',
     'NandeAlfajoresCorrentinos1@protonmail.com',
+    1,
+    NOW(),
     '$2a$10$414cDd/a/On5MvCZCWQ9uuaAFOgv3zPboxokQt2Dya6XQU2VN.rN.',
     'admin',
     1
@@ -617,6 +645,8 @@ INSERT INTO usuarios (nombre, email, password_hash, rol, activo) VALUES
 (
     'Administrador 2',
     'NandeAlfajoresCorrentinos2@protonmail.com',
+    1,
+    NOW(),
     '$2a$10$vO0.sc08ZUwx/zcSgLevjeiwLEnzZqT4IuAwBeGsdEccKX73CTBuu',
     'admin',
     1
