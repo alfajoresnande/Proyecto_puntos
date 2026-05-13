@@ -1,14 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
-import { useAuthStore } from "../../store/authStore";
 import "../../styles/comprobante.css";
-import { useEffect } from "react";
 
-type OrdenDetalle = {
+type OrdenVendedorDetalle = {
   id: number;
   estado: string;
-  tipo_orden: "canje" | "venta" | "mixta";
+  tipo_orden: "venta" | "mixta" | string;
   total_dinero: number;
   total_puntos: number;
   moneda: string;
@@ -20,6 +19,7 @@ type OrdenDetalle = {
     codigo_postal?: string;
     localidad?: string;
     provincia?: string;
+    referencias?: string | null;
   } | null;
   sucursal?: {
     nombre: string | null;
@@ -32,9 +32,11 @@ type OrdenDetalle = {
     producto_id: number;
     nombre: string;
     cantidad: number;
+    modo_compra: "dinero" | "puntos";
     precio_dinero_unit: number | null;
-    subtotal_dinero: number;
     puntaje_al_comprar_unitario?: number | null;
+    subtotal_dinero: number;
+    subtotal_puntos: number;
   }>;
   pago?: {
     proveedor: string;
@@ -43,18 +45,11 @@ type OrdenDetalle = {
     monto: number;
     moneda: string;
   } | null;
-  comprobante?: {
-    leyenda_no_factura: string;
-    dias_habiles: string;
-    horario_habil: string;
-    dias_vigencia_efectivo: number | null;
-    fecha_limite_efectivo: string | null;
-    retiro_en_sucursal: boolean;
-  } | null;
   usuario?: {
     nombre: string;
     email: string;
     dni: string | null;
+    telefono?: string | null;
   };
 };
 
@@ -66,11 +61,16 @@ function money(value: number | string | null | undefined): string {
 function dateLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function estadoPedidoLabel(estado: string): string {
-  const normalized = estado.trim().toLowerCase();
   const labels: Record<string, string> = {
     pendiente_pago: "Pendiente de pago",
     pagada: "Pago aprobado",
@@ -80,7 +80,7 @@ function estadoPedidoLabel(estado: string): string {
     cancelada: "Cancelado",
     expirada: "Expirado",
   };
-  return labels[normalized] ?? estado;
+  return labels[estado.trim().toLowerCase()] ?? estado;
 }
 
 function paymentMethodLabel(metodo: string | null | undefined): string {
@@ -99,22 +99,13 @@ function paymentProviderLabel(proveedor: string | null | undefined): string {
   return proveedor || "Sin definir";
 }
 
-function canContinueOnlinePayment(orden: OrdenDetalle): boolean {
-  return (
-    orden.estado === "pendiente_pago" &&
-    orden.pago?.proveedor === "mercadopago" &&
-    orden.pago?.estado === "iniciado"
-  );
-}
-
-export function ComprobantePedido() {
+export function ComprobantePedidoVendedor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
 
   const { data: orden, isLoading, isError } = useQuery({
-    queryKey: ["cliente", "orden", id],
-    queryFn: () => api.get<OrdenDetalle>(`/cliente/ordenes/${id}`),
+    queryKey: ["vendedor", "orden", id],
+    queryFn: () => api.get<OrdenVendedorDetalle>(`/vendedor/ordenes/${id}`),
     enabled: !!id,
     retry: false,
   });
@@ -138,50 +129,34 @@ export function ComprobantePedido() {
     return (
       <div className="comprobante-wrapper">
         <div className="status-err-box" style={{ maxWidth: "400px", margin: "2rem auto" }}>
-          <p>No se pudo cargar el pedido. Verifica que exista y te pertenezca.</p>
+          <p>No se pudo cargar el comprobante del pedido.</p>
         </div>
-        <button className="catalog-float-toast-btn-secondary" onClick={() => navigate("/mis-pedidos")}>
-          Volver a mis pedidos
+        <button className="catalog-float-toast-btn-secondary" onClick={() => navigate("/vendedor/pedidos")}>
+          Volver a pedidos
         </button>
       </div>
     );
   }
 
-  const clienteNombre = orden.direccion_envio?.nombre || user?.nombre || "-";
-  const clienteEmail = user?.email || "-";
-  const clienteDni = user?.dni || "-";
-  const clienteTelefono = orden.direccion_envio?.telefono || "-";
-  
-  const puntosGanados = orden.items?.reduce((acc, item) => acc + (item.puntaje_al_comprar_unitario || 0) * item.cantidad, 0) || 0;
+  const clienteNombre = orden.direccion_envio?.nombre || orden.usuario?.nombre || "-";
+  const clienteEmail = orden.usuario?.email || "-";
+  const clienteDni = orden.usuario?.dni || "-";
+  const clienteTelefono = orden.direccion_envio?.telefono || orden.usuario?.telefono || "-";
+  const puntosGanados =
+    orden.items?.reduce((acc, item) => acc + Number(item.puntaje_al_comprar_unitario || 0) * Number(item.cantidad || 0), 0) || 0;
 
   return (
     <div className="comprobante-wrapper">
       <div className="comprobante-actions no-print">
-        <Link to="/mis-pedidos" className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", height: "auto" }}>
+        <Link to="/vendedor/pedidos" className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", height: "auto" }}>
           Volver
         </Link>
-        {canContinueOnlinePayment(orden) ? (
-          <Link
-            to={`/carrito-tienda?pagar_orden=${orden.id}`}
-            className="catalog-float-toast-btn-primary"
-            style={{ padding: "0.5rem 1rem", height: "auto" }}
-          >
-            Continuar pago
-          </Link>
-        ) : null}
-        <button 
-          className="catalog-float-toast-btn-primary" 
-          style={{ padding: "0.5rem 1rem", height: "auto" }}
-          onClick={() => window.print()}
-        >
-          Imprimir / Descargar PDF
-        </button>
       </div>
 
       <div className="comprobante-a4">
         <div className="comprobante-header">
           <div className="comprobante-logo-container">
-            <img src="/logo.png" alt="Ñandé" className="comprobante-logo" />
+            <img src="/logo.png" alt="Nande" className="comprobante-logo" />
           </div>
           <div className="comprobante-meta">
             <h1 className="comprobante-title">Comprobante de pedido</h1>
@@ -196,31 +171,31 @@ export function ComprobantePedido() {
             <p><strong>Nombre:</strong> {clienteNombre}</p>
             <p><strong>Email:</strong> {clienteEmail}</p>
             <p><strong>DNI:</strong> {clienteDni}</p>
-            {clienteTelefono !== "-" && <p><strong>Teléfono:</strong> {clienteTelefono}</p>}
+            {clienteTelefono !== "-" ? <p><strong>Telefono:</strong> {clienteTelefono}</p> : null}
           </div>
 
           <div className="comprobante-box">
             <h3>Resumen de pago</h3>
             <p><strong>Estado:</strong> {estadoPedidoLabel(orden.estado)}</p>
-            <p><strong>Método de pago:</strong> {paymentMethodLabel(orden.pago?.metodo)}</p>
+            <p><strong>Metodo de pago:</strong> {paymentMethodLabel(orden.pago?.metodo)}</p>
             <p><strong>Proveedor:</strong> {paymentProviderLabel(orden.pago?.proveedor)}</p>
-            <p><strong>Total pagado:</strong> {money(orden.pago?.monto || orden.total_dinero)}</p>
+            <p><strong>Total:</strong> {money(orden.pago?.monto || orden.total_dinero)}</p>
           </div>
 
           <div className="comprobante-box">
             <h3>Detalles de entrega</h3>
             {orden.direccion_envio ? (
               <>
-                <p><strong>Forma:</strong> Envío a domicilio</p>
-                <p><strong>Dirección:</strong> {orden.direccion_envio.direccion}</p>
+                <p><strong>Forma:</strong> Envio a domicilio</p>
+                <p><strong>Direccion:</strong> {orden.direccion_envio.direccion}</p>
                 <p><strong>Localidad:</strong> {orden.direccion_envio.localidad}, {orden.direccion_envio.provincia} ({orden.direccion_envio.codigo_postal})</p>
+                {orden.direccion_envio.referencias ? <p><strong>Referencias:</strong> {orden.direccion_envio.referencias}</p> : null}
               </>
             ) : orden.sucursal?.nombre ? (
               <>
                 <p><strong>Forma:</strong> Retiro en sucursal</p>
                 <p><strong>Sucursal:</strong> {orden.sucursal.nombre}</p>
-                <p><strong>Dirección:</strong> {orden.sucursal.direccion}, {orden.sucursal.localidad}, {orden.sucursal.provincia}</p>
-                {orden.comprobante?.horario_habil && <p><strong>Horario:</strong> {orden.comprobante.horario_habil}</p>}
+                <p><strong>Direccion:</strong> {orden.sucursal.direccion}, {orden.sucursal.localidad}, {orden.sucursal.provincia}</p>
               </>
             ) : (
               <p><strong>Forma:</strong> A convenir</p>
@@ -228,7 +203,7 @@ export function ComprobantePedido() {
           </div>
         </div>
 
-        {orden.items && orden.items.length > 0 && (
+        {orden.items && orden.items.length > 0 ? (
           <div className="comprobante-table-wrapper">
             <table className="comprobante-table">
               <thead>
@@ -244,32 +219,32 @@ export function ComprobantePedido() {
                   <tr key={`${item.producto_id}-${idx}`}>
                     <td>{item.nombre}</td>
                     <td className="text-center">{item.cantidad}</td>
-                    <td className="text-right">{money(item.precio_dinero_unit)}</td>
-                    <td className="text-right">{money(item.subtotal_dinero)}</td>
+                    <td className="text-right">{item.modo_compra === "dinero" ? money(item.precio_dinero_unit) : `${item.subtotal_puntos} pts`}</td>
+                    <td className="text-right">{item.modo_compra === "dinero" ? money(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
 
         <div className="comprobante-totals">
           <div className="comprobante-total-row">
             <span>Subtotal:</span>
             <span>{money(orden.total_dinero)}</span>
           </div>
-          {orden.total_puntos > 0 && (
+          {orden.total_puntos > 0 ? (
             <div className="comprobante-total-row">
               <span>Puntos usados:</span>
               <span>{orden.total_puntos} pts</span>
             </div>
-          )}
-          {puntosGanados > 0 && (
+          ) : null}
+          {puntosGanados > 0 ? (
             <div className="comprobante-total-row">
               <span>Puntos ganados:</span>
               <span style={{ color: "#D4621A", fontWeight: 600 }}>+{puntosGanados} pts</span>
             </div>
-          )}
+          ) : null}
           <div className="comprobante-total-row grand-total">
             <span>Total:</span>
             <span>{money(orden.total_dinero)}</span>
@@ -277,8 +252,8 @@ export function ComprobantePedido() {
         </div>
 
         <div className="comprobante-footer">
-          <p className="comprobante-disclaimer">Este documento no es válido como factura.</p>
-          <p className="comprobante-thanks">Gracias por elegir Ñandé Alfajores Correntinos.</p>
+          <p className="comprobante-disclaimer">Vista operativa para el vendedor. Este documento no es valido como factura.</p>
+          <p className="comprobante-thanks">Gracias por elegir Nande Alfajores Correntinos.</p>
         </div>
       </div>
     </div>

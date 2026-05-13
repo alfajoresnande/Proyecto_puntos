@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { apiUrl } from "../lib/apiBase";
 import { getCsrfToken } from "../lib/csrf";
 import { useCartStore } from "./cartStore";
-import type { AuthResponse, User } from "../types";
+import type { AuthResponse, RegisterResponse, User } from "../types";
 
 type LoginPayload = {
   email: string;
@@ -21,6 +21,15 @@ type GoogleLoginPayload = {
   credential: string;
 };
 
+type VerifyEmailPayload = {
+  email: string;
+  code: string;
+};
+
+type ResendEmailVerificationPayload = {
+  email: string;
+};
+
 type AuthStore = {
   user: User | null;
   token: string | null;
@@ -30,7 +39,9 @@ type AuthStore = {
   logout: () => void;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
   loginWithGoogle: (credential: string) => Promise<AuthResponse>;
-  register: (payload: RegisterPayload) => Promise<AuthResponse>;
+  register: (payload: RegisterPayload) => Promise<RegisterResponse>;
+  verifyEmail: (payload: VerifyEmailPayload) => Promise<AuthResponse>;
+  resendEmailVerification: (payload: ResendEmailVerificationPayload) => Promise<{ ok: boolean; message?: string }>;
   updateUserPoints: (puntos: number) => void;
   updateUser: (patch: Partial<User>) => void;
   restoreSession: () => Promise<void>;
@@ -46,7 +57,10 @@ function parseErrorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
-async function requestAuth(path: string, payload: LoginPayload | RegisterPayload | GoogleLoginPayload): Promise<AuthResponse> {
+async function requestAuth<TResponse>(
+  path: string,
+  payload: LoginPayload | RegisterPayload | GoogleLoginPayload | VerifyEmailPayload | ResendEmailVerificationPayload,
+): Promise<TResponse> {
   const res = await fetch(apiUrl(`/api/auth/${path}`), {
     method: "POST",
     credentials: "include",
@@ -62,7 +76,7 @@ async function requestAuth(path: string, payload: LoginPayload | RegisterPayload
     throw new Error(parseErrorMessage(body, "No se pudo completar la autenticacion."));
   }
 
-  return body as AuthResponse;
+  return body as TResponse;
 }
 
 async function requestLogout(token: string | null): Promise<void> {
@@ -100,21 +114,31 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       login: async (payload) => {
-        const session = await requestAuth("login", payload);
+        const session = await requestAuth<AuthResponse>("login", payload);
         set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       loginWithGoogle: async (credential) => {
-        const session = await requestAuth("google", { credential });
+        const session = await requestAuth<AuthResponse>("google", { credential });
         set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
       },
 
       register: async (payload) => {
-        const session = await requestAuth("register", payload);
+        const response = await requestAuth<RegisterResponse>("register", payload);
+        set({ user: null, token: null, isRestoringSession: false, hasRestoredSession: true });
+        return response;
+      },
+
+      verifyEmail: async (payload) => {
+        const session = await requestAuth<AuthResponse>("verify-email", payload);
         set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;
+      },
+
+      resendEmailVerification: async (payload) => {
+        return requestAuth<{ ok: boolean; message?: string }>("resend-email-verification", payload);
       },
 
       updateUserPoints: (puntos) => {

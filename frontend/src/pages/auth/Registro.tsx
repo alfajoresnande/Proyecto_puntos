@@ -1,5 +1,5 @@
 ﻿import { useMutation } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { defaultRouteForRole } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
@@ -7,7 +7,7 @@ import { useAuthStore } from "../../store/authStore";
 function passwordValidationErrors(value: string): string[] {
   const errors: string[] = [];
   if (value.length < 12) errors.push("Minimo 12 caracteres");
-  if (!/[A-Za-z]/.test(value)) errors.push("Al menos 1 letra");
+  if (!/[^A-Za-z0-9]/.test(value)) errors.push("Al menos 1 caracter especial");
   if (!/\d/.test(value)) errors.push("Al menos 1 numero");
   return errors;
 }
@@ -16,6 +16,8 @@ export function Registro() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const register = useAuthStore((state) => state.register);
+  const verifyEmail = useAuthStore((state) => state.verifyEmail);
+  const resendEmailVerification = useAuthStore((state) => state.resendEmailVerification);
 
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
@@ -27,7 +29,9 @@ export function Registro() {
   const [localError, setLocalError] = useState("");
   const [showOptionalCode, setShowOptionalCode] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
-  const redirectTimerRef = useRef<number | null>(null);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationInfo, setVerificationInfo] = useState("");
 
   const registerMutation = useMutation({
     mutationFn: () =>
@@ -37,11 +41,33 @@ export function Registro() {
         password,
         codigo_invitacion_usado: codigoInvitacion.trim() ? codigoInvitacion.trim().toUpperCase() : null,
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      setPendingEmail(response.email);
+      setVerificationCode("");
+      setVerificationInfo(response.message || "Te enviamos un codigo para verificar tu correo.");
       setShowSuccessToast(true);
-      redirectTimerRef.current = window.setTimeout(() => {
-        navigate("/cliente");
-      }, 1400);
+    },
+    onError: (error) => {
+      if (error.message.toLowerCase().includes("falta verificarlo")) {
+        setPendingEmail(email.trim().toLowerCase());
+        setVerificationCode("");
+        setVerificationInfo("Ese correo ya estaba registrado. Podes ingresar el codigo o pedir uno nuevo.");
+      }
+    },
+  });
+
+  const verifyMutation = useMutation({
+    mutationFn: () => verifyEmail({ email: pendingEmail, code: verificationCode.trim() }),
+    onSuccess: (session) => {
+      setShowSuccessToast(true);
+      navigate(defaultRouteForRole(session.user.rol));
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => resendEmailVerification({ email: pendingEmail }),
+    onSuccess: (response) => {
+      setVerificationInfo(response.message || "Te enviamos un nuevo codigo.");
     },
   });
 
@@ -49,14 +75,6 @@ export function Registro() {
     document.body.classList.add("auth-background");
     return () => {
       document.body.classList.remove("auth-background");
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current !== null) {
-        window.clearTimeout(redirectTimerRef.current);
-      }
     };
   }, []);
 
@@ -86,19 +104,73 @@ export function Registro() {
     registerMutation.mutate();
   }
 
+  function submitVerification(event: FormEvent) {
+    event.preventDefault();
+    setLocalError("");
+
+    if (!/^\d{6}$/.test(verificationCode.trim())) {
+      setLocalError("Ingresa el codigo de 6 digitos que recibiste por correo.");
+      return;
+    }
+
+    verifyMutation.mutate();
+  }
+
+  const isVerificationStep = Boolean(pendingEmail);
+
   return (
     <section className="login-page">
-      {showSuccessToast ? <div className="auth-floating-toast">Cuenta creada con exito. Redirigiendo...</div> : null}
+      {showSuccessToast ? <div className="auth-floating-toast">Cuenta creada. Revisa tu correo.</div> : null}
       <div className="login-card login-card-register-compact">
         <div className="login-logo" style={{ marginBottom: "0.75rem" }}>
           <img src="/logo.png" alt="Nande" style={{ height: "64px" }} />
         </div>
 
-        <h1 className="login-heading" style={{ fontSize: "1.6rem", marginBottom: "0.2rem" }}>Crear cuenta</h1>
+        <h1 className="login-heading" style={{ fontSize: "1.6rem", marginBottom: "0.2rem" }}>
+          {isVerificationStep ? "Verificar correo" : "Crear cuenta"}
+        </h1>
         <p className="login-subheading" style={{ marginBottom: "1.25rem" }}>
-          Registrate en 1 paso. Los datos para comprar online se completan despues en tu perfil.
+          {isVerificationStep
+            ? `Ingresa el codigo que enviamos a ${pendingEmail}.`
+            : "Registrate y confirma tu correo para activar la cuenta."}
         </p>
 
+        {isVerificationStep ? (
+          <form onSubmit={submitVerification}>
+            <label className="login-field-label">Codigo de verificacion</label>
+            <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                className="login-input login-input-noicon register-input-sm"
+                placeholder="123456"
+                value={verificationCode}
+                onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                required
+                autoComplete="one-time-code"
+              />
+            </div>
+
+            {verificationInfo ? <p className="login-info">{verificationInfo}</p> : null}
+            {localError ? <p className="login-error">{localError}</p> : null}
+            {verifyMutation.error ? <p className="login-error">{verifyMutation.error.message}</p> : null}
+            {resendMutation.error ? <p className="login-error">{resendMutation.error.message}</p> : null}
+
+            <button type="submit" className="login-btn-primary" disabled={verifyMutation.isPending}>
+              {verifyMutation.isPending ? "Verificando..." : "Verificar y entrar"}
+            </button>
+
+            <button
+              type="button"
+              className="register-optional-btn"
+              style={{ marginTop: "0.85rem" }}
+              onClick={() => resendMutation.mutate()}
+              disabled={resendMutation.isPending}
+            >
+              {resendMutation.isPending ? "Enviando..." : "Reenviar codigo"}
+            </button>
+          </form>
+        ) : (
         <form onSubmit={submitForm}>
           <label className="login-field-label">Nombre completo</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
@@ -139,7 +211,7 @@ export function Registro() {
               {showPassword ? "Ocultar" : "Ver"}
             </button>
           </div>
-          <p className="register-pass-hint">Minimo 12 caracteres, con al menos 1 letra y 1 numero.</p>
+          <p className="register-pass-hint">Minimo 12 caracteres, con al menos 1 caracter especial y 1 numero.</p>
 
           <label className="login-field-label">Confirmar contrasena</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
@@ -183,6 +255,7 @@ export function Registro() {
             {registerMutation.isPending ? "Creando..." : "Crear cuenta"}
           </button>
         </form>
+        )}
 
         <p className="login-footer">
           Ya tienes cuenta? <Link to="/login">Inicia sesion</Link>

@@ -23,6 +23,7 @@ import { SobreNosotros } from "./pages/public/SobreNosotros";
 import { TiendaOnline } from "./pages/public/TiendaOnline";
 import { Terminos } from "./pages/public/Terminos";
 import { SoporteStaff } from "./pages/staff/SoporteStaff";
+import { ComprobantePedidoVendedor } from "./pages/vendedor/ComprobantePedidoVendedor";
 import { Vendedor } from "./pages/vendedor/Vendedor";
 import { VendedorPedidos } from "./pages/vendedor/VendedorPedidos";
 
@@ -134,6 +135,14 @@ export default function App() {
               element={
                 <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
                   <VendedorPedidos />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/vendedor/pedidos/:id"
+              element={
+                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
+                  <ComprobantePedidoVendedor />
                 </ProtectedRoute>
               }
             />

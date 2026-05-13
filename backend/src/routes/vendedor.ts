@@ -28,6 +28,8 @@ type OrdenVendedorItem = {
   producto_id: number;
   cantidad: number;
   modo_compra: "dinero" | "puntos";
+  precio_dinero_unit: number | null;
+  puntaje_al_comprar_unitario: number | null;
   subtotal_dinero: number;
   subtotal_puntos: number;
   nombre: string;
@@ -92,6 +94,7 @@ async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, 
   const rows = await qAll<OrdenVendedorItem>(
     pool,
     `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+            oi.precio_dinero_unit, oi.puntaje_al_comprar_unitario,
             oi.subtotal_dinero, oi.subtotal_puntos, p.nombre, p.track_stock
      FROM orden_items oi
      JOIN productos p ON p.id = oi.producto_id
@@ -108,6 +111,8 @@ async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, 
       orden_id: orderId,
       producto_id: Number(row.producto_id),
       cantidad: Number(row.cantidad),
+      precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
+      puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
       subtotal_dinero: Number(row.subtotal_dinero ?? 0),
       subtotal_puntos: Number(row.subtotal_puntos ?? 0),
       track_stock: Number(row.track_stock ?? 0),
@@ -407,6 +412,114 @@ router.get("/ordenes", async (_req, res, next) => {
         };
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/ordenes/:id", async (req, res, next) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido" });
+    return;
+  }
+
+  try {
+    const orden = await qOne<{
+      id: number;
+      usuario_id: number;
+      cliente_nombre: string;
+      cliente_email: string;
+      cliente_dni: string | null;
+      cliente_telefono: string | null;
+      estado: string;
+      tipo_orden: string;
+      total_dinero: number;
+      total_puntos: number;
+      moneda: string;
+      direccion_envio_json: string | null;
+      sucursal_retiro_id: number | null;
+      sucursal_nombre: string | null;
+      sucursal_direccion: string | null;
+      sucursal_piso: string | null;
+      sucursal_localidad: string | null;
+      sucursal_provincia: string | null;
+      notas: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      pool,
+      `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
+              u.dni AS cliente_dni, u.telefono AS cliente_telefono,
+              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.direccion_envio_json, o.sucursal_retiro_id,
+              s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
+              s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              o.notas, o.created_at, o.updated_at
+       FROM ordenes o
+       JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
+       WHERE o.id = ? AND o.tipo_orden IN ('venta', 'mixta')
+       LIMIT 1`,
+      [orderId],
+    );
+
+    if (!orden) {
+      res.status(404).json({ error: "Orden no encontrada" });
+      return;
+    }
+
+    const itemMap = await getOrdenItemsByOrdenIds([orderId]);
+    const pago = await qOne<{
+      id: number;
+      proveedor: string;
+      metodo: string | null;
+      estado: string;
+      monto: number;
+      moneda: string;
+      provider_payment_id: string | null;
+      checkout_url: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      pool,
+      `SELECT id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url, created_at, updated_at
+       FROM pagos
+       WHERE orden_id = ?
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1`,
+      [orderId],
+    );
+
+    res.json({
+      ...orden,
+      total_dinero: Number(orden.total_dinero ?? 0),
+      total_puntos: Number(orden.total_puntos ?? 0),
+      direccion_envio: parseJsonField(orden.direccion_envio_json),
+      sucursal: orden.sucursal_retiro_id
+        ? {
+            id: Number(orden.sucursal_retiro_id),
+            nombre: orden.sucursal_nombre,
+            direccion: orden.sucursal_direccion,
+            piso: orden.sucursal_piso,
+            localidad: orden.sucursal_localidad,
+            provincia: orden.sucursal_provincia,
+          }
+        : null,
+      items: itemMap.get(orderId) ?? [],
+      pago: pago
+        ? {
+            ...pago,
+            monto: Number(pago.monto ?? 0),
+          }
+        : null,
+      usuario: {
+        nombre: orden.cliente_nombre,
+        email: orden.cliente_email,
+        dni: orden.cliente_dni,
+        telefono: orden.cliente_telefono,
+      },
+    });
   } catch (err) {
     next(err);
   }

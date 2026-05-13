@@ -25,7 +25,7 @@ async function resetPassword(token: string, newPassword: string): Promise<{ mess
 
 function validatePassword(value: string): string | null {
   if (value.length < 12) return "La contraseña debe tener al menos 12 caracteres.";
-  if (!/[A-Za-z]/.test(value)) return "La contraseña debe incluir al menos una letra.";
+  if (!/[^A-Za-z0-9]/.test(value)) return "La contraseña debe incluir al menos 1 caracter especial.";
   if (!/\d/.test(value)) return "La contraseña debe incluir al menos un número.";
   return null;
 }

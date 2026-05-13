@@ -583,7 +583,7 @@ export function CarritoTienda() {
               </p>
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
-                  ✦ Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
+                  Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
                 </p>
               ) : null}
             </div>
@@ -633,7 +633,7 @@ export function CarritoTienda() {
               </p>
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
-                  ✦ Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
+                  Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
                 </p>
               ) : null}
             </div>
@@ -791,7 +791,7 @@ export function CarritoTienda() {
               <p>Total a pagar: <strong>{money(total)}</strong></p>
               {(cartQuery.data?.resumen.total_puntos_ganados ?? 0) > 0 ? (
                 <p style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.2rem" }}>
-                  ✦ Con esta compra ganás {cartQuery.data?.resumen.total_puntos_ganados} puntos cuando el pago sea aprobado.
+                  Con esta compra ganás {cartQuery.data?.resumen.total_puntos_ganados} puntos cuando el pago sea aprobado.
                 </p>
               ) : null}
             </div>

@@ -114,12 +114,10 @@ async function ensureCanManageUser(req: Request, res: Response, userId: number):
 
 const strongPasswordSchema = z
   .string()
-  .min(8, "La contrasena debe tener al menos 8 caracteres")
-  .regex(/(?:.*\d){3,}/, "La contrasena debe incluir al menos 3 numeros")
-  .regex(
-    /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/,
-    "La contrasena debe incluir al menos 1 caracter especial",
-  );
+  .min(12, "La contrasena debe tener al menos 12 caracteres")
+  .max(128, "La contrasena no puede superar 128 caracteres")
+  .regex(/[^A-Za-z0-9]/, "La contrasena debe incluir al menos 1 caracter especial")
+  .regex(/\d/, "La contrasena debe incluir al menos 1 numero");
 
 const sucursalSchema = z.object({
   nombre: z.string().min(2).max(120),
@@ -359,9 +357,10 @@ router.post("/usuarios", async (req, res) => {
       codigo = await uniqueInviteCode(longitud);
     }
     const { insertId } = await qRun(pool,
-      `INSERT INTO usuarios (nombre, email, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
-       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
-      [nombre, email, hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]
+      `INSERT INTO usuarios
+         (nombre, email, email_verificado, email_verificado_at, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+       VALUES (?, ?, 1, NOW(), ?, ?, ?, NULL, ?, ?, ?, ?)`,
+      [nombre, email.trim().toLowerCase(), hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]
     );
     res.status(201).json({ id: insertId });
   } catch (err: any) {

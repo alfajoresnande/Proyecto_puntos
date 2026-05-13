@@ -16,15 +16,6 @@ function productImage(producto: Producto): string | null {
   return producto.imagen_url ?? null;
 }
 
-type PriceRangeId = "all" | "low" | "mid-low" | "mid-high" | "high";
-type StockFilterId = "all" | "available";
-
-type PriceRange = {
-  id: PriceRangeId;
-  label: string;
-  match: (precio: number) => boolean;
-};
-
 type SucursalRetiro = {
   id: number;
   nombre: string;
@@ -76,17 +67,6 @@ function maxSelectableQuantity(producto: Producto): number {
   return Math.max(1, Math.min(100, productAvailableStock(producto)));
 }
 
-function availabilityLabel(producto: Producto): string {
-  if (producto.track_stock === false) return "Consultar";
-  return productHasStock(producto) ? "Disponible" : "Sin stock";
-}
-
-function niceRoundMoney(n: number): number {
-  if (n < 1000) return Math.max(100, Math.round(n / 100) * 100);
-  if (n < 10000) return Math.round(n / 500) * 500;
-  return Math.round(n / 1000) * 1000;
-}
-
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
@@ -94,8 +74,7 @@ export function TiendaOnline() {
   const [categoriaActiva, setCategoriaActiva] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [ordenProductos, setOrdenProductos] = useState("");
-  const [rangoPrecioId, setRangoPrecioId] = useState<PriceRangeId>("all");
-  const [stockFilterId, setStockFilterId] = useState<StockFilterId>("all");
+  const [precioFiltro, setPrecioFiltro] = useState<{ min: number; max: number } | null>(null);
   const [filtrosOpen, setFiltrosOpen] = useState(false);
   const filtrosTriggerRef = useRef<HTMLButtonElement>(null);
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
@@ -123,7 +102,18 @@ export function TiendaOnline() {
 
   const productos = productosQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
-  const sucursalSeleccionada = sucursalId ? sucursales.find((sucursal) => String(sucursal.id) === sucursalId) : undefined;
+  const preciosCatalogo = useMemo(
+    () => productos.map(productPrice).filter((precio) => Number.isFinite(precio) && precio > 0),
+    [productos],
+  );
+  const precioMin = preciosCatalogo.length ? Math.min(...preciosCatalogo) : 0;
+  const precioMax = preciosCatalogo.length ? Math.max(...preciosCatalogo) : 0;
+  const precioFiltroMin = precioFiltro?.min ?? precioMin;
+  const precioFiltroMax = precioFiltro?.max ?? precioMax;
+  const precioFiltroActivo = preciosCatalogo.length > 0 && (precioFiltroMin > precioMin || precioFiltroMax < precioMax);
+  const precioRangeSpan = Math.max(1, precioMax - precioMin);
+  const precioMinPercent = preciosCatalogo.length ? ((precioFiltroMin - precioMin) / precioRangeSpan) * 100 : 0;
+  const precioMaxPercent = preciosCatalogo.length ? ((precioFiltroMax - precioMin) / precioRangeSpan) * 100 : 100;
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -137,40 +127,29 @@ export function TiendaOnline() {
     [productos],
   );
 
-  const precioMax = useMemo(() => {
-    if (!productos.length) return 1000;
-    const maxRaw = Math.max(...productos.map(productPrice));
-    return Math.max(100, Math.ceil(maxRaw / 100) * 100);
-  }, [productos]);
-
-  const rangosPrecio = useMemo<PriceRange[]>(() => {
-    const q = Math.max(100, precioMax) / 4;
-    const t1 = niceRoundMoney(q);
-    const t2 = Math.max(t1 + 100, niceRoundMoney(q * 2));
-    const t3 = Math.max(t2 + 100, niceRoundMoney(q * 3));
-    return [
-      { id: "all", label: "Todos", match: () => true },
-      { id: "low", label: `Hasta ${money(t1)}`, match: (p) => p <= t1 },
-      { id: "mid-low", label: `${money(t1)} - ${money(t2)}`, match: (p) => p > t1 && p <= t2 },
-      { id: "mid-high", label: `${money(t2)} - ${money(t3)}`, match: (p) => p > t2 && p <= t3 },
-      { id: "high", label: `Mas de ${money(t3)}`, match: (p) => p > t3 },
-    ];
-  }, [precioMax]);
-
   useEffect(() => {
-    if (!rangosPrecio.some((r) => r.id === rangoPrecioId)) {
-      setRangoPrecioId("all");
+    if (!preciosCatalogo.length) {
+      setPrecioFiltro(null);
+      return;
     }
-  }, [rangosPrecio, rangoPrecioId]);
+    setPrecioFiltro((prev) => {
+      if (!prev) return null;
+      const min = Math.min(Math.max(prev.min, precioMin), precioMax);
+      const max = Math.min(Math.max(prev.max, precioMin), precioMax);
+      const next = min > max ? { min: max, max: min } : { min, max };
+      if (next.min === precioMin && next.max === precioMax) return null;
+      if (next.min === prev.min && next.max === prev.max) return prev;
+      return next;
+    });
+  }, [precioMin, precioMax, preciosCatalogo.length]);
 
   const filtrosActivos = useMemo(() => {
     let n = 0;
     if (categoriaActiva) n += 1;
     if (ordenProductos) n += 1;
-    if (rangoPrecioId !== "all") n += 1;
-    if (stockFilterId !== "all") n += 1;
+    if (precioFiltroActivo) n += 1;
     return n;
-  }, [categoriaActiva, ordenProductos, rangoPrecioId, stockFilterId]);
+  }, [categoriaActiva, ordenProductos, precioFiltroActivo]);
 
   const baseSearch = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -182,11 +161,9 @@ export function TiendaOnline() {
   }, [busqueda, productos]);
 
   const conteosPorCategoria = useMemo(() => {
-    const rangoSel = rangosPrecio.find((r) => r.id === rangoPrecioId) ?? rangosPrecio[0];
     const base = baseSearch.filter((producto) => {
-      const priceOk = rangoSel ? rangoSel.match(productPrice(producto)) : true;
-      const stockOk = stockFilterId === "all" || productHasStock(producto);
-      return priceOk && stockOk;
+      const precio = productPrice(producto);
+      return !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
     });
     const acc: Record<string, number> = { __all: base.length };
     for (const producto of base) {
@@ -194,32 +171,7 @@ export function TiendaOnline() {
       if (cat) acc[cat] = (acc[cat] ?? 0) + 1;
     }
     return acc;
-  }, [baseSearch, rangosPrecio, rangoPrecioId, stockFilterId]);
-
-  const conteosPorPrecio = useMemo(() => {
-    const base = baseSearch.filter((producto) => {
-      const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      const stockOk = stockFilterId === "all" || productHasStock(producto);
-      return categoriaOk && stockOk;
-    });
-    return rangosPrecio.reduce<Record<string, number>>((acc, rango) => {
-      acc[rango.id] = base.filter((producto) => rango.match(productPrice(producto))).length;
-      return acc;
-    }, {});
-  }, [baseSearch, categoriaActiva, rangosPrecio, stockFilterId]);
-
-  const conteosPorStock = useMemo(() => {
-    const rangoSel = rangosPrecio.find((r) => r.id === rangoPrecioId) ?? rangosPrecio[0];
-    const base = baseSearch.filter((producto) => {
-      const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      const priceOk = rangoSel ? rangoSel.match(productPrice(producto)) : true;
-      return categoriaOk && priceOk;
-    });
-    return {
-      all: base.length,
-      available: base.filter(productHasStock).length,
-    };
-  }, [baseSearch, categoriaActiva, rangosPrecio, rangoPrecioId]);
+  }, [baseSearch, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
 
   useEffect(() => {
     if (!filtrosOpen) {
@@ -269,12 +221,11 @@ export function TiendaOnline() {
   }, [filtrosOpen]);
 
   const productosFiltrados = useMemo(() => {
-    const rangoSel = rangosPrecio.find((r) => r.id === rangoPrecioId) ?? rangosPrecio[0];
     const filtrados = baseSearch.filter((producto) => {
       const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      const precioOk = rangoSel ? rangoSel.match(productPrice(producto)) : true;
-      const stockOk = stockFilterId === "all" || productHasStock(producto);
-      return categoriaOk && precioOk && stockOk;
+      const precio = productPrice(producto);
+      const precioOk = !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
+      return categoriaOk && precioOk;
     });
 
     if (ordenProductos === "precio-asc") {
@@ -288,7 +239,7 @@ export function TiendaOnline() {
     }
 
     return filtrados;
-  }, [baseSearch, categoriaActiva, ordenProductos, rangosPrecio, rangoPrecioId, stockFilterId]);
+  }, [baseSearch, categoriaActiva, ordenProductos, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
 
   function getCantidadSeleccionada(productoId: number): number {
     const value = cantidadesSeleccionadas[productoId];
@@ -409,6 +360,73 @@ export function TiendaOnline() {
     });
   }
 
+  function actualizarPrecioMin(value: number) {
+    if (!preciosCatalogo.length) return;
+    setPrecioFiltro((prev) => {
+      const currentMax = prev?.max ?? precioMax;
+      const min = Math.min(Math.max(value, precioMin), currentMax);
+      const next = { min, max: currentMax };
+      return next.min === precioMin && next.max === precioMax ? null : next;
+    });
+  }
+
+  function actualizarPrecioMax(value: number) {
+    if (!preciosCatalogo.length) return;
+    setPrecioFiltro((prev) => {
+      const currentMin = prev?.min ?? precioMin;
+      const max = Math.max(Math.min(value, precioMax), currentMin);
+      const next = { min: currentMin, max };
+      return next.min === precioMin && next.max === precioMax ? null : next;
+    });
+  }
+
+  function renderPrecioRangeControl(labelledBy: string) {
+    const disabled = !preciosCatalogo.length || precioMin === precioMax;
+    return (
+      <div className="catalog-range-control" aria-labelledby={labelledBy}>
+        <div className="catalog-range-track" aria-hidden="true">
+          <span
+            className="catalog-range-fill"
+            style={{
+              left: `${Math.max(0, Math.min(100, precioMinPercent))}%`,
+              right: `${100 - Math.max(0, Math.min(100, precioMaxPercent))}%`,
+            }}
+          />
+        </div>
+        <div className="catalog-range-inputs">
+          <input
+            type="range"
+            min={precioMin}
+            max={precioMax}
+            step="1"
+            value={precioFiltroMin}
+            disabled={disabled}
+            onChange={(event) => actualizarPrecioMin(Number(event.target.value))}
+            aria-label="Precio minimo"
+          />
+          <input
+            type="range"
+            min={precioMin}
+            max={precioMax}
+            step="1"
+            value={precioFiltroMax}
+            disabled={disabled}
+            onChange={(event) => actualizarPrecioMax(Number(event.target.value))}
+            aria-label="Precio maximo"
+          />
+        </div>
+        <div className="catalog-range-badges" aria-hidden="true">
+          <span style={{ left: `${Math.max(0, Math.min(100, precioMinPercent))}%` }}>{money(precioFiltroMin)}</span>
+          <span style={{ left: `${Math.max(0, Math.min(100, precioMaxPercent))}%` }}>{money(precioFiltroMax)}</span>
+        </div>
+        <div className="catalog-range-values">
+          <span>{money(precioMin)}<small>min</small></span>
+          <span>{money(precioMax)}<small>max</small></span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="catalog-page store-page catalog-redemption-page">
       <div className="catalog-top-shell catalog-redemption-hero">
@@ -434,11 +452,6 @@ export function TiendaOnline() {
                 </div>
               </div>
               <div className="catalog-points-summary">
-                <span className="catalog-points-star" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
-                  </svg>
-                </span>
                 <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
                 <p className="banner-pts-label">puntos</p>
               </div>
@@ -470,6 +483,117 @@ export function TiendaOnline() {
       </div>
 
       <div className="catalog-products-shell">
+        <div className="catalog-layout-shell">
+          <aside className="catalog-sidebar" aria-label="Filtros de tienda">
+            <div className="catalog-sidebar-head">
+              <p className="catalog-sidebar-title">Filtros</p>
+              <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? "producto encontrado" : "productos encontrados"}</span>
+            </div>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="store-cat-label-desktop">
+                Categoria
+              </h3>
+              <details className="catalog-filter-dropdown">
+                <summary>{categoriaActiva || "Todas"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-cat-label-desktop">
+                {[
+                  { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
+                  ...categorias.map((c) => ({
+                    value: c,
+                    label: c,
+                    count: conteosPorCategoria[c] ?? 0,
+                  })),
+                ].map((opt) => {
+                  const checked = categoriaActiva === opt.value;
+                  const isEmpty = opt.count === 0 && !checked;
+                  return (
+                    <label
+                      key={opt.value || "__all"}
+                      className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="store-categoria-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setCategoriaActiva(opt.value)}
+                        aria-label={`${opt.label}, ${opt.count} ${opt.count === 1 ? "producto" : "productos"}`}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                      <span className="catalog-filter-chip-count" aria-hidden="true">
+                        {opt.count}
+                      </span>
+                    </label>
+                  );
+                })}
+                </div>
+              </details>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="store-orden-label-desktop">
+                Ordenar por
+              </h3>
+              <details className="catalog-filter-dropdown">
+                <summary>
+                  {ordenProductos === "precio-asc"
+                    ? "Menor precio"
+                    : ordenProductos === "precio-desc"
+                      ? "Mayor precio"
+                      : ordenProductos === "nombre-asc"
+                        ? "Nombre A-Z"
+                        : "Recomendado"}
+                </summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-orden-label-desktop">
+                {[
+                  { value: "", label: "Recomendado" },
+                  { value: "precio-asc", label: "Menor precio" },
+                  { value: "precio-desc", label: "Mayor precio" },
+                  { value: "nombre-asc", label: "Nombre A-Z" },
+                ].map((opt) => {
+                  const checked = ordenProductos === opt.value;
+                  return (
+                    <label key={opt.value || "__rec"} className={`catalog-filter-chip${checked ? " is-active" : ""}`}>
+                      <input
+                        type="radio"
+                        name="store-orden-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setOrdenProductos(opt.value)}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                    </label>
+                  );
+                })}
+                </div>
+              </details>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="store-price-label-desktop">
+                Rango de precio
+              </h3>
+              {renderPrecioRangeControl("store-price-label-desktop")}
+            </section>
+
+            <button
+              type="button"
+              className="catalog-filter-clear catalog-sidebar-clear"
+              onClick={() => {
+                setCategoriaActiva("");
+                setOrdenProductos("");
+                setPrecioFiltro(null);
+              }}
+              disabled={filtrosActivos === 0}
+            >
+              Limpiar filtros
+            </button>
+          </aside>
+
+          <div className="catalog-results-column">
         {!productosQuery.isLoading ? (
           <div className="catalog-filters">
             <div className="catalog-filter-search">
@@ -524,7 +648,6 @@ export function TiendaOnline() {
             </div>
           </div>
         ) : null}
-
         {filtrosOpen ? (
           <div className="catalog-filters-overlay" onClick={() => setFiltrosOpen(false)}>
             <div
@@ -624,69 +747,9 @@ export function TiendaOnline() {
                   <h3 className="catalog-filters-section-title" id="store-price-label">
                     Rango de precio
                   </h3>
-                  <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-price-label">
-                    {rangosPrecio.map((rango) => {
-                      const count = conteosPorPrecio[rango.id] ?? 0;
-                      const checked = rangoPrecioId === rango.id;
-                      const isEmpty = count === 0 && !checked;
-                      return (
-                        <label
-                          key={rango.id}
-                          className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
-                        >
-                          <input
-                            type="radio"
-                            name="store-rango-precio"
-                            className="catalog-filter-chip-input"
-                            value={rango.id}
-                            checked={checked}
-                            onChange={() => setRangoPrecioId(rango.id)}
-                            aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
-                          />
-                          <span className="catalog-filter-chip-label">{rango.label}</span>
-                          <span className="catalog-filter-chip-count" aria-hidden="true">
-                            {count}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  {renderPrecioRangeControl("store-price-label")}
                 </section>
 
-                <section className="catalog-filters-section">
-                  <h3 className="catalog-filters-section-title" id="store-stock-label">
-                    Disponibilidad
-                  </h3>
-                  <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-stock-label">
-                    {[
-                      { value: "all" as StockFilterId, label: "Todos", count: conteosPorStock.all },
-                      { value: "available" as StockFilterId, label: "Disponibles", count: conteosPorStock.available },
-                    ].map((opt) => {
-                      const checked = stockFilterId === opt.value;
-                      const isEmpty = opt.count === 0 && !checked;
-                      return (
-                        <label
-                          key={opt.value}
-                          className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
-                        >
-                          <input
-                            type="radio"
-                            name="store-stock"
-                            className="catalog-filter-chip-input"
-                            value={opt.value}
-                            checked={checked}
-                            onChange={() => setStockFilterId(opt.value)}
-                            aria-label={`${opt.label}, ${opt.count} ${opt.count === 1 ? "producto" : "productos"}`}
-                          />
-                          <span className="catalog-filter-chip-label">{opt.label}</span>
-                          <span className="catalog-filter-chip-count" aria-hidden="true">
-                            {opt.count}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </section>
               </div>
 
               <footer className="catalog-filters-panel-footer">
@@ -696,8 +759,7 @@ export function TiendaOnline() {
                   onClick={() => {
                     setCategoriaActiva("");
                     setOrdenProductos("");
-                    setRangoPrecioId("all");
-                    setStockFilterId("all");
+                    setPrecioFiltro(null);
                   }}
                   disabled={filtrosActivos === 0}
                 >
@@ -748,19 +810,11 @@ export function TiendaOnline() {
                         <span>Precio</span>
                         <span className="cost">{money(producto.precio_dinero)}</span>
                       </div>
-                      <div className="product-card-divider" />
-                      <div className="product-card-row">
-                        <span>{sucursalSeleccionada ? `Disponibilidad en ${sucursalSeleccionada.nombre}` : "Disponibilidad"}</span>
-                        <span className={sinStock ? "store-stock-empty" : "earn"}>{availabilityLabel(producto)}</span>
-                      </div>
                       {(producto.puntaje_al_comprar ?? 0) > 0 ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.9 }}>
-                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                              </svg>
                               Sumás {producto.puntaje_al_comprar} puntos con este producto
                             </span>
                           </div>
@@ -807,6 +861,8 @@ export function TiendaOnline() {
             })}
           </div>
         )}
+          </div>
+        </div>
       </div>
 
       {toast ? (

@@ -83,27 +83,6 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
-function availabilityLabel(producto: Producto): string {
-  if (producto.track_stock === false) return "Consultar";
-  return productHasStock(producto) ? "Disponible" : "Sin stock";
-}
-
-type RangoPuntosId = "afford" | "all" | "low" | "mid-low" | "mid-high" | "high";
-
-type RangoPuntos = {
-  id: RangoPuntosId;
-  label: string;
-  match: (puntos: number) => boolean;
-  emphasize?: boolean;
-};
-
-function niceRoundPuntos(n: number): number {
-  if (n < 100) return Math.max(25, Math.round(n / 25) * 25);
-  if (n < 1000) return Math.round(n / 50) * 50;
-  if (n < 5000) return Math.round(n / 100) * 100;
-  return Math.round(n / 500) * 500;
-}
-
 export function Catalogo() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -112,7 +91,7 @@ export function Catalogo() {
   const isCliente = user?.rol === "cliente";
 
   const [categoriaActiva, setCategoriaActiva] = useState("");
-  const [rangoPuntosId, setRangoPuntosId] = useState<RangoPuntosId>("all");
+  const [puntosFiltro, setPuntosFiltro] = useState<{ min: number; max: number } | null>(null);
   const [busquedaProducto, setBusquedaProducto] = useState("");
   const [ordenProductos, setOrdenProductos] = useState("");
   const [filtrosOpen, setFiltrosOpen] = useState(false);
@@ -163,20 +142,27 @@ export function Catalogo() {
   const productos = productosQuery.data ?? [];
   const categorias = categoriasQuery.data ?? [];
   const sucursalesRetiro = sucursalesQuery.data ?? [];
+  const puntosCatalogo = useMemo(
+    () =>
+      productos
+        .map((producto) => Number(producto.puntos_requeridos || 0))
+        .filter((puntos) => Number.isFinite(puntos) && puntos > 0),
+    [productos],
+  );
+  const puntosMin = puntosCatalogo.length ? Math.min(...puntosCatalogo) : 0;
+  const puntosMax = puntosCatalogo.length ? Math.max(...puntosCatalogo) : 0;
+  const puntosFiltroMin = puntosFiltro?.min ?? puntosMin;
+  const puntosFiltroMax = puntosFiltro?.max ?? puntosMax;
+  const puntosFiltroActivo = puntosCatalogo.length > 0 && (puntosFiltroMin > puntosMin || puntosFiltroMax < puntosMax);
+  const puntosRangeSpan = Math.max(1, puntosMax - puntosMin);
+  const puntosMinPercent = puntosCatalogo.length ? ((puntosFiltroMin - puntosMin) / puntosRangeSpan) * 100 : 0;
+  const puntosMaxPercent = puntosCatalogo.length ? ((puntosFiltroMax - puntosMin) / puntosRangeSpan) * 100 : 100;
   const sucursalRetiroSeleccionada =
     (sucursalRetiroId ? sucursalesRetiro.find((item) => String(item.id) === sucursalRetiroId) : undefined) ||
     (sucursalesRetiro.length === 1 ? sucursalesRetiro[0] : undefined);
   const productoModalImagenes = productoModal ? getProductoImagenes(productoModal) : [];
   const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
   const productoModalTieneCarousel = productoModalImagenes.length > 1;
-
-  const puntosMax = useMemo(() => {
-    if (!productos.length) return 1000;
-    const maxRaw = Math.max(...productos.map((producto) => producto.puntos_requeridos || 0));
-    return Math.max(50, Math.ceil(maxRaw / 50) * 50);
-  }, [productos]);
-
-  const saldoUsuario = isCliente ? user?.puntos_saldo ?? 0 : 0;
 
   useEffect(() => {
     if (!sucursalesRetiro.length) return;
@@ -185,59 +171,29 @@ export function Catalogo() {
     }
   }, [sucursalRetiroId, sucursalesRetiro]);
 
-  const rangosPuntos = useMemo<RangoPuntos[]>(() => {
-    const out: RangoPuntos[] = [];
-
-    if (isCliente && saldoUsuario > 0) {
-      out.push({
-        id: "afford",
-        label: "Lo que puedo canjear",
-        match: (p) => p <= saldoUsuario,
-        emphasize: true,
-      });
-    }
-
-    out.push({ id: "all", label: "Todos", match: () => true });
-
-    const q = Math.max(100, puntosMax) / 4;
-    const t1 = niceRoundPuntos(q);
-    const t2 = Math.max(t1 + 25, niceRoundPuntos(q * 2));
-    const t3 = Math.max(t2 + 25, niceRoundPuntos(q * 3));
-
-    out.push({ id: "low", label: `Hasta ${t1} pts`, match: (p) => p <= t1 });
-    out.push({ id: "mid-low", label: `${t1}–${t2} pts`, match: (p) => p > t1 && p <= t2 });
-    out.push({ id: "mid-high", label: `${t2}–${t3} pts`, match: (p) => p > t2 && p <= t3 });
-    out.push({ id: "high", label: `Más de ${t3} pts`, match: (p) => p > t3 });
-
-    return out;
-  }, [puntosMax, isCliente, saldoUsuario]);
-
   useEffect(() => {
-    if (!rangosPuntos.some((r) => r.id === rangoPuntosId)) {
-      setRangoPuntosId("all");
+    if (!puntosCatalogo.length) {
+      setPuntosFiltro(null);
+      return;
     }
-  }, [rangosPuntos, rangoPuntosId]);
-
-  const conteosPorRango = useMemo(() => {
-    const q = busquedaProducto.trim().toLowerCase();
-    const base = productos.filter((p) => {
-      const cat = !categoriaActiva || p.categoria === categoriaActiva;
-      const txt = [p.nombre, p.descripcion || "", p.categoria || ""].join(" ").toLowerCase();
-      return cat && (!q || txt.includes(q));
+    setPuntosFiltro((prev) => {
+      if (!prev) return null;
+      const min = Math.min(Math.max(prev.min, puntosMin), puntosMax);
+      const max = Math.min(Math.max(prev.max, puntosMin), puntosMax);
+      const next = min > max ? { min: max, max: min } : { min, max };
+      if (next.min === puntosMin && next.max === puntosMax) return null;
+      if (next.min === prev.min && next.max === prev.max) return prev;
+      return next;
     });
-    return rangosPuntos.reduce<Record<string, number>>((acc, r) => {
-      acc[r.id] = base.filter((p) => r.match(p.puntos_requeridos || 0)).length;
-      return acc;
-    }, {});
-  }, [productos, rangosPuntos, categoriaActiva, busquedaProducto]);
+  }, [puntosCatalogo.length, puntosMax, puntosMin]);
 
   const conteosPorCategoria = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
-    const rangoSel = rangosPuntos.find((r) => r.id === rangoPuntosId) ?? rangosPuntos[0];
     const base = productos.filter((p) => {
       const txt = [p.nombre, p.descripcion || "", p.categoria || ""].join(" ").toLowerCase();
       const matchSearch = !q || txt.includes(q);
-      const matchRange = rangoSel ? rangoSel.match(p.puntos_requeridos || 0) : true;
+      const puntos = Number(p.puntos_requeridos || 0);
+      const matchRange = !puntosCatalogo.length || (puntos >= puntosFiltroMin && puntos <= puntosFiltroMax);
       return matchSearch && matchRange;
     });
     const acc: Record<string, number> = { __all: base.length };
@@ -246,15 +202,15 @@ export function Catalogo() {
       if (cat) acc[cat] = (acc[cat] ?? 0) + 1;
     }
     return acc;
-  }, [productos, rangosPuntos, rangoPuntosId, busquedaProducto]);
+  }, [productos, puntosCatalogo.length, puntosFiltroMax, puntosFiltroMin, busquedaProducto]);
 
   const filtrosActivos = useMemo(() => {
     let n = 0;
     if (categoriaActiva) n += 1;
-    if (rangoPuntosId !== "all") n += 1;
+    if (puntosFiltroActivo) n += 1;
     if (ordenProductos) n += 1;
     return n;
-  }, [categoriaActiva, rangoPuntosId, ordenProductos]);
+  }, [categoriaActiva, puntosFiltroActivo, ordenProductos]);
 
   useEffect(() => {
     setProductoModalImageIndex(0);
@@ -380,11 +336,11 @@ export function Catalogo() {
 
   const productosFiltrados = useMemo(() => {
     const q = busquedaProducto.trim().toLowerCase();
-    const rangoSel = rangosPuntos.find((r) => r.id === rangoPuntosId) ?? rangosPuntos[0];
     const filtrados = productos.filter((producto) => {
       const tieneStock = productHasStock(producto);
       const coincideCategoria = !categoriaActiva || producto.categoria === categoriaActiva;
-      const coincidePuntos = rangoSel ? rangoSel.match(producto.puntos_requeridos || 0) : true;
+      const puntos = Number(producto.puntos_requeridos || 0);
+      const coincidePuntos = !puntosCatalogo.length || (puntos >= puntosFiltroMin && puntos <= puntosFiltroMax);
       const texto = [producto.nombre, producto.descripcion || "", producto.categoria || ""].join(" ").toLowerCase();
       const coincideBusqueda = !q || texto.includes(q);
       return tieneStock && coincideCategoria && coincidePuntos && coincideBusqueda;
@@ -399,7 +355,7 @@ export function Catalogo() {
     }
 
     return filtrados;
-  }, [productos, categoriaActiva, rangoPuntosId, rangosPuntos, busquedaProducto, ordenProductos]);
+  }, [productos, categoriaActiva, puntosCatalogo.length, puntosFiltroMax, puntosFiltroMin, busquedaProducto, ordenProductos]);
 
   const canjeCartItems = useMemo(() => {
     return Object.values(canjeCart).map((item) => ({
@@ -625,6 +581,73 @@ export function Catalogo() {
     });
   }
 
+  function actualizarPuntosMin(value: number) {
+    if (!puntosCatalogo.length) return;
+    setPuntosFiltro((prev) => {
+      const currentMax = prev?.max ?? puntosMax;
+      const min = Math.min(Math.max(value, puntosMin), currentMax);
+      const next = { min, max: currentMax };
+      return next.min === puntosMin && next.max === puntosMax ? null : next;
+    });
+  }
+
+  function actualizarPuntosMax(value: number) {
+    if (!puntosCatalogo.length) return;
+    setPuntosFiltro((prev) => {
+      const currentMin = prev?.min ?? puntosMin;
+      const max = Math.max(Math.min(value, puntosMax), currentMin);
+      const next = { min: currentMin, max };
+      return next.min === puntosMin && next.max === puntosMax ? null : next;
+    });
+  }
+
+  function renderPuntosRangeControl(labelledBy: string) {
+    const disabled = !puntosCatalogo.length || puntosMin === puntosMax;
+    return (
+      <div className="catalog-range-control" aria-labelledby={labelledBy}>
+        <div className="catalog-range-track" aria-hidden="true">
+          <span
+            className="catalog-range-fill"
+            style={{
+              left: `${Math.max(0, Math.min(100, puntosMinPercent))}%`,
+              right: `${100 - Math.max(0, Math.min(100, puntosMaxPercent))}%`,
+            }}
+          />
+        </div>
+        <div className="catalog-range-inputs">
+          <input
+            type="range"
+            min={puntosMin}
+            max={puntosMax}
+            step="1"
+            value={puntosFiltroMin}
+            disabled={disabled}
+            onChange={(event) => actualizarPuntosMin(Number(event.target.value))}
+            aria-label="Puntos minimos"
+          />
+          <input
+            type="range"
+            min={puntosMin}
+            max={puntosMax}
+            step="1"
+            value={puntosFiltroMax}
+            disabled={disabled}
+            onChange={(event) => actualizarPuntosMax(Number(event.target.value))}
+            aria-label="Puntos maximos"
+          />
+        </div>
+        <div className="catalog-range-badges" aria-hidden="true">
+          <span style={{ left: `${Math.max(0, Math.min(100, puntosMinPercent))}%` }}>{puntosFiltroMin} pts</span>
+          <span style={{ left: `${Math.max(0, Math.min(100, puntosMaxPercent))}%` }}>{puntosFiltroMax} pts</span>
+        </div>
+        <div className="catalog-range-values">
+          <span>{puntosMin} pts<small>min</small></span>
+          <span>{puntosMax} pts<small>max</small></span>
+        </div>
+      </div>
+    );
+  }
+
   const productoModalSinStock = productoModal ? !productHasStock(productoModal) : false;
 
   return (
@@ -653,11 +676,6 @@ export function Catalogo() {
                 </div>
               </div>
               <div className="catalog-points-summary">
-                <span className="catalog-points-star" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" focusable="false">
-                    <path d="m12 2.8 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2-4.5-4.4 6.3-.9L12 2.8Z" />
-                  </svg>
-                </span>
                 <p className="banner-pts">{user.puntos_saldo ?? 0}</p>
                 <p className="banner-pts-label">puntos</p>
               </div>
@@ -683,6 +701,114 @@ export function Catalogo() {
         </div>
       </div>
       <div className="catalog-products-shell">
+        <div className="catalog-layout-shell">
+          <aside className="catalog-sidebar" aria-label="Filtros de canjes">
+            <div className="catalog-sidebar-head">
+              <p className="catalog-sidebar-title">Filtros</p>
+              <span>{productosFiltrados.length} {productosFiltrados.length === 1 ? "producto encontrado" : "productos encontrados"}</span>
+            </div>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-cat-label-desktop">
+                Categoria
+              </h3>
+              <details className="catalog-filter-dropdown">
+                <summary>{categoriaActiva || "Todas"}</summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-cat-label-desktop">
+                {[
+                  { value: "", label: "Todas", count: conteosPorCategoria.__all ?? 0 },
+                  ...categorias.map((c) => ({
+                    value: c,
+                    label: c,
+                    count: conteosPorCategoria[c] ?? 0,
+                  })),
+                ].map((opt) => {
+                  const checked = categoriaActiva === opt.value;
+                  const isEmpty = opt.count === 0 && !checked;
+                  return (
+                    <label
+                      key={opt.value || "__all"}
+                      className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="catalog-categoria-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setCategoriaActiva(opt.value)}
+                        aria-label={`${opt.label}, ${opt.count} ${opt.count === 1 ? "producto" : "productos"}`}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                      <span className="catalog-filter-chip-count" aria-hidden="true">
+                        {opt.count}
+                      </span>
+                    </label>
+                  );
+                })}
+                </div>
+              </details>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-orden-label-desktop">
+                Ordenar por
+              </h3>
+              <details className="catalog-filter-dropdown">
+                <summary>
+                  {ordenProductos === "puntos-asc"
+                    ? "Menor puntaje"
+                    : ordenProductos === "puntos-desc"
+                      ? "Mayor puntaje"
+                      : "Recomendado"}
+                </summary>
+                <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="catalog-orden-label-desktop">
+                {[
+                  { value: "", label: "Recomendado" },
+                  { value: "puntos-asc", label: "Menor puntaje" },
+                  { value: "puntos-desc", label: "Mayor puntaje" },
+                ].map((opt) => {
+                  const checked = ordenProductos === opt.value;
+                  return (
+                    <label key={opt.value || "__rec"} className={`catalog-filter-chip${checked ? " is-active" : ""}`}>
+                      <input
+                        type="radio"
+                        name="catalog-orden-desktop"
+                        className="catalog-filter-chip-input"
+                        value={opt.value}
+                        checked={checked}
+                        onChange={() => setOrdenProductos(opt.value)}
+                      />
+                      <span className="catalog-filter-chip-label">{opt.label}</span>
+                    </label>
+                  );
+                })}
+                </div>
+              </details>
+            </section>
+
+            <section className="catalog-filters-section">
+              <h3 className="catalog-filters-section-title" id="catalog-rango-label-desktop">
+                Rango de puntos
+              </h3>
+              {renderPuntosRangeControl("catalog-rango-label-desktop")}
+            </section>
+
+            <button
+              type="button"
+              className="catalog-filter-clear catalog-sidebar-clear"
+              onClick={() => {
+                setCategoriaActiva("");
+                setPuntosFiltro(null);
+                setOrdenProductos("");
+              }}
+              disabled={filtrosActivos === 0}
+            >
+              Limpiar filtros
+            </button>
+          </aside>
+
+          <div className="catalog-results-column">
         {!loading ? (
           <div className="catalog-filters">
             <div className="catalog-filter-search">
@@ -746,7 +872,6 @@ export function Catalogo() {
             </div>
           </div>
         ) : null}
-
         {filtrosOpen ? (
           <div
             className="catalog-filters-overlay"
@@ -863,46 +988,7 @@ export function Catalogo() {
                   <h3 className="catalog-filters-section-title" id="catalog-rango-label">
                     Rango de puntos
                   </h3>
-                  <div
-                    className="catalog-filter-chips"
-                    role="radiogroup"
-                    aria-labelledby="catalog-rango-label"
-                  >
-                    {rangosPuntos.map((rango) => {
-                      const count = conteosPorRango[rango.id] ?? 0;
-                      const checked = rangoPuntosId === rango.id;
-                      const isEmpty = count === 0 && !checked;
-                      return (
-                        <label
-                          key={rango.id}
-                          className={`catalog-filter-chip${checked ? " is-active" : ""}${
-                            rango.emphasize ? " is-emphasis" : ""
-                          }${isEmpty ? " is-empty" : ""}`}
-                        >
-                          <input
-                            type="radio"
-                            name="catalog-rango-puntos"
-                            className="catalog-filter-chip-input"
-                            value={rango.id}
-                            checked={checked}
-                            onChange={() => setRangoPuntosId(rango.id)}
-                            aria-label={`${rango.label}, ${count} ${
-                              count === 1 ? "producto" : "productos"
-                            }`}
-                          />
-                          {rango.emphasize ? (
-                            <span className="catalog-filter-chip-icon" aria-hidden="true">
-                              ★
-                            </span>
-                          ) : null}
-                          <span className="catalog-filter-chip-label">{rango.label}</span>
-                          <span className="catalog-filter-chip-count" aria-hidden="true">
-                            {count}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  {renderPuntosRangeControl("catalog-rango-label")}
                 </section>
               </div>
 
@@ -912,7 +998,7 @@ export function Catalogo() {
                   className="catalog-filter-clear"
                   onClick={() => {
                     setCategoriaActiva("");
-                    setRangoPuntosId("all");
+                    setPuntosFiltro(null);
                     setOrdenProductos("");
                   }}
                   disabled={filtrosActivos === 0}
@@ -1029,15 +1115,6 @@ export function Catalogo() {
                         </div>
                       </>
                     ) : null}
-                    <div className="product-card-divider" />
-                    <div className="product-card-row product-card-points-tile">
-                      <span className="product-points-copy">
-                        <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}:` : "Disponibilidad:"}</span>
-                        <span className={sinStock ? "store-stock-empty" : "earn"}>
-                          {availabilityLabel(producto)}
-                        </span>
-                      </span>
-                    </div>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-ver"
@@ -1100,6 +1177,8 @@ export function Catalogo() {
             })}
           </div>
         )}
+          </div>
+        </div>
       </div>
       {canjeConfirmOpen ? (
         <div className="catalog-confirm-overlay" onClick={() => setCanjeConfirmOpen(false)}>
@@ -1369,13 +1448,6 @@ export function Catalogo() {
                     </div>
                   </>
                 ) : null}
-                <div className="product-card-divider" />
-                <div className="product-card-row">
-                  <span>{sucursalRetiroSeleccionada ? `Disponibilidad en ${sucursalRetiroSeleccionada.nombre}` : "Disponibilidad"}</span>
-                  <span className={productoModalSinStock ? "store-stock-empty" : "earn"}>
-                    {availabilityLabel(productoModal)}
-                  </span>
-                </div>
               </div>
 
               {user ? (

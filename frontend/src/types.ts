@@ -20,6 +20,13 @@ export type AuthResponse = {
   token?: string;
 };
 
+export type RegisterResponse = {
+  ok: boolean;
+  email: string;
+  verification_required: boolean;
+  message?: string;
+};
+
 export type Producto = {
   id: number;
   nombre: string;
