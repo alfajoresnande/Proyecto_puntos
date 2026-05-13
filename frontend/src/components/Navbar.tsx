@@ -16,6 +16,11 @@ type OnlineCartResponse = {
   }>;
 };
 
+type SupportConversationNav = {
+  unread_cliente?: number;
+  unread_staff?: number;
+};
+
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -30,12 +35,19 @@ export function Navbar() {
   const canSeeCliente = user?.rol === "cliente";
   const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin" || user?.rol === "superAdmin";
   const canSeeAdmin = user?.rol === "admin" || user?.rol === "superAdmin";
+  const canSeeSupport = canSeeCliente || canSeeVendedor;
   const adminPanelPath = user?.rol === "superAdmin" ? "/superadmin" : "/admin";
   const adminPanelLabel = user?.rol === "superAdmin" ? "Panel SuperAdmin" : "Panel Admin";
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
     enabled: canSeeCliente,
+  });
+  const supportConversationsQuery = useQuery({
+    queryKey: ["navbar", "support-unread", user?.rol],
+    queryFn: () => api.get<SupportConversationNav[]>("/soporte/conversaciones"),
+    enabled: canSeeSupport,
+    refetchInterval: 15000,
   });
 
   const canjeCartCount = useMemo(
@@ -48,6 +60,14 @@ export function Navbar() {
         .filter((item) => item.modo_compra === "dinero")
         .reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0),
     [onlineCartQuery.data?.items],
+  );
+  const supportUnreadCount = useMemo(
+    () =>
+      (supportConversationsQuery.data ?? []).reduce((acc, item) => {
+        const unread = canSeeCliente ? Number(item.unread_cliente ?? 0) : Number(item.unread_staff ?? 0);
+        return acc + unread;
+      }, 0),
+    [canSeeCliente, supportConversationsQuery.data],
   );
   const isRedemptionCatalog = location.pathname.startsWith("/catalogo");
   const activeCart = isRedemptionCatalog
@@ -65,6 +85,19 @@ export function Navbar() {
       };
 
   const closeMenu = () => setMenuOpen(false);
+
+  function renderNavLabel(label: string, unreadCount = 0) {
+    return (
+      <span className="navbar-link-content">
+        <span>{label}</span>
+        {unreadCount > 0 ? (
+          <span className="navbar-link-badge" aria-label={`${unreadCount} mensajes sin leer`}>
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
 
   function handleIrACarrito(target: string) {
     closeMenu();
@@ -129,7 +162,7 @@ export function Navbar() {
     <>
       {menuOpen ? <div className="navbar-backdrop" onClick={closeMenu} /> : null}
 
-      <nav className="navbar">
+      <nav className={`navbar${!user ? " navbar-guest" : ""}`}>
         <div className="navbar-inner">
           <Link to="/catalogo" className="navbar-logo" onClick={closeMenu}>
             <img src="/logo.png" alt="Nande" />
@@ -140,8 +173,16 @@ export function Navbar() {
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
-            {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
-            {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>Mensajes</NavLink> : null}
+            {canSeeCliente ? (
+              <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>
+                {renderNavLabel("Mensajes", supportUnreadCount)}
+              </NavLink>
+            ) : null}
+            {canSeeVendedor ? (
+              <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)}>
+                {renderNavLabel("Mensajes", supportUnreadCount)}
+              </NavLink>
+            ) : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Cargar Puntos</NavLink> : null}
             {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>Pedidos</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
@@ -262,6 +303,11 @@ export function Navbar() {
             <span />
             <span />
             <span />
+            {supportUnreadCount > 0 ? (
+              <span className="navbar-hamburger-badge" aria-hidden="true">
+                {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
+              </span>
+            ) : null}
           </button>
         </div>
       </nav>
@@ -272,8 +318,16 @@ export function Navbar() {
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}
-          {canSeeCliente ? <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mensajes</NavLink> : null}
-          {canSeeVendedor ? <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mensajes</NavLink> : null}
+          {canSeeCliente ? (
+            <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
+              {renderNavLabel("Mensajes", supportUnreadCount)}
+            </NavLink>
+          ) : null}
+          {canSeeVendedor ? (
+            <NavLink to="/staff/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
+              {renderNavLabel("Mensajes", supportUnreadCount)}
+            </NavLink>
+          ) : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Cargar Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Pedidos</NavLink> : null}

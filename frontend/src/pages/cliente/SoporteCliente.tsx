@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api";
 
 type SupportConversation = {
@@ -101,7 +101,7 @@ export function SoporteCliente() {
   const mensajes = detalle?.mensajes ?? [];
   const hasActiveChat = Boolean(activeConversation);
   const pendingSend = createMutation.isPending || sendMutation.isPending;
-  const resumen = useMemo(() => conversaciones.filter((item) => item.estado !== "cerrada").length, [conversaciones]);
+  const lastMessagePreview = activeConversation?.last_public_message?.trim() || "Escribile al staff y arrancamos el chat.";
 
   function handleSend() {
     const cuerpo = mensajeDraft.trim();
@@ -115,92 +115,48 @@ export function SoporteCliente() {
 
   return (
     <section className="dashboard-section perfil-dashboard-section">
-      <div className="support-shell">
-        <aside className="support-sidebar">
-          <div className="support-card">
-            <div className="support-card-head">
-              <div>
-                <h1 className="support-title">Chat con staff</h1>
-                <p className="support-subtitle">
-                  {hasActiveChat ? `${resumen} chat activo` : "Escribinos y te responde el staff"}
-                </p>
+      <div className="support-shell support-shell-client-chat">
+        <div className="support-thread support-thread-client-chat">
+          <div className="support-card support-thread-card support-thread-card-client-chat">
+            <div className="support-chat-mini-head">
+              <div className="support-chat-mini-avatar" aria-hidden="true">S</div>
+              <div className="support-chat-mini-copy">
+                <strong>Staff</strong>
+                <span>{hasActiveChat ? lastMessagePreview : "Chat directo con el equipo"}</span>
               </div>
+              {activeConversation?.unread_cliente ? <span className="support-badge">{activeConversation.unread_cliente}</span> : null}
             </div>
-            <div className="support-list">
-              {conversationsQuery.isLoading ? <p className="support-empty">Cargando chat...</p> : null}
-              {!conversationsQuery.isLoading ? (
-                <button type="button" className={`support-list-item active${hasActiveChat ? "" : " support-user-list-item"}`}>
-                  <div className="support-list-row">
-                    <strong>Staff</strong>
-                    {activeConversation?.unread_cliente ? <span className="support-badge">{activeConversation.unread_cliente}</span> : null}
-                  </div>
-                  <p>{activeConversation?.last_public_message || "Todavia no hay mensajes. Envia el primero cuando quieras."}</p>
-                  <div className="support-list-row support-list-meta">
-                    <span className={`support-state support-state-${activeConversation?.estado || "abierta"}`}>
-                      {activeConversation?.estado || "nuevo"}
-                    </span>
-                    <span>{activeConversation?.ultimo_mensaje_at ? formatDate(activeConversation.ultimo_mensaje_at) : "Ahora"}</span>
-                  </div>
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </aside>
 
-        <div className="support-thread">
-          <div className="support-card support-thread-card">
             {detalle || !hasActiveChat ? (
               <>
-                <div className="support-card-head support-thread-head">
-                  <div>
-                    <h2 className="support-thread-title">Staff</h2>
-                    <p className="support-subtitle">
-                      {detalle ? (
-                        <>
-                          Estado:{" "}
-                          <span className={`support-state support-state-${detalle.conversacion.estado}`}>
-                            {detalle.conversacion.estado}
-                          </span>
-                        </>
-                      ) : (
-                        "Chat directo con el equipo"
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="support-messages">
+                <div className="support-messages support-messages-client-chat">
                   {mensajes.length ? (
                     mensajes.map((mensaje) => (
                       <article
                         key={mensaje.id}
                         className={`support-message${mensaje.autor_tipo === "cliente" ? " mine" : ""}`}
                       >
+                        <p>{mensaje.cuerpo}</p>
                         <div className="support-message-meta">
-                          <strong>{mensaje.autor_tipo === "cliente" ? "Tú" : "Staff"}</strong>
+                          <span>{mensaje.autor_tipo === "cliente" ? "Tú" : "Staff"}</span>
                           <span>{formatDate(mensaje.created_at)}</span>
                         </div>
-                        <p>{mensaje.cuerpo}</p>
                       </article>
                     ))
                   ) : (
-                    <p className="support-empty">Todavia no hay mensajes. Escribile al staff y arrancamos el chat.</p>
+                    <p className="support-empty">Todavía no hay mensajes. Escribile al staff y arrancamos el chat.</p>
                   )}
                 </div>
 
-                {activeConversation?.estado === "cerrada" ? (
-                  <p className="support-empty">Este chat está cerrado, pero si envías un mensaje se reabre automáticamente.</p>
-                ) : null}
-
-                <div className="support-reply-box">
+                <div className="support-thread-footer support-thread-footer-client-chat">
                   <textarea
-                    className="ios-input support-textarea"
+                    className="ios-input support-textarea support-composer-textarea support-composer-textarea-client-chat"
                     value={mensajeDraft}
                     onChange={(event) => setMensajeDraft(event.target.value)}
-                    placeholder="Escribe tu mensaje"
+                    placeholder="Mensaje"
                   />
                   <button
-                    className="ios-btn-primary"
+                    className="ios-btn-primary support-composer-send support-composer-send-client-chat"
                     disabled={pendingSend || !mensajeDraft.trim()}
                     onClick={handleSend}
                   >
