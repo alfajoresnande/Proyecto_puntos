@@ -99,6 +99,14 @@ function paymentProviderLabel(proveedor: string | null | undefined): string {
   return proveedor || "Sin definir";
 }
 
+function canContinueOnlinePayment(orden: OrdenDetalle): boolean {
+  return (
+    orden.estado === "pendiente_pago" &&
+    orden.pago?.proveedor === "mercadopago" &&
+    orden.pago?.estado === "iniciado"
+  );
+}
+
 export function ComprobantePedido() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -152,6 +160,15 @@ export function ComprobantePedido() {
         <Link to="/mis-pedidos" className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", height: "auto" }}>
           Volver
         </Link>
+        {canContinueOnlinePayment(orden) ? (
+          <Link
+            to={`/carrito-tienda?pagar_orden=${orden.id}`}
+            className="catalog-float-toast-btn-primary"
+            style={{ padding: "0.5rem 1rem", height: "auto" }}
+          >
+            Continuar pago
+          </Link>
+        ) : null}
         <button 
           className="catalog-float-toast-btn-primary" 
           style={{ padding: "0.5rem 1rem", height: "auto" }}

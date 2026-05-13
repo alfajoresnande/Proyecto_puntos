@@ -115,6 +115,14 @@ function branchLabel(sucursal: Orden["sucursal"]): string {
     .join(", ");
 }
 
+function canContinueOnlinePayment(orden: Orden): boolean {
+  return (
+    orden.estado === "pendiente_pago" &&
+    orden.pago?.proveedor === "mercadopago" &&
+    orden.pago?.estado === "iniciado"
+  );
+}
+
 export function MisPedidos() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -250,11 +258,22 @@ export function MisPedidos() {
                     <strong>{money(orden.total_dinero)}</strong>
                   </div>
                 </div>
-                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
                   <span className="store-order-muted">Pago: {paymentMethodLabel(orden.pago?.metodo)}</span>
-                  <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
-                    Ver comprobante
-                  </Link>
+                  <div className="catalog-float-toast-actions" style={{ gap: "0.5rem", margin: 0 }}>
+                    {canContinueOnlinePayment(orden) ? (
+                      <Link
+                        to={`/carrito-tienda?pagar_orden=${orden.id}`}
+                        className="catalog-float-toast-btn-primary"
+                        style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}
+                      >
+                        Continuar pago
+                      </Link>
+                    ) : null}
+                    <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
+                      Ver comprobante
+                    </Link>
+                  </div>
                 </div>
               </article>
             ))}

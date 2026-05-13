@@ -20,13 +20,13 @@ const EMAIL_VERIFICATION_MAX_ATTEMPTS = 5;
 
 // Política:
 // - Mínimo 12 caracteres (priorizamos longitud sobre "complejidad" artificial).
-// - Al menos una letra y un número (filtro mínimo contra "aaaaaaaaaaaa" y "123456789012").
+// - Al menos un caracter especial y un numero.
 // - Máximo 128 para frenar DoS por hashing bcrypt.
 const strongPasswordSchema = z
   .string()
   .min(12, "La contrasena debe tener al menos 12 caracteres")
   .max(128, "La contrasena no puede superar 128 caracteres")
-  .regex(/[A-Za-z]/, "La contrasena debe incluir al menos una letra")
+  .regex(/[^A-Za-z0-9]/, "La contrasena debe incluir al menos 1 caracter especial")
   .regex(/\d/, "La contrasena debe incluir al menos un numero");
 
 function makeCode(length: number): string {
