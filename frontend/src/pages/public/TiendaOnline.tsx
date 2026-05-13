@@ -15,14 +15,6 @@ function productImage(producto: Producto): string | null {
   return producto.imagen_url ?? null;
 }
 
-type PriceRangeId = "all" | "low" | "mid-low" | "mid-high" | "high";
-
-type PriceRange = {
-  id: PriceRangeId;
-  label: string;
-  match: (precio: number) => boolean;
-};
-
 type SucursalRetiro = {
   id: number;
   nombre: string;
@@ -74,27 +66,6 @@ function maxSelectableQuantity(producto: Producto): number {
   return Math.max(1, Math.min(100, productAvailableStock(producto)));
 }
 
-function niceRoundMoney(n: number): number {
-  if (n < 1000) return Math.max(100, Math.round(n / 100) * 100);
-  if (n < 10000) return Math.round(n / 500) * 500;
-  return Math.round(n / 1000) * 1000;
-}
-
-function priceRangeVisualBounds(id: PriceRangeId): { start: number; end: number } {
-  switch (id) {
-    case "low":
-      return { start: 0, end: 25 };
-    case "mid-low":
-      return { start: 25, end: 50 };
-    case "mid-high":
-      return { start: 50, end: 75 };
-    case "high":
-      return { start: 75, end: 100 };
-    default:
-      return { start: 0, end: 100 };
-  }
-}
-
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
@@ -102,7 +73,7 @@ export function TiendaOnline() {
   const [categoriaActiva, setCategoriaActiva] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [ordenProductos, setOrdenProductos] = useState("");
-  const [rangoPrecioId, setRangoPrecioId] = useState<PriceRangeId>("all");
+  const [precioFiltro, setPrecioFiltro] = useState<{ min: number; max: number } | null>(null);
   const [filtrosOpen, setFiltrosOpen] = useState(false);
   const filtrosTriggerRef = useRef<HTMLButtonElement>(null);
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
@@ -137,6 +108,12 @@ export function TiendaOnline() {
   );
   const precioMin = preciosCatalogo.length ? Math.min(...preciosCatalogo) : 0;
   const precioMax = preciosCatalogo.length ? Math.max(...preciosCatalogo) : 0;
+  const precioFiltroMin = precioFiltro?.min ?? precioMin;
+  const precioFiltroMax = precioFiltro?.max ?? precioMax;
+  const precioFiltroActivo = preciosCatalogo.length > 0 && (precioFiltroMin > precioMin || precioFiltroMax < precioMax);
+  const precioRangeSpan = Math.max(1, precioMax - precioMin);
+  const precioMinPercent = preciosCatalogo.length ? ((precioFiltroMin - precioMin) / precioRangeSpan) * 100 : 0;
+  const precioMaxPercent = preciosCatalogo.length ? ((precioFiltroMax - precioMin) / precioRangeSpan) * 100 : 100;
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -156,44 +133,29 @@ export function TiendaOnline() {
     [productos],
   );
 
-  const rangosPrecio = useMemo<PriceRange[]>(() => {
-    const allRange: PriceRange = { id: "all", label: "Todos", match: () => true };
-    const precios = productos
-      .map(productPrice)
-      .filter((precio) => Number.isFinite(precio) && precio > 0);
-
-    if (!precios.length) return [allRange];
-
-    const precioMax = Math.max(...precios);
-    const q = Math.max(100, Math.ceil(precioMax / 100) * 100) / 4;
-    const t1 = niceRoundMoney(q);
-    const t2 = Math.max(t1 + 100, niceRoundMoney(q * 2));
-    const t3 = Math.max(t2 + 100, niceRoundMoney(q * 3));
-
-    const candidates: PriceRange[] = [
-      { id: "low", label: `Hasta ${money(t1)}`, match: (p) => p <= t1 },
-      { id: "mid-low", label: `${money(t1)} - ${money(t2)}`, match: (p) => p > t1 && p <= t2 },
-      { id: "mid-high", label: `${money(t2)} - ${money(t3)}`, match: (p) => p > t2 && p <= t3 },
-      { id: "high", label: `Mas de ${money(t3)}`, match: (p) => p > t3 },
-    ];
-
-    const usefulRanges = candidates.filter((range) => precios.some(range.match));
-    return usefulRanges.length <= 1 ? [allRange] : [allRange, ...usefulRanges];
-  }, [productos]);
-
   useEffect(() => {
-    if (!rangosPrecio.some((r) => r.id === rangoPrecioId)) {
-      setRangoPrecioId("all");
+    if (!preciosCatalogo.length) {
+      setPrecioFiltro(null);
+      return;
     }
-  }, [rangosPrecio, rangoPrecioId]);
+    setPrecioFiltro((prev) => {
+      if (!prev) return null;
+      const min = Math.min(Math.max(prev.min, precioMin), precioMax);
+      const max = Math.min(Math.max(prev.max, precioMin), precioMax);
+      const next = min > max ? { min: max, max: min } : { min, max };
+      if (next.min === precioMin && next.max === precioMax) return null;
+      if (next.min === prev.min && next.max === prev.max) return prev;
+      return next;
+    });
+  }, [precioMin, precioMax, preciosCatalogo.length]);
 
   const filtrosActivos = useMemo(() => {
     let n = 0;
     if (categoriaActiva) n += 1;
     if (ordenProductos) n += 1;
-    if (rangoPrecioId !== "all") n += 1;
+    if (precioFiltroActivo) n += 1;
     return n;
-  }, [categoriaActiva, ordenProductos, rangoPrecioId]);
+  }, [categoriaActiva, ordenProductos, precioFiltroActivo]);
 
   const baseSearch = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -205,10 +167,9 @@ export function TiendaOnline() {
   }, [busqueda, productos]);
 
   const conteosPorCategoria = useMemo(() => {
-    const rangoSel = rangosPrecio.find((r) => r.id === rangoPrecioId) ?? rangosPrecio[0];
     const base = baseSearch.filter((producto) => {
-      const priceOk = rangoSel ? rangoSel.match(productPrice(producto)) : true;
-      return priceOk;
+      const precio = productPrice(producto);
+      return !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
     });
     const acc: Record<string, number> = { __all: base.length };
     for (const producto of base) {
@@ -216,18 +177,7 @@ export function TiendaOnline() {
       if (cat) acc[cat] = (acc[cat] ?? 0) + 1;
     }
     return acc;
-  }, [baseSearch, rangosPrecio, rangoPrecioId]);
-
-  const conteosPorPrecio = useMemo(() => {
-    const base = baseSearch.filter((producto) => {
-      const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      return categoriaOk;
-    });
-    return rangosPrecio.reduce<Record<string, number>>((acc, rango) => {
-      acc[rango.id] = base.filter((producto) => rango.match(productPrice(producto))).length;
-      return acc;
-    }, {});
-  }, [baseSearch, categoriaActiva, rangosPrecio]);
+  }, [baseSearch, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
 
   useEffect(() => {
     if (!filtrosOpen) {
@@ -277,10 +227,10 @@ export function TiendaOnline() {
   }, [filtrosOpen]);
 
   const productosFiltrados = useMemo(() => {
-    const rangoSel = rangosPrecio.find((r) => r.id === rangoPrecioId) ?? rangosPrecio[0];
     const filtrados = baseSearch.filter((producto) => {
       const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      const precioOk = rangoSel ? rangoSel.match(productPrice(producto)) : true;
+      const precio = productPrice(producto);
+      const precioOk = !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
       return categoriaOk && precioOk;
     });
 
@@ -295,7 +245,7 @@ export function TiendaOnline() {
     }
 
     return filtrados;
-  }, [baseSearch, categoriaActiva, ordenProductos, rangosPrecio, rangoPrecioId]);
+  }, [baseSearch, categoriaActiva, ordenProductos, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
 
   function getCantidadSeleccionada(productoId: number): number {
     const value = cantidadesSeleccionadas[productoId];
@@ -414,6 +364,73 @@ export function TiendaOnline() {
       cantidad,
       sucursalId: sucursalId ? Number(sucursalId) : null,
     });
+  }
+
+  function actualizarPrecioMin(value: number) {
+    if (!preciosCatalogo.length) return;
+    setPrecioFiltro((prev) => {
+      const currentMax = prev?.max ?? precioMax;
+      const min = Math.min(Math.max(value, precioMin), currentMax);
+      const next = { min, max: currentMax };
+      return next.min === precioMin && next.max === precioMax ? null : next;
+    });
+  }
+
+  function actualizarPrecioMax(value: number) {
+    if (!preciosCatalogo.length) return;
+    setPrecioFiltro((prev) => {
+      const currentMin = prev?.min ?? precioMin;
+      const max = Math.max(Math.min(value, precioMax), currentMin);
+      const next = { min: currentMin, max };
+      return next.min === precioMin && next.max === precioMax ? null : next;
+    });
+  }
+
+  function renderPrecioRangeControl(labelledBy: string) {
+    const disabled = !preciosCatalogo.length || precioMin === precioMax;
+    return (
+      <div className="catalog-range-control" aria-labelledby={labelledBy}>
+        <div className="catalog-range-track" aria-hidden="true">
+          <span
+            className="catalog-range-fill"
+            style={{
+              left: `${Math.max(0, Math.min(100, precioMinPercent))}%`,
+              right: `${100 - Math.max(0, Math.min(100, precioMaxPercent))}%`,
+            }}
+          />
+        </div>
+        <div className="catalog-range-inputs">
+          <input
+            type="range"
+            min={precioMin}
+            max={precioMax}
+            step="1"
+            value={precioFiltroMin}
+            disabled={disabled}
+            onChange={(event) => actualizarPrecioMin(Number(event.target.value))}
+            aria-label="Precio minimo"
+          />
+          <input
+            type="range"
+            min={precioMin}
+            max={precioMax}
+            step="1"
+            value={precioFiltroMax}
+            disabled={disabled}
+            onChange={(event) => actualizarPrecioMax(Number(event.target.value))}
+            aria-label="Precio maximo"
+          />
+        </div>
+        <div className="catalog-range-badges" aria-hidden="true">
+          <span style={{ left: `${Math.max(0, Math.min(100, precioMinPercent))}%` }}>{money(precioFiltroMin)}</span>
+          <span style={{ left: `${Math.max(0, Math.min(100, precioMaxPercent))}%` }}>{money(precioFiltroMax)}</span>
+        </div>
+        <div className="catalog-range-values">
+          <span>{money(precioMin)}<small>min</small></span>
+          <span>{money(precioMax)}<small>max</small></span>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -565,43 +582,7 @@ export function TiendaOnline() {
               <h3 className="catalog-filters-section-title" id="store-price-label-desktop">
                 Rango de precio
               </h3>
-              <div className="catalog-range-control" role="radiogroup" aria-labelledby="store-price-label-desktop">
-                <div className="catalog-range-track" aria-hidden="true">
-                  <span
-                    className="catalog-range-fill"
-                    style={{
-                      left: `${priceRangeVisualBounds(rangoPrecioId).start}%`,
-                      right: `${100 - priceRangeVisualBounds(rangoPrecioId).end}%`,
-                    }}
-                  />
-                </div>
-                <div className="catalog-range-options">
-                {rangosPrecio.map((rango) => {
-                  const count = conteosPorPrecio[rango.id] ?? 0;
-                  const checked = rangoPrecioId === rango.id;
-                  const isEmpty = count === 0 && !checked;
-                  const bounds = priceRangeVisualBounds(rango.id);
-                  return (
-                    <button
-                      key={rango.id}
-                      type="button"
-                      className={`catalog-range-point${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
-                      style={{ left: `${(bounds.start + bounds.end) / 2}%` }}
-                      onClick={() => setRangoPrecioId(rango.id)}
-                      disabled={isEmpty}
-                      aria-pressed={checked}
-                      aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
-                    >
-                      <span>{rango.label}</span>
-                    </button>
-                  );
-                })}
-                </div>
-                <div className="catalog-range-values">
-                  <span>{money(precioMin)}<small>min</small></span>
-                  <span>{money(precioMax)}<small>max</small></span>
-                </div>
-              </div>
+              {renderPrecioRangeControl("store-price-label-desktop")}
             </section>
 
             <button
@@ -610,7 +591,7 @@ export function TiendaOnline() {
               onClick={() => {
                 setCategoriaActiva("");
                 setOrdenProductos("");
-                setRangoPrecioId("all");
+                setPrecioFiltro(null);
               }}
               disabled={filtrosActivos === 0}
             >
@@ -772,33 +753,7 @@ export function TiendaOnline() {
                   <h3 className="catalog-filters-section-title" id="store-price-label">
                     Rango de precio
                   </h3>
-                  <div className="catalog-filter-chips" role="radiogroup" aria-labelledby="store-price-label">
-                    {rangosPrecio.map((rango) => {
-                      const count = conteosPorPrecio[rango.id] ?? 0;
-                      const checked = rangoPrecioId === rango.id;
-                      const isEmpty = count === 0 && !checked;
-                      return (
-                        <label
-                          key={rango.id}
-                          className={`catalog-filter-chip${checked ? " is-active" : ""}${isEmpty ? " is-empty" : ""}`}
-                        >
-                          <input
-                            type="radio"
-                            name="store-rango-precio"
-                            className="catalog-filter-chip-input"
-                            value={rango.id}
-                            checked={checked}
-                            onChange={() => setRangoPrecioId(rango.id)}
-                            aria-label={`${rango.label}, ${count} ${count === 1 ? "producto" : "productos"}`}
-                          />
-                          <span className="catalog-filter-chip-label">{rango.label}</span>
-                          <span className="catalog-filter-chip-count" aria-hidden="true">
-                            {count}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  {renderPrecioRangeControl("store-price-label")}
                 </section>
 
               </div>
@@ -810,7 +765,7 @@ export function TiendaOnline() {
                   onClick={() => {
                     setCategoriaActiva("");
                     setOrdenProductos("");
-                    setRangoPrecioId("all");
+                    setPrecioFiltro(null);
                   }}
                   disabled={filtrosActivos === 0}
                 >
