@@ -114,7 +114,7 @@ export function SoporteCliente() {
   }
 
   return (
-    <section className="dashboard-section perfil-dashboard-section">
+    <section className="dashboard-section perfil-dashboard-section support-dashboard-client">
       <div className="support-shell support-shell-client-chat">
         <div className="support-thread support-thread-client-chat">
           <div className="support-card support-thread-card support-thread-card-chat support-thread-card-client-chat">
