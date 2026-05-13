@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
+import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
 
 function money(value: number | string | null | undefined): string {
@@ -101,9 +102,8 @@ export function TiendaOnline() {
   const filtrosWasOpen = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
-  const [sucursalId, setSucursalId] = useState(() =>
-    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
-  );
+  const sucursalId = usePickupStore((state) => state.sucursalRetiroId);
+  const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
 
   const productosQuery = useQuery({
     queryKey: ["productos", "venta", sucursalId],
@@ -131,12 +131,6 @@ export function TiendaOnline() {
       setSucursalId(String(sucursales[0].id));
     }
   }, [sucursalId, sucursales]);
-
-  useEffect(() => {
-    if (sucursalId && typeof window !== "undefined") {
-      window.localStorage.setItem("sucursal_retiro_id", sucursalId);
-    }
-  }, [sucursalId]);
 
   const categorias = useMemo(
     () => Array.from(new Set(productos.map((p) => p.categoria).filter((c): c is string => Boolean(c)))).sort(),

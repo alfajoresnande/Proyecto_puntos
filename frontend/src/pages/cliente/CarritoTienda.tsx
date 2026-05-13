@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
+import { usePickupStore } from "../../store/pickupStore";
 
 type CartItem = {
   id: number;
@@ -94,18 +95,6 @@ type OrdenCheckoutStatus = {
 type PaymentNotice = {
   variant: "success" | "error" | "info";
   msg: string;
-};
-
-type MetodoEntrega = "retiro" | "envio";
-
-type ShippingDraft = {
-  nombre: string;
-  telefono: string;
-  direccion: string;
-  codigo_postal: string;
-  localidad: string;
-  provincia: string;
-  referencias: string;
 };
 
 function money(value: number | string | null | undefined): string {
@@ -351,20 +340,9 @@ export function CarritoTienda() {
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeOrderId = searchParams.get("pagar_orden");
-  const [sucursalId, setSucursalId] = useState(() =>
-    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
-  );
+  const sucursalId = usePickupStore((state) => state.sucursalRetiroId);
+  const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
   const [paymentId, setPaymentId] = useState("");
-  const [metodoEntrega, setMetodoEntrega] = useState<MetodoEntrega>("retiro");
-  const [shippingDraft, setShippingDraft] = useState<ShippingDraft>({
-    nombre: user?.nombre ?? "",
-    telefono: "",
-    direccion: "",
-    codigo_postal: "",
-    localidad: "",
-    provincia: "",
-    referencias: "",
-  });
   const [message, setMessage] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
@@ -406,11 +384,9 @@ export function CarritoTienda() {
     (sucursalId ? sucursales.find((s) => String(s.id) === sucursalId) : undefined) ||
     (sucursales.length === 1 ? sucursales[0] : undefined);
   const paymentOptions = paymentOptionsQuery.data?.options ?? [];
-  const visiblePaymentOptions = paymentOptions.filter((option) => metodoEntrega === "retiro" || option.provider !== "efectivo");
   const selectedPayment =
-    visiblePaymentOptions.find((option) => option.id === (paymentId || paymentOptionsQuery.data?.default_option)) ??
-    visiblePaymentOptions[0];
-  const todosPermitenEnvio = cartItems.every((item) => item.permite_envio === true || Number(item.permite_envio ?? 0) === 1);
+    paymentOptions.find((option) => option.id === (paymentId || paymentOptionsQuery.data?.default_option)) ??
+    paymentOptions[0];
   const shouldPollMercadoPagoOrder = Boolean(
     confirmed?.orden_id &&
     confirmed.pago_pendiente &&
@@ -462,18 +438,6 @@ export function CarritoTienda() {
       setSucursalId(String(sucursales[0].id));
     }
   }, [sucursalId, sucursales]);
-
-  useEffect(() => {
-    if (sucursalId && typeof window !== "undefined") {
-      window.localStorage.setItem("sucursal_retiro_id", sucursalId);
-    }
-  }, [sucursalId]);
-
-  useEffect(() => {
-    if (metodoEntrega === "envio" && selectedPayment?.provider === "efectivo") {
-      setPaymentId("");
-    }
-  }, [metodoEntrega, selectedPayment?.provider]);
 
   useEffect(() => {
     if (!confirmed?.orden_id || !confirmedOrderQuery.data) return;
@@ -551,18 +515,8 @@ export function CarritoTienda() {
     mutationFn: () =>
       api.post<CheckoutConfirmResponse>("/cliente/checkout/confirm", {
         sucursal_id: sucursalSeleccionada?.id,
-        metodo_entrega: metodoEntrega,
-        direccion_envio: metodoEntrega === "envio"
-          ? {
-              nombre: shippingDraft.nombre.trim(),
-              telefono: shippingDraft.telefono.trim(),
-              direccion: shippingDraft.direccion.trim(),
-              codigo_postal: shippingDraft.codigo_postal.trim(),
-              localidad: shippingDraft.localidad.trim(),
-              provincia: shippingDraft.provincia.trim(),
-              referencias: shippingDraft.referencias.trim() || null,
-            }
-          : null,
+        metodo_entrega: "retiro",
+        direccion_envio: null,
         pago: selectedPayment ? { provider: selectedPayment.provider, method: selectedPayment.method } : undefined,
       }),
     onSuccess: async (data) => {
@@ -598,26 +552,8 @@ export function CarritoTienda() {
       return;
     }
     if (sucursales.length > 1 && !sucursalSeleccionada) {
-      setMessage(metodoEntrega === "envio" ? "Selecciona una sucursal para preparar el envio." : "Selecciona una sucursal para reservar stock.");
+      setMessage("Selecciona una sucursal para reservar stock.");
       return;
-    }
-    if (metodoEntrega === "envio") {
-      if (!todosPermitenEnvio) {
-        setMessage("Hay productos del carrito que no permiten envio.");
-        return;
-      }
-      const required = [
-        shippingDraft.nombre,
-        shippingDraft.telefono,
-        shippingDraft.direccion,
-        shippingDraft.codigo_postal,
-        shippingDraft.localidad,
-        shippingDraft.provincia,
-      ];
-      if (required.some((value) => !value.trim())) {
-        setMessage("Completa nombre, telefono, direccion, codigo postal, localidad y provincia para el envio.");
-        return;
-      }
     }
     setMessage(null);
     setNeedsProfile(false);
@@ -861,26 +797,7 @@ export function CarritoTienda() {
             </div>
 
             <div className="catalog-confirm-field catalog-canje-pickup">
-              <label className="catalog-confirm-label" htmlFor="carrito-tienda-entrega">Forma de entrega</label>
-              <select
-                id="carrito-tienda-entrega"
-                className="catalog-pickup-select"
-                value={metodoEntrega}
-                onChange={(event) => setMetodoEntrega(event.target.value as MetodoEntrega)}
-                disabled={confirmCheckout.isPending}
-              >
-                <option value="retiro">Retiro en sucursal</option>
-                <option value="envio" disabled={!todosPermitenEnvio}>Envio a domicilio</option>
-              </select>
-              {!todosPermitenEnvio ? (
-                <p className="catalog-confirm-hint">Algunos productos del carrito solo permiten retiro en sucursal.</p>
-              ) : null}
-            </div>
-
-            <div className="catalog-confirm-field catalog-canje-pickup">
-              <label className="catalog-confirm-label" htmlFor="carrito-tienda-sucursal">
-                {metodoEntrega === "envio" ? "Sucursal que prepara el envio" : "Sucursal de retiro"}
-              </label>
+              <label className="catalog-confirm-label" htmlFor="carrito-tienda-sucursal">Sucursal de retiro</label>
               <select
                 id="carrito-tienda-sucursal"
                 className="catalog-pickup-select"
@@ -892,60 +809,7 @@ export function CarritoTienda() {
                 {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
               </select>
             </div>
-
-            {metodoEntrega === "envio" ? (
-              <div className="catalog-confirm-branch-detail catalog-canje-block">
-                <p style={{ margin: 0, fontWeight: 800 }}>Datos de envio</p>
-                <div className="adm-form-grid">
-                  <input
-                    className="adm-input"
-                    placeholder="Nombre de quien recibe"
-                    value={shippingDraft.nombre}
-                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, nombre: event.target.value }))}
-                  />
-                  <input
-                    className="adm-input"
-                    placeholder="Telefono"
-                    value={shippingDraft.telefono}
-                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, telefono: event.target.value }))}
-                  />
-                </div>
-                <input
-                  className="adm-input"
-                  placeholder="Direccion completa"
-                  value={shippingDraft.direccion}
-                  onChange={(event) => setShippingDraft((prev) => ({ ...prev, direccion: event.target.value }))}
-                />
-                <div className="adm-form-grid">
-                  <input
-                    className="adm-input"
-                    placeholder="Codigo postal"
-                    value={shippingDraft.codigo_postal}
-                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, codigo_postal: event.target.value }))}
-                  />
-                  <input
-                    className="adm-input"
-                    placeholder="Localidad"
-                    value={shippingDraft.localidad}
-                    onChange={(event) => setShippingDraft((prev) => ({ ...prev, localidad: event.target.value }))}
-                  />
-                </div>
-                <input
-                  className="adm-input"
-                  placeholder="Provincia"
-                  value={shippingDraft.provincia}
-                  onChange={(event) => setShippingDraft((prev) => ({ ...prev, provincia: event.target.value }))}
-                />
-                <textarea
-                  className="adm-input"
-                  placeholder="Referencias para el envio (opcional)"
-                  value={shippingDraft.referencias}
-                  onChange={(event) => setShippingDraft((prev) => ({ ...prev, referencias: event.target.value }))}
-                />
-              </div>
-            ) : null}
-
-            {visiblePaymentOptions.length ? (
+            {paymentOptions.length ? (
               <div className="catalog-confirm-field catalog-canje-pickup">
                 <label className="catalog-confirm-label" htmlFor="carrito-tienda-pago">Medio de pago</label>
                 <select
@@ -954,7 +818,7 @@ export function CarritoTienda() {
                   value={selectedPayment?.id || ""}
                   onChange={(event) => setPaymentId(event.target.value)}
                 >
-                  {visiblePaymentOptions.map((option) => (
+                  {paymentOptions.map((option) => (
                     <option key={option.id} value={option.id} disabled={!option.enabled}>
                       {option.label}{option.enabled ? "" : " (no disponible)"}
                     </option>

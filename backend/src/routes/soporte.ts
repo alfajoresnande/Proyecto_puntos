@@ -7,7 +7,7 @@ const router = Router();
 router.use(requireAuth);
 
 const createConversationSchema = z.object({
-  asunto: z.string().trim().min(3).max(180).optional().default(""),
+  asunto: z.string().trim().max(180).optional().default(""),
   cuerpo: z.string().trim().max(4000).optional().default(""),
   prioridad: z.enum(["normal", "alta"]).optional().default("normal"),
   usuario_id: z.number().int().positive().optional(),
@@ -86,6 +86,26 @@ async function getConversationById(conn: Queryable, id: number): Promise<Convers
   );
 }
 
+async function getPreferredConversationByUserId(conn: Queryable, usuarioId: number): Promise<ConversationRow | undefined> {
+  return qOne<ConversationRow>(
+    conn,
+    `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
+            c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
+            a.nombre AS asignado_nombre
+     FROM soporte_conversaciones c
+     JOIN usuarios u ON u.id = c.usuario_id
+     LEFT JOIN usuarios a ON a.id = c.asignado_a
+     WHERE c.usuario_id = ?
+     ORDER BY
+       CASE c.estado WHEN 'archivada' THEN 1 ELSE 0 END ASC,
+       c.ultimo_mensaje_at DESC,
+       c.id DESC
+     LIMIT 1`,
+    [usuarioId],
+  );
+}
+
 async function ensureConversationAccess(conn: Queryable, conversationId: number, requesterId: number, staff: boolean) {
   const conversation = await getConversationById(conn, conversationId);
   if (!conversation) {
@@ -154,6 +174,62 @@ function serializeMessage(row: MessageRow, viewerIsStaff: boolean) {
     es_interno: Boolean(row.es_interno),
     created_at: row.created_at,
   };
+}
+
+async function appendConversationMessage(
+  conn: Queryable,
+  {
+    conversationId,
+    conversationState,
+    authorUserId,
+    authorType,
+    body,
+    isInternal = false,
+  }: {
+    conversationId: number;
+    conversationState: ConversationRow["estado"];
+    authorUserId: number;
+    authorType: "cliente" | "staff";
+    body: string;
+    isInternal?: boolean;
+  },
+) {
+  await qRun(
+    conn,
+    `INSERT INTO soporte_mensajes
+      (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      conversationId,
+      authorUserId,
+      authorType,
+      body,
+      isInternal ? 1 : 0,
+      authorType === "staff" ? new Date() : null,
+      authorType === "cliente" ? new Date() : null,
+    ],
+  );
+
+  if (authorType === "staff") {
+    const nextState = isInternal ? conversationState : "respondida";
+    await qRun(
+      conn,
+      `UPDATE soporte_conversaciones
+       SET estado = ?, ultimo_mensaje_at = NOW(), ultimo_staff_at = NOW(),
+           asignado_a = COALESCE(asignado_a, ?)
+       WHERE id = ?`,
+      [nextState, authorUserId, conversationId],
+    );
+    return;
+  }
+
+  await qRun(
+    conn,
+    `UPDATE soporte_conversaciones
+     SET estado = 'abierta', ultimo_mensaje_at = NOW(), ultimo_cliente_at = NOW()
+     WHERE id = ?`,
+    [conversationId],
+  );
 }
 
 router.get("/conversaciones", async (req, res) => {
@@ -290,7 +366,28 @@ router.post("/conversaciones", async (req, res) => {
       throw new Error("Escribe un mensaje para iniciar la conversacion.");
     }
 
-    const asunto = parsed.data.asunto || (staff ? "Mensaje directo" : "Consulta general");
+    const existingConversation = await getPreferredConversationByUserId(conn, usuarioDestinoId);
+    if (existingConversation) {
+      if (parsed.data.cuerpo.trim()) {
+        await appendConversationMessage(conn, {
+          conversationId: Number(existingConversation.id),
+          conversationState: existingConversation.estado,
+          authorUserId: req.user!.id,
+          authorType: staff ? "staff" : "cliente",
+          body: parsed.data.cuerpo.trim(),
+        });
+      }
+
+      await conn.commit();
+      const conversation = await getConversationById(pool, Number(existingConversation.id));
+      res.status(200).json({
+        ok: true,
+        conversacion: conversation ? serializeConversation(conversation) : { id: Number(existingConversation.id) },
+      });
+      return;
+    }
+
+    const asunto = parsed.data.asunto || (staff ? "Chat directo" : "Chat con staff");
     const prioridad = parsed.data.prioridad;
     const estadoInicial = staff ? "respondida" : "abierta";
 
@@ -311,20 +408,13 @@ router.post("/conversaciones", async (req, res) => {
     );
 
     if (parsed.data.cuerpo.trim()) {
-      await qRun(
-        conn,
-        `INSERT INTO soporte_mensajes
-          (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?)`,
-        [
-          insertId,
-          req.user!.id,
-          staff ? "staff" : "cliente",
-          parsed.data.cuerpo.trim(),
-          staff ? new Date() : null,
-          staff ? null : new Date(),
-        ],
-      );
+      await appendConversationMessage(conn, {
+        conversationId: Number(insertId),
+        conversationState: estadoInicial,
+        authorUserId: req.user!.id,
+        authorType: staff ? "staff" : "cliente",
+        body: parsed.data.cuerpo.trim(),
+      });
     }
 
     await conn.commit();
@@ -429,42 +519,14 @@ router.post("/conversaciones/:id/mensajes", async (req, res) => {
     await conn.beginTransaction();
     const conversation = await ensureConversationAccess(conn, conversationId, req.user!.id, staff);
 
-    const autorTipo = staff ? "staff" : "cliente";
-    await qRun(
-      conn,
-      `INSERT INTO soporte_mensajes
-        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        conversationId,
-        req.user!.id,
-        autorTipo,
-        parsed.data.cuerpo,
-        parsed.data.es_interno ? 1 : 0,
-        autorTipo === "staff" ? new Date() : null,
-        autorTipo === "cliente" ? new Date() : null,
-      ],
-    );
-
-    if (staff) {
-      const nextState = parsed.data.es_interno ? conversation.estado : "respondida";
-      await qRun(
-        conn,
-        `UPDATE soporte_conversaciones
-         SET estado = ?, ultimo_mensaje_at = NOW(), ultimo_staff_at = NOW(),
-             asignado_a = COALESCE(asignado_a, ?)
-         WHERE id = ?`,
-        [nextState, req.user!.id, conversationId],
-      );
-    } else {
-      await qRun(
-        conn,
-        `UPDATE soporte_conversaciones
-         SET estado = 'abierta', ultimo_mensaje_at = NOW(), ultimo_cliente_at = NOW()
-         WHERE id = ?`,
-        [conversationId],
-      );
-    }
+    await appendConversationMessage(conn, {
+      conversationId,
+      conversationState: conversation.estado,
+      authorUserId: req.user!.id,
+      authorType: staff ? "staff" : "cliente",
+      body: parsed.data.cuerpo,
+      isInternal: parsed.data.es_interno,
+    });
 
     await conn.commit();
     res.json({ ok: true });
