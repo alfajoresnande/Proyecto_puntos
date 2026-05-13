@@ -314,7 +314,7 @@
 }
 
 .catalog-redemption-page {
-  background-color: #FFF8F0;
+  background-color: #F3E3D1;
   min-height: calc(100vh - 58px);
   max-width: none;
   padding-top: 0;
@@ -333,7 +333,7 @@
   border: 1px solid #E6D3B8;
   border-radius: 18px;
   overflow: visible;
-  background: rgba(255, 248, 240, 0.86);
+  background: rgba(246, 234, 221, 0.9);
   box-shadow: 0 10px 28px rgba(74, 44, 26, 0.08);
 }
 
@@ -3440,9 +3440,9 @@ body.catalogo-background .pagina-page {
   position: relative;
   z-index: 1;
   padding: 1.25rem;
-  background: rgba(255, 248, 240, 0.94);
+  background: transparent;
   border-color: transparent;
-  border-radius: 36px 36px 0 0;
+  border-radius: 0;
   box-shadow: none;
 }
 
@@ -4013,7 +4013,7 @@ body.catalogo-background .pagina-page {
 
   .catalog-redemption-page .catalog-products-shell,
   .store-page .catalog-products-shell {
-    border-radius: 24px 24px 0 0;
+    border-radius: 0;
   }
 }
 
