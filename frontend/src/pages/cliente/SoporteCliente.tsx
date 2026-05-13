@@ -117,7 +117,7 @@ export function SoporteCliente() {
     <section className="dashboard-section perfil-dashboard-section">
       <div className="support-shell support-shell-client-chat">
         <div className="support-thread support-thread-client-chat">
-          <div className="support-card support-thread-card support-thread-card-client-chat">
+          <div className="support-card support-thread-card support-thread-card-chat support-thread-card-client-chat">
             <div className="support-chat-mini-head">
               <div className="support-chat-mini-avatar" aria-hidden="true">S</div>
               <div className="support-chat-mini-copy">
@@ -129,12 +129,12 @@ export function SoporteCliente() {
 
             {detalle || !hasActiveChat ? (
               <>
-                <div className="support-messages support-messages-client-chat">
+                <div className="support-messages support-messages-chat support-messages-client-chat">
                   {mensajes.length ? (
                     mensajes.map((mensaje) => (
                       <article
                         key={mensaje.id}
-                        className={`support-message${mensaje.autor_tipo === "cliente" ? " mine" : ""}`}
+                        className={`support-message support-message-chat${mensaje.autor_tipo === "cliente" ? " mine" : ""}`}
                       >
                         <p>{mensaje.cuerpo}</p>
                         <div className="support-message-meta">
@@ -148,15 +148,15 @@ export function SoporteCliente() {
                   )}
                 </div>
 
-                <div className="support-thread-footer support-thread-footer-client-chat">
+                <div className="support-thread-footer support-thread-footer-chat support-thread-footer-client-chat">
                   <textarea
-                    className="ios-input support-textarea support-composer-textarea support-composer-textarea-client-chat"
+                    className="ios-input support-textarea support-composer-textarea support-composer-textarea-chat support-composer-textarea-client-chat"
                     value={mensajeDraft}
                     onChange={(event) => setMensajeDraft(event.target.value)}
                     placeholder="Mensaje"
                   />
                   <button
-                    className="ios-btn-primary support-composer-send support-composer-send-client-chat"
+                    className="ios-btn-primary support-composer-send support-composer-send-chat support-composer-send-client-chat"
                     disabled={pendingSend || !mensajeDraft.trim()}
                     onClick={handleSend}
                   >

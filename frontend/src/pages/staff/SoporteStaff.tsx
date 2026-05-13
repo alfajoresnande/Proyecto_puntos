@@ -326,10 +326,10 @@ export function SoporteStaff() {
         </aside>
 
         <div className="support-thread">
-          <div className="support-card support-thread-card support-thread-card-messenger">
+          <div className="support-card support-thread-card support-thread-card-chat support-thread-card-messenger">
             {activeConversation ? (
               <>
-                <div className="support-card-head support-thread-head support-thread-head-messenger">
+                <div className="support-card-head support-thread-head support-thread-head-chat support-thread-head-messenger">
                   <div className="support-chat-row">
                     <div className="support-chat-avatar" aria-hidden="true">
                       {makeInitials(activeConversation.usuario.nombre)}
@@ -390,12 +390,12 @@ export function SoporteStaff() {
                   </div>
                 </div>
 
-                <div className="support-messages support-messages-messenger">
+                <div className="support-messages support-messages-chat support-messages-messenger">
                   {detailQuery.data?.mensajes.length ? (
                     detailQuery.data.mensajes.map((mensaje) => (
                       <article
                         key={mensaje.id}
-                        className={`support-message${mensaje.autor_tipo === "staff" && !mensaje.es_interno ? " mine" : ""}${mensaje.es_interno ? " internal" : ""}`}
+                        className={`support-message support-message-chat${mensaje.autor_tipo === "staff" && !mensaje.es_interno ? " mine" : ""}${mensaje.es_interno ? " internal" : ""}`}
                       >
                         <div className="support-message-meta">
                           <strong>{mensaje.autor_label}</strong>
@@ -409,15 +409,15 @@ export function SoporteStaff() {
                   )}
                 </div>
 
-                <div className="support-thread-footer">
+                <div className="support-thread-footer support-thread-footer-chat">
                   <textarea
-                    className="ios-input support-composer-textarea"
+                    className="ios-input support-composer-textarea support-composer-textarea-chat"
                     value={respuesta}
                     onChange={(event) => setRespuesta(event.target.value)}
                     placeholder="Escribe un mensaje..."
                   />
                   <button
-                    className="ios-btn-primary support-composer-send"
+                    className="ios-btn-primary support-composer-send support-composer-send-chat"
                     disabled={sendMutation.isPending || !respuesta.trim()}
                     onClick={() => sendMutation.mutate()}
                   >
