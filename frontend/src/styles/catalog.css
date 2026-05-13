@@ -3608,11 +3608,11 @@ body.catalogo-background .pagina-page {
 .catalog-range-control {
   display: grid;
   gap: 0.28rem;
-  padding: 0.1rem 0 0;
+  padding: 0.1rem 0.18rem 0;
 }
 
 .catalog-range-track {
-  height: 38px;
+  height: 52px;
   position: relative;
 }
 
@@ -3624,7 +3624,7 @@ body.catalogo-background .pagina-page {
   left: 0;
   position: absolute;
   right: 0;
-  top: 24px;
+  top: 34px;
 }
 
 .catalog-range-fill {
@@ -3632,19 +3632,19 @@ body.catalogo-background .pagina-page {
   border-radius: 999px;
   height: 4px;
   position: absolute;
-  top: 24px;
+  top: 34px;
 }
 
 .catalog-range-inputs {
-  height: 38px;
-  margin-top: -38px;
+  height: 32px;
+  margin-top: -34px;
   position: relative;
 }
 
 .catalog-range-inputs input {
   appearance: none;
   background: transparent;
-  height: 38px;
+  height: 32px;
   left: 0;
   margin: 0;
   pointer-events: none;
@@ -3695,8 +3695,10 @@ body.catalogo-background .pagina-page {
 }
 
 .catalog-range-badges {
-  height: 19px;
-  margin-top: -38px;
+  display: flex;
+  height: 20px;
+  justify-content: space-between;
+  margin-top: -52px;
   pointer-events: none;
   position: relative;
 }
@@ -3712,10 +3714,11 @@ body.catalogo-background .pagina-page {
   max-width: 90px;
   overflow: hidden;
   padding: 0.28rem 0.42rem;
-  position: absolute;
+  min-width: 58px;
+  position: static;
+  text-align: center;
   text-overflow: ellipsis;
-  top: 0;
-  transform: translateX(-50%);
+  transform: none;
   white-space: nowrap;
 }
 
