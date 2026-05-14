@@ -87,6 +87,7 @@ export function RealtimeBridge() {
           queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] }),
           queryClient.invalidateQueries({ queryKey: ["cliente", "orden-payment-status"] }),
           queryClient.invalidateQueries({ queryKey: ["admin", "stats"] }),
+          queryClient.invalidateQueries({ queryKey: ["navbar", "staff-orders-alert"] }),
         ]);
         return;
       }

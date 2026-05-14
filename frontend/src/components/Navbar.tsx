@@ -21,6 +21,16 @@ type SupportConversationNav = {
   unread_staff?: number;
 };
 
+type StaffOrderNav = {
+  id: number;
+  estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
+  pago?: {
+    proveedor: string;
+    metodo: string | null;
+    estado: string;
+  } | null;
+};
+
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -52,6 +62,13 @@ export function Navbar() {
     refetchInterval: 5000,
     refetchIntervalInBackground: true,
   });
+  const staffOrdersQuery = useQuery({
+    queryKey: ["navbar", "staff-orders-alert"],
+    queryFn: () => api.get<StaffOrderNav[]>("/vendedor/ordenes"),
+    enabled: canSeeVendedor,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+  });
 
   const canjeCartCount = useMemo(
     () => Object.values(cartItems).reduce((acc, item) => acc + item.cantidad, 0),
@@ -72,6 +89,16 @@ export function Navbar() {
       }, 0),
     [canSeeCliente, supportConversationsQuery.data],
   );
+  const staffOrdersAttentionCount = useMemo(
+    () =>
+      (staffOrdersQuery.data ?? []).filter((order) => {
+        if (order.estado === "pagada" || order.estado === "preparada") return true;
+        if (order.estado !== "pendiente_pago") return false;
+        return order.pago?.proveedor === "efectivo" || order.pago?.metodo === "cash";
+      }).length,
+    [staffOrdersQuery.data],
+  );
+  const navbarMobileBadgeCount = supportUnreadCount + (canSeeVendedor ? staffOrdersAttentionCount : 0);
   const isRedemptionCatalog = location.pathname.startsWith("/catalogo");
   const activeCart = isRedemptionCatalog
     ? {
@@ -187,7 +214,11 @@ export function Navbar() {
               </NavLink>
             ) : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
-            {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>Compras y Pedidos</NavLink> : null}
+            {canSeeVendedor ? (
+              <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>
+                {renderNavLabel("Compras y Pedidos", staffOrdersAttentionCount)}
+              </NavLink>
+            ) : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
 
@@ -306,9 +337,9 @@ export function Navbar() {
             <span />
             <span />
             <span />
-            {supportUnreadCount > 0 ? (
+            {navbarMobileBadgeCount > 0 ? (
               <span className="navbar-hamburger-badge" aria-hidden="true">
-                {supportUnreadCount > 99 ? "99+" : supportUnreadCount}
+                {navbarMobileBadgeCount > 99 ? "99+" : navbarMobileBadgeCount}
               </span>
             ) : null}
           </button>
@@ -333,7 +364,11 @@ export function Navbar() {
           ) : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
-          {canSeeVendedor ? <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Compras y Pedidos</NavLink> : null}
+          {canSeeVendedor ? (
+            <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
+              {renderNavLabel("Compras y Pedidos", staffOrdersAttentionCount)}
+            </NavLink>
+          ) : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
 
           <div className="navbar-mobile-divider" />
