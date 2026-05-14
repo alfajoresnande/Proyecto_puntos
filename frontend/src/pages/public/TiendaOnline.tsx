@@ -859,8 +859,6 @@ export function TiendaOnline() {
           <div className="catalog-grid">
             {productosFiltrados.map((producto) => {
               const img = productImage(producto);
-              const imagenesProducto = productImages(producto);
-              const tieneCarouselCard = imagenesProducto.length > 1;
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = producto.track_stock !== false && stock <= 0;
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
@@ -885,21 +883,6 @@ export function TiendaOnline() {
                     ) : (
                       <div className="product-card-placeholder" />
                     )}
-                    {tieneCarouselCard ? (
-                      <>
-                        <span className="product-card-media-indicator" aria-hidden="true">
-                          1/{imagenesProducto.length}
-                        </span>
-                        <span className="product-card-media-dots" aria-hidden="true">
-                          {imagenesProducto.map((imagen, index) => (
-                            <span
-                              key={`${imagen}-${index}`}
-                              className={`product-card-media-dot${index === 0 ? " active" : ""}`}
-                            />
-                          ))}
-                        </span>
-                      </>
-                    ) : null}
                   </button>
                   {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
                   <div className="product-card-body">

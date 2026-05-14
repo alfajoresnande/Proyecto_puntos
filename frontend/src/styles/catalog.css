@@ -847,49 +847,6 @@ body.catalogo-background .pagina-page {
   outline-offset: -2px;
 }
 
-.product-card-media-indicator {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 42px;
-  height: 24px;
-  padding: 0 0.55rem;
-  border-radius: 999px;
-  background: rgba(61, 26, 2, 0.78);
-  color: #fff8f0;
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-}
-
-.product-card-media-dots {
-  position: absolute;
-  left: 50%;
-  bottom: 0.7rem;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  transform: translateX(-50%);
-}
-
-.product-card-media-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(255, 248, 240, 0.58);
-  box-shadow: 0 0 0 1px rgba(61, 26, 2, 0.12);
-}
-
-.product-card-media-dot.active {
-  width: 16px;
-  background: #fff8f0;
-}
-
 .product-card-img {
   width: 100%;
   height: 165px;
@@ -3211,8 +3168,8 @@ body.catalogo-background .pagina-page {
 }
 
 .store-page .product-card-img {
-  object-fit: contain;
-  padding: 0.9rem;
+  object-fit: cover;
+  padding: 0;
 }
 
 .store-page .product-card > .product-card-img,
@@ -3233,11 +3190,6 @@ body.catalogo-background .pagina-page {
   font-weight: 900;
   letter-spacing: 0.05em;
   padding: 0.35rem 0.72rem;
-}
-
-.store-page .product-card-media-indicator {
-  top: 0.85rem;
-  right: 0.85rem;
 }
 
 .catalog-redemption-page .product-card-body,
@@ -3956,7 +3908,7 @@ body.catalogo-background .pagina-page {
 }
 
 .store-page .product-card-img {
-  padding: 0.68rem;
+  padding: 0;
 }
 
 .store-page .product-card > .product-card-img,
@@ -4057,28 +4009,6 @@ body.catalogo-background .pagina-page {
   top: 0.68rem;
 }
 
-.product-card-media-indicator {
-  font-size: 0.64rem;
-  height: 22px;
-  min-width: 38px;
-  padding: 0 0.48rem;
-  right: 0.6rem;
-  top: 0.6rem;
-}
-
-.product-card-media-dots {
-  bottom: 0.58rem;
-}
-
-.product-card-media-dot {
-  width: 6px;
-  height: 6px;
-}
-
-.product-card-media-dot.active {
-  width: 14px;
-}
-
 @media (min-width: 1500px) {
   .catalog-redemption-page .catalog-grid,
   .store-page .catalog-grid {
@@ -4133,16 +4063,7 @@ body.catalogo-background .pagina-page {
   }
 
   .store-page .product-card-img {
-    padding: 0.75rem;
-  }
-
-  .product-card-media-indicator {
-    top: 0.55rem;
-    right: 0.55rem;
-  }
-
-  .product-card-media-dots {
-    bottom: 0.5rem;
+    padding: 0;
   }
 
   .catalog-redemption-page .catalog-products-shell,
