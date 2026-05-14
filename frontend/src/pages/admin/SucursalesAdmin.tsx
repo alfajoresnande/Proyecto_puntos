@@ -82,6 +82,8 @@ export function SucursalesAdmin() {
   const sucursalesQuery = useQuery({
     queryKey: ["admin", "sucursales"],
     queryFn: () => api.get<SucursalAdmin[]>("/admin/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const commandMutation = useMutation({

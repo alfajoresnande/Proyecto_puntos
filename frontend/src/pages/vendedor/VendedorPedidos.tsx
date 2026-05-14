@@ -89,6 +89,7 @@ export function VendedorPedidos() {
     queryKey: ["vendedor", "ordenes"],
     queryFn: () => api.get<OrdenVendedor[]>("/vendedor/ordenes"),
     refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const ordenes = ordenesQuery.data ?? [];
@@ -138,7 +139,7 @@ export function VendedorPedidos() {
       <div className="ios-card p-4" style={{ borderLeft: "4px solid #D4621A" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
-            <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Pedidos</h1>
+            <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Compras y Pedidos</h1>
             <p className="text-sm" style={{ color: "#6b7280" }}>
               Gestiona pedidos pagados, preparacion, envio y entrega.
             </p>

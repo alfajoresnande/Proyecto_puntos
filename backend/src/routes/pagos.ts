@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { Router } from "express";
 import { pool } from "../db";
+import { emitRealtime } from "../realtime";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import { getMercadoPagoPayment, getMercadoPagoQrOrder } from "../services/paymentProviders";
 import { recordSecurityEvent } from "../securityMonitor";
@@ -226,6 +227,7 @@ router.post("/webhook/:proveedor", async (req, res) => {
             payload: resolvedPayload,
           });
     await conn.commit();
+    emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
     res.json(result);
   } catch (err) {
     await conn.rollback();

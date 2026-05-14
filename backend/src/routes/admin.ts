@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
+import { emitRealtime } from "../realtime";
 import { normalizeSafeImageUrl } from "../urlSafety";
 import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
 import { verifyUploadedImageFile } from "../uploadSecurity";
@@ -697,6 +698,7 @@ router.patch("/canjes/:id", async (req, res) => {
     }
 
     await conn.commit();
+    emitRealtime(["canjes", "inventario", "stats", "puntos"]);
     res.json({ ok: true });
   } catch (err) {
     await conn.rollback();
@@ -864,6 +866,7 @@ router.patch("/ordenes/:id", async (req, res) => {
       // Si el estado es 'pagada', ya terminamos.
       if (estado === "pagada") {
         await conn.commit();
+        emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
         res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
         return;
       }
@@ -962,6 +965,7 @@ router.patch("/ordenes/:id", async (req, res) => {
     }
 
     await conn.commit();
+    emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
     res.json({ ok: true });
   } catch (err: any) {
     await conn.rollback();
@@ -1176,6 +1180,7 @@ router.post("/productos", async (req, res) => {
     }
 
     await conn.commit();
+    emitRealtime(["productos", "inventario", "categorias"]);
     res.status(201).json({ id: insertId });
   } catch (error) {
     await conn.rollback();
@@ -1299,6 +1304,7 @@ router.put("/productos/:id", async (req, res) => {
       }
     }
     await conn.commit();
+    emitRealtime(["productos", "inventario", "categorias"]);
     res.json({ ok: true });
   } catch (error) {
     await conn.rollback();
@@ -1313,6 +1319,7 @@ router.patch("/productos/:id/activo", async (req, res) => {
   const { activo } = req.body;
   if (typeof activo !== "boolean") { res.status(400).json({ error: "activo debe ser boolean" }); return; }
   await qRun(pool, "UPDATE productos SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+  emitRealtime(["productos", "inventario"]);
   res.json({ ok: true });
 });
 
@@ -1332,6 +1339,7 @@ router.post("/categorias", async (req, res) => {
 
   try {
     const { insertId } = await qRun(pool, "INSERT INTO categorias (nombre) VALUES (?)", [parsed.data.nombre]);
+    emitRealtime(["categorias", "productos"]);
     res.status(201).json({ id: insertId });
   } catch (err: any) {
     if (err.code === "ER_DUP_ENTRY") { res.status(409).json({ error: "Ya existe una categoría con ese nombre" }); return; }
@@ -1383,6 +1391,7 @@ router.post("/sucursales", async (req, res) => {
      VALUES (?, ?, ?, ?, ?, 1)`,
     [nombre.trim(), direccion.trim(), piso?.trim() || null, localidad.trim(), provincia.trim()],
   );
+  emitRealtime(["sucursales", "productos"]);
   res.status(201).json({ id: insertId });
 });
 
@@ -1410,6 +1419,7 @@ router.put("/sucursales/:id", async (req, res) => {
     res.status(404).json({ error: "Sucursal no encontrada" });
     return;
   }
+  emitRealtime(["sucursales", "productos"]);
   res.json({ ok: true });
 });
 
@@ -1442,6 +1452,7 @@ router.patch("/sucursales/:id/activo", async (req, res) => {
     res.status(404).json({ error: "Sucursal no encontrada" });
     return;
   }
+  emitRealtime(["sucursales", "productos"]);
   res.json({ ok: true });
 });
 
@@ -1578,6 +1589,7 @@ router.put("/configuracion/:clave", async (req, res) => {
        descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`,
     [clave, String(valor), typeof descripcion === "string" ? descripcion : null]
   );
+  emitRealtime(["admin-config"]);
   res.json({ ok: true });
 });
 
@@ -1613,6 +1625,7 @@ router.put("/paginas/:slug", async (req, res) => {
     [titulo, contenido, req.params.slug]
   );
   if (affectedRows === 0) { res.status(404).json({ error: "Página no encontrada" }); return; }
+  emitRealtime(["paginas"]);
   res.json({ ok: true });
 });
 

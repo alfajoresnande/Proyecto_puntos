@@ -90,6 +90,8 @@ export function Vendedor() {
   const productosQuery = useQuery({
     queryKey: ["vendedor", "productos"],
     queryFn: () => api.get<Producto[]>("/productos"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const clientesQuery = useQuery({
@@ -341,7 +343,7 @@ export function Vendedor() {
 
         <div className="vendedor-col">
           {/* ── CARGAR PUNTOS ── */}
-          <h1 className="ios-title mb-4">Cargar puntos</h1>
+          <h1 className="ios-title mb-4">Administrador de puntos y canjes</h1>
 
           <p className="ios-label">Cliente</p>
 

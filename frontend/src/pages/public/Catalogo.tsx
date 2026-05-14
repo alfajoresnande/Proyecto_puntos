@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
+import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
 
 type CanjeCarritoResponse = {
@@ -105,9 +106,8 @@ export function Catalogo() {
   const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number } | null>(null);
   const hasDragged = useRef(false);
   const [toast, setToast] = useState<CatalogToast | null>(null);
-  const [sucursalRetiroId, setSucursalRetiroId] = useState(() =>
-    typeof window !== "undefined" ? window.localStorage.getItem("sucursal_retiro_id") ?? "" : ""
-  );
+  const sucursalRetiroId = usePickupStore((state) => state.sucursalRetiroId);
+  const setSucursalRetiroId = usePickupStore((state) => state.setSucursalRetiroId);
   const canjeCart = useCartStore((state) => state.items);
   const cartAdd = useCartStore((state) => state.add);
   const cartClear = useCartStore((state) => state.clear);
@@ -127,16 +127,22 @@ export function Catalogo() {
       const suffix = qs.toString();
       return api.get<Producto[]>(suffix ? `/productos?${suffix}` : "/productos");
     },
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const categoriasQuery = useQuery({
     queryKey: ["productos", "categorias"],
     queryFn: () => api.get<string[]>("/productos/categorias"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const sucursalesQuery = useQuery({
     queryKey: ["productos", "sucursales"],
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const productos = productosQuery.data ?? [];
@@ -170,12 +176,6 @@ export function Catalogo() {
       setSucursalRetiroId(String(sucursalesRetiro[0].id));
     }
   }, [sucursalRetiroId, sucursalesRetiro]);
-
-  useEffect(() => {
-    if (sucursalRetiroId && typeof window !== "undefined") {
-      window.localStorage.setItem("sucursal_retiro_id", sucursalRetiroId);
-    }
-  }, [sucursalRetiroId]);
 
   useEffect(() => {
     if (!puntosCatalogo.length) {
@@ -1065,7 +1065,7 @@ export function Catalogo() {
                   ) : (
                     <div className="product-card-placeholder" />
                   )}
-                  </button>
+                </button>
 
                   {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
 

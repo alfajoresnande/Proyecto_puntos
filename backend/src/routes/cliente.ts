@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
+import { emitRealtime } from "../realtime";
 import { releaseStockForCheckoutItems, reserveStockForCanje, reserveStockForCheckoutItems } from "../services/stock";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import {
@@ -1851,6 +1852,7 @@ router.post("/checkout/confirm", async (req, res) => {
 
     await qRun(conn, "UPDATE carritos SET estado = 'convertido' WHERE id = ?", [carritoId]);
     await conn.commit();
+    emitRealtime(["ordenes", "inventario", "productos", "stats"]);
 
     res.status(201).json({
       ok: true,
@@ -2014,6 +2016,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
         payload,
       });
       await conn.commit();
+      emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
       res.json({
         ok: true,
         orden_id: ordenId,
@@ -2231,6 +2234,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         },
       });
       await conn.commit();
+      emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
       transactionOpen = false;
       res.json({
         ok: true,
@@ -2691,6 +2695,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
     });
 
     await conn.commit();
+    emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
     res.json({ ok: true, orden_id: ordenId, estado: "cancelada" });
   } catch (err: unknown) {
     await conn.rollback();
@@ -2752,6 +2757,7 @@ router.post("/canjear-codigo", async (req, res) => {
     });
 
     await conn.commit();
+    emitRealtime(["puntos"]);
 
     const updated = await qOne(pool, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
     res.json({ ok: true, puntos_ganados: c.puntos_valor, nuevo_saldo: updated?.puntos_saldo });
@@ -2792,6 +2798,7 @@ router.post("/canjear-carrito", async (req, res) => {
     });
 
     await conn.commit();
+    emitRealtime(["canjes", "inventario", "productos", "stats", "puntos"]);
     res.status(201).json(result);
   } catch (err: unknown) {
     await conn.rollback();
@@ -2831,6 +2838,7 @@ router.post("/canjear-producto", async (req, res) => {
       sucursalId: sucursal_id,
     });
     await conn.commit();
+    emitRealtime(["canjes", "inventario", "productos", "stats", "puntos"]);
     res.status(201).json(result);
   } catch (err: unknown) {
     await conn.rollback();

@@ -10,6 +10,8 @@ import "./styles/layout.css";
 import "./styles/catalog.css";
 import "./styles/admin.css";
 import "./styles/react.css";
+import "./styles/mobile-navbar.css";
+import "./styles/store-page.css";
 
 void useAuthStore.getState().restoreSession();
 

@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
+const http_1 = __importDefault(require("http"));
 const path_1 = __importDefault(require("path"));
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
@@ -20,6 +21,7 @@ const pagos_1 = __importDefault(require("./routes/pagos"));
 const soporte_1 = __importDefault(require("./routes/soporte"));
 const ubicaciones_1 = __importDefault(require("./routes/ubicaciones"));
 const securityMonitor_1 = require("./securityMonitor");
+const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
 const app = (0, express_1.default)();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -223,7 +225,9 @@ app.use((err, req, res, _next) => {
     res.status(500).json({ error: "Error interno del servidor" });
 });
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, () => {
+const server = http_1.default.createServer(app);
+(0, realtime_1.attachRealtimeServer)(server, allowedOrigins);
+server.listen(PORT, () => {
     console.log("BUILD_VERSION puntos-fix-2026-05-12");
     console.log(`API en http://localhost:${PORT}`);
     (0, expirations_1.startReservationExpirationWorker)();

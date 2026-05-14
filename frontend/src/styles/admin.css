@@ -86,6 +86,7 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  justify-content: space-between;
   width: 100%;
   padding: 0.6rem 0.9rem;
   border-radius: 10px;
@@ -102,6 +103,19 @@
 
 .admin-nav-btn svg { flex-shrink: 0; opacity: 0.6; transition: opacity 0.15s; }
 
+.admin-nav-badge {
+  align-items: center;
+  background: #D4621A;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.7rem;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 20px;
+  padding: 0.12rem 0.42rem;
+}
+
 .admin-nav-btn:hover {
   background: rgba(180,84,20,0.12); /* ← fondo hover item menú */
   color: #2D1200;
@@ -114,6 +128,10 @@
   font-weight: 600;
 }
 .admin-nav-btn.active svg { opacity: 1; color: #ffffff; }
+.admin-nav-btn.active .admin-nav-badge {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.28);
+}
 
 /* ════ MAIN ════ */
 .admin-main {
@@ -206,6 +224,31 @@
   text-align: right;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.admin-topbar-alert-toggle {
+  background: #fff8f0;
+  border: 1px solid rgba(180,84,20,0.22);
+  border-radius: 999px;
+  color: #6B3E26;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 38px;
+  padding: 0.55rem 0.95rem;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-topbar-alert-toggle:hover {
+  background: #fff1df;
+  border-color: rgba(180,84,20,0.3);
+}
+
+.admin-topbar-alert-toggle.is-active {
+  background: #dcfce7;
+  border-color: rgba(34,197,94,0.35);
+  color: #166534;
 }
 
 .admin-content {

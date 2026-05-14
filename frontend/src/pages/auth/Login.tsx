@@ -106,7 +106,7 @@ export function Login() {
     return (
       <section className="login-page">
         <div className="session-loading" aria-live="polite">
-          Verificando sesion...
+          Verificando sesión...
         </div>
       </section>
     );
@@ -132,7 +132,7 @@ export function Login() {
             loginMutation.mutate();
           }}
         >
-          <label className="login-field-label">Correo electronico</label>
+          <label className="login-field-label">Correo electrónico</label>
           <div className="login-input-group">
             <span className="login-input-icon">@</span>
             <input
@@ -146,7 +146,7 @@ export function Login() {
             />
           </div>
 
-          <label className="login-field-label">Contrasena</label>
+          <label className="login-field-label">Contraseña</label>
           <div className="login-input-group">
             <span className="login-input-icon">*</span>
             <input
@@ -169,12 +169,12 @@ export function Login() {
           {loginMutation.error ? <p className="login-error">{loginMutation.error.message}</p> : null}
 
           <button type="submit" className="login-btn-primary" disabled={loginMutation.isPending}>
-            {loginMutation.isPending ? "Ingresando..." : "Iniciar Sesion"}
+            {loginMutation.isPending ? "Ingresando..." : "Iniciar sesión"}
           </button>
         </form>
 
         <p className="login-footer login-footer-compact">
-          <Link to="/forgot-password">Olvidaste tu contrasena?</Link>
+          <Link to="/forgot-password">¿Olvidaste tu contraseña?</Link>
         </p>
 
         <div className="login-divider">o continua con</div>
@@ -197,7 +197,7 @@ export function Login() {
         {googleError ? <p className="login-error">{googleError}</p> : null}
 
         <p className="login-footer">
-          No tienes una cuenta? <Link to="/registro">Registrate aqui</Link>
+          ¿No tienes una cuenta? <Link to="/registro">Regístrate aquí</Link>
         </p>
       </div>
     </section>

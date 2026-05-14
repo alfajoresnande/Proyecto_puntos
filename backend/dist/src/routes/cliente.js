@@ -8,6 +8,7 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
+const realtime_1 = require("../realtime");
 const stock_1 = require("../services/stock");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const points_1 = require("../services/points");
@@ -1338,6 +1339,7 @@ router.post("/checkout/confirm", async (req, res) => {
         }
         await (0, db_1.qRun)(conn, "UPDATE carritos SET estado = 'convertido' WHERE id = ?", [carritoId]);
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats"]);
         res.status(201).json({
             ok: true,
             orden_id: ordenId,
@@ -1474,6 +1476,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
                 payload,
             });
             await conn.commit();
+            (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
             res.json({
                 ok: true,
                 orden_id: ordenId,
@@ -1641,6 +1644,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
                 },
             });
             await conn.commit();
+            (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
             transactionOpen = false;
             res.json({
                 ok: true,
@@ -2021,6 +2025,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
             creadoPor: req.user.id
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
         res.json({ ok: true, orden_id: ordenId, estado: "cancelada" });
     }
     catch (err) {
@@ -2086,6 +2091,7 @@ router.post("/canjear-codigo", async (req, res) => {
             referenciaTipo: 'codigos_puntos'
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["puntos"]);
         const updated = await (0, db_1.qOne)(db_1.pool, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
         res.json({ ok: true, puntos_ganados: c.puntos_valor, nuevo_saldo: updated?.puntos_saldo });
     }
@@ -2121,6 +2127,7 @@ router.post("/canjear-carrito", async (req, res) => {
             sucursalId: sucursal_id,
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["canjes", "inventario", "productos", "stats", "puntos"]);
         res.status(201).json(result);
     }
     catch (err) {
@@ -2159,6 +2166,7 @@ router.post("/canjear-producto", async (req, res) => {
             sucursalId: sucursal_id,
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["canjes", "inventario", "productos", "stats", "puntos"]);
         res.status(201).json(result);
     }
     catch (err) {

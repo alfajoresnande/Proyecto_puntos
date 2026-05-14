@@ -133,8 +133,9 @@ export function MisPedidos() {
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
     refetchInterval: (query) => {
       const orders = query.state.data ?? [];
-      return orders.some((orden) => orden.estado === "pendiente_pago") ? 5000 : false;
+      return orders.some((orden) => ["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado)) ? 5000 : 15000;
     },
+    refetchIntervalInBackground: true,
   });
   const confirmReturnMutation = useMutation({
     mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import http from "http";
 import path from "path";
 import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
@@ -16,6 +17,7 @@ import pagosRoutes from "./routes/pagos";
 import soporteRoutes from "./routes/soporte";
 import ubicacionesRoutes from "./routes/ubicaciones";
 import { recordSecurityEvent } from "./securityMonitor";
+import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 
 const app = express();
@@ -254,7 +256,10 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 });
 
 const PORT = Number(process.env.PORT) || 4000;
-app.listen(PORT, () => {
+const server = http.createServer(app);
+attachRealtimeServer(server, allowedOrigins);
+
+server.listen(PORT, () => {
   console.log("BUILD_VERSION puntos-fix-2026-05-12");
   console.log(`API en http://localhost:${PORT}`);
   startReservationExpirationWorker();

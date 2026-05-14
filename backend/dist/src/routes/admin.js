@@ -12,6 +12,7 @@ const uuid_1 = require("uuid");
 const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
+const realtime_1 = require("../realtime");
 const urlSafety_1 = require("../urlSafety");
 const securityMonitor_1 = require("../securityMonitor");
 const uploadSecurity_1 = require("../uploadSecurity");
@@ -599,6 +600,7 @@ router.patch("/canjes/:id", async (req, res) => {
             await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(canje.usuario_id));
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["canjes", "inventario", "stats", "puntos"]);
         res.json({ ok: true });
     }
     catch (err) {
@@ -720,6 +722,7 @@ router.patch("/ordenes/:id", async (req, res) => {
             // Si el estado es 'pagada', ya terminamos.
             if (estado === "pagada") {
                 await conn.commit();
+                (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
                 res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
                 return;
             }
@@ -803,6 +806,7 @@ router.patch("/ordenes/:id", async (req, res) => {
             }
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
         res.json({ ok: true });
     }
     catch (err) {
@@ -976,6 +980,7 @@ router.post("/productos", async (req, res) => {
             }
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["productos", "inventario", "categorias"]);
         res.status(201).json({ id: insertId });
     }
     catch (error) {
@@ -1087,6 +1092,7 @@ router.put("/productos/:id", async (req, res) => {
             }
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["productos", "inventario", "categorias"]);
         res.json({ ok: true });
     }
     catch (error) {
@@ -1105,6 +1111,7 @@ router.patch("/productos/:id/activo", async (req, res) => {
         return;
     }
     await (0, db_1.qRun)(db_1.pool, "UPDATE productos SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+    (0, realtime_1.emitRealtime)(["productos", "inventario"]);
     res.json({ ok: true });
 });
 // ════════════════════════════════════════════════════════
@@ -1123,6 +1130,7 @@ router.post("/categorias", async (req, res) => {
     }
     try {
         const { insertId } = await (0, db_1.qRun)(db_1.pool, "INSERT INTO categorias (nombre) VALUES (?)", [parsed.data.nombre]);
+        (0, realtime_1.emitRealtime)(["categorias", "productos"]);
         res.status(201).json({ id: insertId });
     }
     catch (err) {
@@ -1175,6 +1183,7 @@ router.post("/sucursales", async (req, res) => {
     const { nombre, direccion, piso, localidad, provincia } = parsed.data;
     const { insertId } = await (0, db_1.qRun)(db_1.pool, `INSERT INTO sucursales (nombre, direccion, piso, localidad, provincia, activo)
      VALUES (?, ?, ?, ?, ?, 1)`, [nombre.trim(), direccion.trim(), piso?.trim() || null, localidad.trim(), provincia.trim()]);
+    (0, realtime_1.emitRealtime)(["sucursales", "productos"]);
     res.status(201).json({ id: insertId });
 });
 router.put("/sucursales/:id", async (req, res) => {
@@ -1196,6 +1205,7 @@ router.put("/sucursales/:id", async (req, res) => {
         res.status(404).json({ error: "Sucursal no encontrada" });
         return;
     }
+    (0, realtime_1.emitRealtime)(["sucursales", "productos"]);
     res.json({ ok: true });
 });
 router.patch("/sucursales/:id/activo", async (req, res) => {
@@ -1221,6 +1231,7 @@ router.patch("/sucursales/:id/activo", async (req, res) => {
         res.status(404).json({ error: "Sucursal no encontrada" });
         return;
     }
+    (0, realtime_1.emitRealtime)(["sucursales", "productos"]);
     res.json({ ok: true });
 });
 router.get("/inventario", async (req, res) => {
@@ -1340,6 +1351,7 @@ router.put("/configuracion/:clave", async (req, res) => {
      ON DUPLICATE KEY UPDATE
        valor = VALUES(valor),
        descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`, [clave, String(valor), typeof descripcion === "string" ? descripcion : null]);
+    (0, realtime_1.emitRealtime)(["admin-config"]);
     res.json({ ok: true });
 });
 // ════════════════════════════════════════════════════════
@@ -1373,6 +1385,7 @@ router.put("/paginas/:slug", async (req, res) => {
         res.status(404).json({ error: "Página no encontrada" });
         return;
     }
+    (0, realtime_1.emitRealtime)(["paginas"]);
     res.json({ ok: true });
 });
 /**

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const crypto_1 = require("crypto");
 const express_1 = require("express");
 const db_1 = require("../db");
+const realtime_1 = require("../realtime");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const paymentProviders_1 = require("../services/paymentProviders");
 const securityMonitor_1 = require("../securityMonitor");
@@ -193,6 +194,7 @@ router.post("/webhook/:proveedor", async (req, res) => {
                 payload: resolvedPayload,
             });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
         res.json(result);
     }
     catch (err) {

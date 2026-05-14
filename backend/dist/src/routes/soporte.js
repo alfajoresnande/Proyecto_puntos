@@ -4,10 +4,11 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const auth_1 = require("../auth");
 const db_1 = require("../db");
+const realtime_1 = require("../realtime");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
 const createConversationSchema = zod_1.z.object({
-    asunto: zod_1.z.string().trim().min(3).max(180).optional().default(""),
+    asunto: zod_1.z.string().trim().max(180).optional().default(""),
     cuerpo: zod_1.z.string().trim().max(4000).optional().default(""),
     prioridad: zod_1.z.enum(["normal", "alta"]).optional().default("normal"),
     usuario_id: zod_1.z.number().int().positive().optional(),
@@ -34,6 +35,21 @@ async function getConversationById(conn, id) {
      LEFT JOIN usuarios a ON a.id = c.asignado_a
      WHERE c.id = ?
      LIMIT 1`, [id]);
+}
+async function getPreferredConversationByUserId(conn, usuarioId) {
+    return (0, db_1.qOne)(conn, `SELECT c.id, c.usuario_id, c.asunto, c.estado, c.prioridad, c.asignado_a,
+            c.ultimo_mensaje_at, c.ultimo_staff_at, c.ultimo_cliente_at, c.created_at, c.updated_at,
+            u.nombre AS usuario_nombre, u.email AS usuario_email, u.dni AS usuario_dni, u.telefono AS usuario_telefono,
+            a.nombre AS asignado_nombre
+     FROM soporte_conversaciones c
+     JOIN usuarios u ON u.id = c.usuario_id
+     LEFT JOIN usuarios a ON a.id = c.asignado_a
+     WHERE c.usuario_id = ?
+     ORDER BY
+       CASE c.estado WHEN 'archivada' THEN 1 ELSE 0 END ASC,
+       c.ultimo_mensaje_at DESC,
+       c.id DESC
+     LIMIT 1`, [usuarioId]);
 }
 async function ensureConversationAccess(conn, conversationId, requesterId, staff) {
     const conversation = await getConversationById(conn, conversationId);
@@ -93,6 +109,30 @@ function serializeMessage(row, viewerIsStaff) {
         es_interno: Boolean(row.es_interno),
         created_at: row.created_at,
     };
+}
+async function appendConversationMessage(conn, { conversationId, conversationState, authorUserId, authorType, body, isInternal = false, }) {
+    await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
+      (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        conversationId,
+        authorUserId,
+        authorType,
+        body,
+        isInternal ? 1 : 0,
+        authorType === "staff" ? new Date() : null,
+        authorType === "cliente" ? new Date() : null,
+    ]);
+    if (authorType === "staff") {
+        const nextState = isInternal ? conversationState : "respondida";
+        await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones
+       SET estado = ?, ultimo_mensaje_at = NOW(), ultimo_staff_at = NOW(),
+           asignado_a = COALESCE(asignado_a, ?)
+       WHERE id = ?`, [nextState, authorUserId, conversationId]);
+        return;
+    }
+    await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones
+     SET estado = 'abierta', ultimo_mensaje_at = NOW(), ultimo_cliente_at = NOW()
+     WHERE id = ?`, [conversationId]);
 }
 router.get("/conversaciones", async (req, res) => {
     const staff = isStaff(req);
@@ -199,7 +239,27 @@ router.post("/conversaciones", async (req, res) => {
         if (!staff && !parsed.data.cuerpo.trim()) {
             throw new Error("Escribe un mensaje para iniciar la conversacion.");
         }
-        const asunto = parsed.data.asunto || (staff ? "Mensaje directo" : "Consulta general");
+        const existingConversation = await getPreferredConversationByUserId(conn, usuarioDestinoId);
+        if (existingConversation) {
+            if (parsed.data.cuerpo.trim()) {
+                await appendConversationMessage(conn, {
+                    conversationId: Number(existingConversation.id),
+                    conversationState: existingConversation.estado,
+                    authorUserId: req.user.id,
+                    authorType: staff ? "staff" : "cliente",
+                    body: parsed.data.cuerpo.trim(),
+                });
+            }
+            await conn.commit();
+            (0, realtime_1.emitRealtime)(["support"]);
+            const conversation = await getConversationById(db_1.pool, Number(existingConversation.id));
+            res.status(200).json({
+                ok: true,
+                conversacion: conversation ? serializeConversation(conversation) : { id: Number(existingConversation.id) },
+            });
+            return;
+        }
+        const asunto = parsed.data.asunto || (staff ? "Chat directo" : "Chat con staff");
         const prioridad = parsed.data.prioridad;
         const estadoInicial = staff ? "respondida" : "abierta";
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO soporte_conversaciones
@@ -214,18 +274,16 @@ router.post("/conversaciones", async (req, res) => {
             staff ? null : new Date(),
         ]);
         if (parsed.data.cuerpo.trim()) {
-            await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
-          (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
-         VALUES (?, ?, ?, ?, 0, ?, ?)`, [
-                insertId,
-                req.user.id,
-                staff ? "staff" : "cliente",
-                parsed.data.cuerpo.trim(),
-                staff ? new Date() : null,
-                staff ? null : new Date(),
-            ]);
+            await appendConversationMessage(conn, {
+                conversationId: Number(insertId),
+                conversationState: estadoInicial,
+                authorUserId: req.user.id,
+                authorType: staff ? "staff" : "cliente",
+                body: parsed.data.cuerpo.trim(),
+            });
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         const conversation = await getConversationById(db_1.pool, insertId);
         res.status(201).json({
             ok: true,
@@ -311,31 +369,16 @@ router.post("/conversaciones/:id/mensajes", async (req, res) => {
     try {
         await conn.beginTransaction();
         const conversation = await ensureConversationAccess(conn, conversationId, req.user.id, staff);
-        const autorTipo = staff ? "staff" : "cliente";
-        await (0, db_1.qRun)(conn, `INSERT INTO soporte_mensajes
-        (conversacion_id, autor_usuario_id, autor_tipo, cuerpo, es_interno, leido_por_staff_at, leido_por_cliente_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        await appendConversationMessage(conn, {
             conversationId,
-            req.user.id,
-            autorTipo,
-            parsed.data.cuerpo,
-            parsed.data.es_interno ? 1 : 0,
-            autorTipo === "staff" ? new Date() : null,
-            autorTipo === "cliente" ? new Date() : null,
-        ]);
-        if (staff) {
-            const nextState = parsed.data.es_interno ? conversation.estado : "respondida";
-            await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones
-         SET estado = ?, ultimo_mensaje_at = NOW(), ultimo_staff_at = NOW(),
-             asignado_a = COALESCE(asignado_a, ?)
-         WHERE id = ?`, [nextState, req.user.id, conversationId]);
-        }
-        else {
-            await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones
-         SET estado = 'abierta', ultimo_mensaje_at = NOW(), ultimo_cliente_at = NOW()
-         WHERE id = ?`, [conversationId]);
-        }
+            conversationState: conversation.estado,
+            authorUserId: req.user.id,
+            authorType: staff ? "staff" : "cliente",
+            body: parsed.data.cuerpo,
+            isInternal: parsed.data.es_interno,
+        });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         res.json({ ok: true });
     }
     catch (err) {
@@ -388,6 +431,7 @@ router.patch("/conversaciones/:id", async (req, res) => {
         params.push(conversationId);
         await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones SET ${updates.join(", ")} WHERE id = ?`, params);
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         const conversation = await getConversationById(db_1.pool, conversationId);
         res.json({ ok: true, conversacion: conversation ? serializeConversation(conversation) : null });
     }

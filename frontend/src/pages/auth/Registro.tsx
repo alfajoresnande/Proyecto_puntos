@@ -93,11 +93,11 @@ export function Registro() {
       return;
     }
     if (passwordErrors.length > 0) {
-      setLocalError(`Contrasena invalida: ${passwordErrors.join(", ")}.`);
+      setLocalError(`Contraseña inválida: ${passwordErrors.join(", ")}.`);
       return;
     }
     if (password !== confirmPassword) {
-      setLocalError("Las contrasenas no coinciden.");
+      setLocalError("Las contraseñas no coinciden.");
       return;
     }
 
@@ -109,7 +109,7 @@ export function Registro() {
     setLocalError("");
 
     if (!/^\d{6}$/.test(verificationCode.trim())) {
-      setLocalError("Ingresa el codigo de 6 digitos que recibiste por correo.");
+      setLocalError("Ingresa el código de 6 dígitos que recibiste por correo.");
       return;
     }
 
@@ -131,13 +131,13 @@ export function Registro() {
         </h1>
         <p className="login-subheading" style={{ marginBottom: "1.25rem" }}>
           {isVerificationStep
-            ? `Ingresa el codigo que enviamos a ${pendingEmail}.`
-            : "Registrate y confirma tu correo para activar la cuenta."}
+            ? `Ingresa el código que enviamos a ${pendingEmail}.`
+            : "Regístrate y confirma tu correo para activar la cuenta."}
         </p>
 
         {isVerificationStep ? (
           <form onSubmit={submitVerification}>
-            <label className="login-field-label">Codigo de verificacion</label>
+            <label className="login-field-label">Código de verificación</label>
             <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
               <input
                 type="text"
@@ -167,7 +167,7 @@ export function Registro() {
               onClick={() => resendMutation.mutate()}
               disabled={resendMutation.isPending}
             >
-              {resendMutation.isPending ? "Enviando..." : "Reenviar codigo"}
+              {resendMutation.isPending ? "Enviando..." : "Reenviar código"}
             </button>
           </form>
         ) : (
@@ -184,7 +184,7 @@ export function Registro() {
             />
           </div>
 
-          <label className="login-field-label">Correo electronico</label>
+          <label className="login-field-label">Correo electrónico</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
             <input
               type="email"
@@ -197,12 +197,12 @@ export function Registro() {
             />
           </div>
 
-          <label className="login-field-label">Contrasena</label>
+          <label className="login-field-label">Contraseña</label>
           <div className="login-input-group" style={{ marginBottom: "0.35rem" }}>
             <input
               type={showPassword ? "text" : "password"}
               className="login-input login-input-noicon register-input-sm login-input-password"
-              placeholder="Ingresa tu contrasena"
+              placeholder="Ingresa tu contraseña"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
@@ -211,14 +211,14 @@ export function Registro() {
               {showPassword ? "Ocultar" : "Ver"}
             </button>
           </div>
-          <p className="register-pass-hint">Minimo 12 caracteres, con al menos 1 caracter especial y 1 numero.</p>
+          <p className="register-pass-hint">Mínimo 12 caracteres, con al menos 1 carácter especial y 1 número.</p>
 
-          <label className="login-field-label">Confirmar contrasena</label>
+          <label className="login-field-label">Confirmar contraseña</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>
             <input
               type={showConfirmPassword ? "text" : "password"}
               className="login-input login-input-noicon register-input-sm login-input-password"
-              placeholder="Repite tu contrasena"
+              placeholder="Repite tu contraseña"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
@@ -233,7 +233,7 @@ export function Registro() {
             className="register-optional-btn"
             onClick={() => setShowOptionalCode((prev) => !prev)}
           >
-            {showOptionalCode ? "Ocultar codigo de invitacion" : "Tengo codigo de invitacion"}
+            {showOptionalCode ? "Ocultar código de invitación" : "Tengo código de invitación"}
           </button>
 
           {showOptionalCode ? (
@@ -241,7 +241,7 @@ export function Registro() {
               <input
                 type="text"
                 className="login-input login-input-noicon register-input-sm"
-                placeholder="Codigo de invitacion (opcional)"
+                placeholder="Código de invitación (opcional)"
                 value={codigoInvitacion}
                 onChange={(event) => setCodigoInvitacion(event.target.value.toUpperCase())}
               />
@@ -258,7 +258,7 @@ export function Registro() {
         )}
 
         <p className="login-footer">
-          Ya tienes cuenta? <Link to="/login">Inicia sesion</Link>
+          ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
         </p>
       </div>
     </section>
