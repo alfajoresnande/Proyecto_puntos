@@ -3,6 +3,7 @@ import { Footer } from "./components/Footer";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { RealtimeBridge } from "./components/RealtimeBridge";
 import { Admin } from "./pages/admin/Admin";
 import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
 import { ForgotPassword } from "./pages/auth/ForgotPassword";
@@ -30,6 +31,7 @@ import { VendedorPedidos } from "./pages/vendedor/VendedorPedidos";
 export default function App() {
   return (
     <>
+      <RealtimeBridge />
       <Navbar />
       <div className="app-main">
         <main>

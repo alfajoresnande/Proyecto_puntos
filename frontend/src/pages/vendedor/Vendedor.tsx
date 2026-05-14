@@ -90,6 +90,8 @@ export function Vendedor() {
   const productosQuery = useQuery({
     queryKey: ["vendedor", "productos"],
     queryFn: () => api.get<Producto[]>("/productos"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const clientesQuery = useQuery({

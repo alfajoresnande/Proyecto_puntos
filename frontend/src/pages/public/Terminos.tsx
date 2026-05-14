@@ -21,6 +21,8 @@ export function Terminos() {
   const paginaQuery = useQuery({
     queryKey: ["paginas", "terminos"],
     queryFn: () => api.get<Pagina>("/paginas/terminos"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   const contenido = paginaQuery.data?.contenido || "";

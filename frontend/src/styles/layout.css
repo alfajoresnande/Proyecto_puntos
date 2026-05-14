@@ -1005,6 +1005,10 @@
     height: 58px;
   }
 
+  .navbar-guest .navbar-inner {
+    justify-content: space-between;
+  }
+
   .navbar-mobile {
     contain: layout paint;
     top: 58px;
@@ -1015,7 +1019,7 @@
   }
 
   .navbar-guest .navbar-hamburger {
-    margin-left: auto;
+    margin-left: 0;
   }
 
   .navbar-cart-btn {
@@ -1875,13 +1879,42 @@
     justify-content: center;
   }
 
+  .support-card-messenger {
+    padding: 0.85rem;
+  }
+
+  .support-list-messenger {
+    max-height: min(265px, 36vh);
+    gap: 0.5rem;
+  }
+
+  .support-chat-list-item,
+  .support-user-list-item {
+    padding: 0.72rem;
+  }
+
   .support-chat-row {
-    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 0.65rem;
+    grid-template-columns: 38px minmax(0, 1fr);
   }
 
   .support-chat-avatar {
-    height: 42px;
-    width: 42px;
+    font-size: 0.88rem;
+    height: 38px;
+    width: 38px;
+  }
+
+  .support-list-row strong {
+    font-size: 0.82rem;
+  }
+
+  .support-list-item p,
+  .support-list-meta {
+    font-size: 0.72rem;
+  }
+
+  .support-user-section-title {
+    padding: 0.6rem 0.8rem;
   }
 
   .support-selected-user,

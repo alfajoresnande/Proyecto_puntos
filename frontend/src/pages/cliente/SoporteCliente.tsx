@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { api } from "../../api";
 
 type SupportConversation = {
@@ -45,6 +45,7 @@ export function SoporteCliente() {
     queryKey: ["soporte", "cliente", "conversaciones"],
     queryFn: () => api.get<SupportConversation[]>("/soporte/conversaciones"),
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const conversaciones = conversationsQuery.data ?? [];
@@ -56,6 +57,7 @@ export function SoporteCliente() {
     queryFn: () => api.get<SupportDetail>(`/soporte/conversaciones/${selectedConversationId}`),
     enabled: Boolean(selectedConversationId),
     refetchInterval: selectedConversationId ? 5000 : false,
+    refetchIntervalInBackground: true,
   });
 
   useEffect(() => {
@@ -64,6 +66,14 @@ export function SoporteCliente() {
       document.body.classList.remove("catalogo-background");
     };
   }, []);
+
+  useEffect(() => {
+    if (!detailQuery.data || !selectedConversationId) return;
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+      queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
+    ]);
+  }, [detailQuery.dataUpdatedAt, queryClient, selectedConversationId]);
 
   const createMutation = useMutation({
     mutationFn: (cuerpo: string) =>
@@ -76,6 +86,7 @@ export function SoporteCliente() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "detalle", result.conversacion.id] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
@@ -92,6 +103,7 @@ export function SoporteCliente() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "detalle", selectedConversationId] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
@@ -111,6 +123,13 @@ export function SoporteCliente() {
       return;
     }
     createMutation.mutate(cuerpo);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (pendingSend || !mensajeDraft.trim()) return;
+    handleSend();
   }
 
   return (
@@ -153,6 +172,7 @@ export function SoporteCliente() {
                     className="ios-input support-textarea support-composer-textarea support-composer-textarea-chat support-composer-textarea-client-chat"
                     value={mensajeDraft}
                     onChange={(event) => setMensajeDraft(event.target.value)}
+                    onKeyDown={handleComposerKeyDown}
                     placeholder="Mensaje"
                   />
                   <button

@@ -127,16 +127,22 @@ export function Catalogo() {
       const suffix = qs.toString();
       return api.get<Producto[]>(suffix ? `/productos?${suffix}` : "/productos");
     },
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const categoriasQuery = useQuery({
     queryKey: ["productos", "categorias"],
     queryFn: () => api.get<string[]>("/productos/categorias"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const sucursalesQuery = useQuery({
     queryKey: ["productos", "sucursales"],
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const productos = productosQuery.data ?? [];
@@ -1042,6 +1048,8 @@ export function Catalogo() {
               const descripcion = producto.descripcion || "Producto disponible para canje.";
               const descripcionLarga = descripcion.length > 82;
               const descripcionExpandida = Boolean(expandedProductDescriptions[producto.id]);
+              const imagenesProducto = getProductoImagenes(producto);
+              const tieneCarouselCard = imagenesProducto.length > 1;
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = !productHasStock(producto);
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
@@ -1059,7 +1067,22 @@ export function Catalogo() {
                   ) : (
                     <div className="product-card-placeholder" />
                   )}
-                  </button>
+                  {tieneCarouselCard ? (
+                    <>
+                      <span className="product-card-media-indicator" aria-hidden="true">
+                        1/{imagenesProducto.length}
+                      </span>
+                      <span className="product-card-media-dots" aria-hidden="true">
+                        {imagenesProducto.map((imagen, index) => (
+                          <span
+                            key={`${imagen}-${index}`}
+                            className={`product-card-media-dot${index === 0 ? " active" : ""}`}
+                          />
+                        ))}
+                      </span>
+                    </>
+                  ) : null}
+                </button>
 
                   {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
 

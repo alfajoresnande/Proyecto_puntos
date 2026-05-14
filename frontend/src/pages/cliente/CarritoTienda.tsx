@@ -354,16 +354,22 @@ export function CarritoTienda() {
     queryFn: () => api.get<CartResponse>("/cliente/carrito"),
     staleTime: 0,
     refetchOnMount: "always",
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const sucursalesQuery = useQuery({
     queryKey: ["cliente", "sucursales-retiro"],
     queryFn: () => api.get<SucursalRetiro[]>("/cliente/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const paymentOptionsQuery = useQuery({
     queryKey: ["cliente", "payment-options"],
     queryFn: () => api.get<PaymentOptionsResponse>("/cliente/checkout/payment-options"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const resumePaymentQuery = useQuery({
@@ -409,6 +415,7 @@ export function CarritoTienda() {
       const currentOrder = query.state.data;
       return currentOrder?.estado === "pendiente_pago" || !currentOrder ? 5000 : false;
     },
+    refetchIntervalInBackground: true,
   });
 
   useEffect(() => {

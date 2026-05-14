@@ -72,6 +72,8 @@ export function MisCanjes() {
   const canjesQuery = useQuery({
     queryKey: ["cliente", "canjes"],
     queryFn: () => api.get<Canje[]>("/cliente/canjes"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const canjes = canjesQuery.data ?? [];

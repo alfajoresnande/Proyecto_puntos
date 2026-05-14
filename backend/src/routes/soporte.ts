@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../auth";
 import { pool, qAll, qOne, qRun, type Queryable } from "../db";
+import { emitRealtime } from "../realtime";
 
 const router = Router();
 router.use(requireAuth);
@@ -379,6 +380,7 @@ router.post("/conversaciones", async (req, res) => {
       }
 
       await conn.commit();
+      emitRealtime(["support"]);
       const conversation = await getConversationById(pool, Number(existingConversation.id));
       res.status(200).json({
         ok: true,
@@ -418,6 +420,7 @@ router.post("/conversaciones", async (req, res) => {
     }
 
     await conn.commit();
+    emitRealtime(["support"]);
     const conversation = await getConversationById(pool, insertId);
     res.status(201).json({
       ok: true,
@@ -529,6 +532,7 @@ router.post("/conversaciones/:id/mensajes", async (req, res) => {
     });
 
     await conn.commit();
+    emitRealtime(["support"]);
     res.json({ ok: true });
   } catch (err) {
     await conn.rollback();
@@ -585,6 +589,7 @@ router.patch("/conversaciones/:id", async (req, res) => {
     params.push(conversationId);
     await qRun(conn, `UPDATE soporte_conversaciones SET ${updates.join(", ")} WHERE id = ?`, params);
     await conn.commit();
+    emitRealtime(["support"]);
 
     const conversation = await getConversationById(pool, conversationId);
     res.json({ ok: true, conversacion: conversation ? serializeConversation(conversation) : null });

@@ -49,11 +49,15 @@ export function Cliente() {
   const meQuery = useQuery({
     queryKey: ["cliente", "perfil"],
     queryFn: () => api.get<ClienteMe>("/cliente/me"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const movimientosQuery = useQuery({
     queryKey: ["cliente", "movimientos"],
     queryFn: () => api.get<Movimiento[]>("/cliente/movimientos"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const canjearCodigoMutation = useMutation({

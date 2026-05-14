@@ -16,6 +16,12 @@ function productImage(producto: Producto): string | null {
   return producto.imagen_url ?? null;
 }
 
+function productImages(producto: Producto): string[] {
+  const imagenes = producto.imagenes?.filter(Boolean) ?? [];
+  if (imagenes.length) return imagenes;
+  return producto.imagen_url ? [producto.imagen_url] : [];
+}
+
 type SucursalRetiro = {
   id: number;
   nombre: string;
@@ -81,6 +87,13 @@ export function TiendaOnline() {
   const filtrosWasOpen = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
+  const [productoModal, setProductoModal] = useState<Producto | null>(null);
+  const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
+  const [imgZoomed, setImgZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{ active: boolean; startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const hasDragged = useRef(false);
   const sucursalId = usePickupStore((state) => state.sucursalRetiroId);
   const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
 
@@ -93,11 +106,15 @@ export function TiendaOnline() {
     },
     staleTime: 0,
     refetchOnMount: true,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const sucursalesQuery = useQuery({
     queryKey: ["productos", "sucursales"],
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const productos = productosQuery.data ?? [];
@@ -114,6 +131,9 @@ export function TiendaOnline() {
   const precioRangeSpan = Math.max(1, precioMax - precioMin);
   const precioMinPercent = preciosCatalogo.length ? ((precioFiltroMin - precioMin) / precioRangeSpan) * 100 : 0;
   const precioMaxPercent = preciosCatalogo.length ? ((precioFiltroMax - precioMin) / precioRangeSpan) * 100 : 100;
+  const productoModalImagenes = productoModal ? productImages(productoModal) : [];
+  const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
+  const productoModalTieneCarousel = productoModalImagenes.length > 1;
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -121,6 +141,22 @@ export function TiendaOnline() {
       setSucursalId(String(sucursales[0].id));
     }
   }, [sucursalId, sucursales]);
+
+  useEffect(() => {
+    if (!productoModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeProductoModal();
+      if (event.key === "ArrowLeft" && productoModalTieneCarousel) cambiarImagenModal(productoModalImageIndex - 1);
+      if (event.key === "ArrowRight" && productoModalTieneCarousel) cambiarImagenModal(productoModalImageIndex + 1);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [productoModal, productoModalImageIndex, productoModalTieneCarousel]);
 
   const categorias = useMemo(
     () => Array.from(new Set(productos.map((p) => p.categoria).filter((c): c is string => Boolean(c)))).sort(),
@@ -246,6 +282,35 @@ export function TiendaOnline() {
     return Number.isInteger(value) && value > 0 ? value : 1;
   }
 
+  function openProductoModal(producto: Producto) {
+    setProductoModal(producto);
+    setProductoModalImageIndex(0);
+    setImgZoomed(false);
+    setZoomOrigin("50% 50%");
+    setPan({ x: 0, y: 0 });
+  }
+
+  function closeProductoModal() {
+    setProductoModal(null);
+    setProductoModalImageIndex(0);
+    setImgZoomed(false);
+    setZoomOrigin("50% 50%");
+    setPan({ x: 0, y: 0 });
+    dragRef.current = null;
+    hasDragged.current = false;
+  }
+
+  function cambiarImagenModal(index: number) {
+    if (!productoModalImagenes.length) return;
+    const nextIndex = (index + productoModalImagenes.length) % productoModalImagenes.length;
+    setProductoModalImageIndex(nextIndex);
+    setImgZoomed(false);
+    setZoomOrigin("50% 50%");
+    setPan({ x: 0, y: 0 });
+    dragRef.current = null;
+    hasDragged.current = false;
+  }
+
   function ajustarCantidadSeleccionada(producto: Producto, delta: number) {
     setCantidadesSeleccionadas((prev) => {
       const actual = Number.isInteger(prev[producto.id]) && prev[producto.id] > 0 ? prev[producto.id] : 1;
@@ -358,6 +423,10 @@ export function TiendaOnline() {
       cantidad,
       sucursalId: sucursalId ? Number(sucursalId) : null,
     });
+  }
+
+  function shouldIgnoreCardOpen(target: EventTarget | null): boolean {
+    return target instanceof Element && Boolean(target.closest("button, a, input, select, textarea, label"));
   }
 
   function actualizarPrecioMin(value: number) {
@@ -790,17 +859,48 @@ export function TiendaOnline() {
           <div className="catalog-grid">
             {productosFiltrados.map((producto) => {
               const img = productImage(producto);
+              const imagenesProducto = productImages(producto);
+              const tieneCarouselCard = imagenesProducto.length > 1;
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = producto.track_stock !== false && stock <= 0;
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
               const maxCantidad = maxSelectableQuantity(producto);
               return (
-                <article key={producto.id} className="product-card store-product-card">
-                  {img ? (
-                    <img className="product-card-img" src={img} alt={producto.nombre} />
-                  ) : (
-                    <div className="product-card-placeholder" />
-                  )}
+                <article
+                  key={producto.id}
+                  className="product-card store-product-card"
+                  onClick={(event) => {
+                    if (shouldIgnoreCardOpen(event.target)) return;
+                    openProductoModal(producto);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="product-card-media-btn"
+                    onClick={() => openProductoModal(producto)}
+                    aria-label={`Ver producto ${producto.nombre}`}
+                  >
+                    {img ? (
+                      <img className="product-card-img" src={img} alt={producto.nombre} />
+                    ) : (
+                      <div className="product-card-placeholder" />
+                    )}
+                    {tieneCarouselCard ? (
+                      <>
+                        <span className="product-card-media-indicator" aria-hidden="true">
+                          1/{imagenesProducto.length}
+                        </span>
+                        <span className="product-card-media-dots" aria-hidden="true">
+                          {imagenesProducto.map((imagen, index) => (
+                            <span
+                              key={`${imagen}-${index}`}
+                              className={`product-card-media-dot${index === 0 ? " active" : ""}`}
+                            />
+                          ))}
+                        </span>
+                      </>
+                    ) : null}
+                  </button>
                   {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
                   <div className="product-card-body">
                     <h2 className="product-card-name">{producto.nombre}</h2>
@@ -821,6 +921,13 @@ export function TiendaOnline() {
                         </>
                       ) : null}
                     </div>
+                    <button
+                      type="button"
+                      className="product-card-btn product-card-btn-ver"
+                      onClick={() => openProductoModal(producto)}
+                    >
+                      Ver producto
+                    </button>
                     {user ? (
                       <div className="product-card-qty">
                         <button
@@ -871,6 +978,183 @@ export function TiendaOnline() {
           <div className="catalog-float-toast-actions">
             <Link className="catalog-float-toast-btn-primary" to="/carrito-tienda">Ir al carrito</Link>
             <button className="catalog-float-toast-btn-secondary" onClick={() => setToast(null)}>Cerrar</button>
+          </div>
+        </div>
+      ) : null}
+
+      {productoModal ? (
+        <div className="producto-modal-overlay" onClick={closeProductoModal}>
+          <div className="producto-modal" onClick={(event) => event.stopPropagation()}>
+            <button className="producto-modal-close" onClick={closeProductoModal}>✕</button>
+
+            <div className="producto-modal-img-wrap">
+              {productoModalImagenActual ? (
+                <img
+                  src={productoModalImagenActual}
+                  alt={`${productoModal.nombre} - imagen ${productoModalImageIndex + 1}`}
+                  className="producto-modal-img"
+                  style={{
+                    transformOrigin: zoomOrigin,
+                    transform: imgZoomed ? `translate(${pan.x}px, ${pan.y}px) scale(2.4)` : "none",
+                    cursor: !imgZoomed ? "zoom-in" : "grab",
+                    transition: dragRef.current?.active ? "none" : "transform 0.3s ease",
+                  }}
+                  onClick={(event) => {
+                    if (hasDragged.current) return;
+                    if (imgZoomed) {
+                      setImgZoomed(false);
+                      setPan({ x: 0, y: 0 });
+                      setZoomOrigin("50% 50%");
+                      return;
+                    }
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = ((event.clientX - rect.left) / rect.width) * 100;
+                    const y = ((event.clientY - rect.top) / rect.height) * 100;
+                    setZoomOrigin(`${x}% ${y}%`);
+                    setImgZoomed(true);
+                  }}
+                  onMouseDown={(event) => {
+                    if (!imgZoomed) return;
+                    event.preventDefault();
+                    hasDragged.current = false;
+                    dragRef.current = { active: true, startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y };
+                  }}
+                  onMouseMove={(event) => {
+                    if (!dragRef.current?.active) return;
+                    const dx = event.clientX - dragRef.current.startX;
+                    const dy = event.clientY - dragRef.current.startY;
+                    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasDragged.current = true;
+                    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+                  }}
+                  onMouseUp={() => {
+                    if (dragRef.current) dragRef.current.active = false;
+                  }}
+                  onMouseLeave={() => {
+                    if (dragRef.current) dragRef.current.active = false;
+                  }}
+                  onTouchStart={(event) => {
+                    if (!imgZoomed) return;
+                    const touch = event.touches[0];
+                    hasDragged.current = false;
+                    dragRef.current = { active: true, startX: touch.clientX, startY: touch.clientY, panX: pan.x, panY: pan.y };
+                  }}
+                  onTouchMove={(event) => {
+                    if (!dragRef.current?.active) return;
+                    event.preventDefault();
+                    const touch = event.touches[0];
+                    const dx = touch.clientX - dragRef.current.startX;
+                    const dy = touch.clientY - dragRef.current.startY;
+                    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) hasDragged.current = true;
+                    setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
+                  }}
+                  onTouchEnd={() => {
+                    if (dragRef.current) dragRef.current.active = false;
+                  }}
+                  title={imgZoomed ? "Arrastrá para mover · Click para alejar" : "Click para hacer zoom"}
+                />
+              ) : (
+                <div className="product-card-placeholder" style={{ height: "260px" }} />
+              )}
+
+              {productoModalTieneCarousel ? (
+                <>
+                  <button
+                    type="button"
+                    className="producto-carousel-btn producto-carousel-btn-prev"
+                    onClick={() => cambiarImagenModal(productoModalImageIndex - 1)}
+                    aria-label="Ver imagen anterior"
+                  >
+                    &lt;
+                  </button>
+                  <button
+                    type="button"
+                    className="producto-carousel-btn producto-carousel-btn-next"
+                    onClick={() => cambiarImagenModal(productoModalImageIndex + 1)}
+                    aria-label="Ver imagen siguiente"
+                  >
+                    &gt;
+                  </button>
+                  <div className="producto-carousel-count">
+                    {productoModalImageIndex + 1} / {productoModalImagenes.length}
+                  </div>
+                  <div className="producto-carousel-dots" aria-label="Selector de imagenes">
+                    {productoModalImagenes.map((imagen, index) => (
+                      <button
+                        key={`${imagen}-${index}`}
+                        type="button"
+                        className={`producto-carousel-dot ${index === productoModalImageIndex ? "active" : ""}`}
+                        onClick={() => cambiarImagenModal(index)}
+                        aria-label={`Ver imagen ${index + 1}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              {productoModal.categoria ? <span className="product-card-cat">{productoModal.categoria}</span> : null}
+            </div>
+
+            <div className="producto-modal-body">
+              <p className="producto-modal-name">{productoModal.nombre}</p>
+              <p className="producto-modal-desc">{productoModal.descripcion || "Producto disponible para comprar online."}</p>
+
+              <div className="product-card-points store-price-box">
+                <div className="product-card-row">
+                  <span>Precio</span>
+                  <span className="cost">{money(productoModal.precio_dinero)}</span>
+                </div>
+                {(productoModal.puntaje_al_comprar ?? 0) > 0 ? (
+                  <>
+                    <div className="product-card-divider" />
+                    <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
+                      <span>Sumás {productoModal.puntaje_al_comprar} puntos con este producto</span>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+
+              {user ? (
+                <>
+                  <div className="product-card-qty">
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) <= 1}
+                      onClick={() => ajustarCantidadSeleccionada(productoModal, -1)}
+                    >
+                      -
+                    </button>
+                    <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
+                      {getCantidadSeleccionada(productoModal.id)}
+                    </span>
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) >= maxSelectableQuantity(productoModal)}
+                      onClick={() => ajustarCantidadSeleccionada(productoModal, +1)}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <button
+                    className="product-card-btn product-card-btn-canjear"
+                    disabled={addMutation.isPending || !productHasStock(productoModal)}
+                    onClick={() => agregar(productoModal, getCantidadSeleccionada(productoModal.id))}
+                  >
+                    {!productHasStock(productoModal)
+                      ? "Sin stock"
+                      : addMutation.isPending
+                        ? "Agregando..."
+                        : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito` : "al carrito"}`}
+                  </button>
+                </>
+              ) : (
+                <Link to="/login" className="product-card-btn product-card-btn-login">
+                  Iniciar sesión para comprar
+                </Link>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

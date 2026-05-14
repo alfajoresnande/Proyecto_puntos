@@ -89,6 +89,7 @@ export function VendedorPedidos() {
     queryKey: ["vendedor", "ordenes"],
     queryFn: () => api.get<OrdenVendedor[]>("/vendedor/ordenes"),
     refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const ordenes = ordenesQuery.data ?? [];

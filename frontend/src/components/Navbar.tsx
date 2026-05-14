@@ -42,12 +42,15 @@ export function Navbar() {
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
     enabled: canSeeCliente,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
   const supportConversationsQuery = useQuery({
     queryKey: ["navbar", "support-unread", user?.rol],
     queryFn: () => api.get<SupportConversationNav[]>("/soporte/conversaciones"),
     enabled: canSeeSupport,
-    refetchInterval: 15000,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const canjeCartCount = useMemo(

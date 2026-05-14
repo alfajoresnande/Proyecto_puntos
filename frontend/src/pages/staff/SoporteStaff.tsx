@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { api } from "../../api";
 
 type ConversationState = "abierta" | "respondida" | "cerrada" | "archivada";
@@ -90,6 +90,7 @@ export function SoporteStaff() {
     queryKey: ["soporte", "staff", "conversaciones"],
     queryFn: () => api.get<SupportConversation[]>("/soporte/conversaciones"),
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
   });
 
   const usersQuery = useQuery({
@@ -144,6 +145,7 @@ export function SoporteStaff() {
     queryFn: () => api.get<SupportDetail>(`/soporte/conversaciones/${selectedConversationId}`),
     enabled: Boolean(selectedConversationId),
     refetchInterval: selectedConversationId ? 5000 : false,
+    refetchIntervalInBackground: true,
   });
 
   const createMutation = useMutation({
@@ -159,6 +161,7 @@ export function SoporteStaff() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
@@ -176,6 +179,7 @@ export function SoporteStaff() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "detalle", selectedConversationId] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
@@ -189,6 +193,7 @@ export function SoporteStaff() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "detalle", selectedConversationId] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
@@ -204,6 +209,14 @@ export function SoporteStaff() {
     }
   }, [conversacionesFiltradas, selectedId]);
 
+  useEffect(() => {
+    if (!detailQuery.data || !selectedConversationId) return;
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
+      queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
+    ]);
+  }, [detailQuery.dataUpdatedAt, queryClient, selectedConversationId]);
+
   function openUserConversation(usuario: SupportUser) {
     const existing =
       conversacionesVisibles.find((item) => item.usuario.id === usuario.id) ??
@@ -216,6 +229,13 @@ export function SoporteStaff() {
     }
 
     createMutation.mutate(usuario.id);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey) return;
+    event.preventDefault();
+    if (sendMutation.isPending || !respuesta.trim()) return;
+    sendMutation.mutate();
   }
 
   const activeConversation = detailQuery.data?.conversacion ?? null;
@@ -375,6 +395,7 @@ export function SoporteStaff() {
                     className="ios-input support-composer-textarea support-composer-textarea-chat"
                     value={respuesta}
                     onChange={(event) => setRespuesta(event.target.value)}
+                    onKeyDown={handleComposerKeyDown}
                     placeholder="Escribe un mensaje..."
                   />
                   <button

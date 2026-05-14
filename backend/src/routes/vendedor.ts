@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
+import { emitRealtime } from "../realtime";
 import { finalizeStockForCheckoutItems } from "../services/stock";
 import {
   acreditarPuntosPorCompra,
@@ -216,6 +217,7 @@ router.post("/cargar", async (req, res, next) => {
     });
 
     await conn.commit();
+    emitRealtime(["puntos"]);
 
     res.status(201).json({
       ok: true,
@@ -313,6 +315,7 @@ router.patch("/canje/:codigo", async (req, res, next) => {
     }
 
     await conn.commit();
+    emitRealtime(["canjes", "inventario", "stats", "puntos"]);
     res.json({ ok: true, estado });
   } catch (err) {
     await conn.rollback();
@@ -609,6 +612,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
       
       if (estado === "pagada") {
         await conn.commit();
+        emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
         res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
         return;
       }
@@ -618,6 +622,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     // RESTO DE TRANSICIONES
     await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
     await conn.commit();
+    emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
     res.json({ ok: true });
   } catch (err) {
     await conn.rollback();

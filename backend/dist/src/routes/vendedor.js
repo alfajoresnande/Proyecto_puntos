@@ -4,6 +4,7 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
+const realtime_1 = require("../realtime");
 const points_1 = require("../services/points");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const router = (0, express_1.Router)();
@@ -162,6 +163,7 @@ router.post("/cargar", async (req, res, next) => {
             creadoPor: req.user.id
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["puntos"]);
         res.status(201).json({
             ok: true,
             cliente_id: cliente.id,
@@ -256,6 +258,7 @@ router.patch("/canje/:codigo", async (req, res, next) => {
             await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(canje.usuario_id));
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["canjes", "inventario", "stats", "puntos"]);
         res.json({ ok: true, estado });
     }
     catch (err) {
@@ -460,6 +463,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
             });
             if (estado === "pagada") {
                 await conn.commit();
+                (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
                 res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
                 return;
             }
@@ -468,6 +472,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
         // RESTO DE TRANSICIONES
         await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
         res.json({ ok: true });
     }
     catch (err) {

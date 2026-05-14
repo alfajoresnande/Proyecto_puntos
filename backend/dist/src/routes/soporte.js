@@ -4,6 +4,7 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const auth_1 = require("../auth");
 const db_1 = require("../db");
+const realtime_1 = require("../realtime");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth);
 const createConversationSchema = zod_1.z.object({
@@ -250,6 +251,7 @@ router.post("/conversaciones", async (req, res) => {
                 });
             }
             await conn.commit();
+            (0, realtime_1.emitRealtime)(["support"]);
             const conversation = await getConversationById(db_1.pool, Number(existingConversation.id));
             res.status(200).json({
                 ok: true,
@@ -281,6 +283,7 @@ router.post("/conversaciones", async (req, res) => {
             });
         }
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         const conversation = await getConversationById(db_1.pool, insertId);
         res.status(201).json({
             ok: true,
@@ -375,6 +378,7 @@ router.post("/conversaciones/:id/mensajes", async (req, res) => {
             isInternal: parsed.data.es_interno,
         });
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         res.json({ ok: true });
     }
     catch (err) {
@@ -427,6 +431,7 @@ router.patch("/conversaciones/:id", async (req, res) => {
         params.push(conversationId);
         await (0, db_1.qRun)(conn, `UPDATE soporte_conversaciones SET ${updates.join(", ")} WHERE id = ?`, params);
         await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
         const conversation = await getConversationById(db_1.pool, conversationId);
         res.json({ ok: true, conversacion: conversation ? serializeConversation(conversation) : null });
     }

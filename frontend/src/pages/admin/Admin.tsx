@@ -329,6 +329,13 @@ const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
+const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
+const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
+
+type AdminAlertState = {
+  ordenes: number;
+  canjes: number;
+};
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -338,6 +345,30 @@ function formatDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function readStoredIds(key: string): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
+  } catch {
+    return [];
+  }
+}
+
+function hasStoredIds(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(key) !== null;
+}
+
+function writeStoredIds(key: string, ids: number[]) {
+  if (typeof window === "undefined") return;
+  const uniqueIds = Array.from(new Set(ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
+  window.localStorage.setItem(key, JSON.stringify(uniqueIds.slice(0, 250)));
 }
 
 function getDownloadFilename(contentDisposition: string | null, fallback: string): string {
@@ -764,81 +795,115 @@ export function Admin() {
   const [canjeCodigoAdminOk, setCanjeCodigoAdminOk] = useState("");
   const [buscandoCanjeAdmin, setBuscandoCanjeAdmin] = useState(false);
   const [procesandoCanjeAdmin, setProcesandoCanjeAdmin] = useState(false);
+  const [adminAlerts, setAdminAlerts] = useState<AdminAlertState>({ ordenes: 0, canjes: 0 });
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">(
+    typeof window !== "undefined" && "Notification" in window ? window.Notification.permission : "unsupported",
+  );
 
   const statsQuery = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: () => api.get<Stats>("/admin/stats"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const usuariosQuery = useQuery({
     queryKey: ["admin", "usuarios"],
     queryFn: () => api.get<Usuario[]>("/admin/usuarios"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const movimientosQuery = useQuery({
     queryKey: ["admin", "movimientos"],
     queryFn: () => api.get<Movimiento[]>("/admin/movimientos"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const productosQuery = useQuery({
     queryKey: ["admin", "productos"],
     queryFn: () => api.get<ProductoAdmin[]>("/admin/productos"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const inventarioQuery = useQuery({
     queryKey: ["admin", "inventario"],
     queryFn: () => api.get<InventarioSucursal[]>("/admin/inventario"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const movimientosStockQuery = useQuery({
     queryKey: ["admin", "movimientos-stock"],
     queryFn: () => api.get<MovimientoStock[]>("/admin/movimientos-stock"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
   });
 
   const ordenesQuery = useQuery({
     queryKey: ["admin", "ordenes"],
     queryFn: () => api.get<OrdenAdmin[]>("/admin/ordenes"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const categoriasQuery = useQuery({
     queryKey: ["admin", "categorias"],
     queryFn: () => api.get<Categoria[]>("/admin/categorias"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const codigosQuery = useQuery({
     queryKey: ["admin", "codigos"],
     queryFn: () => api.get<Codigo[]>("/admin/codigos"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const canjesQuery = useQuery({
     queryKey: ["admin", "canjes"],
     queryFn: () => api.get<CanjeAdmin[]>("/admin/canjes"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const sucursalesQuery = useQuery({
     queryKey: ["admin", "sucursales"],
     queryFn: () => api.get<SucursalAdmin[]>("/admin/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
   });
 
   const configuracionQuery = useQuery({
     queryKey: ["admin", "configuracion"],
     queryFn: () => api.get<ConfiguracionItem[]>("/admin/configuracion"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   const securityMonitorQuery = useQuery({
     queryKey: ["admin", "security-monitor"],
     queryFn: () => api.get<SecurityMonitorResponse>("/admin/security/monitor?limit=80"),
     enabled: isSuperAdmin,
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   const sobreQuery = useQuery({
     queryKey: ["admin", "paginas", "sobre-nosotros"],
     queryFn: () => api.get<Pagina>("/admin/paginas/sobre-nosotros"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   const terminosQuery = useQuery({
     queryKey: ["admin", "paginas", "terminos"],
     queryFn: () => api.get<Pagina>("/admin/paginas/terminos"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   useEffect(() => {
@@ -934,6 +999,7 @@ export function Admin() {
   const codigos = codigosQuery.data ?? [];
   const canjes = canjesQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
+  const browserAlertsSupported = browserNotificationPermission !== "unsupported";
   const securityEvents = securityMonitorQuery.data?.persistidos ?? [];
   const blockedAccessEvents = useMemo(
     () =>
@@ -953,6 +1019,102 @@ export function Admin() {
     }
     return map;
   }, [inventario]);
+
+  async function enableBrowserAlerts() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setBrowserNotificationPermission("unsupported");
+      setAdminHint("Este navegador no soporta alertas push del panel.");
+      return;
+    }
+
+    const permission = await window.Notification.requestPermission();
+    setBrowserNotificationPermission(permission);
+    if (permission === "granted") {
+      setAdminHint("Alertas del navegador activadas para compras y canjes nuevos.");
+      return;
+    }
+    setAdminHint("No se activaron las alertas del navegador.");
+  }
+
+  function showBrowserAlert(title: string, body: string) {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (window.Notification.permission !== "granted") return;
+    new window.Notification(title, { body });
+  }
+
+  useEffect(() => {
+    const currentIds = ordenes.map((orden) => Number(orden.id));
+    const knownIds = readStoredIds(ADMIN_ALERT_ORDER_IDS_KEY);
+    if (!hasStoredIds(ADMIN_ALERT_ORDER_IDS_KEY)) {
+      writeStoredIds(ADMIN_ALERT_ORDER_IDS_KEY, currentIds);
+      return;
+    }
+
+    const knownSet = new Set(knownIds);
+    const nuevas = ordenes.filter((orden) => !knownSet.has(Number(orden.id)));
+    if (!nuevas.length) return;
+
+    writeStoredIds(ADMIN_ALERT_ORDER_IDS_KEY, [...currentIds, ...knownIds]);
+    if (tab !== "ordenes") {
+      setAdminAlerts((prev) => ({ ...prev, ordenes: prev.ordenes + nuevas.length }));
+    }
+
+    const latest = nuevas[0];
+    setAdminHint(
+      nuevas.length === 1
+        ? `Nueva compra #${latest.id} de ${latest.cliente_nombre}.`
+        : `Entraron ${nuevas.length} compras nuevas.`,
+    );
+    showBrowserAlert(
+      nuevas.length === 1 ? "Nueva compra" : "Nuevas compras",
+      nuevas.length === 1
+        ? `${latest.cliente_nombre} hizo la compra #${latest.id}.`
+        : `Tienes ${nuevas.length} compras nuevas en el panel.`,
+    );
+  }, [ordenes, tab]);
+
+  useEffect(() => {
+    const currentIds = canjes.map((canje) => Number(canje.id));
+    const knownIds = readStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY);
+    if (!hasStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY)) {
+      writeStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY, currentIds);
+      return;
+    }
+
+    const knownSet = new Set(knownIds);
+    const nuevos = canjes.filter((canje) => !knownSet.has(Number(canje.id)));
+    if (!nuevos.length) return;
+
+    writeStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY, [...currentIds, ...knownIds]);
+    if (tab !== "canjes") {
+      setAdminAlerts((prev) => ({ ...prev, canjes: prev.canjes + nuevos.length }));
+    }
+
+    const latest = nuevos[0];
+    setAdminHint(
+      nuevos.length === 1
+        ? `Nuevo canje #${latest.id} de ${latest.cliente_nombre}.`
+        : `Entraron ${nuevos.length} canjes nuevos.`,
+    );
+    showBrowserAlert(
+      nuevos.length === 1 ? "Nuevo canje" : "Nuevos canjes",
+      nuevos.length === 1
+        ? `${latest.cliente_nombre} hizo el canje #${latest.id}.`
+        : `Tienes ${nuevos.length} canjes nuevos en el panel.`,
+    );
+  }, [canjes, tab]);
+
+  useEffect(() => {
+    if (tab === "ordenes" && adminAlerts.ordenes > 0) {
+      setAdminAlerts((prev) => ({ ...prev, ordenes: 0 }));
+    }
+  }, [adminAlerts.ordenes, tab]);
+
+  useEffect(() => {
+    if (tab === "canjes" && adminAlerts.canjes > 0) {
+      setAdminAlerts((prev) => ({ ...prev, canjes: 0 }));
+    }
+  }, [adminAlerts.canjes, tab]);
 
   useEffect(() => {
     setMovimientosInicioPage((prev) => Math.min(prev, totalMovimientosInicioPages));
@@ -2058,6 +2220,15 @@ export function Admin() {
   const canjeCodigoAdminFinalizado = canjeCodigoAdmin
     ? ["entregado", "cancelado", "expirado"].includes(canjeCodigoAdmin.estado)
     : false;
+
+  function renderAdminNavLabel(label: string, badgeCount = 0) {
+    return (
+      <>
+        <span>{label}</span>
+        {badgeCount > 0 ? <span className="admin-nav-badge">{badgeCount > 99 ? "99+" : badgeCount}</span> : null}
+      </>
+    );
+  }
   
   useEffect(() => {
     setMobileAdminNavOpen(false);
@@ -2083,47 +2254,47 @@ export function Admin() {
         <nav id="admin-nav-main" className={`admin-nav ${mobileAdminNavOpen ? "admin-nav-open" : ""}`}>
           <span className="admin-nav-section">General</span>
           <button className={`admin-nav-btn ${tab === "inicio" ? "active" : ""}`} onClick={() => setTab("inicio")}>
-            Inicio
+            {renderAdminNavLabel("Inicio")}
           </button>
 
           <span className="admin-nav-section">Gestion</span>
           <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => setTab("usuarios")}>
-            Usuarios
+            {renderAdminNavLabel("Usuarios")}
           </button>
           <button className={`admin-nav-btn ${tab === "productos" ? "active" : ""}`} onClick={() => setTab("productos")}>
-            Productos
+            {renderAdminNavLabel("Productos")}
           </button>
           <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => setTab("inventario")}>
-            Inventario
+            {renderAdminNavLabel("Inventario")}
           </button>
           <button className={`admin-nav-btn ${tab === "ordenes" ? "active" : ""}`} onClick={() => setTab("ordenes")}>
-            Compras
+            {renderAdminNavLabel("Compras", adminAlerts.ordenes)}
           </button>
           <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
-            Categorias
+            {renderAdminNavLabel("Categorias")}
           </button>
           <button className={`admin-nav-btn ${tab === "transacciones" ? "active" : ""}`} onClick={() => setTab("transacciones")}>
-            Transacciones
+            {renderAdminNavLabel("Transacciones")}
           </button>
           <button className={`admin-nav-btn ${tab === "canjes" ? "active" : ""}`} onClick={() => setTab("canjes")}>
-            Canjes
+            {renderAdminNavLabel("Canjes", adminAlerts.canjes)}
           </button>
           <button className={`admin-nav-btn ${tab === "codigos" ? "active" : ""}`} onClick={() => setTab("codigos")}>
-            Codigos
+            {renderAdminNavLabel("Codigos")}
           </button>
           <button className="admin-nav-btn" onClick={irAPanelSucursales}>
-            Sucursales
+            {renderAdminNavLabel("Sucursales")}
           </button>
 
           <span className="admin-nav-section">Configuracion</span>
           <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => setTab("crear")}>
-            Crear usuario
+            {renderAdminNavLabel("Crear usuario")}
           </button>
           <button className={`admin-nav-btn ${tab === "sobre-nosotros" ? "active" : ""}`} onClick={() => setTab("sobre-nosotros")}>
-            Quienes Somos
+            {renderAdminNavLabel("Quienes Somos")}
           </button>
           <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => setTab("terminos")}>
-            Terminos
+            {renderAdminNavLabel("Terminos")}
           </button>
         </nav>
       </aside>
@@ -2137,6 +2308,15 @@ export function Admin() {
             </p>
           </div>
           <div className="admin-topbar-actions">
+            {browserAlertsSupported ? (
+              <button
+                type="button"
+                className={`admin-topbar-alert-toggle${browserNotificationPermission === "granted" ? " is-active" : ""}`}
+                onClick={enableBrowserAlerts}
+              >
+                {browserNotificationPermission === "granted" ? "Alertas activas" : "Activar alertas"}
+              </button>
+            ) : null}
             <div className="admin-topbar-date">{new Date().toLocaleDateString("es-AR")}</div>
           </div>
         </div>

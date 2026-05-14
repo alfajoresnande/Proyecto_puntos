@@ -21,6 +21,8 @@ export function SobreNosotros() {
   const paginaQuery = useQuery({
     queryKey: ["paginas", "sobre-nosotros"],
     queryFn: () => api.get<Pagina>("/paginas/sobre-nosotros"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
   });
 
   const contenido = paginaQuery.data?.contenido || "";
