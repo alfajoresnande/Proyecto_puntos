@@ -507,6 +507,15 @@ async function ensureProductosEcommerceSchema() {
     await pool.query("ALTER TABLE productos ADD COLUMN puntaje_al_comprar INT NULL AFTER puntos_para_canjear");
   }
 
+  const [destacadoHomeRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'destacado_home'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!destacadoHomeRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN destacado_home TINYINT(1) NOT NULL DEFAULT 0 AFTER puntaje_al_comprar");
+  }
+
   await pool.query(
     "UPDATE productos SET puntos_para_canjear = COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos)"
   );

@@ -1012,13 +1012,14 @@ router.get("/productos", async (_req, res) => {
     puntos_requeridos: number;
     puntos_acumulables: number | null;
     puntaje_al_comprar: number | null;
+    destacado_home: number;
     activo: number;
     created_at: string;
   }>(pool,
     `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
             track_stock, permite_envio, permite_retiro_local,
-            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, activo, created_at
+            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at
      FROM productos
      ORDER BY created_at DESC`
   );
@@ -1054,6 +1055,7 @@ router.get("/productos", async (_req, res) => {
         track_stock: Boolean(row.track_stock),
         permite_envio: Boolean(row.permite_envio),
         permite_retiro_local: Boolean(row.permite_retiro_local),
+        destacado_home: Boolean(row.destacado_home),
         imagenes,
         imagen_url: imagenes[0] ?? null,
       };
@@ -1100,6 +1102,7 @@ router.post("/productos", async (req, res) => {
     puntos_requeridos:  z.number().int().min(0).optional().nullable(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),
     puntaje_al_comprar: z.number().int().positive().optional().nullable(),
+    destacado_home:     z.boolean().optional(),
     stock_disponible:   z.number().int().min(0).optional(),
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
@@ -1110,7 +1113,7 @@ router.post("/productos", async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
   const {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
-    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
     stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
   const inventarioPorSucursal = inventario_sucursales ?? [];
@@ -1140,9 +1143,9 @@ router.post("/productos", async (req, res) => {
     const { insertId } = await qRun(conn,
       `INSERT INTO productos
         (nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
-         precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+         precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
          stock_disponible, stock_reservado, track_stock, permite_envio, permite_retiro_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       [
         nombre,
         sku?.trim() || null,
@@ -1156,6 +1159,7 @@ router.post("/productos", async (req, res) => {
         puntosRequeridosLegacy,
         puntos_acumulables ?? null,
         puntajeComprarFinal,
+        destacado_home ? 1 : 0,
         stockDisponibleFinal,
         track_stock === undefined ? 1 : (track_stock ? 1 : 0),
         permite_envio ? 1 : 0,
@@ -1210,6 +1214,7 @@ router.put("/productos/:id", async (req, res) => {
     puntos_requeridos:  z.number().int().min(0).optional().nullable(),
     puntos_acumulables: z.number().int().positive().optional().nullable(),
     puntaje_al_comprar: z.number().int().positive().optional().nullable(),
+    destacado_home:     z.boolean().optional(),
     stock_disponible:   z.number().int().min(0).optional(),
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
@@ -1220,7 +1225,7 @@ router.put("/productos/:id", async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
   const {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
-    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar,
+    tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
     stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
   const inventarioPorSucursal = inventario_sucursales ?? [];
@@ -1262,7 +1267,7 @@ router.put("/productos/:id", async (req, res) => {
     const { affectedRows } = await qRun(conn,
       `UPDATE productos
        SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?,
-           precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?,
+           precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?, destacado_home=?,
            stock_disponible=?, track_stock=?, permite_envio=?, permite_retiro_local=?
        WHERE id=?`,
       [
@@ -1278,6 +1283,7 @@ router.put("/productos/:id", async (req, res) => {
         puntosRequeridosLegacy,
         puntos_acumulables ?? null,
         puntajeComprarFinal,
+        destacado_home ? 1 : 0,
         stockDisponibleFinal,
         trackStockFinal ? 1 : 0,
         permite_envio ? 1 : 0,

@@ -4,7 +4,7 @@ import { useLocation } from "react-router-dom";
 const SITE_ORIGIN = "https://alfajorescorrentinos.com";
 const DEFAULT_TITLE = "Ñandé Alfajores Correntinos | Tienda Online y Programa de Puntos";
 const DEFAULT_DESCRIPTION =
-  "Comprá alfajores correntinos artesanales online. Compra web con retiro en sucursal y programa de puntos para canjear productos gratis.";
+  "Comprá alfajores correntinos artesanales online. Compra web con retiro en sucursal y programa de puntos para canjear productos.";
 
 type MetaConfig = {
   title: string;
@@ -22,8 +22,9 @@ function setMeta(selector: string, attr: "content" | "href", value: string) {
 function getMetaForPath(pathname: string): MetaConfig {
   const publicRoutes: Record<string, Omit<MetaConfig, "robots">> = {
     "/": {
-      title: "Ñandé Alfajores Correntinos | Tienda Online y Programa de Puntos",
-      description: DEFAULT_DESCRIPTION,
+      title: "Ñandé Alfajores Correntinos | Alfajores artesanales, puntos y canjes",
+      description:
+        "Descubrí Ñandé Alfajores Correntinos: compra online, retiro en sucursal, programa de puntos y catálogo de canjes.",
       canonicalPath: "/",
     },
     "/tienda": {

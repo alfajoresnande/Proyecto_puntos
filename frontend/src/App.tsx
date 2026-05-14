@@ -21,6 +21,7 @@ import { ComprobantePedido } from "./pages/cliente/ComprobantePedido";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
 import { SoporteCliente } from "./pages/cliente/SoporteCliente";
 import { Catalogo } from "./pages/public/Catalogo";
+import { Home } from "./pages/public/Home";
 import { SobreNosotros } from "./pages/public/SobreNosotros";
 import { TiendaOnline } from "./pages/public/TiendaOnline";
 import { Terminos } from "./pages/public/Terminos";
@@ -38,7 +39,7 @@ export default function App() {
       <div className="app-main">
         <main>
           <Routes>
-            <Route path="/" element={<Navigate to="/tienda" replace />} />
+            <Route path="/" element={<Home />} />
             <Route path="/catalogo" element={<Catalogo />} />
             <Route path="/tienda" element={<TiendaOnline />} />
             <Route path="/login" element={<Login />} />
@@ -184,7 +185,7 @@ export default function App() {
             />
             <Route path="/sobre-nosotros" element={<SobreNosotros />} />
             <Route path="/terminos" element={<Terminos />} />
-            <Route path="*" element={<Navigate to="/catalogo" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
         <Footer />

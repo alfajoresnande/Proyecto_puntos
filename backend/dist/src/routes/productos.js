@@ -102,6 +102,7 @@ router.get("/", async (req, res) => {
             puntos_requeridos: row.puntos_requeridos,
             puntos_acumulables: row.puntos_acumulables,
             puntaje_al_comprar: row.puntaje_al_comprar,
+            destacado_home: Boolean(row.destacado_home),
             tipo_producto: row.tipo_producto,
             precio_dinero: row.precio_dinero,
             precio_puntos: row.precio_puntos,

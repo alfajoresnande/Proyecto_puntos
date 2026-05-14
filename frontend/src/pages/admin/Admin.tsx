@@ -78,6 +78,7 @@ type ProductoAdmin = Producto & {
   activo: boolean;
   sku?: string | null;
   puntaje_al_comprar?: number | null;
+  destacado_home?: boolean;
   created_at: string;
 };
 
@@ -293,6 +294,7 @@ type ProductoForm = {
   puntos_requeridos: number | null;
   puntos_acumulables: number | null;
   puntaje_al_comprar: number | null;
+  destacado_home: boolean;
   track_stock: boolean;
   permite_envio: boolean;
   permite_retiro_local: boolean;
@@ -434,6 +436,7 @@ function emptyProductoForm(): ProductoForm {
     puntos_requeridos: null,
     puntos_acumulables: null,
     puntaje_al_comprar: null,
+    destacado_home: false,
     track_stock: true,
     permite_envio: false,
     permite_retiro_local: true,
@@ -1416,6 +1419,7 @@ export function Admin() {
           puntos_para_canjear: nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.puntos_requeridos) : null,
           puntos_acumulables: nuevoProducto.puntos_acumulables ? Number(nuevoProducto.puntos_acumulables) : null,
           puntaje_al_comprar: nuevoProducto.puntaje_al_comprar ? Number(nuevoProducto.puntaje_al_comprar) : null,
+          destacado_home: nuevoProducto.destacado_home,
           track_stock: nuevoProducto.track_stock,
           permite_envio: nuevoProducto.permite_envio,
           permite_retiro_local: nuevoProducto.permite_retiro_local,
@@ -1447,6 +1451,7 @@ export function Admin() {
       puntos_requeridos: producto.puntos_para_canjear ?? producto.precio_puntos ?? producto.puntos_requeridos,
       puntos_acumulables: producto.puntos_acumulables,
       puntaje_al_comprar: producto.puntaje_al_comprar ?? null,
+      destacado_home: producto.destacado_home ?? false,
       track_stock: producto.track_stock ?? true,
       permite_envio: producto.permite_envio ?? false,
       permite_retiro_local: producto.permite_retiro_local ?? true,
@@ -1485,6 +1490,7 @@ export function Admin() {
           puntos_para_canjear: editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto" ? Number(editDraft.puntos_requeridos) : null,
           puntos_acumulables: editDraft.puntos_acumulables ? Number(editDraft.puntos_acumulables) : null,
           puntaje_al_comprar: editDraft.puntaje_al_comprar ? Number(editDraft.puntaje_al_comprar) : null,
+          destacado_home: editDraft.destacado_home,
           track_stock: editDraft.track_stock,
           permite_envio: editDraft.permite_envio,
           permite_retiro_local: editDraft.permite_retiro_local,
@@ -2917,6 +2923,10 @@ export function Admin() {
 
                 <div className="adm-product-options">
                   <label className="adm-check-row">
+                    <input type="checkbox" checked={nuevoProducto.destacado_home} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, destacado_home: event.target.checked }))} />
+                    Mostrar en destacados del home
+                  </label>
+                  <label className="adm-check-row">
                     <input type="checkbox" checked={nuevoProducto.track_stock} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, track_stock: event.target.checked }))} />
                     Controlar stock
                   </label>
@@ -3127,6 +3137,10 @@ export function Admin() {
                         </div>
 
                         <div className="adm-product-options">
+                          <label className="adm-check-row">
+                            <input type="checkbox" checked={editDraft.destacado_home} onChange={(event) => setEditDraft((prev) => ({ ...prev, destacado_home: event.target.checked }))} />
+                            Mostrar en destacados del home
+                          </label>
                           <label className="adm-check-row">
                             <input type="checkbox" checked={editDraft.track_stock} onChange={(event) => setEditDraft((prev) => ({ ...prev, track_stock: event.target.checked }))} />
                             Controlar stock

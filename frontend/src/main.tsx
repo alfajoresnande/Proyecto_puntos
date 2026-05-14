@@ -12,6 +12,8 @@ import "./styles/admin.css";
 import "./styles/react.css";
 import "./styles/mobile-navbar.css";
 import "./styles/store-page.css";
+import "./styles/footer.css";
+import "./styles/home.css";
 
 void useAuthStore.getState().restoreSession();
 

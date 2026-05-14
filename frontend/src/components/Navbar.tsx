@@ -194,7 +194,7 @@ export function Navbar() {
 
       <nav className={`navbar navbar-app-shell${!user ? " navbar-guest" : ""}`}>
         <div className="navbar-inner">
-          <Link to="/catalogo" className="navbar-logo" onClick={closeMenu}>
+          <Link to="/" className="navbar-logo" onClick={closeMenu}>
             <img src="/logo.png" alt="Nande" />
           </Link>
 
