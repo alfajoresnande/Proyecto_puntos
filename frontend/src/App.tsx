@@ -4,6 +4,7 @@ import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RealtimeBridge } from "./components/RealtimeBridge";
+import { SeoRouteMeta } from "./components/SeoRouteMeta";
 import { Admin } from "./pages/admin/Admin";
 import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
 import { ForgotPassword } from "./pages/auth/ForgotPassword";
@@ -32,6 +33,7 @@ export default function App() {
   return (
     <>
       <RealtimeBridge />
+      <SeoRouteMeta />
       <Navbar />
       <div className="app-main">
         <main>

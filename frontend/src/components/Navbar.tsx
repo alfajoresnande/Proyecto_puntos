@@ -192,7 +192,7 @@ export function Navbar() {
     <>
       {menuOpen ? <div className="navbar-backdrop" onClick={closeMenu} /> : null}
 
-      <nav className={`navbar${!user ? " navbar-guest" : ""}`}>
+      <nav className={`navbar navbar-app-shell${!user ? " navbar-guest" : ""}`}>
         <div className="navbar-inner">
           <Link to="/catalogo" className="navbar-logo" onClick={closeMenu}>
             <img src="/logo.png" alt="Nande" />
@@ -347,7 +347,7 @@ export function Navbar() {
       </nav>
 
       {menuOpen ? (
-        <div className="navbar-mobile">
+        <div className="navbar-mobile navbar-mobile-shell">
           <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Tienda Online</NavLink>
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}

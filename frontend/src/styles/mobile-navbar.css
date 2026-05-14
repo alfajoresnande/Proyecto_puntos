@@ -1,0 +1,32 @@
+@media (max-width: 767px) {
+  .navbar-app-shell {
+    height: 58px;
+  }
+
+  .navbar-app-shell .navbar-inner {
+    gap: 0.55rem;
+    padding: 0 1rem;
+  }
+
+  .navbar-mobile-shell {
+    contain: layout paint;
+    top: 58px;
+  }
+
+  .navbar-app-shell .navbar-cart-wrap {
+    margin-left: auto;
+  }
+
+  .navbar-app-shell .navbar-hamburger {
+    margin-left: auto;
+  }
+
+  .navbar-app-shell .navbar-cart-wrap + .navbar-hamburger {
+    margin-left: 0;
+  }
+
+  .navbar-app-shell .navbar-cart-btn {
+    height: 40px;
+    width: 40px;
+  }
+}

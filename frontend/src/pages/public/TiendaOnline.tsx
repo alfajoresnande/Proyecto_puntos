@@ -497,7 +497,7 @@ export function TiendaOnline() {
   }
 
   return (
-    <section className="catalog-page store-page catalog-redemption-page">
+    <section className="catalog-page store-page store-page-isolated catalog-redemption-page">
       <div className="catalog-top-shell catalog-redemption-hero">
         <div className="catalog-header">
           <h1 className="catalog-title">Tienda Online</h1>
