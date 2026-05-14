@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { defaultRouteForRole } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
 
+
 export function Login() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
