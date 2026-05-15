@@ -236,8 +236,6 @@ export function Home() {
           <section id="productos-destacados" className="home-section home-section-products">
             <div className="home-section-head">
               <span className="home-kicker">Productos destacados</span>
-              <h2>Lo que mejor presenta a Ñandé en esta primera vista</h2>
-              <p>Acá conviene que elijas productos marcados como destacados para que la selección del home quede realmente curada.</p>
             </div>
 
             <div className="home-products-grid">
