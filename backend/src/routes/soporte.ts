@@ -357,7 +357,7 @@ router.post("/conversaciones", async (req, res) => {
 
     const usuarioDestino = await qOne<{ id: number; activo: number }>(
       conn,
-      "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1",
+      "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1 FOR UPDATE",
       [usuarioDestinoId],
     );
     if (!usuarioDestino || Number(usuarioDestino.activo) !== 1) {

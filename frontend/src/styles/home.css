@@ -1,4 +1,4 @@
-﻿.home-background {
+.home-background {
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.56), transparent 35%),
     linear-gradient(180deg, #fdf6ee 0%, #f6e6cf 100%);
@@ -582,6 +582,7 @@
   box-shadow: 0 18px 38px rgba(107, 63, 24, 0.1);
   opacity: 0;
   transform: translateY(32px);
+  will-change: transform, opacity;
   transition: opacity 0.65s ease, transform 0.65s ease;
 }
 
@@ -676,24 +677,24 @@
   }
 
   .home-timeline-line {
-    left: auto;
-    right: 24px;
+    left: 24px;
+    right: auto;
     transform: none;
   }
 
   .home-timeline-card,
   .home-timeline-card.is-left,
   .home-timeline-card.is-right {
-    width: min(calc(100% - 3.5rem), 900px);
-    margin-left: auto;
-    margin-right: 0;
+    width: calc(100% - 3.5rem);
+    margin-left: 0;
+    margin-right: auto;
     grid-template-columns: minmax(280px, 1fr) minmax(300px, 0.96fr);
   }
 
   .home-timeline-card.is-left::before,
   .home-timeline-card.is-right::before {
-    left: auto;
-    right: -1.75rem;
+    left: -1.75rem;
+    right: auto;
   }
 }
 
@@ -744,23 +745,13 @@
     transform: none;
   }
 
-  .home-location-head {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
   .home-location-photo-1 {
     grid-column: auto;
     grid-row: auto;
     aspect-ratio: 9 / 14;
   }
 
-  .home-location-photo-2 {
-    grid-column: auto;
-    grid-row: auto;
-    aspect-ratio: 16 / 10;
-  }
-
+  .home-location-photo-2,
   .home-location-photo-3 {
     grid-column: auto;
     grid-row: auto;
@@ -770,9 +761,6 @@
   .home-location-text {
     grid-column: 1 / -1;
     grid-row: 4;
-  }
-
-  .home-location-text {
     font-size: 1rem;
     line-height: 1.6;
   }
@@ -787,6 +775,7 @@
   .home-timeline-card.is-right {
     width: calc(100% - 3rem);
     margin-left: auto;
+    margin-right: 0;
   }
 
   .home-timeline-card.is-left::before,
@@ -797,10 +786,6 @@
 }
 
 @media (max-width: 820px) {
-  .home-content-shell {
-    width: 100%;
-  }
-
   .home-hero-image {
     height: auto;
     aspect-ratio: 1672 / 941;
@@ -822,6 +807,7 @@
   .home-flow-steps {
     gap: 1rem;
     max-width: 420px;
+    margin: 0 auto;
   }
 
   .home-flow-step {
@@ -884,10 +870,6 @@
 }
 
 @media (max-width: 560px) {
-  .home-content-shell {
-    width: 100%;
-  }
-
   .home-hero-image {
     height: auto;
     aspect-ratio: 1672 / 941;

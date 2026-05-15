@@ -1,4 +1,4 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
@@ -267,7 +267,7 @@ export function Home() {
           <div className="home-section-head">
             <span className="home-kicker">Competencias, ferias y presencia</span>
             <h2>Un recorrido visual para contar cómo Ñandé representa su identidad</h2>
-            <p>La idea es que mientras bajás, las historias y fotos aparezcan con ritmo, casi como una línea de tiempo viva.</p>
+            <p>Momentos que definen nuestra historia y nuestra presencia regional.</p>
           </div>
 
           <div className="home-timeline">
