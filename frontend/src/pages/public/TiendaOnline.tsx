@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
@@ -76,6 +76,7 @@ function maxSelectableQuantity(producto: Producto): number {
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [categoriaActiva, setCategoriaActiva] = useState("");
   const [busqueda, setBusqueda] = useState("");
@@ -118,6 +119,7 @@ export function TiendaOnline() {
   });
 
   const productos = productosQuery.data ?? [];
+  const productoUrlId = searchParams.get("producto");
   const sucursales = sucursalesQuery.data ?? [];
   const preciosCatalogo = useMemo(
     () => productos.map(productPrice).filter((precio) => Number.isFinite(precio) && precio > 0),
@@ -134,6 +136,15 @@ export function TiendaOnline() {
   const productoModalImagenes = productoModal ? productImages(productoModal) : [];
   const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
   const productoModalTieneCarousel = productoModalImagenes.length > 1;
+
+  useEffect(() => {
+    if (!productoUrlId) return;
+    const id = Number(productoUrlId);
+    if (!Number.isFinite(id)) return;
+    const producto = productos.find((item) => Number(item.id) === id);
+    if (!producto || productoModal?.id === producto.id) return;
+    openProductoModal(producto);
+  }, [productoUrlId, productos, productoModal?.id]);
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -298,6 +309,11 @@ export function TiendaOnline() {
     setPan({ x: 0, y: 0 });
     dragRef.current = null;
     hasDragged.current = false;
+    if (searchParams.has("producto")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("producto");
+      setSearchParams(next, { replace: true });
+    }
   }
 
   function cambiarImagenModal(index: number) {

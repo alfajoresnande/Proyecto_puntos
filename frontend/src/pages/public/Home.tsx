@@ -253,8 +253,8 @@ export function Home() {
                       <span>{rewardPoints(producto) > 0 ? `+${rewardPoints(producto)} pts` : "Comprar"}</span>
                     </div>
                     <div className="home-product-actions">
-                      <Link to="/tienda" className="home-product-action home-product-action-secondary">Ver producto</Link>
-                      <Link to={user ? "/tienda" : "/login"} className="home-product-action home-product-action-primary">Comprar</Link>
+                      <Link to={`/tienda?producto=${producto.id}`} className="home-product-action home-product-action-secondary">Ver producto</Link>
+                      <Link to={user ? `/tienda?producto=${producto.id}` : "/login"} className="home-product-action home-product-action-primary">Comprar</Link>
                     </div>
                   </div>
                 </article>

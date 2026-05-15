@@ -642,6 +642,7 @@
 .home-timeline-year {
   display: inline-flex;
   width: fit-content;
+  max-width: min(100%, 260px);
   min-height: 34px;
   align-items: center;
   padding: 0.35rem 0.7rem;
@@ -650,9 +651,10 @@
   color: #7b441f;
   font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.045em;
   text-transform: uppercase;
-  line-height: 1.2;
+  line-height: 1.35;
+  text-wrap: balance;
 }
 
 @media (max-width: 1440px) {
@@ -892,21 +894,47 @@
     line-height: 1.55;
   }
 
+  .home-timeline-year {
+    max-width: 100%;
+    padding: 0.42rem 0.75rem;
+    border-radius: 16px;
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+
   .home-product-meta {
     flex-direction: column;
     align-items: flex-start;
+    gap: 0.3rem;
+  }
+
+  .home-products-grid {
+    max-width: 360px;
+    margin: 0 auto;
+  }
+
+  .home-section-products {
+    padding-bottom: 5rem;
   }
 
   .home-product-media {
-    max-height: 190px;
+    max-height: none;
+    aspect-ratio: 4 / 2.8;
   }
 
   .home-product-body {
-    padding: 0.8rem 0.85rem 0.9rem;
+    gap: 0.5rem;
+    padding: 0.85rem 0.9rem 1rem;
   }
 
   .home-product-actions {
-    grid-template-columns: minmax(0, 1fr);
+    gap: 0.45rem;
+  }
+
+  .home-product-action {
+    min-height: 42px;
+    font-size: 0.82rem;
+    padding: 0 0.6rem;
   }
 
   .home-flow-number {
