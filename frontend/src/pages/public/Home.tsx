@@ -1,5 +1,6 @@
 ﻿import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api";
 import type { Producto } from "../../types";
 
@@ -16,8 +17,22 @@ type LocationImage = {
   alt: string;
 };
 
+type MapPoint = {
+  id: string;
+  name: string;
+  city: string;
+  address: string;
+  contact: string;
+  mapsUrl: string;
+};
+
 function productImage(producto: Producto): string {
   return producto.imagenes?.find(Boolean) || producto.imagen_url || "/logo.png";
+}
+
+function hasProductImage(producto: Producto): boolean {
+  const image = producto.imagenes?.find(Boolean) || producto.imagen_url || "";
+  return Boolean(image && !image.endsWith("/logo.png") && image !== "logo.png");
 }
 
 function money(value: number | string | null | undefined): string {
@@ -31,6 +46,19 @@ function rewardPoints(producto: Producto): number {
 }
 
 export function Home() {
+  const mapPoints: MapPoint[] = [
+    {
+      id: "la-unidad",
+      name: "Ñandé - Mercado de Sabores",
+      city: "Corrientes, Corrientes",
+      address: "Padre Borgatti 1474-1600, La Unidad, Mercado de Sabores, puesto 3",
+      contact: "+54 379 463-2610",
+      mapsUrl: "https://maps.app.goo.gl/wo9r1LGXSsh4Bmht7",
+    },
+  ];
+  const selectedMapPoint = mapPoints[0];
+  const mapEmbedUrl = "https://www.openstreetmap.org/export/embed.html?bbox=-58.8588%2C-27.4788%2C-58.8422%2C-27.4676&layer=mapnik&marker=-27.47298%2C-58.85053";
+
   useEffect(() => {
     document.body.classList.add("home-background");
     return () => {
@@ -47,9 +75,9 @@ export function Home() {
 
   const productosDestacados = useMemo(() => {
     const productos = productosVentaQuery.data ?? [];
-    const conImagen = productos.filter((producto) => Boolean(producto.imagen_url || producto.imagenes?.length));
+    const conImagen = productos.filter(hasProductImage);
     const destacados = conImagen.filter((producto) => producto.destacado_home);
-    return (destacados.length ? destacados : conImagen.length ? conImagen : productos).slice(0, 4);
+    return (destacados.length ? destacados : conImagen).slice(0, 4);
   }, [productosVentaQuery.data]);
 
   const heroImage = "/hero.webp";
@@ -64,22 +92,22 @@ export function Home() {
       year: "2025",
       title: "Representación regional en La Rural Palermo",
       text: "Ñandé participó como representante regional de Corrientes dentro del universo de alfajores en Buenos Aires.",
-      detail: "Cuando nos pases las fotos reales de esa presencia, este bloque va a contar la historia con mucha más fuerza visual.",
-      image: "/nande_muchas_gracias.webp",
+      detail: "",
+      image: "/rural-palermo.webp",
+    },
+    {
+      year: "Confederación Argentina de la Mediana Empresa",
+      title: "Representando a Corrientes en alfajores",
+      text: "Ñandé participó en CAME, la Confederación Argentina de la Mediana Empresa, representando a Corrientes dentro del universo de los alfajores.",
+      detail: "Un espacio para mostrar identidad regional, producto y presencia correntina frente a referentes de todo el país.",
+      image: "/came.webp",
     },
     {
       year: "Ferias",
-      title: "Presencia en ferias y encuentros",
-      text: "La idea es mostrar movimiento, marca y producto: que se note que Ñandé también representa.",
-      detail: "Este bloque ya está preparado para que las imágenes vayan apareciendo mientras el usuario baja por la página.",
-      image: "/fondoseguro.png",
-    },
-    {
-      year: "Próximo",
-      title: "Más experiencias para contar",
-      text: "A medida que carguemos más material, esta línea de tiempo va a quedar mucho más viva y emocional.",
-      detail: "Así evitamos una grilla plana y construimos una sección con más ritmo y presencia.",
-      image: "/fondocat.png",
+      title: "Fiesta Nacional del Alfajor en La Falda",
+      text: "Ñandé participó en La Falda, Córdoba, dentro de la Fiesta Nacional del Alfajor, llevando la identidad correntina al encuentro.",
+      detail: "Un espacio para compartir producto, historia y presencia regional junto a referentes alfajoreros de todo el país.",
+      image: "/lafalta.webp",
     },
   ];
 
@@ -109,7 +137,7 @@ export function Home() {
       </section>
 
       <div className="home-content-shell">
-        <section className="home-location-section">
+        <section className="home-location-section home-section home-section-location">
           <div className="home-location-head">
             <span className="home-kicker">Dónde encontrarnos</span>
           </div>
@@ -132,46 +160,86 @@ export function Home() {
           </p>
         </section>
 
-        <section id="como-funciona" className="home-flow-section">
+        <section className="home-map-section home-section home-section-map">
+          <div className="home-map-shell">
+            <div className="home-map-card">
+              <div className="home-map-frame">
+                <iframe
+                  title="Mapa de puntos Ñandé"
+                  src={mapEmbedUrl}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+              <p>La vista muestra Mercado de Sabores dentro de La Unidad.</p>
+              <p>Base cartográfica: OpenStreetMap.</p>
+            </div>
+
+            <aside className="home-map-detail" aria-live="polite">
+              <span className="home-map-kicker">Punto seleccionado</span>
+              <h2>{selectedMapPoint.name}</h2>
+              <p>{selectedMapPoint.city}</p>
+
+              <div className="home-map-info">
+                <span>Dirección</span>
+                <strong>{selectedMapPoint.address}</strong>
+              </div>
+
+              <div className="home-map-info">
+                <span>Contacto</span>
+                <strong>{selectedMapPoint.contact}</strong>
+              </div>
+
+              <a className="home-map-link" href={selectedMapPoint.mapsUrl} target="_blank" rel="noreferrer">
+                Ver en Google Maps
+              </a>
+            </aside>
+          </div>
+        </section>
+
+        <section id="como-funciona" className="home-flow-section home-section home-section-flow">
           <div className="home-section-head home-flow-head">
-            <span className="home-kicker home-kicker-accent">Instrucciones para vos</span>
+            <span className="home-kicker home-kicker-accent">Para vos</span>
             <h2>Comprá, acumulá puntos y volvé cuando quieras</h2>
             <p>Te dejamos una guía simple para que entiendas rápido cómo comprar y cómo usar tus puntos dentro de Ñandé.</p>
           </div>
 
-          <div className="home-flow-grid">
-            <article className="home-flow-card">
-              <span className="home-flow-number">01</span>
-              <p>Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra.</p>
-            </article>
-            <article className="home-flow-card">
-              <span className="home-flow-number">02</span>
-              <p>Canjeás tus puntos por productos y los retirás en la sucursal que selecciones.</p>
-            </article>
-          </div>
-
-          <div className="home-flow-detail-grid">
-            <article className="home-flow-detail-card">
-              <h3>¿Cómo comprás?</h3>
-              <p>Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos.</p>
-            </article>
-            <article className="home-flow-detail-card">
-              <h3>¿Cómo canjeás?</h3>
-              <p>Entrás al catálogo de canjes, elegís el producto que querés usar con tus puntos, lo reservás desde tu cuenta y después lo retirás en la sucursal seleccionada.</p>
-            </article>
+          <div className="home-flow-steps">
+            <div className="home-flow-step">
+              <article className="home-flow-card">
+                <span className="home-flow-number">01</span>
+                <p>Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra.</p>
+              </article>
+              <article className="home-flow-detail-card">
+                <h3>¿Cómo comprás?</h3>
+                <p>Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos.</p>
+                <Link to="/tienda" className="home-flow-action">Comprar</Link>
+              </article>
+            </div>
+            <div className="home-flow-step">
+              <article className="home-flow-card">
+                <span className="home-flow-number">02</span>
+                <p>Canjeás tus puntos por productos y los retirás en la sucursal que selecciones.</p>
+              </article>
+              <article className="home-flow-detail-card">
+                <h3>¿Cómo canjeás?</h3>
+                <p>Entrás al catálogo de canjes, elegís el producto que querés usar con tus puntos, lo reservás desde tu cuenta y después lo retirás en la sucursal seleccionada.</p>
+                <Link to="/catalogo" className="home-flow-action">Canjear</Link>
+              </article>
+            </div>
           </div>
         </section>
 
-        <section id="productos-destacados" className="home-section">
-          <div className="home-section-head">
-            <span className="home-kicker">Productos destacados</span>
-            <h2>Lo que mejor presenta a Ñandé en esta primera vista</h2>
-            <p>Acá conviene que elijas productos marcados como destacados para que la selección del home quede realmente curada.</p>
-          </div>
+        {productosDestacados.length ? (
+          <section id="productos-destacados" className="home-section home-section-products">
+            <div className="home-section-head">
+              <span className="home-kicker">Productos destacados</span>
+              <h2>Lo que mejor presenta a Ñandé en esta primera vista</h2>
+              <p>Acá conviene que elijas productos marcados como destacados para que la selección del home quede realmente curada.</p>
+            </div>
 
-          <div className="home-products-grid">
-            {productosDestacados.length ? (
-              productosDestacados.map((producto) => (
+            <div className="home-products-grid">
+              {productosDestacados.map((producto) => (
                 <article key={producto.id} className="home-product-card">
                   <div className="home-product-media">
                     <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
@@ -186,29 +254,12 @@ export function Home() {
                     </div>
                   </div>
                 </article>
-              ))
-            ) : (
-              Array.from({ length: 4 }).map((_, index) => (
-                <article key={`placeholder-${index}`} className="home-product-card">
-                  <div className="home-product-media home-product-media-placeholder">
-                    <img src="/logo.png" alt="Producto destacado" className="home-product-image home-product-image-placeholder" />
-                  </div>
-                  <div className="home-product-body">
-                    <span className="home-product-category">Ñandé</span>
-                    <h3>Producto destacado</h3>
-                    <p>Esta tarjeta se va poblando sola con tus productos reales.</p>
-                    <div className="home-product-meta home-product-meta-static">
-                      <strong>Próximamente</strong>
-                      <span>Selección de la casa</span>
-                    </div>
-                  </div>
-                </article>
-              ))
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
-        <section className="home-section home-timeline-section">
+        <section className="home-section home-timeline-section home-section-timeline">
           <div className="home-section-head">
             <span className="home-kicker">Competencias, ferias y presencia</span>
             <h2>Un recorrido visual para contar cómo Ñandé representa su identidad</h2>
@@ -226,7 +277,7 @@ export function Home() {
                   <span className="home-timeline-year">{entry.year}</span>
                   <h3>{entry.title}</h3>
                   <p>{entry.text}</p>
-                  <p>{entry.detail}</p>
+                  {entry.detail ? <p>{entry.detail}</p> : null}
                 </div>
               </article>
             ))}

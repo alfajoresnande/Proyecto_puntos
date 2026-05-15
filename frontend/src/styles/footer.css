@@ -1,82 +1,111 @@
 .footer {
-  padding: 2.4rem clamp(1rem, 2vw, 2rem);
+  padding: 1.85rem clamp(1.25rem, 4vw, 5rem);
 }
 
 .footer .footer-inner {
-  max-width: 1320px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 0;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(440px, 1.25fr) minmax(220px, 0.9fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 1.35rem 2rem;
+  gap: clamp(1rem, 2.2vw, 2rem);
 }
 
 .footer .footer-col-left {
-  flex: 0 1 250px;
+  justify-self: start;
   min-width: 0;
 }
 
 .footer .footer-col-center {
-  flex: 1 1 460px;
-  min-width: 280px;
+  justify-self: center;
+  min-width: 0;
 }
 
 .footer .footer-col-right {
-  flex: 0 1 320px;
-  min-width: 240px;
+  justify-self: end;
+  min-width: 0;
 }
 
 .footer .footer-nav-inline {
   justify-content: center;
+  gap: 0.7rem 1.05rem;
+}
+
+.footer .footer-link {
+  font-size: 0.95rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.footer .footer-logo img {
+  height: 50px;
+}
+
+.footer .footer-tagline {
+  max-width: 260px;
 }
 
 .footer .footer-badges {
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 1rem;
 }
 
 .footer .footer-badge-orgullo {
+  height: 58px;
   margin-right: 0;
 }
 
-@media (max-width: 1400px) {
+.footer .footer-badge-hecho {
+  height: 86px;
+  border-radius: 14px;
+}
+
+@media (max-width: 1180px) {
   .footer .footer-inner {
-    align-items: flex-start;
+    grid-template-columns: minmax(180px, 0.75fr) minmax(360px, 1.1fr) minmax(190px, 0.8fr);
+    gap: 1rem;
   }
 
-  .footer .footer-col-left,
-  .footer .footer-col-center {
-    flex-basis: calc(50% - 1rem);
+  .footer .footer-link {
+    font-size: 0.88rem;
   }
 
-  .footer .footer-col-right {
-    flex-basis: 100%;
-    align-items: center;
+  .footer .footer-badge-orgullo {
+    height: 48px;
   }
 
-  .footer .footer-badges {
-    justify-content: center;
+  .footer .footer-badge-hecho {
+    height: 74px;
   }
 }
 
-@media (max-width: 980px) {
+@media (max-width: 900px) {
+  .footer {
+    padding: 1.65rem 1rem;
+  }
+
   .footer .footer-inner {
+    display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
+    gap: 1rem;
   }
 
   .footer .footer-col-left,
   .footer .footer-col-center,
   .footer .footer-col-right {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
     align-items: center;
+    width: 100%;
   }
 
-  .footer .footer-nav-inline {
+  .footer .footer-tagline {
+    max-width: none;
+  }
+
+  .footer .footer-badges {
     justify-content: center;
   }
 }
