@@ -43,6 +43,7 @@ router.get("/", async (req, res) => {
     `SELECT id, nombre, descripcion, imagen_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
+            destacado_home,
             ${
               hasSucursalFilter
                 ? "COALESCE((SELECT i.stock_disponible FROM inventario_sucursal i WHERE i.producto_id = productos.id AND i.sucursal_id = ? LIMIT 1), 0)"

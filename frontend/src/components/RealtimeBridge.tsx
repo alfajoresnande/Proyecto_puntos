@@ -45,6 +45,7 @@ export function RealtimeBridge() {
       if (topic === "productos") {
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: ["productos"] }),
+          queryClient.invalidateQueries({ queryKey: ["home", "productos"] }),
           queryClient.invalidateQueries({ queryKey: ["admin", "productos"] }),
           queryClient.invalidateQueries({ queryKey: ["vendedor", "productos"] }),
           queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
@@ -57,6 +58,7 @@ export function RealtimeBridge() {
           queryClient.invalidateQueries({ queryKey: ["admin", "inventario"] }),
           queryClient.invalidateQueries({ queryKey: ["admin", "movimientos-stock"] }),
           queryClient.invalidateQueries({ queryKey: ["productos"] }),
+          queryClient.invalidateQueries({ queryKey: ["home", "productos"] }),
           queryClient.invalidateQueries({ queryKey: ["vendedor", "productos"] }),
           queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
         ]);
