@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
@@ -1169,7 +1169,7 @@ export function Catalogo() {
                           )
                         }
                       >
-                        {sinStock ? "Sin stock" : "Agregar al carrito"}
+                        {sinStock ? "Sin stock" : "Agregar al carrito de compras"}
                       </button>
                     </>
                   ) : (
@@ -1484,7 +1484,7 @@ export function Catalogo() {
                     disabled={canjearCarritoMutation.isPending || productoModalSinStock}
                     onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanje)}
                   >
-                    {productoModalSinStock ? "Sin stock" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}`}
+                    {productoModalSinStock ? "Sin stock" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito de compras` : "al carrito de compras"}`}
                   </button>
                 </>
               ) : (

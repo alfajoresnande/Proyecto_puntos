@@ -3927,9 +3927,10 @@ body.catalogo-background .pagina-page {
 .store-page .product-card-body {
   display: grid;
   flex: 1;
-  gap: 0.62rem;
-  grid-template-rows: auto auto auto auto auto;
-  padding: 1rem 0.72rem 0.82rem;
+  gap: 0.75rem;
+  grid-template-rows: minmax(2.8rem, auto) 1fr auto auto auto auto;
+  padding: 1.1rem 0.85rem 1rem;
+  min-width: 0;
 }
 
 .store-page .product-card-body {
@@ -3948,10 +3949,12 @@ body.catalogo-background .pagina-page {
 .store-page .product-card-desc {
   display: -webkit-box;
   font-size: 0.76rem;
-  line-height: 1.35;
+  line-height: 1.4;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  min-height: 3.2rem;
+  color: #6B7280;
 }
 
 .catalog-redemption-page .product-card-desc.is-expanded {

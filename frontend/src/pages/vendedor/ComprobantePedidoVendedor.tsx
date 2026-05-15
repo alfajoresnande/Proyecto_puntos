@@ -37,6 +37,11 @@ type OrdenVendedorDetalle = {
     puntaje_al_comprar_unitario?: number | null;
     subtotal_dinero: number;
     subtotal_puntos: number;
+    sabores?: Array<{
+      sabor_id: number;
+      nombre: string;
+      cantidad: number;
+    }>;
   }>;
   pago?: {
     proveedor: string;
@@ -217,7 +222,18 @@ export function ComprobantePedidoVendedor() {
               <tbody>
                 {orden.items.map((item, idx) => (
                   <tr key={`${item.producto_id}-${idx}`}>
-                    <td>{item.nombre}</td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{item.nombre}</div>
+                      {item.sabores && item.sabores.length > 0 && (
+                        <div className="comprobante-item-sabores">
+                          {item.sabores.map((s, sidx) => (
+                            <div key={sidx} className="comprobante-item-sabor">
+                              • {s.nombre} (x{s.cantidad})
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="text-center">{item.cantidad}</td>
                     <td className="text-right">{item.modo_compra === "dinero" ? money(item.precio_dinero_unit) : `${item.subtotal_puntos} pts`}</td>
                     <td className="text-right">{item.modo_compra === "dinero" ? money(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}</td>
@@ -252,7 +268,7 @@ export function ComprobantePedidoVendedor() {
         </div>
 
         <div className="comprobante-footer">
-          <p className="comprobante-disclaimer">Vista operativa para el vendedor. Este documento no es valido como factura.</p>
+          <p className="comprobante-disclaimer">Este documento no es valido como factura.</p>
           <p className="comprobante-thanks">Gracias por elegir Nande Alfajores Correntinos.</p>
         </div>
       </div>

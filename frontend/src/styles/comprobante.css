@@ -178,9 +178,17 @@
   margin-bottom: 0.25rem;
 }
 
-.comprobante-thanks {
-  color: #4b5563;
-  font-weight: 500;
+.comprobante-item-sabores {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  padding-left: 0.75rem;
+  border-left: 2px solid #e5e7eb;
+}
+
+.comprobante-item-sabor {
+  margin-bottom: 0.15rem;
+  line-height: 1.3;
 }
 
 /* 

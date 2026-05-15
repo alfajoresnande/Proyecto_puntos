@@ -1059,8 +1059,8 @@ export function TiendaOnline() {
                         : addMutation.isPending
                           ? "Agregando..."
                           : esCaja
-                            ? "Personalizar caja"
-                          : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito` : "al carrito"}`}
+                            ? "Comprar caja"
+                            : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
                     </button>
                   </div>
                 </article>
@@ -1292,8 +1292,8 @@ export function TiendaOnline() {
                       : addMutation.isPending
                         ? "Agregando..."
                         : isCajaSabores(productoModal)
-                          ? `Agregar caja (${cajaSeleccionTotal(productoModal)}/${cajaCapacidad(productoModal)})`
-                        : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito` : "al carrito"}`}
+                          ? "Agregar al carrito de compras"
+                          : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito de compras` : "al carrito de compras"}`}
                   </button>
                 </>
               ) : (
