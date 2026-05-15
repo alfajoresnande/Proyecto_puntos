@@ -21,6 +21,41 @@ function parseErrorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+function isNetworkErrorLike(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    error.name === "TypeError" ||
+    error.name === "NetworkError" ||
+    message.includes("failed to fetch") ||
+    message.includes("load failed") ||
+    message.includes("networkerror") ||
+    message.includes("fetch failed")
+  );
+}
+
+function buildFetchFailureMessage(path: string, error: unknown): string {
+  if (error instanceof Error && error.name === "AbortError") {
+    return "La solicitud tardó demasiado y fue cancelada. Intenta nuevamente.";
+  }
+
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  if (offline) {
+    return "No hay conexión a internet en este dispositivo. Revisa la red y vuelve a intentar.";
+  }
+
+  if (isNetworkErrorLike(error)) {
+    const route = `/api${path}`;
+    return `No se pudo conectar con el servidor para ${route}. Revisa si el backend está levantado, si la URL de la API es correcta y si el origen actual está permitido por CORS/CSRF.`;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "No se pudo completar la solicitud por un problema de conexión inesperado.";
+}
+
 // Lee el token primero del store de Zustand. Si no hay (race condition de
 // hidratación al inicializar), cae a leer directo de localStorage. Esto blinda
 // el caso donde main.tsx dispara llamadas antes que persist termine de hidratar.
@@ -51,15 +86,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const token = getStoredToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(apiUrl(`/api${path}`), {
-    ...options,
-    credentials: "include",
-    headers,
-    body:
-      hasBody && !formDataBody && typeof options.body === "object"
-        ? JSON.stringify(options.body)
-        : (options.body as BodyInit | null | undefined),
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/api${path}`), {
+      ...options,
+      credentials: "include",
+      headers,
+      body:
+        hasBody && !formDataBody && typeof options.body === "object"
+          ? JSON.stringify(options.body)
+          : (options.body as BodyInit | null | undefined),
+    });
+  } catch (error) {
+    throw new Error(buildFetchFailureMessage(path, error));
+  }
 
   const body = await response
     .clone()

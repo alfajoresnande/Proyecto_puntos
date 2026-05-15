@@ -360,3 +360,14 @@ describe("api — manejo defensivo de 401 (evita auto-logout agresivo)", () => {
     expect(assignSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("api — mensajes mas claros ante fallos de red", () => {
+  it("transforma Failed to fetch en un error mas accionable", async () => {
+    useAuthStore.setState({ token: "token.valido" });
+    global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await expect(api.post("/admin/productos", { nombre: "Test" })).rejects.toThrow(
+      "No se pudo conectar con el servidor para /api/admin/productos."
+    );
+  });
+});

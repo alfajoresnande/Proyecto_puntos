@@ -10,11 +10,19 @@ type CartItem = {
   producto_id: number;
   cantidad: number;
   modo_compra: "dinero" | "puntos";
+  config_hash?: string;
   precio_dinero_unit: number | null;
   subtotal_dinero: number;
   nombre: string;
   imagen_url: string | null;
   permite_envio?: number | boolean;
+  configuracion_tipo?: "simple" | "caja_sabores";
+  capacidad_sabores?: number | null;
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>;
 };
 
 type CartResponse = {
@@ -770,8 +778,25 @@ export function CarritoTienda() {
                 <div key={item.id} className="catalog-canje-item">
                   <div>
                     <p style={{ margin: 0, fontWeight: 800 }}>{item.nombre}</p>
+                    {item.sabores?.length ? (
+                      <p style={{ margin: "0.1rem 0 0", color: "#6f4a2a", fontSize: "0.86rem" }}>
+                        {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
+                      </p>
+                    ) : null}
                     <p style={{ margin: "0.1rem 0 0", color: "#8B5A30" }}>{money(item.subtotal_dinero)}</p>
                   </div>
+                  {item.sabores?.length ? (
+                    <div className="catalog-canje-item-qty">
+                      <span>{item.cantidad}</span>
+                      <button
+                        type="button"
+                        disabled={deleteItem.isPending}
+                        onClick={() => deleteItem.mutate(item.id)}
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ) : (
                   <div className="catalog-canje-item-qty">
                     <button
                       type="button"
@@ -789,6 +814,7 @@ export function CarritoTienda() {
                       +
                     </button>
                   </div>
+                  )}
                 </div>
               ))}
             </div>

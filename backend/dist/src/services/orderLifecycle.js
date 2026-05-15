@@ -16,6 +16,14 @@ function checkoutStockItems(items, descripcion) {
         descripcion,
     }));
 }
+function checkoutFlavorStockItems(items, descripcion) {
+    return items.map((item) => ({
+        sabor_id: Number(item.sabor_id),
+        cantidad: Number(item.cantidad),
+        origen: item.modo_compra === "dinero" ? "compra" : "canje",
+        descripcion,
+    }));
+}
 async function getOrderForLifecycle(conn, orderId) {
     const order = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado, total_puntos, total_dinero, sucursal_retiro_id
      FROM ordenes
@@ -44,6 +52,18 @@ async function getOrderStockItems(conn, orderId) {
         producto_id: Number(row.producto_id),
         cantidad: Number(row.cantidad),
         track_stock: Number(row.track_stock ?? 0),
+    }));
+}
+async function getOrderFlavorStockItems(conn, orderId) {
+    const rows = await (0, db_1.qAll)(conn, `SELECT ois.sabor_id, ois.cantidad, oi.modo_compra
+     FROM orden_item_sabores ois
+     JOIN orden_items oi ON oi.id = ois.orden_item_id
+     WHERE oi.orden_id = ?
+     ORDER BY oi.id ASC, ois.id ASC`, [orderId]);
+    return rows.map((row) => ({
+        sabor_id: Number(row.sabor_id),
+        cantidad: Number(row.cantidad),
+        modo_compra: row.modo_compra,
     }));
 }
 async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado, payload, }) {
@@ -119,10 +139,20 @@ async function approvePaidOrder(conn, { orderId, provider, providerPaymentId, pa
     }
     if (order.sucursal_retiro_id) {
         const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `Pago aprobado orden #${orderId}`);
+        const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Pago aprobado orden #${orderId}`);
         if (items.length) {
             await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
                 sucursalId: order.sucursal_retiro_id,
                 items,
+                referencia: `orden #${orderId}`,
+                ordenId: orderId,
+                creadoPor,
+            });
+        }
+        if (flavorItems.length) {
+            await (0, stock_1.finalizeFlavorStockForCheckoutItems)(conn, {
+                sucursalId: order.sucursal_retiro_id,
+                items: flavorItems,
                 referencia: `orden #${orderId}`,
                 ordenId: orderId,
                 creadoPor,
@@ -146,10 +176,20 @@ async function rejectOrExpirePendingOrder(conn, { orderId, nextState, provider, 
     }
     if (order.sucursal_retiro_id) {
         const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `${nextState} orden #${orderId}`);
+        const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `${nextState} orden #${orderId}`);
         if (items.length) {
             await (0, stock_1.releaseStockForCheckoutItems)(conn, {
                 sucursalId: order.sucursal_retiro_id,
                 items,
+                referencia: `${nextState} orden #${orderId}`,
+                creadoPor,
+                ordenId: orderId,
+            });
+        }
+        if (flavorItems.length) {
+            await (0, stock_1.releaseFlavorStockForCheckoutItems)(conn, {
+                sucursalId: order.sucursal_retiro_id,
+                items: flavorItems,
                 referencia: `${nextState} orden #${orderId}`,
                 creadoPor,
                 ordenId: orderId,

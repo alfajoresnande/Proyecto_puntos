@@ -42,6 +42,7 @@ router.get("/", async (req, res) => {
   const [rowsRaw] = await pool.query(
     `SELECT id, nombre, descripcion, imagen_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
+            configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
             destacado_home,
             ${
@@ -71,6 +72,8 @@ router.get("/", async (req, res) => {
     puntaje_al_comprar: number | null;
     destacado_home: number;
     tipo_producto: "canje" | "venta" | "mixto";
+    configuracion_tipo: "simple" | "caja_sabores";
+    capacidad_sabores: number | null;
     precio_dinero: number | null;
     precio_puntos: number | null;
     puntos_para_canjear: number | null;
@@ -83,7 +86,57 @@ router.get("/", async (req, res) => {
     permite_retiro_local: number;
   }>;
 
+  if (!rows.length) {
+    res.json([]);
+    return;
+  }
+
+  const allIds = rows.map((row) => row.id);
+  const allPlaceholders = allIds.map(() => "?").join(", ");
+  const [flavorRowsRaw] = await pool.query(
+    `SELECT ps.producto_id, s.id, s.nombre, s.descripcion, s.activo,
+            ${
+              hasSucursalFilter
+                ? "COALESCE((SELECT i.stock_disponible FROM inventario_sabor_sucursal i WHERE i.sabor_id = s.id AND i.sucursal_id = ? LIMIT 1), 0)"
+                : "COALESCE((SELECT SUM(i.stock_disponible) FROM inventario_sabor_sucursal i JOIN sucursales suc ON suc.id = i.sucursal_id AND suc.activo = 1 WHERE i.sabor_id = s.id), 0)"
+            } AS stock_disponible,
+            ${
+              hasSucursalFilter
+                ? "COALESCE((SELECT i.stock_reservado FROM inventario_sabor_sucursal i WHERE i.sabor_id = s.id AND i.sucursal_id = ? LIMIT 1), 0)"
+                : "COALESCE((SELECT SUM(i.stock_reservado) FROM inventario_sabor_sucursal i JOIN sucursales suc ON suc.id = i.sucursal_id AND suc.activo = 1 WHERE i.sabor_id = s.id), 0)"
+            } AS stock_reservado
+     FROM producto_sabores ps
+     JOIN sabores s ON s.id = ps.sabor_id
+     WHERE ps.producto_id IN (${allPlaceholders}) AND ps.activo = 1 AND s.activo = 1
+     ORDER BY ps.producto_id ASC, ps.orden ASC, s.nombre ASC`,
+    hasSucursalFilter ? [sucursalId, sucursalId, ...allIds] : allIds
+  );
+  const flavorRows = flavorRowsRaw as Array<{
+    producto_id: number;
+    id: number;
+    nombre: string;
+    descripcion: string | null;
+    activo: number;
+    stock_disponible: number;
+    stock_reservado: number;
+  }>;
+
+  const flavorMap = new Map<number, typeof flavorRows>();
+  for (const flavor of flavorRows) {
+    const current = flavorMap.get(flavor.producto_id) ?? [];
+    current.push(flavor);
+    flavorMap.set(flavor.producto_id, current);
+  }
+
   const visibleRows = rows.filter((row) => {
+    if (row.configuracion_tipo === "caja_sabores") {
+      const capacity = Number(row.capacidad_sabores ?? 0);
+      const available = (flavorMap.get(row.id) ?? []).reduce(
+        (acc, item) => acc + Math.max(0, Number(item.stock_disponible ?? 0)),
+        0,
+      );
+      return capacity > 0 && available >= capacity;
+    }
     const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
     return !Boolean(row.track_stock) || stockSucursal > 0;
   });
@@ -156,6 +209,8 @@ router.get("/", async (req, res) => {
         puntaje_al_comprar: row.puntaje_al_comprar,
         destacado_home: Boolean(row.destacado_home),
         tipo_producto: row.tipo_producto,
+        configuracion_tipo: row.configuracion_tipo,
+        capacidad_sabores: row.capacidad_sabores === null ? null : Number(row.capacidad_sabores),
         precio_dinero: row.precio_dinero,
         precio_puntos: row.precio_puntos,
         puntos_para_canjear: row.puntos_para_canjear,
@@ -167,6 +222,14 @@ router.get("/", async (req, res) => {
         inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
           sucursal_id: Number(item.sucursal_id),
           sucursal_nombre: item.sucursal_nombre,
+          stock_disponible: Number(item.stock_disponible ?? 0),
+          stock_reservado: Number(item.stock_reservado ?? 0),
+        })),
+        sabores_disponibles: (flavorMap.get(row.id) ?? []).map((item) => ({
+          id: Number(item.id),
+          nombre: item.nombre,
+          descripcion: item.descripcion ?? null,
+          activo: Boolean(item.activo),
           stock_disponible: Number(item.stock_disponible ?? 0),
           stock_reservado: Number(item.stock_reservado ?? 0),
         })),

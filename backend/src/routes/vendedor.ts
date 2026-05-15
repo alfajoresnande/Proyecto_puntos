@@ -10,6 +10,7 @@ import {
   registrarMovimientoPuntos,
 } from "../services/points";
 import { approvePaidOrder } from "../services/orderLifecycle";
+import { registerLocalSale } from "../services/localSales";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -35,6 +36,11 @@ type OrdenVendedorItem = {
   subtotal_puntos: number;
   nombre: string;
   track_stock: number;
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>;
 };
 
 function parseJsonField(value: unknown): unknown {
@@ -104,6 +110,34 @@ async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, 
     orderIds,
   );
 
+  const flavorMap = new Map<number, NonNullable<OrdenVendedorItem["sabores"]>>();
+  if (rows.length) {
+    const itemIds = rows.map((row) => Number(row.id));
+    const itemPlaceholders = itemIds.map(() => "?").join(", ");
+    const flavorRows = await qAll<{
+      orden_item_id: number;
+      sabor_id: number;
+      sabor_nombre: string;
+      cantidad: number;
+    }>(
+      pool,
+      `SELECT orden_item_id, sabor_id, sabor_nombre, cantidad
+       FROM orden_item_sabores
+       WHERE orden_item_id IN (${itemPlaceholders})
+       ORDER BY orden_item_id ASC, id ASC`,
+      itemIds,
+    );
+    for (const flavor of flavorRows) {
+      const current = flavorMap.get(Number(flavor.orden_item_id)) ?? [];
+      current.push({
+        sabor_id: Number(flavor.sabor_id),
+        nombre: flavor.sabor_nombre,
+        cantidad: Number(flavor.cantidad),
+      });
+      flavorMap.set(Number(flavor.orden_item_id), current);
+    }
+  }
+
   for (const row of rows) {
     const orderId = Number(row.orden_id);
     const current = map.get(orderId) ?? [];
@@ -117,6 +151,7 @@ async function getOrdenItemsByOrdenIds(orderIds: number[]): Promise<Map<number, 
       subtotal_dinero: Number(row.subtotal_dinero ?? 0),
       subtotal_puntos: Number(row.subtotal_puntos ?? 0),
       track_stock: Number(row.track_stock ?? 0),
+      sabores: flavorMap.get(Number(row.id)) ?? [],
     });
     map.set(orderId, current);
   }
@@ -163,6 +198,76 @@ router.get("/clientes/buscar", async (req, res, next) => {
 });
 
 // Cargar puntos usando productos del catálogo como referencia
+router.get("/productos-locales", async (_req, res, next) => {
+  try {
+    const productos = await qAll<{
+      id: number;
+      nombre: string;
+      descripcion: string | null;
+      imagen_url: string | null;
+      categoria: string | null;
+      tipo_producto: "venta" | "mixto";
+      configuracion_tipo: "simple" | "caja_sabores";
+      capacidad_sabores: number | null;
+      precio_dinero: number | null;
+      puntaje_al_comprar: number | null;
+      activo: number;
+    }>(
+      pool,
+      `SELECT id, nombre, descripcion, imagen_url, categoria, tipo_producto,
+              configuracion_tipo, capacidad_sabores, precio_dinero,
+              puntaje_al_comprar, activo
+       FROM productos
+       WHERE activo = 1
+         AND tipo_producto IN ('venta', 'mixto')
+         AND COALESCE(precio_dinero, 0) > 0
+       ORDER BY nombre ASC, id ASC`,
+    );
+
+    if (!productos.length) {
+      res.json([]);
+      return;
+    }
+
+    const ids = productos.map((producto) => Number(producto.id));
+    const placeholders = ids.map(() => "?").join(", ");
+    const sabores = await qAll<{
+      producto_id: number;
+      id: number;
+      nombre: string;
+    }>(
+      pool,
+      `SELECT ps.producto_id, s.id, s.nombre
+       FROM producto_sabores ps
+       JOIN sabores s ON s.id = ps.sabor_id
+       WHERE ps.producto_id IN (${placeholders}) AND ps.activo = 1 AND s.activo = 1
+       ORDER BY ps.producto_id ASC, ps.orden ASC, s.nombre ASC`,
+      ids,
+    );
+    const flavorMap = new Map<number, Array<{ id: number; nombre: string }>>();
+    for (const sabor of sabores) {
+      const current = flavorMap.get(Number(sabor.producto_id)) ?? [];
+      current.push({ id: Number(sabor.id), nombre: sabor.nombre });
+      flavorMap.set(Number(sabor.producto_id), current);
+    }
+
+    res.json(productos.map((producto) => {
+      const productFlavors = flavorMap.get(Number(producto.id)) ?? [];
+      return {
+        ...producto,
+        activo: Boolean(producto.activo),
+        precio_dinero: producto.precio_dinero === null ? null : Number(producto.precio_dinero),
+        puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
+        capacidad_sabores: producto.capacidad_sabores === null ? null : Number(producto.capacidad_sabores),
+        sabores: productFlavors,
+        sabor_ids: productFlavors.map((sabor) => sabor.id),
+      };
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
 const cargarSchema = z.object({
   dni: z.string().min(6),
   items: z.array(z.object({
@@ -325,6 +430,55 @@ router.patch("/canje/:codigo", async (req, res, next) => {
   }
 });
 
+const ventaLocalItemSchema = z.object({
+  producto_id: z.number().int().positive(),
+  cantidad: z.number().int().positive().max(200),
+  sabores: z.array(z.object({
+    sabor_id: z.number().int().positive(),
+    cantidad: z.number().int().positive().max(200),
+  })).optional(),
+});
+
+const ventaLocalSchema = z.object({
+  usuario_id: z.number().int().positive(),
+  sucursal_id: z.number().int().positive(),
+  metodo_pago: z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
+  acreditar_puntos: z.boolean().optional().default(false),
+  notas: z.string().max(1000).optional().nullable(),
+  items: z.array(ventaLocalItemSchema).min(1).max(80),
+});
+
+router.post("/ventas-locales", async (req, res, next) => {
+  const parsed = ventaLocalSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await registerLocalSale(conn, {
+      canal: "vendedor",
+      usuarioId: parsed.data.usuario_id,
+      sucursalId: parsed.data.sucursal_id,
+      metodoPago: parsed.data.metodo_pago,
+      acreditarPuntos: parsed.data.acreditar_puntos,
+      notas: parsed.data.notas,
+      items: parsed.data.items,
+      creadoPor: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes", "stats", "puntos"]);
+    res.status(201).json({ ok: true, ...result });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo registrar la venta local." });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/ordenes", async (_req, res, next) => {
   try {
     const rows = await qAll<{
@@ -332,6 +486,7 @@ router.get("/ordenes", async (_req, res, next) => {
       usuario_id: number;
       cliente_nombre: string;
       cliente_email: string;
+      canal: string;
       estado: string;
       tipo_orden: string;
       total_dinero: number;
@@ -350,7 +505,7 @@ router.get("/ordenes", async (_req, res, next) => {
     }>(
       pool,
       `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
-              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
@@ -435,6 +590,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
       cliente_email: string;
       cliente_dni: string | null;
       cliente_telefono: string | null;
+      canal: string;
       estado: string;
       tipo_orden: string;
       total_dinero: number;
@@ -454,7 +610,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
       pool,
       `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
               u.dni AS cliente_dni, u.telefono AS cliente_telefono,
-              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,

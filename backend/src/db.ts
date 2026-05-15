@@ -750,6 +750,190 @@ async function ensureOrderCoreSchema() {
   }
 }
 
+async function ensureSaboresSchema() {
+  const columnExists = async (tableName: string, columnName: string) => {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+       LIMIT 1`,
+      [tableName, columnName],
+    ) as [any[], any[]];
+    return rows.length > 0;
+  };
+
+  const indexExists = async (tableName: string, indexName: string) => {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+       LIMIT 1`,
+      [tableName, indexName],
+    ) as [any[], any[]];
+    return rows.length > 0;
+  };
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS sabores (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(120) NOT NULL,
+      descripcion VARCHAR(300) NULL,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT uq_sabores_nombre UNIQUE (nombre)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS inventario_sabor_sucursal (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      sabor_id INT NOT NULL,
+      sucursal_id INT NOT NULL,
+      stock_disponible INT NOT NULL DEFAULT 0,
+      stock_reservado INT NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_inv_sabor_sabor
+        FOREIGN KEY (sabor_id) REFERENCES sabores(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_inv_sabor_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE CASCADE,
+      CONSTRAINT uq_inv_sabor_sucursal
+        UNIQUE (sabor_id, sucursal_id)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS producto_sabores (
+      producto_id INT NOT NULL,
+      sabor_id INT NOT NULL,
+      orden TINYINT UNSIGNED NOT NULL DEFAULT 1,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (producto_id, sabor_id),
+      CONSTRAINT fk_producto_sabores_producto
+        FOREIGN KEY (producto_id) REFERENCES productos(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_producto_sabores_sabor
+        FOREIGN KEY (sabor_id) REFERENCES sabores(id)
+        ON DELETE RESTRICT
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS carrito_item_sabores (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      carrito_item_id BIGINT UNSIGNED NOT NULL,
+      sabor_id INT NOT NULL,
+      sabor_nombre VARCHAR(120) NOT NULL,
+      cantidad INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_carrito_item_sabores_item
+        FOREIGN KEY (carrito_item_id) REFERENCES carrito_items(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_carrito_item_sabores_sabor
+        FOREIGN KEY (sabor_id) REFERENCES sabores(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT uq_carrito_item_sabor
+        UNIQUE (carrito_item_id, sabor_id)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS orden_item_sabores (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      orden_item_id BIGINT UNSIGNED NOT NULL,
+      sabor_id INT NOT NULL,
+      sabor_nombre VARCHAR(120) NOT NULL,
+      cantidad INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_orden_item_sabores_item
+        FOREIGN KEY (orden_item_id) REFERENCES orden_items(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_orden_item_sabores_sabor
+        FOREIGN KEY (sabor_id) REFERENCES sabores(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT uq_orden_item_sabor
+        UNIQUE (orden_item_id, sabor_id)
+    )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS movimientos_sabor_stock (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      sabor_id INT NOT NULL,
+      sucursal_id INT NULL,
+      orden_id BIGINT UNSIGNED NULL,
+      tipo ENUM('ingreso','reserva','liberacion','descuento','ajuste') NOT NULL,
+      origen ENUM('compra','canje','admin','devolucion') NOT NULL,
+      cantidad INT NOT NULL,
+      descripcion VARCHAR(255) NULL,
+      creado_por INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_mov_sabor_stock_sabor
+        FOREIGN KEY (sabor_id) REFERENCES sabores(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_mov_sabor_stock_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_mov_sabor_stock_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_mov_sabor_stock_creado_por
+        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      INDEX idx_mov_sabor_stock_sabor_fecha (sabor_id, created_at),
+      INDEX idx_mov_sabor_stock_orden (orden_id)
+    )`
+  );
+
+  if (!(await columnExists("productos", "configuracion_tipo"))) {
+    await pool.query(
+      "ALTER TABLE productos ADD COLUMN configuracion_tipo ENUM('simple','caja_sabores') NOT NULL DEFAULT 'simple' AFTER tipo_producto"
+    );
+  }
+
+  if (!(await columnExists("productos", "capacidad_sabores"))) {
+    await pool.query("ALTER TABLE productos ADD COLUMN capacidad_sabores INT NULL AFTER configuracion_tipo");
+  }
+
+  if (!(await columnExists("carrito_items", "config_hash"))) {
+    await pool.query("ALTER TABLE carrito_items ADD COLUMN config_hash CHAR(64) NOT NULL DEFAULT '' AFTER modo_compra");
+  }
+
+  if (await indexExists("carrito_items", "uq_carrito_item_producto_modo")) {
+    try {
+      await pool.query("ALTER TABLE carrito_items DROP INDEX uq_carrito_item_producto_modo");
+    } catch {
+      // Si el indice fue renombrado manualmente, seguimos y creamos el nuevo cuando sea posible.
+    }
+  }
+
+  if (!(await indexExists("carrito_items", "uq_carrito_item_producto_modo_config"))) {
+    await pool.query(
+      "ALTER TABLE carrito_items ADD UNIQUE INDEX uq_carrito_item_producto_modo_config (carrito_id, producto_id, modo_compra, config_hash)"
+    );
+  }
+
+  if (!(await columnExists("orden_items", "config_hash"))) {
+    await pool.query("ALTER TABLE orden_items ADD COLUMN config_hash CHAR(64) NOT NULL DEFAULT '' AFTER modo_compra");
+  }
+
+  if (await indexExists("orden_items", "uq_orden_item_producto_modo")) {
+    try {
+      await pool.query("ALTER TABLE orden_items DROP INDEX uq_orden_item_producto_modo");
+    } catch {
+      // Si el indice fue renombrado manualmente, seguimos y creamos el nuevo cuando sea posible.
+    }
+  }
+
+  if (!(await indexExists("orden_items", "uq_orden_item_producto_modo_config"))) {
+    await pool.query(
+      "ALTER TABLE orden_items ADD UNIQUE INDEX uq_orden_item_producto_modo_config (orden_id, producto_id, modo_compra, config_hash)"
+    );
+  }
+}
+
 async function ensurePagosCheckoutSchema() {
   const [methodRows] = await pool.query(
     `SELECT 1 FROM information_schema.COLUMNS
@@ -973,6 +1157,11 @@ pool
       await ensureOrderCoreSchema();
     } catch (err: any) {
       console.error("⚠️  Migración carrito/ordenes/pagos:", err.message);
+    }
+    try {
+      await ensureSaboresSchema();
+    } catch (err: any) {
+      console.error("Migracion sabores y cajas configurables:", err.message);
     }
     try {
       await ensurePagosCheckoutSchema();

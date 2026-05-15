@@ -1,5 +1,10 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
-import { finalizeStockForCheckoutItems, releaseStockForCheckoutItems } from "./stock";
+import {
+  finalizeFlavorStockForCheckoutItems,
+  finalizeStockForCheckoutItems,
+  releaseFlavorStockForCheckoutItems,
+  releaseStockForCheckoutItems,
+} from "./stock";
 import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
 
 export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
@@ -27,6 +32,12 @@ type OrderStockItemRow = {
   track_stock: number;
 };
 
+type OrderFlavorStockItemRow = {
+  sabor_id: number;
+  cantidad: number;
+  modo_compra: "dinero" | "puntos";
+};
+
 function checkoutStockItems(items: OrderStockItemRow[], descripcion: string) {
   return items
     .filter((item) => Number(item.track_stock ?? 0) === 1)
@@ -36,6 +47,15 @@ function checkoutStockItems(items: OrderStockItemRow[], descripcion: string) {
       origen: item.modo_compra === "dinero" ? ("compra" as const) : ("canje" as const),
       descripcion,
     }));
+}
+
+function checkoutFlavorStockItems(items: OrderFlavorStockItemRow[], descripcion: string) {
+  return items.map((item) => ({
+    sabor_id: Number(item.sabor_id),
+    cantidad: Number(item.cantidad),
+    origen: item.modo_compra === "dinero" ? ("compra" as const) : ("canje" as const),
+    descripcion,
+  }));
 }
 
 export async function getOrderForLifecycle(conn: Queryable, orderId: number): Promise<OrderForLifecycle | undefined> {
@@ -74,6 +94,23 @@ async function getOrderStockItems(conn: Queryable, orderId: number): Promise<Ord
     producto_id: Number(row.producto_id),
     cantidad: Number(row.cantidad),
     track_stock: Number(row.track_stock ?? 0),
+  }));
+}
+
+async function getOrderFlavorStockItems(conn: Queryable, orderId: number): Promise<OrderFlavorStockItemRow[]> {
+  const rows = await qAll<OrderFlavorStockItemRow>(
+    conn,
+    `SELECT ois.sabor_id, ois.cantidad, oi.modo_compra
+     FROM orden_item_sabores ois
+     JOIN orden_items oi ON oi.id = ois.orden_item_id
+     WHERE oi.orden_id = ?
+     ORDER BY oi.id ASC, ois.id ASC`,
+    [orderId],
+  );
+  return rows.map((row) => ({
+    sabor_id: Number(row.sabor_id),
+    cantidad: Number(row.cantidad),
+    modo_compra: row.modo_compra,
   }));
 }
 
@@ -208,10 +245,20 @@ export async function approvePaidOrder(
 
   if (order.sucursal_retiro_id) {
     const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `Pago aprobado orden #${orderId}`);
+    const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Pago aprobado orden #${orderId}`);
     if (items.length) {
       await finalizeStockForCheckoutItems(conn, {
         sucursalId: order.sucursal_retiro_id,
         items,
+        referencia: `orden #${orderId}`,
+        ordenId: orderId,
+        creadoPor,
+      });
+    }
+    if (flavorItems.length) {
+      await finalizeFlavorStockForCheckoutItems(conn, {
+        sucursalId: order.sucursal_retiro_id,
+        items: flavorItems,
         referencia: `orden #${orderId}`,
         ordenId: orderId,
         creadoPor,
@@ -258,10 +305,20 @@ export async function rejectOrExpirePendingOrder(
 
   if (order.sucursal_retiro_id) {
     const items = checkoutStockItems(await getOrderStockItems(conn, orderId), `${nextState} orden #${orderId}`);
+    const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `${nextState} orden #${orderId}`);
     if (items.length) {
       await releaseStockForCheckoutItems(conn, {
         sucursalId: order.sucursal_retiro_id,
         items,
+        referencia: `${nextState} orden #${orderId}`,
+        creadoPor,
+        ordenId: orderId,
+      });
+    }
+    if (flavorItems.length) {
+      await releaseFlavorStockForCheckoutItems(conn, {
+        sucursalId: order.sucursal_retiro_id,
+        items: flavorItems,
         referencia: `${nextState} orden #${orderId}`,
         creadoPor,
         ordenId: orderId,

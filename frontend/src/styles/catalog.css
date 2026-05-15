@@ -4007,6 +4007,63 @@ body.catalogo-background .pagina-page {
   padding: 0.58rem 0.62rem;
 }
 
+.box-flavor-picker {
+  background: #fff8ed;
+  border: 1px solid #eed8bb;
+  border-radius: 18px;
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.box-flavor-picker-head,
+.box-flavor-row {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.box-flavor-picker-head {
+  color: #4a2c1a;
+}
+
+.box-flavor-picker-head span {
+  background: #7a3f15;
+  border-radius: 999px;
+  color: #fff8ed;
+  font-weight: 800;
+  padding: 0.25rem 0.65rem;
+}
+
+.box-flavor-picker-help {
+  color: #8b5a30;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.box-flavor-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.box-flavor-row {
+  background: #fff;
+  border-radius: 14px;
+  padding: 0.62rem;
+}
+
+.box-flavor-row strong,
+.box-flavor-row span {
+  display: block;
+}
+
+.box-flavor-row span {
+  color: #8b5a30;
+  font-size: 0.78rem;
+  margin-top: 0.12rem;
+}
+
 .catalog-redemption-page .product-card-cat,
 .store-page .product-card-cat {
   font-size: 0.6rem;

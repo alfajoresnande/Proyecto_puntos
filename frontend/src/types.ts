@@ -39,6 +39,21 @@ export type Producto = {
   puntaje_al_comprar?: number | null;
   destacado_home?: boolean;
   tipo_producto?: "canje" | "venta" | "mixto";
+  configuracion_tipo?: "simple" | "caja_sabores";
+  capacidad_sabores?: number | null;
+  sabor_ids?: number[];
+  sabores?: Array<{
+    id: number;
+    nombre: string;
+  }>;
+  sabores_disponibles?: Array<{
+    id: number;
+    nombre: string;
+    descripcion?: string | null;
+    activo?: boolean;
+    stock_disponible?: number;
+    stock_reservado?: number;
+  }>;
   precio_dinero?: number | string | null;
   precio_puntos?: number | null;
   puntos_para_canjear?: number | null;

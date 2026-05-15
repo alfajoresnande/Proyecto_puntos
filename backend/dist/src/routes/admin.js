@@ -21,6 +21,7 @@ const stock_1 = require("../services/stock");
 const points_1 = require("../services/points");
 const expirations_1 = require("../services/expirations");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const localSales_1 = require("../services/localSales");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -152,6 +153,22 @@ async function replaceProductImages(conn, productoId, imagenes) {
         await (0, db_1.qRun)(conn, "INSERT INTO producto_imagenes (producto_id, imagen_url, orden) VALUES (?, ?, ?)", [productoId, imagenes[index], index + 1]);
     }
 }
+function normalizeFlavorIds(raw) {
+    const seen = new Set();
+    for (const value of raw ?? []) {
+        const id = Number(value);
+        if (Number.isInteger(id) && id > 0)
+            seen.add(id);
+    }
+    return Array.from(seen);
+}
+async function replaceProductFlavors(conn, productoId, flavorIds) {
+    await (0, db_1.qRun)(conn, "DELETE FROM producto_sabores WHERE producto_id = ?", [productoId]);
+    for (let index = 0; index < flavorIds.length; index += 1) {
+        await (0, db_1.qRun)(conn, `INSERT INTO producto_sabores (producto_id, sabor_id, orden, activo)
+       VALUES (?, ?, ?, 1)`, [productoId, flavorIds[index], index + 1]);
+    }
+}
 async function getCanjeItemsByCanjeIds(canjeIds) {
     const map = new Map();
     if (!canjeIds.length)
@@ -188,16 +205,36 @@ async function getOrdenItemsByOrdenIds(orderIds) {
      JOIN productos p ON p.id = oi.producto_id
      WHERE oi.orden_id IN (${placeholders})
      ORDER BY oi.orden_id ASC, oi.id ASC`, orderIds);
+    const flavorMap = new Map();
+    if (rows.length) {
+        const itemIds = rows.map((row) => Number(row.id));
+        const itemPlaceholders = itemIds.map(() => "?").join(", ");
+        const flavorRows = await (0, db_1.qAll)(db_1.pool, `SELECT orden_item_id, sabor_id, sabor_nombre, cantidad
+       FROM orden_item_sabores
+       WHERE orden_item_id IN (${itemPlaceholders})
+       ORDER BY orden_item_id ASC, id ASC`, itemIds);
+        for (const flavor of flavorRows) {
+            const current = flavorMap.get(Number(flavor.orden_item_id)) ?? [];
+            current.push({
+                sabor_id: Number(flavor.sabor_id),
+                nombre: flavor.sabor_nombre,
+                cantidad: Number(flavor.cantidad),
+            });
+            flavorMap.set(Number(flavor.orden_item_id), current);
+        }
+    }
     for (const row of rows) {
         const list = map.get(Number(row.orden_id)) ?? [];
         list.push({
             ...row,
+            id: Number(row.id),
             orden_id: Number(row.orden_id),
             producto_id: Number(row.producto_id),
             cantidad: Number(row.cantidad),
             subtotal_dinero: Number(row.subtotal_dinero),
             subtotal_puntos: Number(row.subtotal_puntos),
             track_stock: Number(row.track_stock ?? 0),
+            sabores: flavorMap.get(Number(row.id)) ?? [],
         });
         map.set(Number(row.orden_id), list);
     }
@@ -614,9 +651,82 @@ router.patch("/canjes/:id", async (req, res) => {
 // ════════════════════════════════════════════════════════
 //  MOVIMIENTOS (historial global)
 // ════════════════════════════════════════════════════════
+const ventaLocalItemSchema = zod_1.z.object({
+    producto_id: zod_1.z.number().int().positive(),
+    cantidad: zod_1.z.number().int().positive().max(200),
+    sabores: zod_1.z.array(zod_1.z.object({
+        sabor_id: zod_1.z.number().int().positive(),
+        cantidad: zod_1.z.number().int().positive().max(200),
+    })).optional(),
+});
+const ventaLocalSchema = zod_1.z.object({
+    usuario_id: zod_1.z.number().int().positive(),
+    sucursal_id: zod_1.z.number().int().positive(),
+    metodo_pago: zod_1.z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
+    acreditar_puntos: zod_1.z.boolean().optional().default(false),
+    notas: zod_1.z.string().max(1000).optional().nullable(),
+    items: zod_1.z.array(ventaLocalItemSchema).min(1).max(80),
+});
+router.post("/ventas-locales", async (req, res) => {
+    const parsed = ventaLocalSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await (0, localSales_1.registerLocalSale)(conn, {
+            canal: "admin",
+            usuarioId: parsed.data.usuario_id,
+            sucursalId: parsed.data.sucursal_id,
+            metodoPago: parsed.data.metodo_pago,
+            acreditarPuntos: parsed.data.acreditar_puntos,
+            notas: parsed.data.notas,
+            items: parsed.data.items,
+            creadoPor: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "stats", "puntos"]);
+        res.status(201).json({ ok: true, ...result });
+    }
+    catch (err) {
+        await conn.rollback();
+        res.status(400).json({ error: err?.message || "No se pudo registrar la venta local." });
+    }
+    finally {
+        conn.release();
+    }
+});
+router.get("/ventas/export", async (req, res, next) => {
+    try {
+        const rows = await (0, localSales_1.getVentasReporteRows)(db_1.pool, {
+            desde: typeof req.query.desde === "string" ? req.query.desde : null,
+            hasta: typeof req.query.hasta === "string" ? req.query.hasta : null,
+            canal: req.query.canal === "web" || req.query.canal === "admin" || req.query.canal === "vendedor"
+                ? req.query.canal
+                : null,
+            estado: typeof req.query.estado === "string" ? req.query.estado : null,
+        });
+        const formato = typeof req.query.formato === "string" ? req.query.formato.toLowerCase() : "html";
+        const stamp = new Date().toISOString().slice(0, 10);
+        if (formato === "xls" || formato === "excel") {
+            res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
+            res.setHeader("Content-Disposition", `attachment; filename="ventas-${stamp}.xls"`);
+            res.send((0, localSales_1.renderVentasExcelHtml)(rows));
+            return;
+        }
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Content-Disposition", `inline; filename="ventas-${stamp}.html"`);
+        res.send((0, localSales_1.renderVentasPrintableHtml)(rows));
+    }
+    catch (err) {
+        next(err);
+    }
+});
 router.get("/ordenes", async (_req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
-            o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+            o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
             o.direccion_envio_json, o.sucursal_retiro_id,
             s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
             s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
@@ -756,7 +866,18 @@ router.patch("/ordenes/:id", async (req, res) => {
                 origen: item.modo_compra === "dinero" ? "compra" : "canje",
                 descripcion: `Orden #${orderId} -> ${estado}`,
             }));
-            if (stockItems.length) {
+            const flavorItems = await (0, db_1.qAll)(conn, `SELECT ois.sabor_id, ois.cantidad, oi.modo_compra
+         FROM orden_item_sabores ois
+         JOIN orden_items oi ON oi.id = ois.orden_item_id
+         WHERE oi.orden_id = ?
+         ORDER BY oi.id ASC, ois.id ASC`, [orderId]);
+            const flavorStockItems = flavorItems.map((item) => ({
+                sabor_id: Number(item.sabor_id),
+                cantidad: Number(item.cantidad),
+                origen: item.modo_compra === "dinero" ? "compra" : "canje",
+                descripcion: `Orden #${orderId} -> ${estado}`,
+            }));
+            if (stockItems.length || flavorStockItems.length) {
                 // Si ya pasó por approvePaidOrder (estado inicial pendiente_pago y final en paidStates), 
                 // approvePaidOrder ya ejecutó finalizeStockForCheckoutItems. 
                 // No debemos duplicarlo.
@@ -765,22 +886,44 @@ router.patch("/ordenes/:id", async (req, res) => {
                 const shouldReleaseReservedStock = (estado === "cancelada" || estado === "expirada") &&
                     (orden.estado === "pendiente_pago" || orden.estado === "preparada");
                 if (shouldFinalizeStock) {
-                    await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
-                        sucursalId: Number(orden.sucursal_retiro_id),
-                        items: stockItems,
-                        referencia: `orden #${orderId}`,
-                        creadoPor: req.user.id,
-                        ordenId: orderId,
-                    });
+                    if (stockItems.length) {
+                        await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
+                            sucursalId: Number(orden.sucursal_retiro_id),
+                            items: stockItems,
+                            referencia: `orden #${orderId}`,
+                            creadoPor: req.user.id,
+                            ordenId: orderId,
+                        });
+                    }
+                    if (flavorStockItems.length) {
+                        await (0, stock_1.finalizeFlavorStockForCheckoutItems)(conn, {
+                            sucursalId: Number(orden.sucursal_retiro_id),
+                            items: flavorStockItems,
+                            referencia: `orden #${orderId}`,
+                            creadoPor: req.user.id,
+                            ordenId: orderId,
+                        });
+                    }
                 }
                 else if (shouldReleaseReservedStock) {
-                    await (0, stock_1.releaseStockForCheckoutItems)(conn, {
-                        sucursalId: Number(orden.sucursal_retiro_id),
-                        items: stockItems,
-                        referencia: `orden #${orderId}`,
-                        creadoPor: req.user.id,
-                        ordenId: orderId,
-                    });
+                    if (stockItems.length) {
+                        await (0, stock_1.releaseStockForCheckoutItems)(conn, {
+                            sucursalId: Number(orden.sucursal_retiro_id),
+                            items: stockItems,
+                            referencia: `orden #${orderId}`,
+                            creadoPor: req.user.id,
+                            ordenId: orderId,
+                        });
+                    }
+                    if (flavorStockItems.length) {
+                        await (0, stock_1.releaseFlavorStockForCheckoutItems)(conn, {
+                            sucursalId: Number(orden.sucursal_retiro_id),
+                            items: flavorStockItems,
+                            referencia: `orden #${orderId}`,
+                            creadoPor: req.user.id,
+                            ordenId: orderId,
+                        });
+                    }
                 }
             }
         }
@@ -827,11 +970,174 @@ router.get("/movimientos", async (_req, res) => {
      ORDER BY m.created_at DESC LIMIT 500`);
     res.json(rows);
 });
+// Sabores para cajas configurables
+router.get("/sabores", async (_req, res) => {
+    const sabores = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, descripcion, activo, created_at, updated_at
+     FROM sabores
+     ORDER BY nombre ASC, id ASC`);
+    if (!sabores.length) {
+        res.json([]);
+        return;
+    }
+    const ids = sabores.map((sabor) => Number(sabor.id));
+    const placeholders = ids.map(() => "?").join(", ");
+    const inventario = await (0, db_1.qAll)(db_1.pool, `SELECT i.sabor_id, i.sucursal_id, s.nombre AS sucursal_nombre,
+            i.stock_disponible, i.stock_reservado
+     FROM inventario_sabor_sucursal i
+     JOIN sucursales s ON s.id = i.sucursal_id
+     WHERE i.sabor_id IN (${placeholders}) AND s.activo = 1
+     ORDER BY i.sabor_id ASC, s.nombre ASC, s.id ASC`, ids);
+    const inventoryMap = new Map();
+    for (const item of inventario) {
+        const current = inventoryMap.get(Number(item.sabor_id)) ?? [];
+        current.push(item);
+        inventoryMap.set(Number(item.sabor_id), current);
+    }
+    res.json(sabores.map((sabor) => ({
+        ...sabor,
+        activo: Boolean(sabor.activo),
+        inventario_sucursales: (inventoryMap.get(Number(sabor.id)) ?? []).map((item) => ({
+            sucursal_id: Number(item.sucursal_id),
+            sucursal_nombre: item.sucursal_nombre,
+            stock_disponible: Number(item.stock_disponible ?? 0),
+            stock_reservado: Number(item.stock_reservado ?? 0),
+        })),
+    })));
+});
+router.post("/sabores", async (req, res) => {
+    const inventarioSucursalSchema = zod_1.z.object({
+        sucursal_id: zod_1.z.number().int().positive(),
+        stock_disponible: zod_1.z.number().int().min(0),
+    });
+    const schema = zod_1.z.object({
+        nombre: zod_1.z.string().min(1).max(120),
+        descripcion: zod_1.z.string().max(300).optional().nullable(),
+        activo: zod_1.z.boolean().optional(),
+        inventario_sucursales: zod_1.z.array(inventarioSucursalSchema).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO sabores (nombre, descripcion, activo)
+       VALUES (?, ?, ?)`, [
+            parsed.data.nombre.trim(),
+            parsed.data.descripcion?.trim() || null,
+            parsed.data.activo === false ? 0 : 1,
+        ]);
+        await (0, stock_1.initializeInventoryForFlavor)(conn, { saborId: insertId });
+        for (const item of parsed.data.inventario_sucursales ?? []) {
+            await (0, stock_1.adjustFlavorStockBySucursal)(conn, {
+                saborId: insertId,
+                sucursalId: item.sucursal_id,
+                nuevoStockDisponible: item.stock_disponible,
+                descripcion: "Stock inicial de sabor",
+                creadoPor: req.user.id,
+            });
+        }
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["productos", "inventario"]);
+        res.status(201).json({ id: insertId });
+    }
+    catch (error) {
+        await conn.rollback();
+        if (error?.code === "ER_DUP_ENTRY") {
+            res.status(409).json({ error: "Ya existe un sabor con ese nombre." });
+            return;
+        }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+});
+router.put("/sabores/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "Sabor invalido." });
+        return;
+    }
+    const inventarioSucursalSchema = zod_1.z.object({
+        sucursal_id: zod_1.z.number().int().positive(),
+        stock_disponible: zod_1.z.number().int().min(0),
+    });
+    const schema = zod_1.z.object({
+        nombre: zod_1.z.string().min(1).max(120),
+        descripcion: zod_1.z.string().max(300).optional().nullable(),
+        activo: zod_1.z.boolean().optional(),
+        inventario_sucursales: zod_1.z.array(inventarioSucursalSchema).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const { affectedRows } = await (0, db_1.qRun)(conn, `UPDATE sabores
+       SET nombre = ?, descripcion = ?, activo = ?
+       WHERE id = ?`, [
+            parsed.data.nombre.trim(),
+            parsed.data.descripcion?.trim() || null,
+            parsed.data.activo === false ? 0 : 1,
+            id,
+        ]);
+        if (!affectedRows) {
+            await conn.rollback();
+            res.status(404).json({ error: "Sabor no encontrado." });
+            return;
+        }
+        await (0, stock_1.initializeInventoryForFlavor)(conn, { saborId: id });
+        for (const item of parsed.data.inventario_sucursales ?? []) {
+            await (0, stock_1.adjustFlavorStockBySucursal)(conn, {
+                saborId: id,
+                sucursalId: item.sucursal_id,
+                nuevoStockDisponible: item.stock_disponible,
+                descripcion: "Ajuste de stock de sabor",
+                creadoPor: req.user.id,
+            });
+        }
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["productos", "inventario"]);
+        res.json({ ok: true });
+    }
+    catch (error) {
+        await conn.rollback();
+        if (error?.code === "ER_DUP_ENTRY") {
+            res.status(409).json({ error: "Ya existe un sabor con ese nombre." });
+            return;
+        }
+        throw error;
+    }
+    finally {
+        conn.release();
+    }
+});
+router.patch("/sabores/:id/activo", async (req, res) => {
+    const id = Number(req.params.id);
+    const { activo } = req.body;
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "Sabor invalido." });
+        return;
+    }
+    if (typeof activo !== "boolean") {
+        res.status(400).json({ error: "activo debe ser boolean" });
+        return;
+    }
+    await (0, db_1.qRun)(db_1.pool, "UPDATE sabores SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+    (0, realtime_1.emitRealtime)(["productos", "inventario"]);
+    res.json({ ok: true });
+});
 // ════════════════════════════════════════════════════════
 //  PRODUCTOS (ABM completo)
 // ════════════════════════════════════════════════════════
 router.get("/productos", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
             track_stock, permite_envio, permite_retiro_local,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at
@@ -853,15 +1159,30 @@ router.get("/productos", async (_req, res) => {
         current.push(image.imagen_url);
         imageMap.set(image.producto_id, current);
     }
+    const flavorRows = await (0, db_1.qAll)(db_1.pool, `SELECT ps.producto_id, ps.sabor_id, s.nombre, ps.orden
+     FROM producto_sabores ps
+     JOIN sabores s ON s.id = ps.sabor_id
+     WHERE ps.producto_id IN (${placeholders})
+     ORDER BY ps.producto_id ASC, ps.orden ASC, s.nombre ASC`, ids);
+    const flavorMap = new Map();
+    for (const flavor of flavorRows) {
+        const current = flavorMap.get(Number(flavor.producto_id)) ?? [];
+        current.push({ id: Number(flavor.sabor_id), nombre: flavor.nombre });
+        flavorMap.set(Number(flavor.producto_id), current);
+    }
     res.json(rows.map((row) => {
         const imagenes = normalizeProductImages(imageMap.get(row.id), row.imagen_url);
+        const sabores = flavorMap.get(Number(row.id)) ?? [];
         return {
             ...row,
+            capacidad_sabores: row.capacidad_sabores === null ? null : Number(row.capacidad_sabores),
             activo: Boolean(row.activo),
             track_stock: Boolean(row.track_stock),
             permite_envio: Boolean(row.permite_envio),
             permite_retiro_local: Boolean(row.permite_retiro_local),
             destacado_home: Boolean(row.destacado_home),
+            sabor_ids: sabores.map((sabor) => sabor.id),
+            sabores,
             imagenes,
             imagen_url: imagenes[0] ?? null,
         };
@@ -903,6 +1224,9 @@ router.post("/productos", async (req, res) => {
         imagenes: zod_1.z.array(zod_1.z.string().min(1)).max(3).optional().nullable(),
         categoria: zod_1.z.string().max(100).optional().nullable(),
         tipo_producto: zod_1.z.enum(["canje", "venta", "mixto"]).optional(),
+        configuracion_tipo: zod_1.z.enum(["simple", "caja_sabores"]).optional(),
+        capacidad_sabores: zod_1.z.number().int().positive().optional().nullable(),
+        sabor_ids: zod_1.z.array(zod_1.z.number().int().positive()).optional(),
         precio_dinero: zod_1.z.number().positive().optional().nullable(),
         precio_puntos: zod_1.z.number().int().positive().optional().nullable(),
         puntos_para_canjear: zod_1.z.number().int().positive().optional().nullable(),
@@ -921,7 +1245,11 @@ router.post("/productos", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const configuracionTipo = configuracion_tipo ?? "simple";
+    const isCajaSabores = configuracionTipo === "caja_sabores";
+    const flavorIds = normalizeFlavorIds(sabor_ids);
+    const capacidadSaboresFinal = isCajaSabores ? Number(capacidad_sabores ?? 0) : null;
     const inventarioPorSucursal = inventario_sucursales ?? [];
     const stockDisponibleFinal = inventarioPorSucursal.length
         ? inventarioPorSucursal.reduce((acc, item) => acc + item.stock_disponible, 0)
@@ -940,20 +1268,34 @@ router.post("/productos", async (req, res) => {
         res.status(400).json({ error: "Debes indicar un precio en dinero valido para venta/mixto." });
         return;
     }
+    if (isCajaSabores) {
+        if (!capacidadSaboresFinal || capacidadSaboresFinal <= 0) {
+            res.status(400).json({ error: "Indica cuantos alfajores trae la caja." });
+            return;
+        }
+        if (!flavorIds.length) {
+            res.status(400).json({ error: "Selecciona al menos un sabor disponible para esta caja." });
+            return;
+        }
+    }
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        const trackStockFinal = isCajaSabores ? false : (track_stock === undefined ? true : track_stock);
+        const productStockDisponible = isCajaSabores ? 0 : stockDisponibleFinal;
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO productos
-        (nombre, sku, descripcion, imagen_url, categoria, tipo_producto,
+        (nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
          precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
          stock_disponible, stock_reservado, track_stock, permite_envio, permite_retiro_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`, [
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`, [
             nombre,
             sku?.trim() || null,
             descripcion ?? null,
             imageUrls[0] ?? null,
             categoria ?? null,
             tipoProducto,
+            configuracionTipo,
+            capacidadSaboresFinal,
             precioDineroFinal,
             precioPuntosFinal,
             precioPuntosFinal,
@@ -961,17 +1303,18 @@ router.post("/productos", async (req, res) => {
             puntos_acumulables ?? null,
             puntajeComprarFinal,
             destacado_home ? 1 : 0,
-            stockDisponibleFinal,
-            track_stock === undefined ? 1 : (track_stock ? 1 : 0),
+            productStockDisponible,
+            trackStockFinal ? 1 : 0,
             permite_envio ? 1 : 0,
             permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
         ]);
         await replaceProductImages(conn, insertId, imageUrls);
+        await replaceProductFlavors(conn, insertId, isCajaSabores ? flavorIds : []);
         await (0, stock_1.initializeInventoryForProduct)(conn, {
             productoId: insertId,
-            stockDisponibleInicial: inventarioPorSucursal.length ? 0 : stockDisponibleFinal,
+            stockDisponibleInicial: isCajaSabores ? 0 : (inventarioPorSucursal.length ? 0 : stockDisponibleFinal),
         });
-        if ((track_stock ?? true) && inventarioPorSucursal.length) {
+        if (trackStockFinal && inventarioPorSucursal.length) {
             for (const inventario of inventarioPorSucursal) {
                 await (0, stock_1.adjustStockBySucursal)(conn, {
                     productoId: insertId,
@@ -1008,6 +1351,9 @@ router.put("/productos/:id", async (req, res) => {
         imagenes: zod_1.z.array(zod_1.z.string().min(1)).max(3).optional().nullable(),
         categoria: zod_1.z.string().max(100).optional().nullable(),
         tipo_producto: zod_1.z.enum(["canje", "venta", "mixto"]).optional(),
+        configuracion_tipo: zod_1.z.enum(["simple", "caja_sabores"]).optional(),
+        capacidad_sabores: zod_1.z.number().int().positive().optional().nullable(),
+        sabor_ids: zod_1.z.array(zod_1.z.number().int().positive()).optional(),
         precio_dinero: zod_1.z.number().positive().optional().nullable(),
         precio_puntos: zod_1.z.number().int().positive().optional().nullable(),
         puntos_para_canjear: zod_1.z.number().int().positive().optional().nullable(),
@@ -1026,7 +1372,11 @@ router.put("/productos/:id", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const configuracionTipo = configuracion_tipo ?? "simple";
+    const isCajaSabores = configuracionTipo === "caja_sabores";
+    const flavorIds = normalizeFlavorIds(sabor_ids);
+    const capacidadSaboresFinal = isCajaSabores ? Number(capacidad_sabores ?? 0) : null;
     const inventarioPorSucursal = inventario_sucursales ?? [];
     const imageUrls = normalizeProductImages(imagenes, imagen_url);
     const tipoProducto = tipo_producto ?? "canje";
@@ -1042,6 +1392,16 @@ router.put("/productos/:id", async (req, res) => {
         res.status(400).json({ error: "Debes indicar un precio en dinero valido para venta/mixto." });
         return;
     }
+    if (isCajaSabores) {
+        if (!capacidadSaboresFinal || capacidadSaboresFinal <= 0) {
+            res.status(400).json({ error: "Indica cuantos alfajores trae la caja." });
+            return;
+        }
+        if (!flavorIds.length) {
+            res.status(400).json({ error: "Selecciona al menos un sabor disponible para esta caja." });
+            return;
+        }
+    }
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
@@ -1054,9 +1414,10 @@ router.put("/productos/:id", async (req, res) => {
         const stockDisponibleFinal = inventarioPorSucursal.length
             ? inventarioPorSucursal.reduce((acc, item) => acc + item.stock_disponible, 0)
             : stock_disponible ?? Number(current.stock_disponible ?? 0);
-        const trackStockFinal = track_stock === undefined ? Number(current.track_stock ?? 1) === 1 : track_stock;
+        const trackStockFinal = isCajaSabores ? false : (track_stock === undefined ? Number(current.track_stock ?? 1) === 1 : track_stock);
+        const productStockDisponible = isCajaSabores ? 0 : stockDisponibleFinal;
         const { affectedRows } = await (0, db_1.qRun)(conn, `UPDATE productos
-       SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?,
+       SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?, configuracion_tipo=?, capacidad_sabores=?,
            precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?, destacado_home=?,
            stock_disponible=?, track_stock=?, permite_envio=?, permite_retiro_local=?
        WHERE id=?`, [
@@ -1066,6 +1427,8 @@ router.put("/productos/:id", async (req, res) => {
             imageUrls[0] ?? null,
             categoria ?? null,
             tipoProducto,
+            configuracionTipo,
+            capacidadSaboresFinal,
             precioDineroFinal,
             precioPuntosFinal,
             precioPuntosFinal,
@@ -1073,7 +1436,7 @@ router.put("/productos/:id", async (req, res) => {
             puntos_acumulables ?? null,
             puntajeComprarFinal,
             destacado_home ? 1 : 0,
-            stockDisponibleFinal,
+            productStockDisponible,
             trackStockFinal ? 1 : 0,
             permite_envio ? 1 : 0,
             permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
@@ -1085,6 +1448,7 @@ router.put("/productos/:id", async (req, res) => {
             return;
         }
         await replaceProductImages(conn, id, imageUrls);
+        await replaceProductFlavors(conn, id, isCajaSabores ? flavorIds : []);
         if (trackStockFinal && inventarioPorSucursal.length) {
             for (const inventario of inventarioPorSucursal) {
                 await (0, stock_1.adjustStockBySucursal)(conn, {

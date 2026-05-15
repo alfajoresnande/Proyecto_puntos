@@ -82,6 +82,21 @@ type ProductoAdmin = Producto & {
   created_at: string;
 };
 
+type SaborAdmin = {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  activo: boolean;
+  inventario_sucursales?: Array<{
+    sucursal_id: number;
+    sucursal_nombre: string;
+    stock_disponible: number;
+    stock_reservado: number;
+  }>;
+  created_at: string;
+  updated_at: string;
+};
+
 type InventarioSucursal = {
   id: number;
   producto_id: number;
@@ -116,6 +131,7 @@ type OrdenAdmin = {
   usuario_id: number;
   cliente_nombre: string;
   cliente_email: string;
+  canal: "web" | "admin" | "vendedor";
   estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
   total_dinero: number;
@@ -152,6 +168,11 @@ type OrdenAdmin = {
     subtotal_dinero: number;
     subtotal_puntos: number;
     imagen_url: string | null;
+    sabores?: Array<{
+      sabor_id: number;
+      nombre: string;
+      cantidad: number;
+    }>;
   }>;
   pago: {
     estado: string;
@@ -290,6 +311,9 @@ type ProductoForm = {
   descripcion: string;
   categoria: string;
   tipo_producto: "canje" | "venta" | "mixto";
+  configuracion_tipo: "simple" | "caja_sabores";
+  capacidad_sabores: number | null;
+  sabor_ids: number[];
   precio_dinero: number | null;
   puntos_requeridos: number | null;
   puntos_acumulables: number | null;
@@ -323,6 +347,18 @@ type SucursalForm = {
   piso: string;
   localidad: string;
   provincia: string;
+};
+
+type VentaLocalItemDraft = {
+  producto_id: number;
+  nombre: string;
+  cantidad: number;
+  precio_dinero: number;
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>;
 };
 
 type StaticPageSlug = "sobre-nosotros" | "terminos";
@@ -432,6 +468,9 @@ function emptyProductoForm(): ProductoForm {
     descripcion: "",
     categoria: "",
     tipo_producto: "canje",
+    configuracion_tipo: "simple",
+    capacidad_sabores: null,
+    sabor_ids: [],
     precio_dinero: null,
     puntos_requeridos: null,
     puntos_acumulables: null,
@@ -471,9 +510,29 @@ function formatEstadoOrden(estado: string): string {
   return labels[estado] ?? estado.replace(/_/g, " ");
 }
 
+function formatCanalOrden(canal: string): string {
+  const labels: Record<string, string> = {
+    web: "Web",
+    admin: "Local admin",
+    vendedor: "Local vendedor",
+  };
+  return labels[canal] ?? canal;
+}
+
+function formatMetodoPago(metodo?: string | null): string {
+  const labels: Record<string, string> = {
+    cash: "Efectivo",
+    transferencia: "Transferencia",
+    tarjeta: "Tarjeta",
+    qr: "QR",
+    otro: "Otro",
+  };
+  return metodo ? labels[metodo] ?? metodo : "-";
+}
+
 function formatPagoOrden(orden: OrdenAdmin): string {
   if (!orden.pago) return "-";
-  const proveedor = orden.pago.proveedor === "efectivo" ? "Efectivo" : orden.pago.proveedor;
+  const proveedor = orden.pago.proveedor === "local" ? formatMetodoPago(orden.pago.metodo) : orden.pago.proveedor === "efectivo" ? "Efectivo" : orden.pago.proveedor;
   const estado = orden.pago.estado === "iniciado" ? "pendiente" : orden.pago.estado;
   return `${proveedor} / ${estado}`;
 }
@@ -483,6 +542,21 @@ function normalizeImageList(urls: string[]): string[] {
     .map((url) => url.trim())
     .filter((url) => Boolean(url))
     .slice(0, MAX_PRODUCT_IMAGES);
+}
+
+function formatActionError(action: string, error: unknown, detail?: string): string {
+  const rawMessage = error instanceof Error ? error.message.trim() : "";
+  const suffix = detail ? ` ${detail}` : "";
+
+  if (!rawMessage) {
+    return `No se pudo ${action}.${suffix}`;
+  }
+
+  if (rawMessage.includes("No se pudo conectar con el servidor")) {
+    return `No se pudo ${action}. ${rawMessage}${suffix}`;
+  }
+
+  return `No se pudo ${action}. ${rawMessage}${suffix}`;
 }
 
 function productoInventoryPayload(producto: ProductoForm, sucursales: SucursalAdmin[]) {
@@ -495,7 +569,25 @@ function productoInventoryPayload(producto: ProductoForm, sucursales: SucursalAd
     }));
 }
 
+function stockDraftPayload(values: Record<string, number | null>, sucursales: SucursalAdmin[]) {
+  return sucursales
+    .filter((sucursal) => sucursal.activo)
+    .map((sucursal) => ({
+      sucursal_id: sucursal.id,
+      stock_disponible: Math.max(0, Number(values[String(sucursal.id)] ?? 0) || 0),
+    }));
+}
+
 function inventoryDraftFromRows(rows: InventarioSucursal[] | undefined, sucursales: SucursalAdmin[]): Record<string, number | null> {
+  const draft: Record<string, number | null> = {};
+  for (const sucursal of sucursales) {
+    const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
+    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : null;
+  }
+  return draft;
+}
+
+function flavorInventoryDraftFromRows(rows: SaborAdmin["inventario_sucursales"] | undefined, sucursales: SucursalAdmin[]): Record<string, number | null> {
   const draft: Record<string, number | null> = {};
   for (const sucursal of sucursales) {
     const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
@@ -519,7 +611,7 @@ function ProductInventoryEditor({
 }: {
   sucursales: SucursalAdmin[];
   values: Record<string, number | null>;
-  rows?: InventarioSucursal[];
+  rows?: Array<{ sucursal_id: number; stock_disponible: number; stock_reservado: number }>;
   tip: string;
   onChangeStock: (sucursalId: number, stock: number | null) => void;
 }) {
@@ -684,6 +776,7 @@ export function Admin() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
+  const token = useAuthStore((state) => state.token);
   const isSuperAdmin = user?.rol === "superAdmin";
   const panelBasePath = isSuperAdmin ? "/superadmin" : "/admin";
   const isSuperAdminPanel = location.pathname.startsWith("/superadmin");
@@ -703,6 +796,11 @@ export function Admin() {
   const [nuevoProducto, setNuevoProducto] = useState<ProductoForm>(emptyProductoForm());
   const [editId, setEditId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<ProductoForm>(emptyProductoForm());
+  const [nuevoSabor, setNuevoSabor] = useState<{ nombre: string; descripcion: string; inventario_sucursales: Record<string, number | null> }>({
+    nombre: "",
+    descripcion: "",
+    inventario_sucursales: {},
+  });
   const [editUsuarioId, setEditUsuarioId] = useState<number | null>(null);
   const [editUsuarioDraft, setEditUsuarioDraft] = useState<UsuarioEditDraft>({
     nombre: "",
@@ -751,6 +849,18 @@ export function Admin() {
   const [ordenesFiltroEstado, setOrdenesFiltroEstado] = useState("");
   const [ordenesFiltroEntrega, setOrdenesFiltroEntrega] = useState("");
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
+  const [ventaLocalClienteId, setVentaLocalClienteId] = useState("");
+  const [ventaLocalSucursalId, setVentaLocalSucursalId] = useState("");
+  const [ventaLocalMetodoPago, setVentaLocalMetodoPago] = useState("cash");
+  const [ventaLocalAcreditarPuntos, setVentaLocalAcreditarPuntos] = useState(false);
+  const [ventaLocalProductoId, setVentaLocalProductoId] = useState("");
+  const [ventaLocalCantidad, setVentaLocalCantidad] = useState("1");
+  const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, number>>({});
+  const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
+  const [ventaLocalNotas, setVentaLocalNotas] = useState("");
+  const [ventasExportCanal, setVentasExportCanal] = useState("");
+  const [ventasExportDesde, setVentasExportDesde] = useState("");
+  const [ventasExportHasta, setVentasExportHasta] = useState("");
   const [inventarioDraft, setInventarioDraft] = useState<Record<string, string>>({});
   const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
   const [inventarioFiltroProducto, setInventarioFiltroProducto] = useState("");
@@ -827,6 +937,13 @@ export function Admin() {
   const productosQuery = useQuery({
     queryKey: ["admin", "productos"],
     queryFn: () => api.get<ProductoAdmin[]>("/admin/productos"),
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+  });
+
+  const saboresQuery = useQuery({
+    queryKey: ["admin", "sabores"],
+    queryFn: () => api.get<SaborAdmin[]>("/admin/sabores"),
     refetchInterval: 10000,
     refetchIntervalInBackground: true,
   });
@@ -993,6 +1110,7 @@ export function Admin() {
   }
 
   const productos = productosQuery.data ?? [];
+  const sabores = saboresQuery.data ?? [];
   const inventario = inventarioQuery.data ?? [];
   const movimientosStock = movimientosStockQuery.data ?? [];
   const ordenes = ordenesQuery.data ?? [];
@@ -1022,6 +1140,41 @@ export function Admin() {
     }
     return map;
   }, [inventario]);
+  const clientesVentaLocal = useMemo(
+    () => usuarios.filter((usuario) => usuario.rol === "cliente" && usuario.activo),
+    [usuarios],
+  );
+  const productosVentaLocal = useMemo(
+    () =>
+      productos.filter((producto) =>
+        producto.activo &&
+        (producto.tipo_producto === "venta" || producto.tipo_producto === "mixto") &&
+        Number(producto.precio_dinero ?? 0) > 0
+      ),
+    [productos],
+  );
+  const productoVentaLocalSeleccionado = useMemo(
+    () => productosVentaLocal.find((producto) => Number(producto.id) === Number(ventaLocalProductoId)) ?? null,
+    [productosVentaLocal, ventaLocalProductoId],
+  );
+  const saboresVentaLocalProducto = useMemo(() => {
+    if (!productoVentaLocalSeleccionado || productoVentaLocalSeleccionado.configuracion_tipo !== "caja_sabores") return [];
+    const ids = new Set(
+      (productoVentaLocalSeleccionado.sabor_ids?.length
+        ? productoVentaLocalSeleccionado.sabor_ids
+        : productoVentaLocalSeleccionado.sabores?.map((sabor) => sabor.id) ?? []
+      ).map(Number),
+    );
+    return sabores.filter((sabor) => sabor.activo && ids.has(Number(sabor.id)));
+  }, [productoVentaLocalSeleccionado, sabores]);
+  const totalSaboresVentaLocal = useMemo(
+    () => Object.values(ventaLocalSabores).reduce((acc, value) => acc + (Number(value) || 0), 0),
+    [ventaLocalSabores],
+  );
+  const totalVentaLocal = useMemo(
+    () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
+    [ventaLocalItems],
+  );
 
   async function enableBrowserAlerts() {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -1196,6 +1349,7 @@ export function Admin() {
         String(orden.id),
         orden.cliente_nombre,
         orden.cliente_email,
+        orden.canal,
         orden.estado,
         orden.tipo_orden,
         orden.sucursal_nombre || "",
@@ -1345,7 +1499,13 @@ export function Admin() {
       }
       setAdminHint("Imagen cargada. Puedes arrastrar otra foto o guardar el producto.");
     } catch (error) {
-      setErrMsg((error as Error).message);
+      setErrMsg(
+        formatActionError(
+          "subir la imagen",
+          error,
+          "Si estabas en desarrollo, confirma que el backend responda en http://localhost:4000 y que la imagen no haya sido bloqueada por tamaño o formato."
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -1382,6 +1542,81 @@ export function Admin() {
     setEditDraft((prev) => ({ ...prev, imagenes: prev.imagenes.filter((_, idx) => idx !== index) }));
   }
 
+  function toggleSaborProducto(target: "nuevo" | "edit", saborId: number) {
+    const update = (prev: ProductoForm): ProductoForm => {
+      const exists = prev.sabor_ids.includes(saborId);
+      return {
+        ...prev,
+        sabor_ids: exists ? prev.sabor_ids.filter((id) => id !== saborId) : [...prev.sabor_ids, saborId],
+      };
+    };
+    if (target === "nuevo") setNuevoProducto(update);
+    else setEditDraft(update);
+  }
+
+  async function crearSabor() {
+    setErrMsg("");
+    setOkMsg("");
+    if (!nuevoSabor.nombre.trim()) {
+      setErrMsg("El nombre del sabor es obligatorio.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: "/admin/sabores",
+        body: {
+          nombre: nuevoSabor.nombre.trim(),
+          descripcion: nuevoSabor.descripcion.trim() || null,
+          activo: true,
+          inventario_sucursales: stockDraftPayload(nuevoSabor.inventario_sucursales, sucursales),
+        },
+      });
+      setNuevoSabor({ nombre: "", descripcion: "", inventario_sucursales: {} });
+      setOkMsg("Sabor creado correctamente.");
+      await refreshQueries([["admin", "sabores"], ["productos"]]);
+    } catch (error) {
+      setErrMsg(formatActionError("crear el sabor", error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function actualizarStockSabor(sabor: SaborAdmin, sucursalId: number, stock: number) {
+    const draft = flavorInventoryDraftFromRows(sabor.inventario_sucursales, sucursales);
+    draft[String(sucursalId)] = Math.max(0, Number(stock) || 0);
+    try {
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: `/admin/sabores/${sabor.id}`,
+        body: {
+          nombre: sabor.nombre,
+          descripcion: sabor.descripcion ?? null,
+          activo: sabor.activo,
+          inventario_sucursales: stockDraftPayload(draft, sucursales),
+        },
+      });
+      await refreshQueries([["admin", "sabores"], ["productos"]]);
+    } catch (error) {
+      setErrMsg(formatActionError("actualizar el stock del sabor", error));
+    }
+  }
+
+  async function toggleSaborActivo(sabor: SaborAdmin) {
+    setErrMsg("");
+    try {
+      await commandMutation.mutateAsync({
+        method: "patch",
+        path: `/admin/sabores/${sabor.id}/activo`,
+        body: { activo: !sabor.activo },
+      });
+      await refreshQueries([["admin", "sabores"], ["admin", "productos"], ["productos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    }
+  }
+
   async function crearProducto() {
     setErrMsg("");
     setOkMsg("");
@@ -1399,6 +1634,16 @@ export function Admin() {
       setErrMsg("El precio de venta debe ser mayor a 0.");
       return;
     }
+    if (nuevoProducto.configuracion_tipo === "caja_sabores") {
+      if (!nuevoProducto.capacidad_sabores || nuevoProducto.capacidad_sabores <= 0) {
+        setErrMsg("Indica cuantos alfajores trae la caja.");
+        return;
+      }
+      if (!nuevoProducto.sabor_ids.length) {
+        setErrMsg("Selecciona al menos un sabor para la caja.");
+        return;
+      }
+    }
 
     setBusy(true);
     try {
@@ -1414,13 +1659,16 @@ export function Admin() {
           descripcion: nuevoProducto.descripcion || null,
           categoria: nuevoProducto.categoria || null,
           tipo_producto: nuevoProducto.tipo_producto,
+          configuracion_tipo: nuevoProducto.configuracion_tipo,
+          capacidad_sabores: nuevoProducto.configuracion_tipo === "caja_sabores" ? Number(nuevoProducto.capacidad_sabores) : null,
+          sabor_ids: nuevoProducto.configuracion_tipo === "caja_sabores" ? nuevoProducto.sabor_ids : [],
           precio_dinero: nuevoProducto.tipo_producto === "venta" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.precio_dinero) : null,
           puntos_requeridos: Number(nuevoProducto.puntos_requeridos),
           puntos_para_canjear: nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.puntos_requeridos) : null,
           puntos_acumulables: nuevoProducto.puntos_acumulables ? Number(nuevoProducto.puntos_acumulables) : null,
           puntaje_al_comprar: nuevoProducto.puntaje_al_comprar ? Number(nuevoProducto.puntaje_al_comprar) : null,
           destacado_home: nuevoProducto.destacado_home,
-          track_stock: nuevoProducto.track_stock,
+          track_stock: nuevoProducto.configuracion_tipo === "caja_sabores" ? false : nuevoProducto.track_stock,
           permite_envio: nuevoProducto.permite_envio,
           permite_retiro_local: nuevoProducto.permite_retiro_local,
           inventario_sucursales: productoInventoryPayload(nuevoProducto, sucursales),
@@ -1433,7 +1681,13 @@ export function Admin() {
       setOkMsg("Producto creado correctamente.");
       await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "stats"], ["productos"], ["home", "productos"]]);
     } catch (error) {
-      setErrMsg((error as Error).message);
+      setErrMsg(
+        formatActionError(
+          "crear el producto",
+          error,
+          "Revisa nombre, precios, puntos y que la API de admin esté disponible antes de volver a intentar."
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -1447,6 +1701,9 @@ export function Admin() {
       descripcion: producto.descripcion || "",
       categoria: producto.categoria || "",
       tipo_producto: producto.tipo_producto ?? "canje",
+      configuracion_tipo: producto.configuracion_tipo ?? "simple",
+      capacidad_sabores: producto.capacidad_sabores ?? null,
+      sabor_ids: producto.sabor_ids ?? producto.sabores?.map((sabor) => sabor.id) ?? [],
       precio_dinero: producto.precio_dinero === null || producto.precio_dinero === undefined ? null : Number(producto.precio_dinero),
       puntos_requeridos: producto.puntos_para_canjear ?? producto.precio_puntos ?? producto.puntos_requeridos,
       puntos_acumulables: producto.puntos_acumulables,
@@ -1471,6 +1728,16 @@ export function Admin() {
       setErrMsg("El precio de venta debe ser mayor a 0.");
       return;
     }
+    if (editDraft.configuracion_tipo === "caja_sabores") {
+      if (!editDraft.capacidad_sabores || editDraft.capacidad_sabores <= 0) {
+        setErrMsg("Indica cuantos alfajores trae la caja.");
+        return;
+      }
+      if (!editDraft.sabor_ids.length) {
+        setErrMsg("Selecciona al menos un sabor para la caja.");
+        return;
+      }
+    }
     setBusy(true);
     try {
       const imagenes = normalizeImageList(editDraft.imagenes);
@@ -1485,13 +1752,16 @@ export function Admin() {
           descripcion: editDraft.descripcion || null,
           categoria: editDraft.categoria || null,
           tipo_producto: editDraft.tipo_producto,
+          configuracion_tipo: editDraft.configuracion_tipo,
+          capacidad_sabores: editDraft.configuracion_tipo === "caja_sabores" ? Number(editDraft.capacidad_sabores) : null,
+          sabor_ids: editDraft.configuracion_tipo === "caja_sabores" ? editDraft.sabor_ids : [],
           precio_dinero: editDraft.tipo_producto === "venta" || editDraft.tipo_producto === "mixto" ? Number(editDraft.precio_dinero) : null,
           puntos_requeridos: Number(editDraft.puntos_requeridos),
           puntos_para_canjear: editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto" ? Number(editDraft.puntos_requeridos) : null,
           puntos_acumulables: editDraft.puntos_acumulables ? Number(editDraft.puntos_acumulables) : null,
           puntaje_al_comprar: editDraft.puntaje_al_comprar ? Number(editDraft.puntaje_al_comprar) : null,
           destacado_home: editDraft.destacado_home,
-          track_stock: editDraft.track_stock,
+          track_stock: editDraft.configuracion_tipo === "caja_sabores" ? false : editDraft.track_stock,
           permite_envio: editDraft.permite_envio,
           permite_retiro_local: editDraft.permite_retiro_local,
           inventario_sucursales: productoInventoryPayload(editDraft, sucursales),
@@ -1504,7 +1774,13 @@ export function Admin() {
       setOkMsg("Producto actualizado.");
       await refreshQueries([["admin", "productos"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["productos"], ["home", "productos"]]);
     } catch (error) {
-      setErrMsg((error as Error).message);
+      setErrMsg(
+        formatActionError(
+          "guardar el producto",
+          error,
+          "Si el error fue de red, verifica backend, proxy de Vite y permisos del origen actual."
+        )
+      );
     } finally {
       setBusy(false);
     }
@@ -1577,6 +1853,137 @@ export function Admin() {
       });
       setOkMsg(`Orden #${id} actualizada a ${formatEstadoOrden(estado)}.`);
       await refreshQueries([["admin", "ordenes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resetVentaLocalProductoDraft() {
+    setVentaLocalProductoId("");
+    setVentaLocalCantidad("1");
+    setVentaLocalSabores({});
+  }
+
+  function agregarItemVentaLocal() {
+    setErrMsg("");
+    const producto = productoVentaLocalSeleccionado;
+    if (!producto) {
+      setErrMsg("Selecciona un producto para agregar a la venta local.");
+      return;
+    }
+    const cantidad = Number(ventaLocalCantidad);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setErrMsg("La cantidad debe ser un numero entero mayor a 0.");
+      return;
+    }
+
+    const saboresItem = producto.configuracion_tipo === "caja_sabores"
+      ? saboresVentaLocalProducto
+          .map((sabor) => ({
+            sabor_id: sabor.id,
+            nombre: sabor.nombre,
+            cantidad: Number(ventaLocalSabores[String(sabor.id)] ?? 0) || 0,
+          }))
+          .filter((sabor) => sabor.cantidad > 0)
+      : [];
+    if (producto.configuracion_tipo === "caja_sabores") {
+      const capacidad = Number(producto.capacidad_sabores ?? 0);
+      if (totalSaboresVentaLocal !== capacidad) {
+        setErrMsg(`Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+        return;
+      }
+    }
+
+    setVentaLocalItems((prev) => [
+      ...prev,
+      {
+        producto_id: producto.id,
+        nombre: producto.nombre,
+        cantidad,
+        precio_dinero: Number(producto.precio_dinero ?? 0),
+        sabores: saboresItem,
+      },
+    ]);
+    resetVentaLocalProductoDraft();
+  }
+
+  async function registrarVentaLocal() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!ventaLocalClienteId) throw new Error("Selecciona un cliente para la venta local.");
+      if (!ventaLocalSucursalId) throw new Error("Selecciona una sucursal para la venta local.");
+      if (!ventaLocalItems.length) throw new Error("Agrega al menos un producto a la venta local.");
+
+      const result = await commandMutation.mutateAsync({
+        method: "post",
+        path: "/admin/ventas-locales",
+        body: {
+          usuario_id: Number(ventaLocalClienteId),
+          sucursal_id: Number(ventaLocalSucursalId),
+          metodo_pago: ventaLocalMetodoPago,
+          acreditar_puntos: ventaLocalAcreditarPuntos,
+          notas: ventaLocalNotas.trim() || undefined,
+          items: ventaLocalItems.map((item) => ({
+            producto_id: item.producto_id,
+            cantidad: item.cantidad,
+            sabores: item.sabores?.map((sabor) => ({
+              sabor_id: sabor.sabor_id,
+              cantidad: sabor.cantidad,
+            })),
+          })),
+        },
+      }) as { ordenId?: number };
+      setVentaLocalItems([]);
+      setVentaLocalNotas("");
+      setOkMsg(`Venta local registrada${result.ordenId ? ` como orden #${result.ordenId}` : ""}. No se desconto stock web.`);
+      await refreshQueries([["admin", "ordenes"], ["admin", "movimientos"], ["admin", "usuarios"], ["admin", "stats"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function descargarVentas(formato: "html" | "xls") {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      const params = new URLSearchParams({ formato });
+      if (ventasExportCanal) params.set("canal", ventasExportCanal);
+      if (ventasExportDesde) params.set("desde", ventasExportDesde);
+      if (ventasExportHasta) params.set("hasta", ventasExportHasta);
+      if (ordenesFiltroEstado) params.set("estado", ordenesFiltroEstado);
+
+      const headers = new Headers();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
+        credentials: "include",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error || "No se pudo exportar ventas.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      if (formato === "html") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `ventas-${new Date().toISOString().slice(0, 10)}.xls`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setOkMsg(formato === "html" ? "Reporte listo para imprimir o guardar como PDF." : "Excel generado correctamente.");
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -2867,6 +3274,76 @@ export function Admin() {
 
           {tab === "productos" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Sabores de alfajores" />
+
+              <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+                <p className="adm-inline-tip">
+                  Carga los sabores una sola vez y luego usalos en productos tipo Caja configurable. El stock se descuenta por sabor.
+                </p>
+                <div className="adm-form-grid">
+                  <div className="adm-field">
+                    <label className="adm-label">Nombre del sabor</label>
+                    <input
+                      className="adm-input"
+                      placeholder="Ej: Chocolate, Maicena, Coco"
+                      value={nuevoSabor.nombre}
+                      onChange={(event) => setNuevoSabor((prev) => ({ ...prev, nombre: event.target.value }))}
+                    />
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Descripcion</label>
+                    <input
+                      className="adm-input"
+                      value={nuevoSabor.descripcion}
+                      onChange={(event) => setNuevoSabor((prev) => ({ ...prev, descripcion: event.target.value }))}
+                    />
+                  </div>
+                </div>
+                <ProductInventoryEditor
+                  sucursales={sucursales}
+                  values={nuevoSabor.inventario_sucursales}
+                  tip="Stock disponible de este sabor por sucursal. Las cajas personalizadas usan este stock."
+                  onChangeStock={(sucursalId, stock) =>
+                    setNuevoSabor((prev) => ({
+                      ...prev,
+                      inventario_sucursales: {
+                        ...prev.inventario_sucursales,
+                        [String(sucursalId)]: stock,
+                      },
+                    }))
+                  }
+                />
+                <button className="adm-btn-primary" disabled={busy} onClick={crearSabor}>
+                  {busy ? "Creando..." : "Crear sabor"}
+                </button>
+                <div className="adm-product-options">
+                  {sabores.map((sabor) => (
+                    <div key={sabor.id} className="adm-check-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", width: "100%" }}>
+                        <strong>{sabor.nombre}</strong>
+                        <button className={sabor.activo ? "adm-btn-danger" : "adm-btn-success"} onClick={() => toggleSaborActivo(sabor)}>
+                          {sabor.activo ? "Desactivar" : "Activar"}
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        {(sabor.inventario_sucursales ?? []).map((row) => (
+                          <label key={`${sabor.id}-${row.sucursal_id}`} style={{ display: "grid", gap: "0.2rem", minWidth: "150px" }}>
+                            <span>{row.sucursal_nombre} ({row.stock_reservado} reservado)</span>
+                            <input
+                              className="adm-input"
+                              type="number"
+                              min={row.stock_reservado}
+                              defaultValue={row.stock_disponible}
+                              onBlur={(event) => void actualizarStockSabor(sabor, row.sucursal_id, Number(event.target.value))}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <SectionTitle title="Nuevo producto" />
 
               <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
@@ -2940,7 +3417,53 @@ export function Admin() {
                   </label>
                 </div>
 
-                {nuevoProducto.track_stock ? (
+                <div className="admin-card admin-card-padded" style={{ background: "#fffaf2", gap: "0.8rem" }}>
+                  <label className="adm-check-row">
+                    <input
+                      type="checkbox"
+                      checked={nuevoProducto.configuracion_tipo === "caja_sabores"}
+                      onChange={(event) =>
+                        setNuevoProducto((prev) => ({
+                          ...prev,
+                          configuracion_tipo: event.target.checked ? "caja_sabores" : "simple",
+                          track_stock: event.target.checked ? false : prev.track_stock,
+                        }))
+                      }
+                    />
+                    Es una caja configurable por sabores
+                  </label>
+                  {nuevoProducto.configuracion_tipo === "caja_sabores" ? (
+                    <>
+                      <div className="adm-field">
+                        <label className="adm-label">Cantidad de alfajores por caja</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="adm-input"
+                          value={nuevoProducto.capacidad_sabores ?? ""}
+                          onChange={(event) => setNuevoProducto((prev) => ({ ...prev, capacidad_sabores: event.target.value ? Number(event.target.value) : null }))}
+                        />
+                      </div>
+                      <div className="adm-field">
+                        <label className="adm-label">Sabores permitidos</label>
+                        <div className="adm-product-options">
+                          {sabores.map((sabor) => (
+                            <label key={sabor.id} className="adm-check-row">
+                              <input
+                                type="checkbox"
+                                checked={nuevoProducto.sabor_ids.includes(sabor.id)}
+                                onChange={() => toggleSaborProducto("nuevo", sabor.id)}
+                              />
+                              {sabor.nombre}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+
+                {nuevoProducto.track_stock && nuevoProducto.configuracion_tipo !== "caja_sabores" ? (
                   <ProductInventoryEditor
                     sucursales={sucursales}
                     values={nuevoProducto.inventario_sucursales}
@@ -3155,7 +3678,53 @@ export function Admin() {
                           </label>
                         </div>
 
-                        {editDraft.track_stock ? (
+                        <div className="admin-card admin-card-padded" style={{ background: "#fffaf2", gap: "0.8rem" }}>
+                          <label className="adm-check-row">
+                            <input
+                              type="checkbox"
+                              checked={editDraft.configuracion_tipo === "caja_sabores"}
+                              onChange={(event) =>
+                                setEditDraft((prev) => ({
+                                  ...prev,
+                                  configuracion_tipo: event.target.checked ? "caja_sabores" : "simple",
+                                  track_stock: event.target.checked ? false : prev.track_stock,
+                                }))
+                              }
+                            />
+                            Es una caja configurable por sabores
+                          </label>
+                          {editDraft.configuracion_tipo === "caja_sabores" ? (
+                            <>
+                              <div className="adm-field">
+                                <FieldLabel text="Cantidad de alfajores por caja" tip="Ej: 3 o 6. El cliente debera elegir exactamente esa cantidad de sabores." />
+                                <input
+                                  type="number"
+                                  min={1}
+                                  className="adm-input"
+                                  value={editDraft.capacidad_sabores ?? ""}
+                                  onChange={(event) => setEditDraft((prev) => ({ ...prev, capacidad_sabores: event.target.value ? Number(event.target.value) : null }))}
+                                />
+                              </div>
+                              <div className="adm-field">
+                                <FieldLabel text="Sabores permitidos" tip="Estos sabores aparecen como opciones al personalizar la caja." />
+                                <div className="adm-product-options">
+                                  {sabores.map((sabor) => (
+                                    <label key={sabor.id} className="adm-check-row">
+                                      <input
+                                        type="checkbox"
+                                        checked={editDraft.sabor_ids.includes(sabor.id)}
+                                        onChange={() => toggleSaborProducto("edit", sabor.id)}
+                                      />
+                                      {sabor.nombre}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+
+                        {editDraft.track_stock && editDraft.configuracion_tipo !== "caja_sabores" ? (
                           <ProductInventoryEditor
                             sucursales={sucursales}
                             values={editDraft.inventario_sucursales}
@@ -3233,6 +3802,11 @@ export function Admin() {
                           <p className="admin-producto-sub">
                             Stock: {producto.track_stock === false ? "Sin control" : `${producto.stock_disponible ?? 0} disp. / ${producto.stock_reservado ?? 0} reservado`}
                           </p>
+                          {producto.configuracion_tipo === "caja_sabores" ? (
+                            <p className="admin-producto-sub">
+                              Caja configurable: {producto.capacidad_sabores ?? 0} alfajores | Sabores: {producto.sabores?.map((sabor) => sabor.nombre).join(", ") || "Sin sabores"}
+                            </p>
+                          ) : null}
                           {(producto.puntaje_al_comprar ?? 0) > 0 ? (
                             <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
                               Suma: {producto.puntaje_al_comprar} pts
@@ -3386,6 +3960,129 @@ export function Admin() {
           {tab === "ordenes" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Compras y reservas" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <div>
+                  <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>Registrar venta local</h3>
+                  <p className="adm-inline-tip" style={{ margin: 0 }}>
+                    Se guarda como venta interna para reportes, pero no descuenta stock web ni stock de sabores.
+                  </p>
+                </div>
+                <div className="adm-form-grid">
+                  <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
+                    <option value="">Cliente</option>
+                    {clientesVentaLocal.map((cliente) => (
+                      <option key={cliente.id} value={cliente.id}>
+                        {cliente.nombre} - {cliente.dni || cliente.email}
+                      </option>
+                    ))}
+                  </select>
+                  <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
+                    <option value="">Sucursal</option>
+                    {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                      <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                    ))}
+                  </select>
+                  <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
+                    <option value="cash">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="qr">QR</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                  <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700 }}>
+                  <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
+                  Acreditar puntos de compra al cliente
+                </label>
+                <div className="adm-form-grid">
+                  <select
+                    className="adm-input"
+                    value={ventaLocalProductoId}
+                    onChange={(event) => {
+                      setVentaLocalProductoId(event.target.value);
+                      setVentaLocalSabores({});
+                    }}
+                  >
+                    <option value="">Producto</option>
+                    {productosVentaLocal.map((producto) => (
+                      <option key={producto.id} value={producto.id}>
+                        {producto.nombre} - {formatMoney(producto.precio_dinero)}
+                      </option>
+                    ))}
+                  </select>
+                  <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
+                  <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
+                    Agregar producto
+                  </button>
+                </div>
+                {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+                  <div className="adm-inline-points-box">
+                    <p className="adm-inline-points-title">
+                      Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{productoVentaLocalSeleccionado.capacidad_sabores ?? 0} por caja
+                    </p>
+                    <div className="adm-form-grid">
+                      {saboresVentaLocalProducto.map((sabor) => (
+                        <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
+                          {sabor.nombre}
+                          <input
+                            className="adm-input"
+                            type="number"
+                            min={0}
+                            value={ventaLocalSabores[String(sabor.id)] ?? 0}
+                            onChange={(event) => {
+                              const value = Math.max(0, Number(event.target.value) || 0);
+                              setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Producto</th>
+                        <th>Cantidad</th>
+                        <th>Sabores</th>
+                        <th>Subtotal</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ventaLocalItems.length === 0 ? (
+                        <tr><td colSpan={5}><div className="adm-empty">Aun no agregaste productos a la venta local.</div></td></tr>
+                      ) : null}
+                      {ventaLocalItems.map((item, index) => (
+                        <tr key={`${item.producto_id}-${index}`}>
+                          <td>{item.nombre}</td>
+                          <td>{item.cantidad}</td>
+                          <td>{item.sabores?.length ? item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ") : "-"}</td>
+                          <td>{formatMoney(item.precio_dinero * item.cantidad)}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="adm-btn-danger"
+                              onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
+                            >
+                              Quitar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                  <strong>Total venta local: {formatMoney(totalVentaLocal)}</strong>
+                  <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
+                    {busy ? "Registrando..." : "Registrar venta local"}
+                  </button>
+                </div>
+              </div>
+
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
                 <div className="adm-form-grid">
                   <input className="adm-input" placeholder="Buscar por cliente, orden, estado o pago..." value={busquedaOrdenes} onChange={(event) => setBusquedaOrdenes(event.target.value)} />
@@ -3411,6 +4108,29 @@ export function Admin() {
                 <p className="adm-inline-tip">Pago y preparacion van separados: primero pagada, luego preparada/enviada/entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.</p>
               </div>
 
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Exportar ventas</h3>
+                <div className="adm-form-grid">
+                  <select className="adm-input" value={ventasExportCanal} onChange={(event) => setVentasExportCanal(event.target.value)}>
+                    <option value="">Web + locales</option>
+                    <option value="web">Solo web</option>
+                    <option value="admin">Solo local admin</option>
+                    <option value="vendedor">Solo local vendedor</option>
+                  </select>
+                  <input className="adm-input" type="date" value={ventasExportDesde} onChange={(event) => setVentasExportDesde(event.target.value)} />
+                  <input className="adm-input" type="date" value={ventasExportHasta} onChange={(event) => setVentasExportHasta(event.target.value)} />
+                  <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("html")} disabled={busy}>
+                    PDF / imprimir
+                  </button>
+                  <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("xls")} disabled={busy}>
+                    Excel
+                  </button>
+                </div>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  El PDF abre una vista imprimible para guardar como PDF. Excel descarga un archivo .xls compatible.
+                </p>
+              </div>
+
               <div className="admin-card">
                 <div className="admin-table-wrap">
                   <table className="admin-table">
@@ -3418,6 +4138,7 @@ export function Admin() {
                       <tr>
                         <th>Orden</th>
                         <th>Cliente</th>
+                        <th>Canal</th>
                         <th>Tipo</th>
                         <th>Total</th>
                         <th>Entrega</th>
@@ -3428,7 +4149,7 @@ export function Admin() {
                     </thead>
                     <tbody>
                       {ordenesPagina.length === 0 ? (
-                        <tr><td colSpan={8}><div className="adm-empty">No hay compras para mostrar.</div></td></tr>
+                        <tr><td colSpan={9}><div className="adm-empty">No hay compras para mostrar.</div></td></tr>
                       ) : null}
                       {ordenesPagina.map((orden) => (
                         <Fragment key={orden.id}>
@@ -3443,6 +4164,7 @@ export function Admin() {
                             <br />
                             <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.cliente_email}</span>
                           </td>
+                          <td>{formatCanalOrden(orden.canal)}</td>
                           <td>{orden.tipo_orden} ({orden.total_unidades} u.)</td>
                           <td>
                             {formatMoney(orden.total_dinero)}
@@ -3484,16 +4206,23 @@ export function Admin() {
                         </tr>
                         {ordenExpandidaId === orden.id ? (
                           <tr>
-                            <td colSpan={8}>
+                            <td colSpan={9}>
                               <div className="adm-inline-points-box">
                                 <p className="adm-inline-points-title">Detalle pedido #{orden.id}</p>
                                 <div className="adm-form-grid">
                                   <div>
                                     <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>Productos</p>
                                     {(orden.items ?? []).map((item) => (
-                                      <p key={`${orden.id}-${item.producto_id}-${item.modo_compra}`} style={{ margin: "0.15rem 0", color: "#4A2C1A" }}>
-                                        {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? formatMoney(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
-                                      </p>
+                                      <div key={`${orden.id}-${item.producto_id}-${item.modo_compra}-${item.nombre}`} style={{ margin: "0.15rem 0", color: "#4A2C1A" }}>
+                                        <p style={{ margin: 0 }}>
+                                          {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? formatMoney(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
+                                        </p>
+                                        {item.sabores?.length ? (
+                                          <p style={{ margin: "0.1rem 0 0", color: "#8B5A30", fontSize: "0.85rem" }}>
+                                            {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
+                                          </p>
+                                        ) : null}
+                                      </div>
                                     ))}
                                   </div>
                                   <div>

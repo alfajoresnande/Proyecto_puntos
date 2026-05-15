@@ -198,7 +198,7 @@ async function getActiveCartId(conn, usuarioId) {
     return existing?.id ? Number(existing.id) : null;
 }
 async function getProductoForCart(conn, productoId) {
-    const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, tipo_producto, precio_dinero,
+    const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
             COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo,
             track_stock, imagen_url, puntaje_al_comprar
      FROM productos
@@ -209,6 +209,8 @@ async function getProductoForCart(conn, productoId) {
     return {
         ...producto,
         activo: Number(producto.activo ?? 0),
+        configuracion_tipo: producto.configuracion_tipo ?? "simple",
+        capacidad_sabores: producto.capacidad_sabores === null ? null : Number(producto.capacidad_sabores),
         precio_dinero: producto.precio_dinero === null ? null : Number(producto.precio_dinero),
         precio_puntos_effectivo: producto.precio_puntos_effectivo === null ? null : Number(producto.precio_puntos_effectivo),
         track_stock: Number(producto.track_stock ?? 0),
@@ -235,6 +237,76 @@ function validateProductoForMode(producto, modoCompra) {
         }
     }
 }
+function normalizeFlavorSelection(items) {
+    const grouped = new Map();
+    for (const item of items ?? []) {
+        const saborId = Number(item.sabor_id);
+        const cantidad = Number(item.cantidad);
+        if (!Number.isInteger(saborId) || saborId <= 0)
+            continue;
+        if (!Number.isInteger(cantidad) || cantidad <= 0)
+            continue;
+        grouped.set(saborId, (grouped.get(saborId) ?? 0) + cantidad);
+    }
+    return Array.from(grouped.entries())
+        .map(([sabor_id, cantidad]) => ({ sabor_id, cantidad }))
+        .sort((a, b) => a.sabor_id - b.sabor_id);
+}
+function buildFlavorConfigHash(productoId, sabores) {
+    if (!sabores.length)
+        return "";
+    const signature = sabores.map((item) => `${item.sabor_id}:${item.cantidad}`).join("|");
+    return crypto_1.default.createHash("sha256").update(`${productoId}|${signature}`).digest("hex");
+}
+async function validateFlavorSelectionForProduct(conn, { producto, sabores, cantidadCajas, sucursalId, }) {
+    const isCajaSabores = producto.configuracion_tipo === "caja_sabores";
+    if (!isCajaSabores) {
+        if (sabores.length) {
+            throw new HttpError(400, "Este producto no permite seleccion de sabores.");
+        }
+        return [];
+    }
+    const capacidad = Number(producto.capacidad_sabores ?? 0);
+    if (!capacidad || capacidad <= 0) {
+        throw new HttpError(400, `La caja ${producto.nombre} no tiene capacidad configurada.`);
+    }
+    const totalSeleccionado = sabores.reduce((acc, item) => acc + item.cantidad, 0);
+    if (totalSeleccionado !== capacidad) {
+        throw new HttpError(400, `Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+    }
+    const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, sucursalId ?? null);
+    if (!sucursalSeleccionada) {
+        throw new HttpError(400, "Selecciona una sucursal para validar stock de sabores.");
+    }
+    const allowedRows = await (0, db_1.qAll)(conn, `SELECT s.id, s.nombre, s.activo,
+            COALESCE(i.stock_disponible, 0) AS stock_disponible
+     FROM producto_sabores ps
+     JOIN sabores s ON s.id = ps.sabor_id
+     LEFT JOIN inventario_sabor_sucursal i ON i.sabor_id = s.id AND i.sucursal_id = ?
+     WHERE ps.producto_id = ? AND ps.activo = 1
+     ORDER BY ps.orden ASC, s.nombre ASC`, [sucursalSeleccionada.id, producto.id]);
+    const allowed = new Map(allowedRows.map((row) => [Number(row.id), row]));
+    const detalles = [];
+    for (const item of sabores) {
+        const row = allowed.get(item.sabor_id);
+        if (!row || Number(row.activo ?? 0) !== 1) {
+            throw new HttpError(400, "Uno de los sabores elegidos no esta disponible para esta caja.");
+        }
+        const needed = item.cantidad * cantidadCajas;
+        const available = Number(row.stock_disponible ?? 0);
+        if (available < needed) {
+            throw new HttpError(400, available > 0
+                ? `Solo hay ${available} unidades disponibles del sabor ${row.nombre} en la sucursal seleccionada.`
+                : `No hay stock disponible del sabor ${row.nombre} en la sucursal seleccionada.`);
+        }
+        detalles.push({
+            sabor_id: Number(row.id),
+            nombre: row.nombre,
+            cantidad: needed,
+        });
+    }
+    return detalles;
+}
 async function assertCartQuantityWithinStock(conn, { producto, cantidad, sucursalId, }) {
     if (!producto.track_stock)
         return;
@@ -254,26 +326,49 @@ async function assertCartQuantityWithinStock(conn, { producto, cantidad, sucursa
     }
 }
 async function getCarritoItems(conn, usuarioId) {
-    const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra,
+    const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra, ci.config_hash,
             ci.precio_dinero_unit, ci.precio_puntos_unit, ci.puntaje_al_comprar_unitario, ci.subtotal_dinero, ci.subtotal_puntos,
-            p.nombre, p.tipo_producto, p.imagen_url, p.track_stock, p.permite_envio
+            p.nombre, p.tipo_producto, p.configuracion_tipo, p.capacidad_sabores, p.imagen_url, p.track_stock, p.permite_envio
      FROM carrito_items ci
      JOIN carritos c ON c.id = ci.carrito_id
      JOIN productos p ON p.id = ci.producto_id
      WHERE c.usuario_id = ? AND c.estado = 'activo'
      ORDER BY ci.created_at ASC, ci.id ASC`, [usuarioId]);
+    const flavorMap = new Map();
+    if (rows.length) {
+        const ids = rows.map((row) => Number(row.id));
+        const placeholders = ids.map(() => "?").join(", ");
+        const flavorRows = await (0, db_1.qAll)(conn, `SELECT carrito_item_id, sabor_id, sabor_nombre, cantidad
+       FROM carrito_item_sabores
+       WHERE carrito_item_id IN (${placeholders})
+       ORDER BY carrito_item_id ASC, id ASC`, ids);
+        for (const flavor of flavorRows) {
+            const current = flavorMap.get(Number(flavor.carrito_item_id)) ?? [];
+            current.push({
+                sabor_id: Number(flavor.sabor_id),
+                nombre: flavor.sabor_nombre,
+                cantidad: Number(flavor.cantidad),
+            });
+            flavorMap.set(Number(flavor.carrito_item_id), current);
+        }
+    }
     return rows.map((row) => ({
         ...row,
+        id: Number(row.id),
         carrito_id: Number(row.carrito_id),
         producto_id: Number(row.producto_id),
         cantidad: Number(row.cantidad),
+        config_hash: row.config_hash ?? "",
         precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
         precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
         puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
         subtotal_dinero: Number(row.subtotal_dinero),
         subtotal_puntos: Number(row.subtotal_puntos),
+        configuracion_tipo: row.configuracion_tipo ?? "simple",
+        capacidad_sabores: row.capacidad_sabores === null ? null : Number(row.capacidad_sabores),
         track_stock: Number(row.track_stock ?? 0),
         permite_envio: Number(row.permite_envio ?? 0),
+        sabores: flavorMap.get(Number(row.id)) ?? [],
     }));
 }
 const shippingAddressSchema = zod_1.z.object({
@@ -311,7 +406,7 @@ function parseJsonField(value) {
     }
 }
 async function getOrdenItems(conn, ordenId) {
-    const rows = await (0, db_1.qAll)(conn, `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra,
+    const rows = await (0, db_1.qAll)(conn, `SELECT oi.id, oi.orden_id, oi.producto_id, oi.cantidad, oi.modo_compra, oi.config_hash,
             oi.precio_dinero_unit, oi.precio_puntos_unit, oi.subtotal_dinero, oi.subtotal_puntos,
             oi.puntaje_al_comprar_unitario,
             p.nombre, p.imagen_url, p.track_stock
@@ -319,17 +414,38 @@ async function getOrdenItems(conn, ordenId) {
      JOIN productos p ON p.id = oi.producto_id
      WHERE oi.orden_id = ?
      ORDER BY oi.id ASC`, [ordenId]);
+    const flavorMap = new Map();
+    if (rows.length) {
+        const ids = rows.map((row) => Number(row.id));
+        const placeholders = ids.map(() => "?").join(", ");
+        const flavorRows = await (0, db_1.qAll)(conn, `SELECT orden_item_id, sabor_id, sabor_nombre, cantidad
+       FROM orden_item_sabores
+       WHERE orden_item_id IN (${placeholders})
+       ORDER BY orden_item_id ASC, id ASC`, ids);
+        for (const flavor of flavorRows) {
+            const current = flavorMap.get(Number(flavor.orden_item_id)) ?? [];
+            current.push({
+                sabor_id: Number(flavor.sabor_id),
+                nombre: flavor.sabor_nombre,
+                cantidad: Number(flavor.cantidad),
+            });
+            flavorMap.set(Number(flavor.orden_item_id), current);
+        }
+    }
     return rows.map((row) => ({
         ...row,
+        id: Number(row.id),
         orden_id: Number(row.orden_id),
         producto_id: Number(row.producto_id),
         cantidad: Number(row.cantidad),
+        config_hash: row.config_hash ?? "",
         precio_dinero_unit: row.precio_dinero_unit === null ? null : Number(row.precio_dinero_unit),
         precio_puntos_unit: row.precio_puntos_unit === null ? null : Number(row.precio_puntos_unit),
         subtotal_dinero: Number(row.subtotal_dinero),
         subtotal_puntos: Number(row.subtotal_puntos),
         puntaje_al_comprar_unitario: row.puntaje_al_comprar_unitario === null ? null : Number(row.puntaje_al_comprar_unitario),
         track_stock: Number(row.track_stock ?? 0),
+        sabores: flavorMap.get(Number(row.id)) ?? [],
     }));
 }
 async function getOrderReceiptConfig(conn = db_1.pool) {
@@ -874,6 +990,10 @@ router.post("/carrito/items", async (req, res) => {
         cantidad: zod_1.z.number().int().positive().max(100),
         modo_compra: zod_1.z.literal("dinero"),
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
+        sabores: zod_1.z.array(zod_1.z.object({
+            sabor_id: zod_1.z.number().int().positive(),
+            cantidad: zod_1.z.number().int().positive(),
+        })).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -881,6 +1001,7 @@ router.post("/carrito/items", async (req, res) => {
         return;
     }
     const { producto_id, cantidad, modo_compra, sucursal_id } = parsed.data;
+    const saboresSeleccionados = normalizeFlavorSelection(parsed.data.sabores);
     const usuarioId = req.user.id;
     const conn = await db_1.pool.getConnection();
     try {
@@ -888,14 +1009,21 @@ router.post("/carrito/items", async (req, res) => {
         const carritoId = await ensureActiveCart(conn, usuarioId);
         const producto = await getProductoForCart(conn, producto_id);
         validateProductoForMode(producto, modo_compra);
+        const configHash = buildFlavorConfigHash(producto_id, saboresSeleccionados);
         const existente = await (0, db_1.qOne)(conn, `SELECT id, cantidad
        FROM carrito_items
-       WHERE carrito_id = ? AND producto_id = ? AND modo_compra = ?
-       LIMIT 1`, [carritoId, producto_id, modo_compra]);
+       WHERE carrito_id = ? AND producto_id = ? AND modo_compra = ? AND config_hash = ?
+       LIMIT 1`, [carritoId, producto_id, modo_compra, configHash]);
         const nuevaCantidad = Number(existente?.cantidad ?? 0) + cantidad;
         if (nuevaCantidad > 200) {
             throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
         }
+        const saboresDetalle = await validateFlavorSelectionForProduct(conn, {
+            producto,
+            sabores: saboresSeleccionados,
+            cantidadCajas: nuevaCantidad,
+            sucursalId: sucursal_id ?? null,
+        });
         await assertCartQuantityWithinStock(conn, {
             producto,
             cantidad: nuevaCantidad,
@@ -910,11 +1038,20 @@ router.post("/carrito/items", async (req, res) => {
          SET cantidad = ?, precio_dinero_unit = ?, precio_puntos_unit = ?,
              subtotal_dinero = ?, subtotal_puntos = ?, puntaje_al_comprar_unitario = ?
          WHERE id = ?`, [nuevaCantidad, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0, Number(existente.id)]);
+            await (0, db_1.qRun)(conn, "DELETE FROM carrito_item_sabores WHERE carrito_item_id = ?", [Number(existente.id)]);
+            for (const sabor of saboresDetalle) {
+                await (0, db_1.qRun)(conn, `INSERT INTO carrito_item_sabores (carrito_item_id, sabor_id, sabor_nombre, cantidad)
+           VALUES (?, ?, ?, ?)`, [Number(existente.id), sabor.sabor_id, sabor.nombre, sabor.cantidad]);
+            }
         }
         else {
-            await (0, db_1.qRun)(conn, `INSERT INTO carrito_items
-          (carrito_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [carritoId, producto_id, nuevaCantidad, modo_compra, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0]);
+            const inserted = await (0, db_1.qRun)(conn, `INSERT INTO carrito_items
+          (carrito_id, producto_id, cantidad, modo_compra, config_hash, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [carritoId, producto_id, nuevaCantidad, modo_compra, configHash, precioDineroUnit, precioPuntosUnit, subtotalDinero, subtotalPuntos, producto.puntaje_al_comprar ?? 0]);
+            for (const sabor of saboresDetalle) {
+                await (0, db_1.qRun)(conn, `INSERT INTO carrito_item_sabores (carrito_item_id, sabor_id, sabor_nombre, cantidad)
+           VALUES (?, ?, ?, ?)`, [inserted.insertId, sabor.sabor_id, sabor.nombre, sabor.cantidad]);
+            }
         }
         await (0, db_1.qRun)(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carritoId]);
         await conn.commit();
@@ -950,9 +1087,10 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        const item = await (0, db_1.qOne)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra, ci.cantidad
+        const item = await (0, db_1.qOne)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra, ci.cantidad, ci.config_hash, p.configuracion_tipo
        FROM carrito_items ci
        JOIN carritos c ON c.id = ci.carrito_id
+       JOIN productos p ON p.id = ci.producto_id
        WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
        LIMIT 1`, [itemId, req.user.id]);
         if (!item) {
@@ -962,6 +1100,9 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
         }
         if (item.modo_compra !== "dinero") {
             throw new HttpError(400, "Este endpoint solo modifica items del carrito de tienda.");
+        }
+        if (item.config_hash || item.configuracion_tipo === "caja_sabores") {
+            throw new HttpError(400, "Para cambiar una caja personalizada, elimina el item y vuelve a elegir los sabores.");
         }
         const producto = await getProductoForCart(conn, Number(item.producto_id));
         validateProductoForMode(producto, item.modo_compra);
@@ -1078,7 +1219,7 @@ router.post("/checkout/preview", async (req, res) => {
         }
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
         const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
-        const requiereStock = items.some((item) => Number(item.track_stock) === 1);
+        const requiereStock = items.some((item) => Number(item.track_stock) === 1 || (item.sabores?.length ?? 0) > 0);
         if (requiereStock && !sucursalSeleccionada) {
             throw new HttpError(400, "Debes seleccionar una sucursal para validar stock.");
         }
@@ -1105,6 +1246,18 @@ router.post("/checkout/preview", async (req, res) => {
                 stockDisponibleSucursal = Number(inv?.stock_disponible ?? 0);
                 if (stockDisponibleSucursal < item.cantidad) {
                     stockIssues.push(`${item.nombre}: no hay stock suficiente en la sucursal seleccionada.`);
+                }
+            }
+            if ((item.sabores?.length ?? 0) > 0 && sucursalSeleccionada) {
+                for (const sabor of item.sabores ?? []) {
+                    const invSabor = await (0, db_1.qOne)(conn, `SELECT stock_disponible
+             FROM inventario_sabor_sucursal
+             WHERE sabor_id = ? AND sucursal_id = ?
+             LIMIT 1`, [sabor.sabor_id, sucursalSeleccionada.id]);
+                    const disponibleSabor = Number(invSabor?.stock_disponible ?? 0);
+                    if (disponibleSabor < Number(sabor.cantidad ?? 0)) {
+                        stockIssues.push(`${item.nombre} (${sabor.nombre}): no hay stock suficiente en la sucursal seleccionada.`);
+                    }
                 }
             }
             const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
@@ -1199,7 +1352,7 @@ router.post("/checkout/confirm", async (req, res) => {
         const usuario = await (0, db_1.qOne)(conn, "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ?", [req.user.id]);
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
         const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
-        const requiereStock = items.some((item) => Number(item.track_stock) === 1);
+        const requiereStock = items.some((item) => Number(item.track_stock) === 1 || (item.sabores?.length ?? 0) > 0);
         if (requiereStock && !sucursalSeleccionada) {
             throw new HttpError(400, "Debes seleccionar una sucursal para confirmar la orden.");
         }
@@ -1225,6 +1378,7 @@ router.post("/checkout/confirm", async (req, res) => {
                 producto_id: Number(item.producto_id),
                 cantidad: Number(item.cantidad),
                 modo_compra: item.modo_compra,
+                config_hash: item.config_hash ?? "",
                 precio_dinero_unit: precioDineroUnit,
                 precio_puntos_unit: precioPuntosUnit,
                 subtotal_dinero: toMoney((precioDineroUnit ?? 0) * Number(item.cantidad)),
@@ -1232,6 +1386,7 @@ router.post("/checkout/confirm", async (req, res) => {
                 track_stock: Number(item.track_stock ?? 0),
                 puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,
                 nombre: item.nombre,
+                sabores: item.sabores ?? [],
             });
         }
         const totalDinero = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
@@ -1277,21 +1432,38 @@ router.post("/checkout/confirm", async (req, res) => {
                 creadoPor: req.user.id,
                 ordenId: Number(ordenId),
             });
+            await (0, stock_1.reserveFlavorStockForCheckoutItems)(conn, {
+                sucursalId: sucursalSeleccionada.id,
+                items: itemsNormalizados.flatMap((item) => item.sabores.map((sabor) => ({
+                    sabor_id: sabor.sabor_id,
+                    cantidad: sabor.cantidad,
+                    origen: "compra",
+                    descripcion: `Reserva orden #${ordenId}`,
+                }))),
+                referencia: `orden #${ordenId}`,
+                creadoPor: req.user.id,
+                ordenId: Number(ordenId),
+            });
         }
         for (const item of itemsNormalizados) {
-            await (0, db_1.qRun)(conn, `INSERT INTO orden_items
-          (orden_id, producto_id, cantidad, modo_compra, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+            const insertedItem = await (0, db_1.qRun)(conn, `INSERT INTO orden_items
+          (orden_id, producto_id, cantidad, modo_compra, config_hash, precio_dinero_unit, precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
                 ordenId,
                 item.producto_id,
                 item.cantidad,
                 item.modo_compra,
+                item.config_hash,
                 item.precio_dinero_unit,
                 item.precio_puntos_unit,
                 item.subtotal_dinero,
                 item.subtotal_puntos,
                 item.puntaje_al_comprar_unitario,
             ]);
+            for (const sabor of item.sabores) {
+                await (0, db_1.qRun)(conn, `INSERT INTO orden_item_sabores (orden_item_id, sabor_id, sabor_nombre, cantidad)
+           VALUES (?, ?, ?, ?)`, [insertedItem.insertId, sabor.sabor_id, sabor.nombre, sabor.cantidad]);
+            }
         }
         let checkoutUrl = null;
         let paymentStatus = null;

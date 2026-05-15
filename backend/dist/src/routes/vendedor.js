@@ -7,6 +7,7 @@ const auth_1 = require("../auth");
 const realtime_1 = require("../realtime");
 const points_1 = require("../services/points");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const localSales_1 = require("../services/localSales");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
 function parseJsonField(value) {
@@ -59,6 +60,24 @@ async function getOrdenItemsByOrdenIds(orderIds) {
      JOIN productos p ON p.id = oi.producto_id
      WHERE oi.orden_id IN (${orderIds.map(() => "?").join(", ")})
      ORDER BY oi.orden_id ASC, oi.id ASC`, orderIds);
+    const flavorMap = new Map();
+    if (rows.length) {
+        const itemIds = rows.map((row) => Number(row.id));
+        const itemPlaceholders = itemIds.map(() => "?").join(", ");
+        const flavorRows = await (0, db_1.qAll)(db_1.pool, `SELECT orden_item_id, sabor_id, sabor_nombre, cantidad
+       FROM orden_item_sabores
+       WHERE orden_item_id IN (${itemPlaceholders})
+       ORDER BY orden_item_id ASC, id ASC`, itemIds);
+        for (const flavor of flavorRows) {
+            const current = flavorMap.get(Number(flavor.orden_item_id)) ?? [];
+            current.push({
+                sabor_id: Number(flavor.sabor_id),
+                nombre: flavor.sabor_nombre,
+                cantidad: Number(flavor.cantidad),
+            });
+            flavorMap.set(Number(flavor.orden_item_id), current);
+        }
+    }
     for (const row of rows) {
         const orderId = Number(row.orden_id);
         const current = map.get(orderId) ?? [];
@@ -72,6 +91,7 @@ async function getOrdenItemsByOrdenIds(orderIds) {
             subtotal_dinero: Number(row.subtotal_dinero ?? 0),
             subtotal_puntos: Number(row.subtotal_puntos ?? 0),
             track_stock: Number(row.track_stock ?? 0),
+            sabores: flavorMap.get(Number(row.id)) ?? [],
         });
         map.set(orderId, current);
     }
@@ -115,6 +135,50 @@ router.get("/clientes/buscar", async (req, res, next) => {
     }
 });
 // Cargar puntos usando productos del catálogo como referencia
+router.get("/productos-locales", async (_req, res, next) => {
+    try {
+        const productos = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, descripcion, imagen_url, categoria, tipo_producto,
+              configuracion_tipo, capacidad_sabores, precio_dinero,
+              puntaje_al_comprar, activo
+       FROM productos
+       WHERE activo = 1
+         AND tipo_producto IN ('venta', 'mixto')
+         AND COALESCE(precio_dinero, 0) > 0
+       ORDER BY nombre ASC, id ASC`);
+        if (!productos.length) {
+            res.json([]);
+            return;
+        }
+        const ids = productos.map((producto) => Number(producto.id));
+        const placeholders = ids.map(() => "?").join(", ");
+        const sabores = await (0, db_1.qAll)(db_1.pool, `SELECT ps.producto_id, s.id, s.nombre
+       FROM producto_sabores ps
+       JOIN sabores s ON s.id = ps.sabor_id
+       WHERE ps.producto_id IN (${placeholders}) AND ps.activo = 1 AND s.activo = 1
+       ORDER BY ps.producto_id ASC, ps.orden ASC, s.nombre ASC`, ids);
+        const flavorMap = new Map();
+        for (const sabor of sabores) {
+            const current = flavorMap.get(Number(sabor.producto_id)) ?? [];
+            current.push({ id: Number(sabor.id), nombre: sabor.nombre });
+            flavorMap.set(Number(sabor.producto_id), current);
+        }
+        res.json(productos.map((producto) => {
+            const productFlavors = flavorMap.get(Number(producto.id)) ?? [];
+            return {
+                ...producto,
+                activo: Boolean(producto.activo),
+                precio_dinero: producto.precio_dinero === null ? null : Number(producto.precio_dinero),
+                puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
+                capacidad_sabores: producto.capacidad_sabores === null ? null : Number(producto.capacidad_sabores),
+                sabores: productFlavors,
+                sabor_ids: productFlavors.map((sabor) => sabor.id),
+            };
+        }));
+    }
+    catch (err) {
+        next(err);
+    }
+});
 const cargarSchema = zod_1.z.object({
     dni: zod_1.z.string().min(6),
     items: zod_1.z.array(zod_1.z.object({
@@ -269,10 +333,57 @@ router.patch("/canje/:codigo", async (req, res, next) => {
         conn.release();
     }
 });
+const ventaLocalItemSchema = zod_1.z.object({
+    producto_id: zod_1.z.number().int().positive(),
+    cantidad: zod_1.z.number().int().positive().max(200),
+    sabores: zod_1.z.array(zod_1.z.object({
+        sabor_id: zod_1.z.number().int().positive(),
+        cantidad: zod_1.z.number().int().positive().max(200),
+    })).optional(),
+});
+const ventaLocalSchema = zod_1.z.object({
+    usuario_id: zod_1.z.number().int().positive(),
+    sucursal_id: zod_1.z.number().int().positive(),
+    metodo_pago: zod_1.z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
+    acreditar_puntos: zod_1.z.boolean().optional().default(false),
+    notas: zod_1.z.string().max(1000).optional().nullable(),
+    items: zod_1.z.array(ventaLocalItemSchema).min(1).max(80),
+});
+router.post("/ventas-locales", async (req, res, next) => {
+    const parsed = ventaLocalSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await (0, localSales_1.registerLocalSale)(conn, {
+            canal: "vendedor",
+            usuarioId: parsed.data.usuario_id,
+            sucursalId: parsed.data.sucursal_id,
+            metodoPago: parsed.data.metodo_pago,
+            acreditarPuntos: parsed.data.acreditar_puntos,
+            notas: parsed.data.notas,
+            items: parsed.data.items,
+            creadoPor: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "stats", "puntos"]);
+        res.status(201).json({ ok: true, ...result });
+    }
+    catch (err) {
+        await conn.rollback();
+        res.status(400).json({ error: err?.message || "No se pudo registrar la venta local." });
+    }
+    finally {
+        conn.release();
+    }
+});
 router.get("/ordenes", async (_req, res, next) => {
     try {
         const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
-              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
@@ -342,7 +453,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
     try {
         const orden = await (0, db_1.qOne)(db_1.pool, `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
               u.dni AS cliente_dni, u.telefono AS cliente_telefono,
-              o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,

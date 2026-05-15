@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.adjustFlavorStockBySucursal = adjustFlavorStockBySucursal;
+exports.initializeInventoryForFlavor = initializeInventoryForFlavor;
 exports.reserveStockForCanje = reserveStockForCanje;
 exports.releaseReservedStockForCanje = releaseReservedStockForCanje;
 exports.finalizeReservedStockForCanje = finalizeReservedStockForCanje;
@@ -7,6 +9,9 @@ exports.adjustStockBySucursal = adjustStockBySucursal;
 exports.initializeInventoryForProduct = initializeInventoryForProduct;
 exports.getCanjeItemsStock = getCanjeItemsStock;
 exports.reserveStockForCheckoutItems = reserveStockForCheckoutItems;
+exports.reserveFlavorStockForCheckoutItems = reserveFlavorStockForCheckoutItems;
+exports.releaseFlavorStockForCheckoutItems = releaseFlavorStockForCheckoutItems;
+exports.finalizeFlavorStockForCheckoutItems = finalizeFlavorStockForCheckoutItems;
 exports.releaseStockForCheckoutItems = releaseStockForCheckoutItems;
 exports.finalizeStockForCheckoutItems = finalizeStockForCheckoutItems;
 const db_1 = require("../db");
@@ -26,6 +31,11 @@ async function ensureInventarioRow(conn, productoId, sucursalId) {
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`, [productoId, sucursalId, initialDisponible, initialReservado]);
 }
+async function ensureInventarioSaborRow(conn, saborId, sucursalId) {
+    await (0, db_1.qRun)(conn, `INSERT INTO inventario_sabor_sucursal (sabor_id, sucursal_id, stock_disponible, stock_reservado)
+     VALUES (?, ?, 0, 0)
+     ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`, [saborId, sucursalId]);
+}
 async function getProductoMetaForStock(conn, productoId) {
     const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, track_stock, stock_disponible, stock_reservado
      FROM productos
@@ -42,6 +52,20 @@ async function getProductoMetaForStock(conn, productoId) {
         stock_reservado: Number(producto.stock_reservado ?? 0),
     };
 }
+async function getSaborMetaForStock(conn, saborId) {
+    const sabor = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo
+     FROM sabores
+     WHERE id = ?
+     LIMIT 1`, [saborId]);
+    if (!sabor) {
+        throw new Error("Sabor no encontrado.");
+    }
+    return {
+        ...sabor,
+        id: Number(sabor.id),
+        activo: Number(sabor.activo ?? 0),
+    };
+}
 async function lockInventoryRow(conn, productoId, sucursalId) {
     await ensureInventarioRow(conn, productoId, sucursalId);
     const row = await (0, db_1.qOne)(conn, `SELECT stock_disponible, stock_reservado
@@ -56,10 +80,29 @@ async function lockInventoryRow(conn, productoId, sucursalId) {
         stock_reservado: Number(row.stock_reservado ?? 0),
     };
 }
+async function lockFlavorInventoryRow(conn, saborId, sucursalId) {
+    await ensureInventarioSaborRow(conn, saborId, sucursalId);
+    const row = await (0, db_1.qOne)(conn, `SELECT stock_disponible, stock_reservado
+     FROM inventario_sabor_sucursal
+     WHERE sabor_id = ? AND sucursal_id = ?
+     FOR UPDATE`, [saborId, sucursalId]);
+    if (!row) {
+        throw new Error("No se pudo crear o bloquear inventario de sabor de la sucursal.");
+    }
+    return {
+        stock_disponible: Number(row.stock_disponible ?? 0),
+        stock_reservado: Number(row.stock_reservado ?? 0),
+    };
+}
 async function writeInventoryRow(conn, productoId, sucursalId, stockDisponible, stockReservado) {
     await (0, db_1.qRun)(conn, `UPDATE inventario_sucursal
      SET stock_disponible = ?, stock_reservado = ?
      WHERE producto_id = ? AND sucursal_id = ?`, [stockDisponible, stockReservado, productoId, sucursalId]);
+}
+async function writeFlavorInventoryRow(conn, saborId, sucursalId, stockDisponible, stockReservado) {
+    await (0, db_1.qRun)(conn, `UPDATE inventario_sabor_sucursal
+     SET stock_disponible = ?, stock_reservado = ?
+     WHERE sabor_id = ? AND sucursal_id = ?`, [stockDisponible, stockReservado, saborId, sucursalId]);
 }
 async function syncProductoGlobalStock(conn, productoId) {
     const sum = await (0, db_1.qOne)(conn, `SELECT COALESCE(SUM(stock_disponible), 0) AS disponible,
@@ -70,12 +113,48 @@ async function syncProductoGlobalStock(conn, productoId) {
      SET stock_disponible = ?, stock_reservado = ?
      WHERE id = ?`, [Number(sum?.disponible ?? 0), Number(sum?.reservado ?? 0), productoId]);
 }
+async function recordFlavorStockMovement(conn, { saborId, sucursalId, tipo, origen, cantidad, descripcion, creadoPor, ordenId, }) {
+    if (!cantidad)
+        return;
+    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_sabor_stock
+      (sabor_id, sucursal_id, orden_id, tipo, origen, cantidad, descripcion, creado_por)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [saborId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null]);
+}
 async function recordStockMovement(conn, { productoId, sucursalId, tipo, origen, cantidad, descripcion, creadoPor, ordenId, }) {
     if (!cantidad)
         return;
     await (0, db_1.qRun)(conn, `INSERT INTO movimientos_stock
       (producto_id, sucursal_id, orden_id, tipo, origen, cantidad, descripcion, creado_por)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [productoId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null]);
+}
+async function adjustFlavorStockBySucursal(conn, { saborId, sucursalId, nuevoStockDisponible, descripcion, creadoPor, }) {
+    if (!Number.isInteger(nuevoStockDisponible) || nuevoStockDisponible < 0) {
+        throw new Error("El stock disponible debe ser un entero mayor o igual a 0.");
+    }
+    const sabor = await getSaborMetaForStock(conn, saborId);
+    const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+    if (nuevoStockDisponible < inv.stock_reservado) {
+        throw new Error(`No puedes dejar el stock disponible de ${sabor.nombre} por debajo del reservado (${inv.stock_reservado}).`);
+    }
+    const delta = nuevoStockDisponible - inv.stock_disponible;
+    await writeFlavorInventoryRow(conn, saborId, sucursalId, nuevoStockDisponible, inv.stock_reservado);
+    if (delta !== 0) {
+        await recordFlavorStockMovement(conn, {
+            saborId,
+            sucursalId,
+            tipo: "ajuste",
+            origen: "admin",
+            cantidad: delta,
+            descripcion: descripcion ?? "Ajuste manual de stock de sabor",
+            creadoPor,
+        });
+    }
+}
+async function initializeInventoryForFlavor(conn, { saborId }) {
+    const sucursales = await (0, db_1.qAll)(conn, "SELECT id FROM sucursales WHERE activo = 1 ORDER BY id ASC");
+    for (const sucursal of sucursales) {
+        await ensureInventarioSaborRow(conn, saborId, Number(sucursal.id));
+    }
 }
 async function reserveStockForCanje(conn, { sucursalId, items, canjeId, }) {
     for (const item of items) {
@@ -254,6 +333,96 @@ async function reserveStockForCheckoutItems(conn, { sucursalId, items, referenci
             ordenId,
         });
         await syncProductoGlobalStock(conn, productoId);
+    }
+}
+async function reserveFlavorStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
+    for (const item of items) {
+        const saborId = Number(item.sabor_id);
+        const cantidad = Number(item.cantidad);
+        if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0)
+            continue;
+        const sabor = await getSaborMetaForStock(conn, saborId);
+        if (!sabor.activo) {
+            throw new Error(`El sabor ${sabor.nombre} no esta activo.`);
+        }
+        const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+        if (inv.stock_disponible < cantidad) {
+            throw new Error(`Stock insuficiente para el sabor ${sabor.nombre} en la sucursal seleccionada. Disponible: ${inv.stock_disponible}.`);
+        }
+        await writeFlavorInventoryRow(conn, saborId, sucursalId, inv.stock_disponible - cantidad, inv.stock_reservado + cantidad);
+        await recordFlavorStockMovement(conn, {
+            saborId,
+            sucursalId,
+            tipo: "reserva",
+            origen: item.origen,
+            cantidad,
+            descripcion: item.descripcion ?? (referencia ? `Reserva ${referencia}` : "Reserva de checkout"),
+            creadoPor,
+            ordenId,
+        });
+    }
+}
+async function releaseFlavorStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
+    for (const item of items) {
+        const saborId = Number(item.sabor_id);
+        const cantidad = Number(item.cantidad);
+        if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0)
+            continue;
+        const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+        const qtyToRelease = Math.min(inv.stock_reservado, cantidad);
+        if (qtyToRelease <= 0)
+            continue;
+        await writeFlavorInventoryRow(conn, saborId, sucursalId, inv.stock_disponible + qtyToRelease, inv.stock_reservado - qtyToRelease);
+        await recordFlavorStockMovement(conn, {
+            saborId,
+            sucursalId,
+            tipo: "liberacion",
+            origen: item.origen,
+            cantidad: qtyToRelease,
+            descripcion: item.descripcion ?? (referencia ? `Liberacion ${referencia}` : "Liberacion de checkout"),
+            creadoPor,
+            ordenId,
+        });
+    }
+}
+async function finalizeFlavorStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {
+    for (const item of items) {
+        const saborId = Number(item.sabor_id);
+        const cantidad = Number(item.cantidad);
+        if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0)
+            continue;
+        const sabor = await getSaborMetaForStock(conn, saborId);
+        const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+        const reservedUsed = Math.min(inv.stock_reservado, cantidad);
+        const missingFromDisponible = cantidad - reservedUsed;
+        if (missingFromDisponible > 0 && inv.stock_disponible < missingFromDisponible) {
+            throw new Error(`No hay stock suficiente para finalizar el sabor ${sabor.nombre}. Disponible: ${inv.stock_disponible}, reservado: ${inv.stock_reservado}.`);
+        }
+        await writeFlavorInventoryRow(conn, saborId, sucursalId, inv.stock_disponible - missingFromDisponible, inv.stock_reservado - reservedUsed);
+        if (reservedUsed > 0) {
+            await recordFlavorStockMovement(conn, {
+                saborId,
+                sucursalId,
+                tipo: "descuento",
+                origen: item.origen,
+                cantidad: reservedUsed,
+                descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (desde reserva)` : "Entrega desde reserva"),
+                creadoPor,
+                ordenId,
+            });
+        }
+        if (missingFromDisponible > 0) {
+            await recordFlavorStockMovement(conn, {
+                saborId,
+                sucursalId,
+                tipo: "descuento",
+                origen: item.origen,
+                cantidad: missingFromDisponible,
+                descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (sin reserva previa)` : "Entrega sin reserva previa"),
+                creadoPor,
+                ordenId,
+            });
+        }
     }
 }
 async function releaseStockForCheckoutItems(conn, { sucursalId, items, referencia, creadoPor = null, ordenId = null, }) {

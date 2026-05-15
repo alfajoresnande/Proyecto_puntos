@@ -2,9 +2,40 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import type { Producto } from "../../types";
+
+type ClienteBuscado = {
+  id: number;
+  nombre: string;
+  dni: string;
+  email: string;
+  puntos: number;
+};
+
+type SucursalPublica = {
+  id: number;
+  nombre: string;
+  direccion: string;
+  piso?: string | null;
+  localidad: string;
+  provincia: string;
+};
+
+type VentaLocalItemDraft = {
+  producto_id: number;
+  nombre: string;
+  cantidad: number;
+  precio_dinero: number;
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>;
+};
 
 type OrdenVendedor = {
   id: number;
+  canal: "web" | "admin" | "vendedor";
   cliente_nombre: string;
   cliente_email: string;
   estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
@@ -36,6 +67,11 @@ type OrdenVendedor = {
     modo_compra: "dinero" | "puntos";
     subtotal_dinero: number;
     subtotal_puntos: number;
+    sabores?: Array<{
+      sabor_id: number;
+      nombre: string;
+      cantidad: number;
+    }>;
   }>;
   pago?: {
     proveedor: string;
@@ -70,9 +106,31 @@ function estadoOrdenLabel(estado: string): string {
   return labels[estado] ?? estado.replace(/_/g, " ");
 }
 
+function canalLabel(canal: string): string {
+  const labels: Record<string, string> = {
+    web: "Web",
+    admin: "Local admin",
+    vendedor: "Local vendedor",
+  };
+  return labels[canal] ?? canal;
+}
+
+function metodoPagoLabel(metodo?: string | null): string {
+  const labels: Record<string, string> = {
+    cash: "Efectivo",
+    transferencia: "Transferencia",
+    tarjeta: "Tarjeta",
+    qr: "QR",
+    otro: "Otro",
+  };
+  return metodo ? labels[metodo] ?? metodo : "";
+}
+
 function pagoLabel(pago: OrdenVendedor["pago"]): string {
   if (!pago) return "Sin pago";
-  const metodo = pago.metodo === "cash" ? "Efectivo" : pago.metodo === "brick" ? "Tarjeta" : pago.metodo === "qr" ? "QR" : pago.metodo || pago.proveedor;
+  const metodo = pago.proveedor === "local"
+    ? metodoPagoLabel(pago.metodo)
+    : pago.metodo === "cash" ? "Efectivo" : pago.metodo === "brick" ? "Tarjeta" : pago.metodo === "qr" ? "QR" : pago.metodo || pago.proveedor;
   const estado = pago.estado === "iniciado" ? "pendiente" : pago.estado;
   return `${metodo} / ${estado}`;
 }
@@ -84,6 +142,16 @@ export function VendedorPedidos() {
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [ordenMsg, setOrdenMsg] = useState("");
   const [ordenErr, setOrdenErr] = useState("");
+  const [ventaClienteQuery, setVentaClienteQuery] = useState("");
+  const [ventaCliente, setVentaCliente] = useState<ClienteBuscado | null>(null);
+  const [ventaSucursalId, setVentaSucursalId] = useState("");
+  const [ventaMetodoPago, setVentaMetodoPago] = useState("cash");
+  const [ventaAcreditarPuntos, setVentaAcreditarPuntos] = useState(false);
+  const [ventaProductoId, setVentaProductoId] = useState("");
+  const [ventaCantidad, setVentaCantidad] = useState("1");
+  const [ventaSabores, setVentaSabores] = useState<Record<string, number>>({});
+  const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
+  const [ventaNotas, setVentaNotas] = useState("");
 
   const ordenesQuery = useQuery({
     queryKey: ["vendedor", "ordenes"],
@@ -92,7 +160,46 @@ export function VendedorPedidos() {
     refetchIntervalInBackground: true,
   });
 
+  const productosLocalesQuery = useQuery({
+    queryKey: ["vendedor", "productos-locales"],
+    queryFn: () => api.get<Producto[]>("/vendedor/productos-locales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  });
+
+  const sucursalesQuery = useQuery({
+    queryKey: ["productos", "sucursales"],
+    queryFn: () => api.get<SucursalPublica[]>("/productos/sucursales"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const clientesQuery = useQuery({
+    queryKey: ["vendedor", "clientes-locales", ventaClienteQuery.trim()],
+    queryFn: () => api.get<ClienteBuscado[]>(`/vendedor/clientes/buscar?q=${encodeURIComponent(ventaClienteQuery.trim())}`),
+    enabled: ventaClienteQuery.trim().length >= 2 && !ventaCliente,
+  });
+
   const ordenes = ordenesQuery.data ?? [];
+  const productosLocales = productosLocalesQuery.data ?? [];
+  const sucursales = sucursalesQuery.data ?? [];
+  const clientesEncontrados = clientesQuery.data ?? [];
+  const productoVentaSeleccionado = useMemo(
+    () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
+    [productosLocales, ventaProductoId],
+  );
+  const saboresProductoVenta = useMemo(
+    () => productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? productoVentaSeleccionado.sabores ?? [] : [],
+    [productoVentaSeleccionado],
+  );
+  const totalSaboresVenta = useMemo(
+    () => Object.values(ventaSabores).reduce((acc, value) => acc + (Number(value) || 0), 0),
+    [ventaSabores],
+  );
+  const totalVentaLocal = useMemo(
+    () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
+    [ventaItems],
+  );
   const ordenesFiltradas = useMemo(() => {
     const q = busquedaOrdenes.trim().toLowerCase();
     return ordenes.filter((orden) => {
@@ -102,6 +209,7 @@ export function VendedorPedidos() {
         String(orden.id),
         orden.cliente_nombre,
         orden.cliente_email,
+        orden.canal,
         orden.estado,
         pagoLabel(orden.pago),
         orden.sucursal?.nombre ?? "",
@@ -124,6 +232,41 @@ export function VendedorPedidos() {
     },
   });
 
+  const registrarVentaLocalMutation = useMutation({
+    mutationFn: () => {
+      if (!ventaCliente) throw new Error("Selecciona un cliente para registrar la venta local.");
+      if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
+      if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
+
+      return api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", {
+        usuario_id: ventaCliente.id,
+        sucursal_id: Number(ventaSucursalId),
+        metodo_pago: ventaMetodoPago,
+        acreditar_puntos: ventaAcreditarPuntos,
+        notas: ventaNotas.trim() || undefined,
+        items: ventaItems.map((item) => ({
+          producto_id: item.producto_id,
+          cantidad: item.cantidad,
+          sabores: item.sabores?.map((sabor) => ({
+            sabor_id: sabor.sabor_id,
+            cantidad: sabor.cantidad,
+          })),
+        })),
+      });
+    },
+    onSuccess: async (data) => {
+      setOrdenErr("");
+      setOrdenMsg(`Venta local registrada como orden #${data.ordenId}. No se desconto stock web.`);
+      setVentaItems([]);
+      setVentaNotas("");
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo registrar la venta local.");
+    },
+  });
+
   function puedeMarcarPagada(orden: OrdenVendedor): boolean {
     return orden.estado === "pendiente_pago" && (orden.pago?.proveedor === "efectivo" || orden.pago?.metodo === "cash");
   }
@@ -132,6 +275,52 @@ export function VendedorPedidos() {
     setOrdenErr("");
     setOrdenMsg("");
     actualizarOrdenMutation.mutate({ id, estado });
+  }
+
+  function agregarItemVentaLocal() {
+    setOrdenErr("");
+    setOrdenMsg("");
+    const producto = productoVentaSeleccionado;
+    if (!producto) {
+      setOrdenErr("Selecciona un producto.");
+      return;
+    }
+    const cantidad = Number(ventaCantidad);
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      setOrdenErr("La cantidad debe ser un entero mayor a 0.");
+      return;
+    }
+
+    const saboresItem = producto.configuracion_tipo === "caja_sabores"
+      ? saboresProductoVenta
+          .map((sabor) => ({
+            sabor_id: sabor.id,
+            nombre: sabor.nombre,
+            cantidad: Number(ventaSabores[String(sabor.id)] ?? 0) || 0,
+          }))
+          .filter((sabor) => sabor.cantidad > 0)
+      : [];
+    if (producto.configuracion_tipo === "caja_sabores") {
+      const capacidad = Number(producto.capacidad_sabores ?? 0);
+      if (totalSaboresVenta !== capacidad) {
+        setOrdenErr(`Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+        return;
+      }
+    }
+
+    setVentaItems((prev) => [
+      ...prev,
+      {
+        producto_id: producto.id,
+        nombre: producto.nombre,
+        cantidad,
+        precio_dinero: Number(producto.precio_dinero ?? 0),
+        sabores: saboresItem,
+      },
+    ]);
+    setVentaProductoId("");
+    setVentaCantidad("1");
+    setVentaSabores({});
   }
 
   return (
@@ -152,6 +341,146 @@ export function VendedorPedidos() {
           >
             Actualizar
           </button>
+        </div>
+
+        <div className="ios-card p-4" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Registrar venta local</h2>
+              <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                Queda unida a las ventas web para reportes, pero no descuenta stock online.
+              </p>
+            </div>
+
+            <div className="adm-form-grid">
+              <div style={{ position: "relative" }}>
+                <input
+                  className="ios-input"
+                  placeholder="Buscar cliente por nombre o DNI"
+                  value={ventaCliente ? `${ventaCliente.nombre} - ${ventaCliente.dni}` : ventaClienteQuery}
+                  onChange={(event) => {
+                    setVentaCliente(null);
+                    setVentaClienteQuery(event.target.value);
+                  }}
+                />
+                {!ventaCliente && clientesEncontrados.length ? (
+                  <div className="ios-card p-2" style={{ position: "absolute", zIndex: 5, width: "100%", marginTop: "0.25rem", display: "grid", gap: "0.35rem" }}>
+                    {clientesEncontrados.map((cliente) => (
+                      <button
+                        key={cliente.id}
+                        type="button"
+                        className="ios-btn-secondary"
+                        style={{ width: "100%", textAlign: "left", padding: "0.5rem 0.65rem" }}
+                        onClick={() => {
+                          setVentaCliente(cliente);
+                          setVentaClienteQuery("");
+                        }}
+                      >
+                        {cliente.nombre} - DNI {cliente.dni}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
+                <option value="">Sucursal</option>
+                {sucursales.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                ))}
+              </select>
+              <select className="ios-input" value={ventaMetodoPago} onChange={(event) => setVentaMetodoPago(event.target.value)}>
+                <option value="cash">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="qr">QR</option>
+                <option value="otro">Otro</option>
+              </select>
+              <input className="ios-input" placeholder="Notas internas" value={ventaNotas} onChange={(event) => setVentaNotas(event.target.value)} />
+            </div>
+            <label className="text-sm" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#3D1A02", fontWeight: 700 }}>
+              <input type="checkbox" checked={ventaAcreditarPuntos} onChange={(event) => setVentaAcreditarPuntos(event.target.checked)} />
+              Acreditar puntos de compra al cliente
+            </label>
+
+            <div className="adm-form-grid">
+              <select
+                className="ios-input"
+                value={ventaProductoId}
+                onChange={(event) => {
+                  setVentaProductoId(event.target.value);
+                  setVentaSabores({});
+                }}
+              >
+                <option value="">Producto</option>
+                {productosLocales.map((producto) => (
+                  <option key={producto.id} value={producto.id}>{producto.nombre} - {money(producto.precio_dinero)}</option>
+                ))}
+              </select>
+              <input className="ios-input" type="number" min={1} value={ventaCantidad} onChange={(event) => setVentaCantidad(event.target.value)} />
+              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} onClick={agregarItemVentaLocal}>
+                Agregar
+              </button>
+            </div>
+
+            {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+              <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8" }}>
+                <p className="text-xs uppercase font-bold tracking-wider mb-2" style={{ color: "#A08060" }}>
+                  Sabores {totalSaboresVenta}/{productoVentaSeleccionado.capacidad_sabores ?? 0} por caja
+                </p>
+                <div className="adm-form-grid">
+                  {saboresProductoVenta.map((sabor) => (
+                    <label key={sabor.id} className="text-sm" style={{ display: "grid", gap: "0.25rem", color: "#3D1A02", fontWeight: 700 }}>
+                      {sabor.nombre}
+                      <input
+                        className="ios-input"
+                        type="number"
+                        min={0}
+                        value={ventaSabores[String(sabor.id)] ?? 0}
+                        onChange={(event) => {
+                          const value = Math.max(0, Number(event.target.value) || 0);
+                          setVentaSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              {ventaItems.length === 0 ? (
+                <div className="ios-row text-ios-secondary text-sm">Sin productos agregados.</div>
+              ) : null}
+              {ventaItems.map((item, index) => (
+                <div key={`${item.producto_id}-${index}`} className="ios-row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
+                  <div style={{ flex: 1 }}>
+                    <p className="text-sm font-bold" style={{ margin: 0 }}>{item.nombre} x{item.cantidad} - {money(item.precio_dinero * item.cantidad)}</p>
+                    {item.sabores?.length ? (
+                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
+                        {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
+                      </p>
+                    ) : null}
+                  </div>
+                  <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => setVentaItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
+              <strong>Total: {money(totalVentaLocal)}</strong>
+              <button
+                type="button"
+                className="ios-btn-primary"
+                style={{ width: "auto", padding: "0.65rem 1rem" }}
+                disabled={registrarVentaLocalMutation.isPending || ventaItems.length === 0}
+                onClick={() => registrarVentaLocalMutation.mutate()}
+              >
+                {registrarVentaLocalMutation.isPending ? "Registrando..." : "Registrar venta local"}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="adm-form-grid" style={{ marginTop: "1rem" }}>
@@ -184,7 +513,7 @@ export function VendedorPedidos() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
                 <div>
                   <p className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>
-                    Pedido #{orden.id} - {estadoOrdenLabel(orden.estado)}
+                    Pedido #{orden.id} - {estadoOrdenLabel(orden.estado)} - {canalLabel(orden.canal)}
                   </p>
                   <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
                     {formatDate(orden.created_at)} - {orden.cliente_nombre} - {orden.total_unidades} unidad(es)
@@ -252,6 +581,11 @@ export function VendedorPedidos() {
                   {(orden.items ?? []).map((item) => (
                     <p key={`${orden.id}-${item.producto_id}-${item.modo_compra}`} className="text-sm" style={{ margin: "0.15rem 0" }}>
                       {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? money(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
+                      {item.sabores?.length ? (
+                        <span style={{ display: "block", color: "#A08060", fontSize: "0.8rem" }}>
+                          {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
+                        </span>
+                      ) : null}
                     </p>
                   ))}
                   {orden.direccion_envio?.referencias ? (

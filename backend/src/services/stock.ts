@@ -12,9 +12,22 @@ type CheckoutStockItem = {
   descripcion?: string;
 };
 
+type CheckoutFlavorStockItem = {
+  sabor_id: number;
+  cantidad: number;
+  origen: "compra" | "canje";
+  descripcion?: string;
+};
+
 type InventoryRow = {
   stock_disponible: number;
   stock_reservado: number;
+};
+
+type SaborStockMeta = {
+  id: number;
+  nombre: string;
+  activo: number;
 };
 
 type ProductoStockMeta = {
@@ -61,6 +74,16 @@ async function ensureInventarioRow(conn: Queryable, productoId: number, sucursal
   );
 }
 
+async function ensureInventarioSaborRow(conn: Queryable, saborId: number, sucursalId: number) {
+  await qRun(
+    conn,
+    `INSERT INTO inventario_sabor_sucursal (sabor_id, sucursal_id, stock_disponible, stock_reservado)
+     VALUES (?, ?, 0, 0)
+     ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
+    [saborId, sucursalId],
+  );
+}
+
 async function getProductoMetaForStock(conn: Queryable, productoId: number): Promise<ProductoStockMeta> {
   const producto = await qOne<ProductoStockMeta>(
     conn,
@@ -82,6 +105,25 @@ async function getProductoMetaForStock(conn: Queryable, productoId: number): Pro
   };
 }
 
+async function getSaborMetaForStock(conn: Queryable, saborId: number): Promise<SaborStockMeta> {
+  const sabor = await qOne<SaborStockMeta>(
+    conn,
+    `SELECT id, nombre, activo
+     FROM sabores
+     WHERE id = ?
+     LIMIT 1`,
+    [saborId],
+  );
+  if (!sabor) {
+    throw new Error("Sabor no encontrado.");
+  }
+  return {
+    ...sabor,
+    id: Number(sabor.id),
+    activo: Number(sabor.activo ?? 0),
+  };
+}
+
 async function lockInventoryRow(conn: Queryable, productoId: number, sucursalId: number): Promise<InventoryRow> {
   await ensureInventarioRow(conn, productoId, sucursalId);
   const row = await qOne<InventoryRow>(
@@ -94,6 +136,25 @@ async function lockInventoryRow(conn: Queryable, productoId: number, sucursalId:
   );
   if (!row) {
     throw new Error("No se pudo crear o bloquear inventario de la sucursal.");
+  }
+  return {
+    stock_disponible: Number(row.stock_disponible ?? 0),
+    stock_reservado: Number(row.stock_reservado ?? 0),
+  };
+}
+
+async function lockFlavorInventoryRow(conn: Queryable, saborId: number, sucursalId: number): Promise<InventoryRow> {
+  await ensureInventarioSaborRow(conn, saborId, sucursalId);
+  const row = await qOne<InventoryRow>(
+    conn,
+    `SELECT stock_disponible, stock_reservado
+     FROM inventario_sabor_sucursal
+     WHERE sabor_id = ? AND sucursal_id = ?
+     FOR UPDATE`,
+    [saborId, sucursalId],
+  );
+  if (!row) {
+    throw new Error("No se pudo crear o bloquear inventario de sabor de la sucursal.");
   }
   return {
     stock_disponible: Number(row.stock_disponible ?? 0),
@@ -117,6 +178,22 @@ async function writeInventoryRow(
   );
 }
 
+async function writeFlavorInventoryRow(
+  conn: Queryable,
+  saborId: number,
+  sucursalId: number,
+  stockDisponible: number,
+  stockReservado: number,
+) {
+  await qRun(
+    conn,
+    `UPDATE inventario_sabor_sucursal
+     SET stock_disponible = ?, stock_reservado = ?
+     WHERE sabor_id = ? AND sucursal_id = ?`,
+    [stockDisponible, stockReservado, saborId, sucursalId],
+  );
+}
+
 async function syncProductoGlobalStock(conn: Queryable, productoId: number) {
   const sum = await qOne<{ disponible: number; reservado: number }>(
     conn,
@@ -132,6 +209,38 @@ async function syncProductoGlobalStock(conn: Queryable, productoId: number) {
      SET stock_disponible = ?, stock_reservado = ?
      WHERE id = ?`,
     [Number(sum?.disponible ?? 0), Number(sum?.reservado ?? 0), productoId],
+  );
+}
+
+async function recordFlavorStockMovement(
+  conn: Queryable,
+  {
+    saborId,
+    sucursalId,
+    tipo,
+    origen,
+    cantidad,
+    descripcion,
+    creadoPor,
+    ordenId,
+  }: {
+    saborId: number;
+    sucursalId: number | null;
+    ordenId?: number | null;
+    tipo: "ingreso" | "reserva" | "liberacion" | "descuento" | "ajuste";
+    origen: "compra" | "canje" | "admin" | "devolucion";
+    cantidad: number;
+    descripcion?: string | null;
+    creadoPor?: number | null;
+  },
+) {
+  if (!cantidad) return;
+  await qRun(
+    conn,
+    `INSERT INTO movimientos_sabor_stock
+      (sabor_id, sucursal_id, orden_id, tipo, origen, cantidad, descripcion, creado_por)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [saborId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null],
   );
 }
 
@@ -165,6 +274,59 @@ async function recordStockMovement(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [productoId, sucursalId, ordenId ?? null, tipo, origen, cantidad, descripcion ?? null, creadoPor ?? null],
   );
+}
+
+export async function adjustFlavorStockBySucursal(
+  conn: Queryable,
+  {
+    saborId,
+    sucursalId,
+    nuevoStockDisponible,
+    descripcion,
+    creadoPor,
+  }: {
+    saborId: number;
+    sucursalId: number;
+    nuevoStockDisponible: number;
+    descripcion?: string | null;
+    creadoPor?: number | null;
+  },
+) {
+  if (!Number.isInteger(nuevoStockDisponible) || nuevoStockDisponible < 0) {
+    throw new Error("El stock disponible debe ser un entero mayor o igual a 0.");
+  }
+
+  const sabor = await getSaborMetaForStock(conn, saborId);
+  const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+  if (nuevoStockDisponible < inv.stock_reservado) {
+    throw new Error(
+      `No puedes dejar el stock disponible de ${sabor.nombre} por debajo del reservado (${inv.stock_reservado}).`,
+    );
+  }
+
+  const delta = nuevoStockDisponible - inv.stock_disponible;
+  await writeFlavorInventoryRow(conn, saborId, sucursalId, nuevoStockDisponible, inv.stock_reservado);
+  if (delta !== 0) {
+    await recordFlavorStockMovement(conn, {
+      saborId,
+      sucursalId,
+      tipo: "ajuste",
+      origen: "admin",
+      cantidad: delta,
+      descripcion: descripcion ?? "Ajuste manual de stock de sabor",
+      creadoPor,
+    });
+  }
+}
+
+export async function initializeInventoryForFlavor(conn: Queryable, { saborId }: { saborId: number }) {
+  const sucursales = await qAll<{ id: number }>(
+    conn,
+    "SELECT id FROM sucursales WHERE activo = 1 ORDER BY id ASC",
+  );
+  for (const sucursal of sucursales) {
+    await ensureInventarioSaborRow(conn, saborId, Number(sucursal.id));
+  }
 }
 
 export async function reserveStockForCanje(
@@ -472,6 +634,167 @@ export async function reserveStockForCheckoutItems(
       ordenId,
     });
     await syncProductoGlobalStock(conn, productoId);
+  }
+}
+
+export async function reserveFlavorStockForCheckoutItems(
+  conn: Queryable,
+  {
+    sucursalId,
+    items,
+    referencia,
+    creadoPor = null,
+    ordenId = null,
+  }: {
+    sucursalId: number;
+    items: CheckoutFlavorStockItem[];
+    referencia?: string;
+    creadoPor?: number | null;
+    ordenId?: number | null;
+  },
+) {
+  for (const item of items) {
+    const saborId = Number(item.sabor_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0) continue;
+
+    const sabor = await getSaborMetaForStock(conn, saborId);
+    if (!sabor.activo) {
+      throw new Error(`El sabor ${sabor.nombre} no esta activo.`);
+    }
+
+    const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+    if (inv.stock_disponible < cantidad) {
+      throw new Error(
+        `Stock insuficiente para el sabor ${sabor.nombre} en la sucursal seleccionada. Disponible: ${inv.stock_disponible}.`,
+      );
+    }
+
+    await writeFlavorInventoryRow(conn, saborId, sucursalId, inv.stock_disponible - cantidad, inv.stock_reservado + cantidad);
+    await recordFlavorStockMovement(conn, {
+      saborId,
+      sucursalId,
+      tipo: "reserva",
+      origen: item.origen,
+      cantidad,
+      descripcion: item.descripcion ?? (referencia ? `Reserva ${referencia}` : "Reserva de checkout"),
+      creadoPor,
+      ordenId,
+    });
+  }
+}
+
+export async function releaseFlavorStockForCheckoutItems(
+  conn: Queryable,
+  {
+    sucursalId,
+    items,
+    referencia,
+    creadoPor = null,
+    ordenId = null,
+  }: {
+    sucursalId: number;
+    items: CheckoutFlavorStockItem[];
+    referencia?: string;
+    creadoPor?: number | null;
+    ordenId?: number | null;
+  },
+) {
+  for (const item of items) {
+    const saborId = Number(item.sabor_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0) continue;
+
+    const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+    const qtyToRelease = Math.min(inv.stock_reservado, cantidad);
+    if (qtyToRelease <= 0) continue;
+
+    await writeFlavorInventoryRow(
+      conn,
+      saborId,
+      sucursalId,
+      inv.stock_disponible + qtyToRelease,
+      inv.stock_reservado - qtyToRelease,
+    );
+    await recordFlavorStockMovement(conn, {
+      saborId,
+      sucursalId,
+      tipo: "liberacion",
+      origen: item.origen,
+      cantidad: qtyToRelease,
+      descripcion: item.descripcion ?? (referencia ? `Liberacion ${referencia}` : "Liberacion de checkout"),
+      creadoPor,
+      ordenId,
+    });
+  }
+}
+
+export async function finalizeFlavorStockForCheckoutItems(
+  conn: Queryable,
+  {
+    sucursalId,
+    items,
+    referencia,
+    creadoPor = null,
+    ordenId = null,
+  }: {
+    sucursalId: number;
+    items: CheckoutFlavorStockItem[];
+    referencia?: string;
+    creadoPor?: number | null;
+    ordenId?: number | null;
+  },
+) {
+  for (const item of items) {
+    const saborId = Number(item.sabor_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0) continue;
+
+    const sabor = await getSaborMetaForStock(conn, saborId);
+    const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+    const reservedUsed = Math.min(inv.stock_reservado, cantidad);
+    const missingFromDisponible = cantidad - reservedUsed;
+
+    if (missingFromDisponible > 0 && inv.stock_disponible < missingFromDisponible) {
+      throw new Error(
+        `No hay stock suficiente para finalizar el sabor ${sabor.nombre}. Disponible: ${inv.stock_disponible}, reservado: ${inv.stock_reservado}.`,
+      );
+    }
+
+    await writeFlavorInventoryRow(
+      conn,
+      saborId,
+      sucursalId,
+      inv.stock_disponible - missingFromDisponible,
+      inv.stock_reservado - reservedUsed,
+    );
+
+    if (reservedUsed > 0) {
+      await recordFlavorStockMovement(conn, {
+        saborId,
+        sucursalId,
+        tipo: "descuento",
+        origen: item.origen,
+        cantidad: reservedUsed,
+        descripcion: item.descripcion ?? (referencia ? `Entrega ${referencia} (desde reserva)` : "Entrega desde reserva"),
+        creadoPor,
+        ordenId,
+      });
+    }
+
+    if (missingFromDisponible > 0) {
+      await recordFlavorStockMovement(conn, {
+        saborId,
+        sucursalId,
+        tipo: "descuento",
+        origen: item.origen,
+        cantidad: missingFromDisponible,
+        descripcion:
+          item.descripcion ?? (referencia ? `Entrega ${referencia} (sin reserva previa)` : "Entrega sin reserva previa"),
+        creadoPor,
+        ordenId,
+      });
+    }
   }
 }
 

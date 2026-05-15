@@ -36,11 +36,19 @@ type OnlineCartItem = {
   producto_id: number;
   cantidad: number;
   modo_compra: "dinero" | "puntos";
+  config_hash?: string;
   precio_dinero_unit: number | null;
   puntaje_al_comprar_unitario?: number | null;
   subtotal_dinero: number;
   nombre: string;
   imagen_url: string | null;
+  configuracion_tipo?: "simple" | "caja_sabores";
+  capacidad_sabores?: number | null;
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>;
 };
 
 type OnlineCartResponse = {
@@ -60,6 +68,14 @@ function productPrice(producto: Producto): number {
 }
 
 function productHasStock(producto: Producto): boolean {
+  if (isCajaSabores(producto)) {
+    const capacity = Number(producto.capacidad_sabores ?? 0);
+    const available = (producto.sabores_disponibles ?? []).reduce(
+      (acc, sabor) => acc + Math.max(0, Number(sabor.stock_disponible ?? 0)),
+      0,
+    );
+    return capacity > 0 && available >= capacity;
+  }
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
@@ -69,8 +85,13 @@ function productAvailableStock(producto: Producto): number {
 }
 
 function maxSelectableQuantity(producto: Producto): number {
+  if (isCajaSabores(producto)) return 1;
   if (producto.track_stock === false) return 100;
   return Math.max(1, Math.min(100, productAvailableStock(producto)));
+}
+
+function isCajaSabores(producto: Producto): boolean {
+  return producto.configuracion_tipo === "caja_sabores";
 }
 
 export function TiendaOnline() {
@@ -88,6 +109,7 @@ export function TiendaOnline() {
   const filtrosWasOpen = useRef(false);
   const [toast, setToast] = useState<string | null>(null);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
+  const [saboresCajaDraft, setSaboresCajaDraft] = useState<Record<number, Record<number, number>>>({});
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
   const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
@@ -336,17 +358,69 @@ export function TiendaOnline() {
     });
   }
 
+  function cajaDraft(producto: Producto): Record<number, number> {
+    return saboresCajaDraft[producto.id] ?? {};
+  }
+
+  function cajaSeleccionTotal(producto: Producto): number {
+    return Object.values(cajaDraft(producto)).reduce((acc, value) => acc + Number(value || 0), 0);
+  }
+
+  function cajaCapacidad(producto: Producto): number {
+    return Math.max(0, Number(producto.capacidad_sabores ?? 0));
+  }
+
+  function cajaSaboresPayload(producto: Producto) {
+    return Object.entries(cajaDraft(producto))
+      .map(([saborId, cantidad]) => ({ sabor_id: Number(saborId), cantidad: Number(cantidad) }))
+      .filter((item) => Number.isInteger(item.sabor_id) && item.sabor_id > 0 && item.cantidad > 0)
+      .sort((a, b) => a.sabor_id - b.sabor_id);
+  }
+
+  function cajaSeleccionCompleta(producto: Producto): boolean {
+    return isCajaSabores(producto) && cajaCapacidad(producto) > 0 && cajaSeleccionTotal(producto) === cajaCapacidad(producto);
+  }
+
+  function ajustarSaborCaja(producto: Producto, saborId: number, delta: number) {
+    const capacidad = cajaCapacidad(producto);
+    const sabor = producto.sabores_disponibles?.find((item) => Number(item.id) === Number(saborId));
+    const disponible = Math.max(0, Number(sabor?.stock_disponible ?? 0));
+    setSaboresCajaDraft((prev) => {
+      const current = prev[producto.id] ?? {};
+      const actual = Number(current[saborId] ?? 0);
+      const totalActual = Object.values(current).reduce((acc, value) => acc + Number(value || 0), 0);
+      const maxByBox = Math.max(0, capacidad - (totalActual - actual));
+      const nextQty = Math.max(0, Math.min(disponible, maxByBox, actual + delta));
+      const nextProduct = { ...current };
+      if (nextQty > 0) nextProduct[saborId] = nextQty;
+      else delete nextProduct[saborId];
+      return { ...prev, [producto.id]: nextProduct };
+    });
+  }
+
   const addMutation = useMutation({
-    mutationFn: ({ productoId, cantidad, sucursalId }: { productoId: number; cantidad: number; sucursalId: number | null }) =>
+    mutationFn: ({
+      productoId,
+      cantidad,
+      sucursalId,
+      sabores,
+    }: {
+      productoId: number;
+      cantidad: number;
+      sucursalId: number | null;
+      sabores?: Array<{ sabor_id: number; cantidad: number }>;
+    }) =>
       api.post<{ ok: true }>("/cliente/carrito/items", {
         producto_id: productoId,
         cantidad,
         modo_compra: "dinero",
         sucursal_id: sucursalId,
+        sabores,
       }),
-    onMutate: async ({ productoId, cantidad }) => {
+    onMutate: async ({ productoId, cantidad, sabores }) => {
       await queryClient.cancelQueries({ queryKey: ["cliente", "carrito-online"] });
       const previousCart = queryClient.getQueryData<OnlineCartResponse>(["cliente", "carrito-online"]);
+      if (sabores?.length) return { previousCart };
       const producto = productos.find((item) => item.id === productoId);
       if (producto) {
         queryClient.setQueryData<OnlineCartResponse>(["cliente", "carrito-online"], (current) => {
@@ -404,8 +478,15 @@ export function TiendaOnline() {
         delete next[variables.productoId];
         return next;
       });
+      setSaboresCajaDraft((prev) => {
+        const next = { ...prev };
+        delete next[variables.productoId];
+        return next;
+      });
       setToast(
-        variables.cantidad > 1
+        variables.sabores?.length
+          ? "Caja personalizada agregada al carrito."
+          : variables.cantidad > 1
           ? `${variables.cantidad} productos agregados al carrito.`
           : "Producto agregado al carrito.",
       );
@@ -423,6 +504,23 @@ export function TiendaOnline() {
   function agregar(producto: Producto, cantidad: number) {
     if (!user || user.rol !== "cliente") {
       navigate("/login");
+      return;
+    }
+    if (isCajaSabores(producto)) {
+      if (!sucursalId) {
+        setToast("Selecciona una sucursal para validar stock de sabores.");
+        return;
+      }
+      if (!cajaSeleccionCompleta(producto)) {
+        setToast(`Elegi exactamente ${cajaCapacidad(producto)} sabores para esta caja.`);
+        return;
+      }
+      addMutation.mutate({
+        productoId: producto.id,
+        cantidad: 1,
+        sucursalId: Number(sucursalId),
+        sabores: cajaSaboresPayload(producto),
+      });
       return;
     }
     if (producto.track_stock !== false && !sucursalId) {
@@ -876,7 +974,8 @@ export function TiendaOnline() {
             {productosFiltrados.map((producto) => {
               const img = productImage(producto);
               const stock = Number(producto.stock_disponible ?? 0);
-              const sinStock = producto.track_stock !== false && stock <= 0;
+              const esCaja = isCajaSabores(producto);
+              const sinStock = esCaja ? !productHasStock(producto) : producto.track_stock !== false && stock <= 0;
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
               const maxCantidad = maxSelectableQuantity(producto);
               return (
@@ -927,7 +1026,7 @@ export function TiendaOnline() {
                     >
                       Ver producto
                     </button>
-                    {user ? (
+                    {user && !esCaja ? (
                       <div className="product-card-qty">
                         <button
                           type="button"
@@ -953,12 +1052,14 @@ export function TiendaOnline() {
                     <button
                       className="product-card-btn product-card-btn-canjear"
                       disabled={addMutation.isPending || sinStock}
-                      onClick={() => agregar(producto, cantidadSeleccionada)}
+                      onClick={() => esCaja ? openProductoModal(producto) : agregar(producto, cantidadSeleccionada)}
                     >
                       {sinStock
                         ? "Sin stock"
                         : addMutation.isPending
                           ? "Agregando..."
+                          : esCaja
+                            ? "Personalizar caja"
                           : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito` : "al carrito"}`}
                     </button>
                   </div>
@@ -1114,6 +1215,50 @@ export function TiendaOnline() {
 
               {user ? (
                 <>
+                  {isCajaSabores(productoModal) ? (
+                    <div className="box-flavor-picker">
+                      <div className="box-flavor-picker-head">
+                        <strong>Elegi sabores</strong>
+                        <span>{cajaSeleccionTotal(productoModal)} / {cajaCapacidad(productoModal)}</span>
+                      </div>
+                      <p className="box-flavor-picker-help">
+                        Arma tu caja seleccionando exactamente {cajaCapacidad(productoModal)} alfajores.
+                      </p>
+                      <div className="box-flavor-list">
+                        {(productoModal.sabores_disponibles ?? []).map((sabor) => {
+                          const selected = cajaDraft(productoModal)[sabor.id] ?? 0;
+                          const disponible = Math.max(0, Number(sabor.stock_disponible ?? 0));
+                          return (
+                            <div key={sabor.id} className="box-flavor-row">
+                              <div>
+                                <strong>{sabor.nombre}</strong>
+                                <span>{disponible > 0 ? `${disponible} disponibles` : "Sin stock"}</span>
+                              </div>
+                              <div className="catalog-canje-item-qty">
+                                <button
+                                  type="button"
+                                  disabled={addMutation.isPending || selected <= 0}
+                                  onClick={() => ajustarSaborCaja(productoModal, sabor.id, -1)}
+                                >
+                                  -
+                                </button>
+                                <span>{selected}</span>
+                                <button
+                                  type="button"
+                                  disabled={addMutation.isPending || disponible <= selected || cajaSeleccionTotal(productoModal) >= cajaCapacidad(productoModal)}
+                                  onClick={() => ajustarSaborCaja(productoModal, sabor.id, +1)}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!isCajaSabores(productoModal) ? (
                   <div className="product-card-qty">
                     <button
                       type="button"
@@ -1135,16 +1280,19 @@ export function TiendaOnline() {
                       +
                     </button>
                   </div>
+                  ) : null}
 
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={addMutation.isPending || !productHasStock(productoModal)}
+                    disabled={addMutation.isPending || !productHasStock(productoModal) || (isCajaSabores(productoModal) && !cajaSeleccionCompleta(productoModal))}
                     onClick={() => agregar(productoModal, getCantidadSeleccionada(productoModal.id))}
                   >
                     {!productHasStock(productoModal)
                       ? "Sin stock"
                       : addMutation.isPending
                         ? "Agregando..."
+                        : isCajaSabores(productoModal)
+                          ? `Agregar caja (${cajaSeleccionTotal(productoModal)}/${cajaCapacidad(productoModal)})`
                         : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito` : "al carrito"}`}
                   </button>
                 </>
