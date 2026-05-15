@@ -2,6 +2,7 @@
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
 type TimelineEntry = {
@@ -46,6 +47,7 @@ function rewardPoints(producto: Producto): number {
 }
 
 export function Home() {
+  const user = useAuthStore((state) => state.user);
   const mapPoints: MapPoint[] = [
     {
       id: "la-unidad",
@@ -77,7 +79,7 @@ export function Home() {
     const productos = productosVentaQuery.data ?? [];
     const conImagen = productos.filter(hasProductImage);
     const destacados = conImagen.filter((producto) => producto.destacado_home);
-    return (destacados.length ? destacados : conImagen).slice(0, 4);
+    return destacados.slice(0, 4);
   }, [productosVentaQuery.data]);
 
   const heroImage = "/hero.webp";
@@ -247,10 +249,14 @@ export function Home() {
                   <div className="home-product-body">
                     <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
                     <h3>{producto.nombre}</h3>
-                    <p>{producto.descripcion || "Producto destacado del catálogo de Ñandé."}</p>
+                    {producto.descripcion ? <p>{producto.descripcion}</p> : null}
                     <div className="home-product-meta home-product-meta-static">
                       <strong>{money(producto.precio_dinero)}</strong>
-                      <span>{rewardPoints(producto) > 0 ? `+${rewardPoints(producto)} pts` : "Selección destacada"}</span>
+                      <span>{rewardPoints(producto) > 0 ? `+${rewardPoints(producto)} pts` : "Comprar"}</span>
+                    </div>
+                    <div className="home-product-actions">
+                      <Link to="/tienda" className="home-product-action home-product-action-secondary">Ver producto</Link>
+                      <Link to={user ? "/tienda" : "/login"} className="home-product-action home-product-action-primary">Comprar</Link>
                     </div>
                   </div>
                 </article>
