@@ -39,9 +39,12 @@ export function Navbar() {
   const navigate = useNavigate();
 
   const user = useAuthStore((state) => state.user);
+  const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
+  const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
   const logout = useAuthStore((state) => state.logout);
   const cartItems = useCartStore((state) => state.items);
 
+  const authReady = hasRestoredSession && !isRestoringSession;
   const canSeeCliente = user?.rol === "cliente";
   const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin" || user?.rol === "superAdmin";
   const canSeeAdmin = user?.rol === "admin" || user?.rol === "superAdmin";
@@ -51,21 +54,21 @@ export function Navbar() {
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
-    enabled: canSeeCliente,
+    enabled: authReady && canSeeCliente,
     refetchInterval: 5000,
     refetchIntervalInBackground: true,
   });
   const supportConversationsQuery = useQuery({
     queryKey: ["navbar", "support-unread", user?.rol],
     queryFn: () => api.get<SupportConversationNav[]>("/soporte/conversaciones"),
-    enabled: canSeeSupport,
+    enabled: authReady && canSeeSupport,
     refetchInterval: 5000,
     refetchIntervalInBackground: true,
   });
   const staffOrdersQuery = useQuery({
     queryKey: ["navbar", "staff-orders-alert"],
     queryFn: () => api.get<StaffOrderNav[]>("/vendedor/ordenes"),
-    enabled: canSeeVendedor,
+    enabled: authReady && canSeeVendedor,
     refetchInterval: 5000,
     refetchIntervalInBackground: true,
   });

@@ -4,6 +4,8 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { defaultRouteForRole } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
 
+let initializedGoogleClientId: string | null = null;
+let googleCredentialHandler: ((credential: string) => void) | null = null;
 
 export function Login() {
   const navigate = useNavigate();
@@ -48,22 +50,28 @@ export function Login() {
     if (!googleClientId || user) return;
 
     let cancelled = false;
+    googleCredentialHandler = (credential: string) => {
+      setGoogleError(null);
+      googleMutation.mutate(credential);
+    };
 
     const renderGoogleButton = () => {
       if (cancelled || !window.google?.accounts.id || !googleButtonRef.current) return;
 
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        ux_mode: "popup",
-        callback: (response) => {
-          if (!response.credential) {
-            setGoogleError("No pudimos recibir la credencial de Google.");
-            return;
-          }
-          setGoogleError(null);
-          googleMutation.mutate(response.credential);
-        },
-      });
+      if (initializedGoogleClientId !== googleClientId) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          ux_mode: "popup",
+          callback: (response) => {
+            if (!response.credential) {
+              setGoogleError("No pudimos recibir la credencial de Google.");
+              return;
+            }
+            googleCredentialHandler?.(response.credential);
+          },
+        });
+        initializedGoogleClientId = googleClientId;
+      }
 
       googleButtonRef.current.innerHTML = "";
       window.google.accounts.id.renderButton(googleButtonRef.current, {
@@ -85,6 +93,7 @@ export function Login() {
       return () => {
         cancelled = true;
         existingScript.removeEventListener("load", renderGoogleButton);
+        if (googleCredentialHandler) googleCredentialHandler = null;
       };
     }
 
@@ -100,8 +109,9 @@ export function Login() {
       cancelled = true;
       script.onload = null;
       script.onerror = null;
+      if (googleCredentialHandler) googleCredentialHandler = null;
     };
-  }, [googleClientId, user]);
+  }, [googleClientId, googleMutation, user]);
 
   if (isRestoringSession || !hasRestoredSession) {
     return (

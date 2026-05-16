@@ -24,12 +24,16 @@ function getRealtimeUrl(token: string | null): string {
 export function RealtimeBridge() {
   const queryClient = useQueryClient();
   const token = useAuthStore((state) => state.token);
+  const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
+  const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
   const reconnectTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
   const topicsBufferRef = useRef<Set<string>>(new Set());
   const flushTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!hasRestoredSession || isRestoringSession) return;
+
     let socket: WebSocket | null = null;
     let closedManually = false;
 
@@ -142,6 +146,7 @@ export function RealtimeBridge() {
     }
 
     function connect() {
+      if (navigator.onLine === false) return;
       socket = new WebSocket(getRealtimeUrl(token));
 
       socket.addEventListener("open", () => {
@@ -161,16 +166,25 @@ export function RealtimeBridge() {
       socket.addEventListener("close", () => {
         socket = null;
         if (closedManually) return;
+        if (navigator.onLine === false) return;
         const nextDelay = Math.min(1000 * 2 ** retryCountRef.current, 15000);
         retryCountRef.current += 1;
         reconnectTimerRef.current = window.setTimeout(connect, nextDelay);
       });
     }
 
+    function reconnectAfterOnline() {
+      if (socket || closedManually) return;
+      retryCountRef.current = 0;
+      connect();
+    }
+
+    window.addEventListener("online", reconnectAfterOnline);
     connect();
 
     return () => {
       closedManually = true;
+      window.removeEventListener("online", reconnectAfterOnline);
       if (reconnectTimerRef.current !== null) {
         window.clearTimeout(reconnectTimerRef.current);
       }
@@ -180,7 +194,7 @@ export function RealtimeBridge() {
       topicsBufferRef.current.clear();
       socket?.close();
     };
-  }, [queryClient, token]);
+  }, [hasRestoredSession, isRestoringSession, queryClient, token]);
 
   return null;
 }
