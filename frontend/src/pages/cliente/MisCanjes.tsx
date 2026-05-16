@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 
 type Canje = {
   id: number;
@@ -44,13 +45,7 @@ const CANJE_FILTERS: Array<{ key: CanjeFilter; label: string }> = [
 ];
 
 function formatDate(value: string | null): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatBuenosAiresDateTime(value);
 }
 
 function estadoLabel(estado: Canje["estado"]): string {

@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDate } from "../../lib/dateTime";
 import { useAuthStore } from "../../store/authStore";
 
 type SucursalAdmin = {
@@ -237,7 +238,7 @@ export function SucursalesAdmin() {
             </p>
           </div>
           <div className="admin-topbar-actions">
-            <div className="admin-topbar-date">{new Date().toLocaleDateString("es-AR")}</div>
+            <div className="admin-topbar-date">{formatBuenosAiresDate(new Date())}</div>
           </div>
         </div>
 

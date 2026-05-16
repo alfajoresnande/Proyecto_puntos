@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import ExcelJS from "exceljs";
+import PDFDocument from "pdfkit";
 import { Queryable, qAll, qOne, qRun } from "../db";
 import { acreditarPuntosPorCompra } from "./points";
 
@@ -85,6 +87,7 @@ export type VentaReporteRow = {
 };
 
 const VALID_PAYMENT_METHODS = new Set(["cash", "transferencia", "tarjeta", "qr", "otro"]);
+const BUENOS_AIRES_TIME_ZONE = "America/Argentina/Buenos_Aires";
 
 function toMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -93,6 +96,86 @@ function toMoney(value: number): number {
 function normalizePaymentMethod(value: string): string {
   const method = value.trim().toLowerCase();
   return VALID_PAYMENT_METHODS.has(method) ? method : "cash";
+}
+
+function getTimeZoneParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+
+  return {
+    year: values.year,
+    month: values.month,
+    day: values.day,
+    hour: values.hour,
+    minute: values.minute,
+    second: values.second,
+  };
+}
+
+function getTimeZoneOffsetMillis(date: Date, timeZone: string): number {
+  const parts = getTimeZoneParts(date, timeZone);
+  const utcEquivalent = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return utcEquivalent - date.getTime();
+}
+
+function toMysqlDateTimeFromUtc(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hour = String(date.getUTCHours()).padStart(2, "0");
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  const second = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+function buenosAiresMidnightToUtcMysql(value: string, dayOffset: number): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const utcGuess = Date.UTC(year, month - 1, day + dayOffset, 0, 0, 0);
+  const firstOffset = getTimeZoneOffsetMillis(new Date(utcGuess), BUENOS_AIRES_TIME_ZONE);
+  const firstPass = utcGuess - firstOffset;
+  const finalOffset = getTimeZoneOffsetMillis(new Date(firstPass), BUENOS_AIRES_TIME_ZONE);
+  return toMysqlDateTimeFromUtc(utcGuess - finalOffset);
+}
+
+function formatBuenosAiresDateTime(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("es-AR", {
+    timeZone: BUENOS_AIRES_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+export function getBuenosAiresDateStamp(value: Date = new Date()): string {
+  const parts = getTimeZoneParts(value, BUENOS_AIRES_TIME_ZONE);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function normalizeFlavorSelection(sabores: LocalSaleFlavorInput[] | undefined): LocalSaleFlavorInput[] {
@@ -341,19 +424,13 @@ export async function registerLocalSale(
 }
 
 function normalizeDateStart(value?: string | null): string | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  return `${value} 00:00:00`;
+  if (!value) return null;
+  return buenosAiresMidnightToUtcMysql(value, 0);
 }
 
 function normalizeDateEnd(value?: string | null): string | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return null;
-  date.setUTCDate(date.getUTCDate() + 1);
-  const y = date.getUTCFullYear();
-  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(date.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d} 00:00:00`;
+  if (!value) return null;
+  return buenosAiresMidnightToUtcMysql(value, 1);
 }
 
 export async function getVentasReporteRows(
@@ -468,7 +545,7 @@ export async function getVentasReporteRows(
       .join(" | ");
     return {
       id: Number(row.id),
-      fecha: String(row.fecha),
+      fecha: formatBuenosAiresDateTime(String(row.fecha)),
       canal: row.canal,
       estado: row.estado,
       cliente: row.cliente,
@@ -497,6 +574,143 @@ function money(value: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number(value ?? 0));
 }
 
+function pdfText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function renderVentasPdfBuffer(rows: VentaReporteRow[]): Promise<Buffer> {
+  const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+  const generadoEn = formatBuenosAiresDateTime(new Date());
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margin: 24,
+      info: {
+        Title: "Reporte de ventas",
+        Subject: "Ventas web y locales",
+        Author: "Nande Alfajores Correntinos",
+      },
+    });
+    const chunks: Buffer[] = [];
+
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const columns = [
+      { label: "Orden", width: 42, value: (row: VentaReporteRow) => `#${row.id}` },
+      { label: "Fecha", width: 78, value: (row: VentaReporteRow) => row.fecha },
+      { label: "Canal", width: 48, value: (row: VentaReporteRow) => row.canal },
+      { label: "Estado", width: 62, value: (row: VentaReporteRow) => row.estado },
+      { label: "Cliente", width: 96, value: (row: VentaReporteRow) => row.cliente },
+      { label: "Sucursal", width: 82, value: (row: VentaReporteRow) => row.sucursal },
+      { label: "Pago", width: 88, value: (row: VentaReporteRow) => row.metodo_pago },
+      { label: "Unid.", width: 34, value: (row: VentaReporteRow) => String(row.total_unidades), align: "right" as const },
+      { label: "Total", width: 70, value: (row: VentaReporteRow) => money(row.total_dinero), align: "right" as const },
+      { label: "Productos", width: 184, value: (row: VentaReporteRow) => row.productos },
+    ];
+
+    const left = doc.page.margins.left;
+    const rightLimit = doc.page.width - doc.page.margins.right;
+    const bottomLimit = doc.page.height - doc.page.margins.bottom;
+    const tableWidth = columns.reduce((acc, column) => acc + column.width, 0);
+    const headerHeight = 18;
+
+    function drawReportHeader() {
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(18)
+        .fillColor("#7a3b0c")
+        .text("Reporte de ventas", left, 24, { width: rightLimit - left });
+
+      doc
+        .font("Helvetica")
+        .fontSize(9)
+        .fillColor("#755236")
+        .text("Ventas web y locales registradas en el sistema.", left, 47)
+        .text(`Horario Argentina, Buenos Aires. Generado: ${generadoEn}`, left, 61);
+
+      doc
+        .roundedRect(left, 80, tableWidth, 24, 2)
+        .fillAndStroke("#fff4e8", "#e3c7ad")
+        .fillColor("#2b1606")
+        .font("Helvetica-Bold")
+        .fontSize(9)
+        .text(`Total: ${money(total)}    Ordenes: ${rows.length}`, left + 8, 88);
+    }
+
+    function drawTableHeader(y: number): number {
+      doc.rect(left, y, tableWidth, headerHeight).fillAndStroke("#f8ead9", "#e3c7ad");
+      let x = left;
+      doc.font("Helvetica-Bold").fontSize(7).fillColor("#6b2e08");
+      for (const column of columns) {
+        doc.text(column.label, x + 3, y + 5, { width: column.width - 6 });
+        doc.moveTo(x, y).lineTo(x, y + headerHeight).strokeColor("#e3c7ad").stroke();
+        x += column.width;
+      }
+      doc.moveTo(left + tableWidth, y).lineTo(left + tableWidth, y + headerHeight).strokeColor("#e3c7ad").stroke();
+      return y + headerHeight;
+    }
+
+    function newTablePage(): number {
+      doc.addPage();
+      return drawTableHeader(doc.page.margins.top);
+    }
+
+    drawReportHeader();
+    let y = drawTableHeader(116);
+
+    if (!rows.length) {
+      doc.font("Helvetica").fontSize(9).fillColor("#2b1606").text("Sin ventas para mostrar.", left + 6, y + 8);
+      doc.end();
+      return;
+    }
+
+    rows.forEach((row, index) => {
+      doc.font("Helvetica").fontSize(7).fillColor("#2b1606");
+      const rowValues = columns.map((column) => pdfText(column.value(row)));
+      const rowHeight = Math.max(
+        20,
+        ...rowValues.map((value, columnIndex) =>
+          doc.heightOfString(value || "-", { width: columns[columnIndex].width - 6, align: columns[columnIndex].align ?? "left" }) + 10,
+        ),
+      );
+
+      if (y + rowHeight > bottomLimit) {
+        y = newTablePage();
+      }
+
+      if (index % 2 === 1) {
+        doc.rect(left, y, tableWidth, rowHeight).fill("#fffaf5");
+      }
+
+      doc.rect(left, y, tableWidth, rowHeight).strokeColor("#e3c7ad").stroke();
+      let x = left;
+      rowValues.forEach((value, columnIndex) => {
+        const column = columns[columnIndex];
+        doc
+          .fillColor("#2b1606")
+          .font("Helvetica")
+          .fontSize(7)
+          .text(value || "-", x + 3, y + 5, {
+            width: column.width - 6,
+            align: column.align ?? "left",
+          });
+        doc.moveTo(x, y).lineTo(x, y + rowHeight).strokeColor("#e3c7ad").stroke();
+        x += column.width;
+      });
+      doc.moveTo(left + tableWidth, y).lineTo(left + tableWidth, y + rowHeight).strokeColor("#e3c7ad").stroke();
+      y += rowHeight;
+    });
+
+    doc.end();
+  });
+}
+
 function renderTableRows(rows: VentaReporteRow[]): string {
   return rows.map((row) => `
     <tr>
@@ -516,8 +730,70 @@ function renderTableRows(rows: VentaReporteRow[]): string {
   `).join("");
 }
 
+export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Nande Alfajores Correntinos";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Ventas", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "Orden", key: "orden", width: 10 },
+    { header: "Fecha", key: "fecha", width: 20 },
+    { header: "Canal", key: "canal", width: 16 },
+    { header: "Estado", key: "estado", width: 18 },
+    { header: "Cliente", key: "cliente", width: 28 },
+    { header: "Email", key: "email", width: 34 },
+    { header: "Sucursal", key: "sucursal", width: 24 },
+    { header: "Pago", key: "pago", width: 24 },
+    { header: "Unidades", key: "unidades", width: 12 },
+    { header: "Total", key: "total", width: 16 },
+    { header: "Productos", key: "productos", width: 58 },
+    { header: "Notas", key: "notas", width: 32 },
+  ];
+
+  sheet.getRow(1).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FF6B2E08" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8EAD9" } };
+    cell.border = { bottom: { style: "thin", color: { argb: "FFE3C7AD" } } };
+  });
+
+  rows.forEach((row) => {
+    sheet.addRow({
+      orden: row.id,
+      fecha: row.fecha,
+      canal: row.canal,
+      estado: row.estado,
+      cliente: row.cliente,
+      email: row.email,
+      sucursal: row.sucursal,
+      pago: row.metodo_pago,
+      unidades: row.total_unidades,
+      total: row.total_dinero,
+      productos: row.productos,
+      notas: row.notas,
+    });
+  });
+
+  sheet.getColumn("total").numFmt = '"$"#,##0.00';
+  sheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.alignment = {
+        vertical: "top",
+        wrapText: rowNumber > 1,
+      };
+    });
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+}
+
 export function renderVentasPrintableHtml(rows: VentaReporteRow[]): string {
   const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+  const generadoEn = formatBuenosAiresDateTime(new Date());
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -527,6 +803,7 @@ export function renderVentasPrintableHtml(rows: VentaReporteRow[]): string {
     body { font-family: Arial, sans-serif; color: #2b1606; margin: 24px; }
     h1 { margin: 0 0 8px; color: #7a3b0c; }
     p { margin: 0 0 16px; color: #755236; }
+    .meta { font-size: 12px; color: #8b5a30; margin-top: -6px; }
     table { border-collapse: collapse; width: 100%; font-size: 12px; }
     th, td { border: 1px solid #e3c7ad; padding: 8px; text-align: left; vertical-align: top; }
     th { background: #f8ead9; color: #6b2e08; }
@@ -538,6 +815,7 @@ export function renderVentasPrintableHtml(rows: VentaReporteRow[]): string {
   <button onclick="window.print()">Imprimir / guardar PDF</button>
   <h1>Reporte de ventas</h1>
   <p>Ventas web y locales registradas en el sistema.</p>
+  <p class="meta">Horario Argentina, Buenos Aires. Generado: ${escapeHtml(generadoEn)}</p>
   <div class="summary"><strong>Total:</strong> ${escapeHtml(money(total))} &nbsp; <strong>Ordenes:</strong> ${rows.length}</div>
   <table>
     <thead>

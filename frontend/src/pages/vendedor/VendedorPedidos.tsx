@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
 
 type ClienteBuscado = {
@@ -88,9 +89,7 @@ function money(value: number | string | null | undefined): string {
 }
 
 function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("es-AR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return formatBuenosAiresDateTime(value);
 }
 
 function estadoOrdenLabel(estado: string): string {
@@ -328,7 +327,7 @@ export function VendedorPedidos() {
       <div className="ios-card p-4" style={{ borderLeft: "4px solid #D4621A" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
-            <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Compras y Pedidos</h1>
+            <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Ventas y Pedidos</h1>
             <p className="text-sm" style={{ color: "#6b7280" }}>
               Gestiona pedidos pagados, preparacion, envio y entrega.
             </p>

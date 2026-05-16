@@ -232,7 +232,7 @@ router.post("/conversaciones", async (req, res) => {
         if (!Number.isInteger(usuarioDestinoId) || usuarioDestinoId <= 0) {
             throw new Error("Selecciona un usuario valido para iniciar la conversacion.");
         }
-        const usuarioDestino = await (0, db_1.qOne)(conn, "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1", [usuarioDestinoId]);
+        const usuarioDestino = await (0, db_1.qOne)(conn, "SELECT id, activo FROM usuarios WHERE id = ? LIMIT 1 FOR UPDATE", [usuarioDestinoId]);
         if (!usuarioDestino || Number(usuarioDestino.activo) !== 1) {
             throw new Error("El usuario seleccionado no esta disponible.");
         }

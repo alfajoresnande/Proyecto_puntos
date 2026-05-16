@@ -709,11 +709,25 @@ router.get("/ventas/export", async (req, res, next) => {
             estado: typeof req.query.estado === "string" ? req.query.estado : null,
         });
         const formato = typeof req.query.formato === "string" ? req.query.formato.toLowerCase() : "html";
-        const stamp = new Date().toISOString().slice(0, 10);
-        if (formato === "xls" || formato === "excel") {
+        const stamp = (0, localSales_1.getBuenosAiresDateStamp)();
+        if (formato === "xlsx" || formato === "excel") {
+            const excel = await (0, localSales_1.renderVentasExcelBuffer)(rows);
+            res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            res.setHeader("Content-Disposition", `attachment; filename="ventas-${stamp}.xlsx"`);
+            res.send(excel);
+            return;
+        }
+        if (formato === "xls") {
             res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
             res.setHeader("Content-Disposition", `attachment; filename="ventas-${stamp}.xls"`);
             res.send((0, localSales_1.renderVentasExcelHtml)(rows));
+            return;
+        }
+        if (formato === "pdf") {
+            const pdf = await (0, localSales_1.renderVentasPdfBuffer)(rows);
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", `attachment; filename="ventas-${stamp}.pdf"`);
+            res.send(pdf);
             return;
         }
         res.setHeader("Content-Type", "text/html; charset=utf-8");

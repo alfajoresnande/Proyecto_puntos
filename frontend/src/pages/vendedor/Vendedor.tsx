@@ -1,6 +1,7 @@
 ﻿import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
 
 type ClienteBuscado = {
@@ -299,7 +300,7 @@ export function Vendedor() {
               </p>
               {canjeInfo.fecha_limite_retiro ? (
                 <p className="text-xs" style={{ color: "#A08060" }}>
-                  Vence: {new Date(canjeInfo.fecha_limite_retiro).toLocaleString("es-AR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  Vence: {formatBuenosAiresDateTime(canjeInfo.fecha_limite_retiro)}
                 </p>
               ) : null}
             </div>

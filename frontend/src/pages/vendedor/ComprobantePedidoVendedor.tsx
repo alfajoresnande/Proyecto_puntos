@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import "../../styles/comprobante.css";
 
 type OrdenVendedorDetalle = {
@@ -64,15 +65,13 @@ function money(value: number | string | null | undefined): string {
 }
 
 function dateLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-AR", {
+  return formatBuenosAiresDateTime(value, {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(date);
+  });
 }
 
 function estadoPedidoLabel(estado: string): string {

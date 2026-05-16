@@ -198,6 +198,10 @@ export function Navbar() {
             <img src="/logo.png" alt="Nande" />
           </Link>
 
+          <Link to="/tienda" className="navbar-mobile-store-shortcut" onClick={closeMenu}>
+            Tienda Online
+          </Link>
+
           <div className="navbar-links">
             <NavLink to="/inicio" className={({ isActive }) => navClass(isActive)}>Inicio</NavLink>
             <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)}>Tienda Online</NavLink>
@@ -217,7 +221,7 @@ export function Navbar() {
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
             {canSeeVendedor ? (
               <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>
-                {renderNavLabel("Compras y Pedidos", staffOrdersAttentionCount)}
+                {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
               </NavLink>
             ) : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
@@ -297,7 +301,7 @@ export function Navbar() {
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
-                            Compras y Pedidos
+                            Ventas y Pedidos
                           </Link>
                         </>
                       ) : null}
@@ -368,7 +372,7 @@ export function Navbar() {
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
           {canSeeVendedor ? (
             <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
-              {renderNavLabel("Compras y Pedidos", staffOrdersAttentionCount)}
+              {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
             </NavLink>
           ) : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
@@ -399,7 +403,7 @@ export function Navbar() {
                   <div className="navbar-mobile-user-links">
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link>
-                    <Link to="/vendedor/pedidos" className="navbar-link" onClick={closeMenu}>Compras y Pedidos</Link>
+                    <Link to="/vendedor/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
                     {(user.rol === "admin" || user.rol === "superAdmin") ? (
                       <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
                     ) : null}

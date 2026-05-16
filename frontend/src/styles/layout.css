@@ -729,6 +729,10 @@
   box-shadow: 0 2px 10px rgba(36, 18, 10, 0.25);
 }
 
+.navbar-mobile-store-shortcut {
+  display: none;
+}
+
 .navbar-links {
   gap: 0.2rem;
 }
@@ -1010,8 +1014,19 @@
     top: 58px;
   }
 
-  .navbar-cart-wrap {
+  .navbar-mobile-store-shortcut {
+    align-items: center;
+    color: #FFF8F0;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 800;
     margin-left: auto;
+    max-width: 120px;
+    overflow: hidden;
+    padding: 0.25rem 0;
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .navbar-cart-btn {
@@ -1019,8 +1034,12 @@
     width: 40px;
   }
 
+  .navbar-cart-wrap {
+    margin-left: 0.6rem;
+  }
+
   .navbar-hamburger {
-    margin-left: auto;
+    margin-left: 0.25rem;
   }
 
   .navbar-cart-wrap + .navbar-hamburger {

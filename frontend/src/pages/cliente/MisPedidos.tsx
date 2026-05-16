@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDate } from "../../lib/dateTime";
 
 type Orden = {
   id: number;
@@ -75,7 +76,7 @@ function money(value: number | string | null | undefined): string {
 function dateLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  return formatBuenosAiresDate(date);
 }
 
 function estadoPedidoLabel(estado: string): string {

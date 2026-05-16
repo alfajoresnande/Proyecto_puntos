@@ -133,6 +133,65 @@
   border: 1px solid rgba(255,255,255,0.28);
 }
 
+.admin-nav-group {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-nav-label-with-caret {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.admin-nav-caret {
+  border-bottom: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  display: inline-block;
+  height: 7px;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  width: 7px;
+}
+
+.admin-nav-caret.open {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}
+
+.admin-nav-submenu {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0 0 0 0.85rem;
+}
+
+.admin-nav-subbtn {
+  background: rgba(255, 248, 240, 0.55);
+  border: 1px solid rgba(180,84,20,0.16);
+  border-radius: 10px;
+  color: #6B3E26;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.55rem 0.8rem;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.admin-nav-subbtn:hover {
+  background: rgba(180,84,20,0.1);
+  border-color: rgba(180,84,20,0.24);
+  color: #2D1200;
+}
+
+.admin-nav-subbtn.active {
+  background: #fff3e6;
+  border-color: rgba(212,98,26,0.32);
+  color: #9A4E1D;
+}
+
 /* ════ MAIN ════ */
 .admin-main {
   flex: 1;
@@ -775,6 +834,109 @@
   padding: 0.55rem 0.7rem;
 }
 
+.adm-sales-shell {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.adm-sales-summary {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.adm-sales-summary-card {
+  background: linear-gradient(180deg, #fff9f3 0%, #fff3e6 100%);
+  border: 1px solid rgba(180,84,20,0.18);
+  border-radius: 14px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem 1.05rem;
+}
+
+.adm-sales-summary-label {
+  color: #8B5A30;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adm-sales-summary-value {
+  color: #2D1200;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.adm-sales-summary-text {
+  color: #8B5A30;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.adm-sales-switcher-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.adm-sales-switcher-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.adm-sales-switcher-title {
+  color: #3D1A02;
+  font-size: 1rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.adm-sales-switcher {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.adm-sales-switcher-btn {
+  background: #FFF8F0;
+  border: 1px solid rgba(180,84,20,0.2);
+  border-radius: 14px;
+  color: #5C2D0E;
+  cursor: pointer;
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.95rem 1rem;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.adm-sales-switcher-btn:hover {
+  background: #fff3e6;
+  border-color: rgba(180,84,20,0.3);
+  transform: translateY(-1px);
+}
+
+.adm-sales-switcher-btn.active {
+  background: linear-gradient(180deg, #fff4e8 0%, #fee9d0 100%);
+  border-color: rgba(212,98,26,0.32);
+  box-shadow: 0 8px 18px rgba(180,84,20,0.08);
+}
+
+.adm-sales-switcher-btn-title {
+  color: #3D1A02;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.adm-sales-switcher-btn-desc {
+  color: #8B5A30;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .adm-product-images-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1398,6 +1560,8 @@
   .admin-nav-btn span { display: none; }
   .admin-brand-name, .admin-brand-role, .admin-nav-section { display: none; }
   .admin-nav-btn { justify-content: center; padding: 0.65rem; }
+  .adm-sales-summary,
+  .adm-sales-switcher { grid-template-columns: 1fr; }
 }
 
 /* Mobile */
@@ -1435,6 +1599,7 @@
   .admin-nav-btn { width: 100%; padding: 0.65rem 0.8rem; justify-content: flex-start; flex-shrink: 1; }
   .admin-nav-btn span { display: inline; }
   .admin-nav-section { display: block; padding: 0.45rem 0.2rem 0.1rem; }
+  .admin-nav-submenu { padding-left: 0.3rem; }
   .admin-content { padding: 1rem; }
   .admin-topbar  { padding: 1rem; flex-direction: column; align-items: flex-start; }
   .admin-topbar-actions { width: 100%; }

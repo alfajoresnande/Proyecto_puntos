@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import { useAuthStore } from "../../store/authStore";
 
 type ClienteMe = {
@@ -27,13 +28,7 @@ type CanjearCodigoResponse = {
 };
 
 function formatDate(value: string | null): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatBuenosAiresDateTime(value);
 }
 
 export function Cliente() {

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { api } from "../../api";
+import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 
 type ConversationState = "abierta" | "respondida" | "cerrada" | "archivada";
 type ViewFilter = "todos" | "prioritarios";
@@ -49,13 +50,7 @@ type SupportUser = {
 };
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatBuenosAiresDateTime(value);
 }
 
 function onlyDigits(value: string | null | undefined): string {

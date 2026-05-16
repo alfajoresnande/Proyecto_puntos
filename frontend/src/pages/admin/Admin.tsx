@@ -5,7 +5,9 @@ import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
+import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
+import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto, Rol } from "../../types";
 
@@ -22,6 +24,21 @@ type AdminTab =
   | "crear"
   | "sobre-nosotros"
   | "terminos";
+
+const ADMIN_TABS: AdminTab[] = [
+  "inicio",
+  "usuarios",
+  "productos",
+  "inventario",
+  "ordenes",
+  "categorias",
+  "transacciones",
+  "canjes",
+  "codigos",
+  "crear",
+  "sobre-nosotros",
+  "terminos",
+];
 
 type Stats = {
   clientes: number;
@@ -375,14 +392,31 @@ type AdminAlertState = {
   canjes: number;
 };
 
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string;
+    types?: Array<{
+      description: string;
+      accept: Record<string, string[]>;
+    }>;
+  }) => Promise<{
+    createWritable: () => Promise<{
+      write: (data: Blob) => Promise<void>;
+      close: () => Promise<void>;
+    }>;
+  }>;
+};
+
 function formatDate(value: string | null): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatBuenosAiresDateTime(value);
+}
+
+function isAdminTab(value: string | null): value is AdminTab {
+  return value ? ADMIN_TABS.includes(value as AdminTab) : false;
+}
+
+function isVentasView(value: string | null): value is AdminVentasViewKey {
+  return value === "pedidos" || value === "venta-local" || value === "reportes";
 }
 
 function readStoredIds(key: string): number[] {
@@ -423,6 +457,45 @@ function getDownloadFilename(contentDisposition: string | null, fallback: string
   const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
   if (!asciiMatch?.[1]) return fallback;
   return asciiMatch[1].replace(/[/\\?%*:|"<>]/g, "_");
+}
+
+async function saveBlobWithPicker(blob: Blob, filename: string, mimeType: string): Promise<"saved" | "downloaded" | "cancelled"> {
+  const pickerWindow = window as SaveFilePickerWindow;
+  const extensionMatch = filename.match(/\.[a-z0-9]+$/i);
+  const extension = extensionMatch?.[0] ?? (mimeType === "application/pdf" ? ".pdf" : ".xlsx");
+
+  if (pickerWindow.showSaveFilePicker) {
+    try {
+      const handle = await pickerWindow.showSaveFilePicker({
+        suggestedName: filename,
+        types: [
+          {
+            description: mimeType === "application/pdf" ? "Archivo PDF" : "Archivo Excel",
+            accept: {
+              [mimeType]: [extension],
+            },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return "saved";
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return "cancelled";
+      throw error;
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return "downloaded";
 }
 
 function getCanjeCode(canje: Pick<CanjeAdmin, "id" | "codigo_retiro">): string {
@@ -782,6 +855,8 @@ export function Admin() {
   const isSuperAdminPanel = location.pathname.startsWith("/superadmin");
 
   const [tab, setTab] = useState<AdminTab>("inicio");
+  const [ventasView, setVentasView] = useState<AdminVentasViewKey>("pedidos");
+  const [ventasNavOpen, setVentasNavOpen] = useState(false);
   const [okMsg, setOkMsg] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1059,6 +1134,48 @@ export function Admin() {
   }, [adminHint]);
 
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const requestedTab = params.get("tab");
+    const requestedVentasView = params.get("vista");
+
+    if (isAdminTab(requestedTab) && requestedTab !== tab) {
+      setTab(requestedTab);
+    }
+
+    if (requestedTab === "ordenes") {
+      const nextVentasView = isVentasView(requestedVentasView) ? requestedVentasView : "pedidos";
+      if (nextVentasView !== ventasView) {
+        setVentasView(nextVentasView);
+      }
+      setVentasNavOpen(true);
+    }
+  }, [location.search, tab, ventasView]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const currentTab = params.get("tab");
+    const currentVentasView = params.get("vista");
+    const expectedVentasView = tab === "ordenes" ? ventasView : null;
+    const locationHasPriority =
+      (isAdminTab(currentTab) && currentTab !== tab) ||
+      (currentTab === "ordenes" && isVentasView(currentVentasView) && currentVentasView !== ventasView);
+
+    if (locationHasPriority) return;
+
+    const needsUpdate =
+      currentTab !== tab ||
+      (expectedVentasView ? currentVentasView !== expectedVentasView : currentVentasView !== null);
+
+    if (!needsUpdate) return;
+
+    params.set("tab", tab);
+    if (expectedVentasView) params.set("vista", expectedVentasView);
+    else params.delete("vista");
+
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  }, [location.pathname, location.search, navigate, tab, ventasView]);
+
+  useEffect(() => {
     if (!configuracionQuery.data) return;
     if (configLoaded) return;
     const getConfig = (clave: keyof ConfiguracionDraft, fallback: string) =>
@@ -1107,6 +1224,20 @@ export function Admin() {
 
   function irAPanelSucursales() {
     navigate(`${panelBasePath}/sucursales`);
+  }
+
+  function abrirVistaVentas(view: AdminVentasViewKey) {
+    setTab("ordenes");
+    setVentasView(view);
+    setVentasNavOpen(true);
+  }
+
+  function toggleVentasNav() {
+    if (tab !== "ordenes") {
+      abrirVistaVentas("pedidos");
+      return;
+    }
+    setVentasNavOpen((prev) => !prev);
   }
 
   const productos = productosQuery.data ?? [];
@@ -1174,6 +1305,15 @@ export function Admin() {
   const totalVentaLocal = useMemo(
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
+  );
+  const ordenesConAtencionCount = useMemo(
+    () =>
+      ordenes.filter((orden) => {
+        if (orden.estado === "pagada" || orden.estado === "preparada") return true;
+        if (orden.estado !== "pendiente_pago") return false;
+        return orden.pago?.proveedor === "efectivo" || orden.pago?.metodo === "cash";
+      }).length,
+    [ordenes],
   );
 
   async function enableBrowserAlerts() {
@@ -1948,7 +2088,7 @@ export function Admin() {
     }
   }
 
-  async function descargarVentas(formato: "html" | "xls") {
+  async function descargarVentas(formato: "pdf" | "html" | "xlsx" | "xls") {
     setBusy(true);
     setErrMsg("");
     setOkMsg("");
@@ -1958,32 +2098,39 @@ export function Admin() {
       if (ventasExportDesde) params.set("desde", ventasExportDesde);
       if (ventasExportHasta) params.set("hasta", ventasExportHasta);
       if (ordenesFiltroEstado) params.set("estado", ordenesFiltroEstado);
-
-      const headers = new Headers();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-      const response = await fetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
-        credentials: "include",
-        headers,
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(body?.error || "No se pudo exportar ventas.");
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
       if (formato === "html") {
-        window.open(url, "_blank", "noopener,noreferrer");
+        window.open(apiUrl(`/api/admin/ventas/export?${params.toString()}`), "_blank", "noopener,noreferrer");
       } else {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `ventas-${new Date().toISOString().slice(0, 10)}.xls`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        const headers = new Headers();
+        if (token) headers.set("Authorization", `Bearer ${token}`);
+        const response = await fetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
+          credentials: "include",
+          headers,
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(body?.error || "No se pudo exportar ventas.");
+        }
+
+        const extension = formato === "pdf" ? "pdf" : formato === "xlsx" ? "xlsx" : "xls";
+        const mimeType =
+          formato === "pdf"
+            ? "application/pdf"
+            : formato === "xlsx"
+              ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              : "application/vnd.ms-excel";
+        const blob = await response.blob();
+        const filename = getDownloadFilename(response.headers.get("Content-Disposition"), `ventas-${getBuenosAiresDateStamp()}.${extension}`);
+        const saveResult = await saveBlobWithPicker(blob, filename, mimeType);
+        if (saveResult === "cancelled") return;
       }
-      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
-      setOkMsg(formato === "html" ? "Reporte listo para imprimir o guardar como PDF." : "Excel generado correctamente.");
+      setOkMsg(
+        formato === "html"
+          ? "Se abrio la vista imprimible en una pestana normal del navegador."
+          : formato === "pdf"
+            ? "PDF generado correctamente."
+            : "Excel generado correctamente.",
+      );
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -2645,6 +2792,9 @@ export function Admin() {
   
   useEffect(() => {
     setMobileAdminNavOpen(false);
+    if (tab !== "ordenes") {
+      setVentasNavOpen(false);
+    }
   }, [tab]);
 
   return (
@@ -2680,9 +2830,36 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => setTab("inventario")}>
             {renderAdminNavLabel("Inventario")}
           </button>
-          <button className={`admin-nav-btn ${tab === "ordenes" ? "active" : ""}`} onClick={() => setTab("ordenes")}>
-            {renderAdminNavLabel("Compras", adminAlerts.ordenes)}
-          </button>
+          <div className={`admin-nav-group${tab === "ordenes" ? " active" : ""}`}>
+            <button className={`admin-nav-btn ${tab === "ordenes" ? "active" : ""}`} onClick={toggleVentasNav}>
+              <span className="admin-nav-label-with-caret">
+                {renderAdminNavLabel("Ventas", adminAlerts.ordenes)}
+                <span className={`admin-nav-caret${ventasNavOpen && tab === "ordenes" ? " open" : ""}`} aria-hidden="true" />
+              </span>
+            </button>
+            {ventasNavOpen ? (
+              <div className="admin-nav-submenu">
+                <button
+                  className={`admin-nav-subbtn${tab === "ordenes" && ventasView === "pedidos" ? " active" : ""}`}
+                  onClick={() => abrirVistaVentas("pedidos")}
+                >
+                  Pedidos
+                </button>
+                <button
+                  className={`admin-nav-subbtn${tab === "ordenes" && ventasView === "venta-local" ? " active" : ""}`}
+                  onClick={() => abrirVistaVentas("venta-local")}
+                >
+                  Venta local
+                </button>
+                <button
+                  className={`admin-nav-subbtn${tab === "ordenes" && ventasView === "reportes" ? " active" : ""}`}
+                  onClick={() => abrirVistaVentas("reportes")}
+                >
+                  Reportes
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
             {renderAdminNavLabel("Categorias")}
           </button>
@@ -2730,7 +2907,7 @@ export function Admin() {
                 {browserNotificationPermission === "granted" ? "Alertas activas" : "Activar alertas"}
               </button>
             ) : null}
-            <div className="admin-topbar-date">{new Date().toLocaleDateString("es-AR")}</div>
+            <div className="admin-topbar-date">{formatBuenosAiresDate(new Date())}</div>
           </div>
         </div>
 
@@ -3958,311 +4135,322 @@ export function Admin() {
           ) : null}
 
           {tab === "ordenes" ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <SectionTitle title="Compras y reservas" />
-              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
-                <div>
-                  <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>Registrar venta local</h3>
-                  <p className="adm-inline-tip" style={{ margin: 0 }}>
-                    Se guarda como venta interna para reportes, pero no descuenta stock web ni stock de sabores.
-                  </p>
-                </div>
-                <div className="adm-form-grid">
-                  <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
-                    <option value="">Cliente</option>
-                    {clientesVentaLocal.map((cliente) => (
-                      <option key={cliente.id} value={cliente.id}>
-                        {cliente.nombre} - {cliente.dni || cliente.email}
-                      </option>
-                    ))}
-                  </select>
-                  <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
-                    <option value="">Sucursal</option>
-                    {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                      <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                    ))}
-                  </select>
-                  <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
-                    <option value="cash">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="qr">QR</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                  <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
-                </div>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700 }}>
-                  <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
-                  Acreditar puntos de compra al cliente
-                </label>
-                <div className="adm-form-grid">
-                  <select
-                    className="adm-input"
-                    value={ventaLocalProductoId}
-                    onChange={(event) => {
-                      setVentaLocalProductoId(event.target.value);
-                      setVentaLocalSabores({});
-                    }}
-                  >
-                    <option value="">Producto</option>
-                    {productosVentaLocal.map((producto) => (
-                      <option key={producto.id} value={producto.id}>
-                        {producto.nombre} - {formatMoney(producto.precio_dinero)}
-                      </option>
-                    ))}
-                  </select>
-                  <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
-                  <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
-                    Agregar producto
-                  </button>
-                </div>
-                {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
-                  <div className="adm-inline-points-box">
-                    <p className="adm-inline-points-title">
-                      Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{productoVentaLocalSeleccionado.capacidad_sabores ?? 0} por caja
+            <AdminVentasView
+              currentView={ventasView}
+              onChangeView={abrirVistaVentas}
+              orderAttentionCount={ordenesConAtencionCount}
+              localDraftCount={ventaLocalItems.length}
+              ventaLocalContent={
+                <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>Registrar venta local</h3>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, pero no descuenta stock web ni stock de sabores.
                     </p>
-                    <div className="adm-form-grid">
-                      {saboresVentaLocalProducto.map((sabor) => (
-                        <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
-                          {sabor.nombre}
-                          <input
-                            className="adm-input"
-                            type="number"
-                            min={0}
-                            value={ventaLocalSabores[String(sabor.id)] ?? 0}
-                            onChange={(event) => {
-                              const value = Math.max(0, Number(event.target.value) || 0);
-                              setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
-                            }}
-                          />
-                        </label>
-                      ))}
-                    </div>
                   </div>
-                ) : null}
-                <div className="admin-table-wrap">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th>Cantidad</th>
-                        <th>Sabores</th>
-                        <th>Subtotal</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ventaLocalItems.length === 0 ? (
-                        <tr><td colSpan={5}><div className="adm-empty">Aun no agregaste productos a la venta local.</div></td></tr>
-                      ) : null}
-                      {ventaLocalItems.map((item, index) => (
-                        <tr key={`${item.producto_id}-${index}`}>
-                          <td>{item.nombre}</td>
-                          <td>{item.cantidad}</td>
-                          <td>{item.sabores?.length ? item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ") : "-"}</td>
-                          <td>{formatMoney(item.precio_dinero * item.cantidad)}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="adm-btn-danger"
-                              onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
-                            >
-                              Quitar
-                            </button>
-                          </td>
-                        </tr>
+                  <div className="adm-form-grid">
+                    <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
+                      <option value="">Cliente</option>
+                      {clientesVentaLocal.map((cliente) => (
+                        <option key={cliente.id} value={cliente.id}>
+                          {cliente.nombre} - {cliente.dni || cliente.email}
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-                  <strong>Total venta local: {formatMoney(totalVentaLocal)}</strong>
-                  <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
-                    {busy ? "Registrando..." : "Registrar venta local"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
-                <div className="adm-form-grid">
-                  <input className="adm-input" placeholder="Buscar por cliente, orden, estado o pago..." value={busquedaOrdenes} onChange={(event) => setBusquedaOrdenes(event.target.value)} />
-                  <select className="adm-input" value={ordenesFiltroEstado} onChange={(event) => setOrdenesFiltroEstado(event.target.value)}>
-                    <option value="">Todos los estados</option>
-                    <option value="pendiente_pago">Pendiente pago</option>
-                    <option value="pagada">Pagada</option>
-                    <option value="preparada">Preparada</option>
-                    <option value="enviada">Enviada</option>
-                    <option value="entregada">Entregada</option>
-                    <option value="cancelada">Cancelada</option>
-                    <option value="expirada">Expirada</option>
-                  </select>
-                  <select className="adm-input" value={ordenesFiltroEntrega} onChange={(event) => setOrdenesFiltroEntrega(event.target.value)}>
-                    <option value="">Retiro y envio</option>
-                    <option value="retiro">Solo retiro</option>
-                    <option value="envio">Solo envio</option>
-                  </select>
-                  <button className="adm-btn-secondary" onClick={() => void expirarReservas()} disabled={busy}>
-                    Expirar reservas vencidas
-                  </button>
-                </div>
-                <p className="adm-inline-tip">Pago y preparacion van separados: primero pagada, luego preparada/enviada/entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.</p>
-              </div>
-
-              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
-                <h3 style={{ margin: 0, color: "#3D1A02" }}>Exportar ventas</h3>
-                <div className="adm-form-grid">
-                  <select className="adm-input" value={ventasExportCanal} onChange={(event) => setVentasExportCanal(event.target.value)}>
-                    <option value="">Web + locales</option>
-                    <option value="web">Solo web</option>
-                    <option value="admin">Solo local admin</option>
-                    <option value="vendedor">Solo local vendedor</option>
-                  </select>
-                  <input className="adm-input" type="date" value={ventasExportDesde} onChange={(event) => setVentasExportDesde(event.target.value)} />
-                  <input className="adm-input" type="date" value={ventasExportHasta} onChange={(event) => setVentasExportHasta(event.target.value)} />
-                  <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("html")} disabled={busy}>
-                    PDF / imprimir
-                  </button>
-                  <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("xls")} disabled={busy}>
-                    Excel
-                  </button>
-                </div>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  El PDF abre una vista imprimible para guardar como PDF. Excel descarga un archivo .xls compatible.
-                </p>
-              </div>
-
-              <div className="admin-card">
-                <div className="admin-table-wrap">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Orden</th>
-                        <th>Cliente</th>
-                        <th>Canal</th>
-                        <th>Tipo</th>
-                        <th>Total</th>
-                        <th>Entrega</th>
-                        <th>Pago</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ordenesPagina.length === 0 ? (
-                        <tr><td colSpan={9}><div className="adm-empty">No hay compras para mostrar.</div></td></tr>
-                      ) : null}
-                      {ordenesPagina.map((orden) => (
-                        <Fragment key={orden.id}>
+                    </select>
+                    <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
+                      <option value="">Sucursal</option>
+                      {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                        <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                      ))}
+                    </select>
+                    <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
+                      <option value="cash">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="qr">QR</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                    <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700 }}>
+                    <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
+                    Acreditar puntos de compra al cliente
+                  </label>
+                  <div className="adm-form-grid">
+                    <select
+                      className="adm-input"
+                      value={ventaLocalProductoId}
+                      onChange={(event) => {
+                        setVentaLocalProductoId(event.target.value);
+                        setVentaLocalSabores({});
+                      }}
+                    >
+                      <option value="">Producto</option>
+                      {productosVentaLocal.map((producto) => (
+                        <option key={producto.id} value={producto.id}>
+                          {producto.nombre} - {formatMoney(producto.precio_dinero)}
+                        </option>
+                      ))}
+                    </select>
+                    <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
+                    <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
+                      Agregar producto
+                    </button>
+                  </div>
+                  {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+                    <div className="adm-inline-points-box">
+                      <p className="adm-inline-points-title">
+                        Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{productoVentaLocalSeleccionado.capacidad_sabores ?? 0} por caja
+                      </p>
+                      <div className="adm-form-grid">
+                        {saboresVentaLocalProducto.map((sabor) => (
+                          <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
+                            {sabor.nombre}
+                            <input
+                              className="adm-input"
+                              type="number"
+                              min={0}
+                              value={ventaLocalSabores[String(sabor.id)] ?? 0}
+                              onChange={(event) => {
+                                const value = Math.max(0, Number(event.target.value) || 0);
+                                setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
+                              }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
                         <tr>
-                          <td>
-                            #{orden.id}
-                            <br />
-                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{formatDate(orden.created_at)}</span>
-                          </td>
-                          <td>
-                            {orden.cliente_nombre}
-                            <br />
-                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.cliente_email}</span>
-                          </td>
-                          <td>{formatCanalOrden(orden.canal)}</td>
-                          <td>{orden.tipo_orden} ({orden.total_unidades} u.)</td>
-                          <td>
-                            {formatMoney(orden.total_dinero)}
-                            {orden.total_puntos > 0 ? <><br /><span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.total_puntos} pts</span></> : null}
-                          </td>
-                          <td>
-                            {orden.direccion_envio ? "Envio" : "Retiro"}
-                            <br />
-                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>
-                              {orden.direccion_envio
-                                ? `${orden.direccion_envio.localidad || "-"} (${orden.direccion_envio.codigo_postal || "s/CP"})`
-                                : orden.sucursal_nombre || "-"}
-                            </span>
-                          </td>
-                          <td>{formatPagoOrden(orden)}</td>
-                          <td>{formatEstadoOrden(orden.estado)}</td>
-                          <td>
-                            <div className="adm-row-actions">
-                              <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
-                                {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
-                              </button>
-                              {orden.estado === "pendiente_pago" ? (
-                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>
-                              ) : null}
-                              {orden.estado === "pagada" ? (
-                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparada")} disabled={busy}>Preparar</button>
-                              ) : null}
-                              {(orden.estado === "pagada" || orden.estado === "preparada") && orden.direccion_envio ? (
-                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "enviada")} disabled={busy}>Enviar</button>
-                              ) : null}
-                              {(orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada") ? (
-                                <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
-                              ) : null}
-                              {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
-                                <button className="adm-btn-danger" onClick={() => void actualizarEstadoOrden(orden.id, "cancelada")} disabled={busy}>Cancelar</button>
-                              ) : null}
-                            </div>
-                          </td>
+                          <th>Producto</th>
+                          <th>Cantidad</th>
+                          <th>Sabores</th>
+                          <th>Subtotal</th>
+                          <th>Acciones</th>
                         </tr>
-                        {ordenExpandidaId === orden.id ? (
-                          <tr>
-                            <td colSpan={9}>
-                              <div className="adm-inline-points-box">
-                                <p className="adm-inline-points-title">Detalle pedido #{orden.id}</p>
-                                <div className="adm-form-grid">
-                                  <div>
-                                    <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>Productos</p>
-                                    {(orden.items ?? []).map((item) => (
-                                      <div key={`${orden.id}-${item.producto_id}-${item.modo_compra}-${item.nombre}`} style={{ margin: "0.15rem 0", color: "#4A2C1A" }}>
-                                        <p style={{ margin: 0 }}>
-                                          {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? formatMoney(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
-                                        </p>
-                                        {item.sabores?.length ? (
-                                          <p style={{ margin: "0.1rem 0 0", color: "#8B5A30", fontSize: "0.85rem" }}>
-                                            {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div>
-                                    <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>{orden.direccion_envio ? "Datos de envio" : "Datos de retiro"}</p>
-                                    {orden.direccion_envio ? (
-                                      <>
-                                        <p style={{ margin: "0.15rem 0" }}><strong>Recibe:</strong> {orden.direccion_envio.nombre || "-"}</p>
-                                        <p style={{ margin: "0.15rem 0" }}><strong>Telefono:</strong> {orden.direccion_envio.telefono || "-"}</p>
-                                        <p style={{ margin: "0.15rem 0" }}><strong>Direccion:</strong> {orden.direccion_envio.direccion || "-"}</p>
-                                        <p style={{ margin: "0.15rem 0" }}><strong>CP:</strong> {orden.direccion_envio.codigo_postal || "-"} - {orden.direccion_envio.localidad || "-"}, {orden.direccion_envio.provincia || "-"}</p>
-                                        {orden.direccion_envio.referencias ? <p style={{ margin: "0.15rem 0" }}><strong>Referencias:</strong> {orden.direccion_envio.referencias}</p> : null}
-                                        <p style={{ margin: "0.15rem 0", color: "#8B5A30" }}>Sucursal que prepara: {orden.sucursal_nombre || "-"}</p>
-                                      </>
-                                    ) : (
-                                      <p style={{ margin: "0.15rem 0" }}>
-                                        {orden.sucursal?.nombre || orden.sucursal_nombre || "-"}
-                                        {orden.sucursal?.direccion ? ` - ${orden.sucursal.direccion}` : ""}
-                                        {orden.sucursal?.piso ? `, Piso ${orden.sucursal.piso}` : ""}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                                {orden.notas ? <p style={{ margin: "0.65rem 0 0", color: "#8B5A30" }}><strong>Notas:</strong> {orden.notas}</p> : null}
-                              </div>
+                      </thead>
+                      <tbody>
+                        {ventaLocalItems.length === 0 ? (
+                          <tr><td colSpan={5}><div className="adm-empty">Aun no agregaste productos a la venta local.</div></td></tr>
+                        ) : null}
+                        {ventaLocalItems.map((item, index) => (
+                          <tr key={`${item.producto_id}-${index}`}>
+                            <td>{item.nombre}</td>
+                            <td>{item.cantidad}</td>
+                            <td>{item.sabores?.length ? item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ") : "-"}</td>
+                            <td>{formatMoney(item.precio_dinero * item.cantidad)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="adm-btn-danger"
+                                onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
+                              >
+                                Quitar
+                              </button>
                             </td>
                           </tr>
-                        ) : null}
-                        </Fragment>
-                      ))}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                    <strong>Total venta local: {formatMoney(totalVentaLocal)}</strong>
+                    <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
+                      {busy ? "Registrando..." : "Registrar venta local"}
+                    </button>
+                  </div>
                 </div>
-                <PaginationControls
-                  page={ordenesPage}
-                  totalPages={totalOrdenesPages}
-                  onPrev={() => setOrdenesPage((prev) => Math.max(1, prev - 1))}
-                  onNext={() => setOrdenesPage((prev) => Math.min(totalOrdenesPages, prev + 1))}
-                />
-              </div>
-            </div>
+              }
+              pedidosContent={
+                <>
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                    <div className="adm-form-grid">
+                      <input className="adm-input" placeholder="Buscar por cliente, orden, estado o pago..." value={busquedaOrdenes} onChange={(event) => setBusquedaOrdenes(event.target.value)} />
+                      <select className="adm-input" value={ordenesFiltroEstado} onChange={(event) => setOrdenesFiltroEstado(event.target.value)}>
+                        <option value="">Todos los estados</option>
+                        <option value="pendiente_pago">Pendiente pago</option>
+                        <option value="pagada">Pagada</option>
+                        <option value="preparada">Preparada</option>
+                        <option value="enviada">Enviada</option>
+                        <option value="entregada">Entregada</option>
+                        <option value="cancelada">Cancelada</option>
+                        <option value="expirada">Expirada</option>
+                      </select>
+                      <select className="adm-input" value={ordenesFiltroEntrega} onChange={(event) => setOrdenesFiltroEntrega(event.target.value)}>
+                        <option value="">Retiro y envio</option>
+                        <option value="retiro">Solo retiro</option>
+                        <option value="envio">Solo envio</option>
+                      </select>
+                      <button className="adm-btn-secondary" onClick={() => void expirarReservas()} disabled={busy}>
+                        Expirar reservas vencidas
+                      </button>
+                    </div>
+                    <p className="adm-inline-tip">
+                      Pago y preparacion van separados: primero pagada, luego preparada, enviada o entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.
+                    </p>
+                  </div>
+
+                  <div className="admin-card">
+                    <div className="admin-table-wrap">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Orden</th>
+                            <th>Cliente</th>
+                            <th>Canal</th>
+                            <th>Tipo</th>
+                            <th>Total</th>
+                            <th>Entrega</th>
+                            <th>Pago</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ordenesPagina.length === 0 ? (
+                            <tr><td colSpan={9}><div className="adm-empty">No hay ventas para mostrar.</div></td></tr>
+                          ) : null}
+                          {ordenesPagina.map((orden) => (
+                            <Fragment key={orden.id}>
+                              <tr>
+                                <td>
+                                  #{orden.id}
+                                  <br />
+                                  <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{formatDate(orden.created_at)}</span>
+                                </td>
+                                <td>
+                                  {orden.cliente_nombre}
+                                  <br />
+                                  <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.cliente_email}</span>
+                                </td>
+                                <td>{formatCanalOrden(orden.canal)}</td>
+                                <td>{orden.tipo_orden} ({orden.total_unidades} u.)</td>
+                                <td>
+                                  {formatMoney(orden.total_dinero)}
+                                  {orden.total_puntos > 0 ? <><br /><span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{orden.total_puntos} pts</span></> : null}
+                                </td>
+                                <td>
+                                  {orden.direccion_envio ? "Envio" : "Retiro"}
+                                  <br />
+                                  <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>
+                                    {orden.direccion_envio
+                                      ? `${orden.direccion_envio.localidad || "-"} (${orden.direccion_envio.codigo_postal || "s/CP"})`
+                                      : orden.sucursal_nombre || "-"}
+                                  </span>
+                                </td>
+                                <td>{formatPagoOrden(orden)}</td>
+                                <td>{formatEstadoOrden(orden.estado)}</td>
+                                <td>
+                                  <div className="adm-row-actions">
+                                    <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
+                                      {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
+                                    </button>
+                                    {orden.estado === "pendiente_pago" ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>
+                                    ) : null}
+                                    {orden.estado === "pagada" ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparada")} disabled={busy}>Preparar</button>
+                                    ) : null}
+                                    {(orden.estado === "pagada" || orden.estado === "preparada") && orden.direccion_envio ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "enviada")} disabled={busy}>Enviar</button>
+                                    ) : null}
+                                    {(orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada") ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
+                                    ) : null}
+                                    {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
+                                      <button className="adm-btn-danger" onClick={() => void actualizarEstadoOrden(orden.id, "cancelada")} disabled={busy}>Cancelar</button>
+                                    ) : null}
+                                  </div>
+                                </td>
+                              </tr>
+                              {ordenExpandidaId === orden.id ? (
+                                <tr>
+                                  <td colSpan={9}>
+                                    <div className="adm-inline-points-box">
+                                      <p className="adm-inline-points-title">Detalle pedido #{orden.id}</p>
+                                      <div className="adm-form-grid">
+                                        <div>
+                                          <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>Productos</p>
+                                          {(orden.items ?? []).map((item) => (
+                                            <div key={`${orden.id}-${item.producto_id}-${item.modo_compra}-${item.nombre}`} style={{ margin: "0.15rem 0", color: "#4A2C1A" }}>
+                                              <p style={{ margin: 0 }}>
+                                                {item.nombre} x{item.cantidad} - {item.modo_compra === "dinero" ? formatMoney(item.subtotal_dinero) : `${item.subtotal_puntos} pts`}
+                                              </p>
+                                              {item.sabores?.length ? (
+                                                <p style={{ margin: "0.1rem 0 0", color: "#8B5A30", fontSize: "0.85rem" }}>
+                                                  {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
+                                                </p>
+                                              ) : null}
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div>
+                                          <p style={{ margin: "0 0 0.35rem", fontWeight: 800 }}>{orden.direccion_envio ? "Datos de envio" : "Datos de retiro"}</p>
+                                          {orden.direccion_envio ? (
+                                            <>
+                                              <p style={{ margin: "0.15rem 0" }}><strong>Recibe:</strong> {orden.direccion_envio.nombre || "-"}</p>
+                                              <p style={{ margin: "0.15rem 0" }}><strong>Telefono:</strong> {orden.direccion_envio.telefono || "-"}</p>
+                                              <p style={{ margin: "0.15rem 0" }}><strong>Direccion:</strong> {orden.direccion_envio.direccion || "-"}</p>
+                                              <p style={{ margin: "0.15rem 0" }}><strong>CP:</strong> {orden.direccion_envio.codigo_postal || "-"} - {orden.direccion_envio.localidad || "-"}, {orden.direccion_envio.provincia || "-"}</p>
+                                              {orden.direccion_envio.referencias ? <p style={{ margin: "0.15rem 0" }}><strong>Referencias:</strong> {orden.direccion_envio.referencias}</p> : null}
+                                              <p style={{ margin: "0.15rem 0", color: "#8B5A30" }}>Sucursal que prepara: {orden.sucursal_nombre || "-"}</p>
+                                            </>
+                                          ) : (
+                                            <p style={{ margin: "0.15rem 0" }}>
+                                              {orden.sucursal?.nombre || orden.sucursal_nombre || "-"}
+                                              {orden.sucursal?.direccion ? ` - ${orden.sucursal.direccion}` : ""}
+                                              {orden.sucursal?.piso ? `, Piso ${orden.sucursal.piso}` : ""}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      {orden.notas ? <p style={{ margin: "0.65rem 0 0", color: "#8B5A30" }}><strong>Notas:</strong> {orden.notas}</p> : null}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </Fragment>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <PaginationControls
+                      page={ordenesPage}
+                      totalPages={totalOrdenesPages}
+                      onPrev={() => setOrdenesPage((prev) => Math.max(1, prev - 1))}
+                      onNext={() => setOrdenesPage((prev) => Math.min(totalOrdenesPages, prev + 1))}
+                    />
+                  </div>
+                </>
+              }
+              reportesContent={
+                <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                  <h3 style={{ margin: 0, color: "#3D1A02" }}>Exportar ventas</h3>
+                  <div className="adm-form-grid">
+                    <select className="adm-input" value={ventasExportCanal} onChange={(event) => setVentasExportCanal(event.target.value)}>
+                      <option value="">Web + locales</option>
+                      <option value="web">Solo web</option>
+                      <option value="admin">Solo local admin</option>
+                      <option value="vendedor">Solo local vendedor</option>
+                    </select>
+                    <input className="adm-input" type="date" value={ventasExportDesde} onChange={(event) => setVentasExportDesde(event.target.value)} />
+                    <input className="adm-input" type="date" value={ventasExportHasta} onChange={(event) => setVentasExportHasta(event.target.value)} />
+                    <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("pdf")} disabled={busy}>
+                      Descargar PDF
+                    </button>
+                    <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("xlsx")} disabled={busy}>
+                      Excel
+                    </button>
+                  </div>
+                  <p className="adm-inline-tip" style={{ margin: 0 }}>
+                    El PDF se genera como archivo real para descargar. Todas las fechas salen en horario de Buenos Aires.
+                  </p>
+                </div>
+              }
+            />
           ) : null}
 
           {tab === "categorias" ? (
