@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
@@ -826,6 +826,39 @@ function FieldLabel({ text, tip }: { text: string; tip: string }) {
           {tip}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function FloatingTip({ label, tip }: { label: string; tip: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span className="adm-floating-tip-wrap">
+      <button
+        type="button"
+        className="adm-tip adm-floating-tip"
+        aria-label={`Ayuda: ${label}`}
+        aria-expanded={open}
+        onBlur={() => setOpen(false)}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        ?
+      </button>
+      {open ? (
+        <span className="adm-tip-inline adm-floating-tip-popover" role="tooltip">
+          {tip}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function FieldWithFloatingTip({ label, tip, children }: { label: string; tip: string; children: ReactNode }) {
+  return (
+    <div className="adm-field-with-tip">
+      {children}
+      <FloatingTip label={label} tip={tip} />
     </div>
   );
 }
@@ -4166,53 +4199,69 @@ export function Admin() {
                     </p>
                   </div>
                   <div className="adm-form-grid">
-                    <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
-                      <option value="">Cliente</option>
-                      {clientesVentaLocal.map((cliente) => (
-                        <option key={cliente.id} value={cliente.id}>
-                          {cliente.nombre} - {cliente.dni || cliente.email}
-                        </option>
-                      ))}
-                    </select>
-                    <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
-                      <option value="">Sucursal</option>
-                      {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                        <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                      ))}
-                    </select>
-                    <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
-                      <option value="cash">Efectivo</option>
-                      <option value="transferencia">Transferencia</option>
-                      <option value="tarjeta">Tarjeta</option>
-                      <option value="qr">QR</option>
-                      <option value="otro">Otro</option>
-                    </select>
-                    <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
+                    <FieldWithFloatingTip label="Cliente" tip="Persona a la que se le registra la venta local. Si activas puntos, se acreditan a este cliente.">
+                      <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
+                        <option value="">Cliente</option>
+                        {clientesVentaLocal.map((cliente) => (
+                          <option key={cliente.id} value={cliente.id}>
+                            {cliente.nombre} - {cliente.dni || cliente.email}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Sucursal" tip="Lugar donde se realizo la venta presencial. Ayuda a ordenar reportes por punto de venta.">
+                      <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
+                        <option value="">Sucursal</option>
+                        {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                          <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                        ))}
+                      </select>
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Metodo de pago" tip="Forma en la que pago el cliente. Se guarda para reportes y control interno.">
+                      <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
+                        <option value="cash">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="qr">QR</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Notas internas" tip="Comentario opcional para el equipo. No se muestra al cliente.">
+                      <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
+                    </FieldWithFloatingTip>
                   </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700 }}>
-                    <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
-                    Acreditar puntos de compra al cliente
-                  </label>
+                  <FieldWithFloatingTip label="Acreditar puntos" tip="Si esta marcado, el cliente gana los puntos configurados por los productos comprados. Si no, solo queda registrada la venta.">
+                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700, minHeight: "42px", paddingRight: "3.4rem" }}>
+                      <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
+                      Acreditar puntos de compra al cliente
+                    </label>
+                  </FieldWithFloatingTip>
                   <div className="adm-form-grid">
-                    <select
-                      className="adm-input"
-                      value={ventaLocalProductoId}
-                      onChange={(event) => {
-                        setVentaLocalProductoId(event.target.value);
-                        setVentaLocalSabores({});
-                      }}
-                    >
-                      <option value="">Producto</option>
-                      {productosVentaLocal.map((producto) => (
-                        <option key={producto.id} value={producto.id}>
-                          {producto.nombre} - {formatMoney(producto.precio_dinero)}
-                        </option>
-                      ))}
-                    </select>
-                    <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
-                    <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
-                      Agregar producto
-                    </button>
+                    <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">
+                      <select
+                        className="adm-input"
+                        value={ventaLocalProductoId}
+                        onChange={(event) => {
+                          setVentaLocalProductoId(event.target.value);
+                          setVentaLocalSabores({});
+                        }}
+                      >
+                        <option value="">Producto</option>
+                        {productosVentaLocal.map((producto) => (
+                          <option key={producto.id} value={producto.id}>
+                            {producto.nombre} - {formatMoney(producto.precio_dinero)}
+                          </option>
+                        ))}
+                      </select>
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Cantidad" tip="Cantidad de unidades o cajas del producto seleccionado que se agregan a esta venta.">
+                      <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Agregar producto" tip="Suma el producto elegido al detalle de la venta. Puedes agregar varios productos antes de registrar.">
+                      <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
+                        Agregar producto
+                      </button>
+                    </FieldWithFloatingTip>
                   </div>
                   {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
                     <div className="adm-inline-points-box">
@@ -4223,16 +4272,18 @@ export function Admin() {
                         {saboresVentaLocalProducto.map((sabor) => (
                           <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
                             {sabor.nombre}
-                            <input
-                              className="adm-input"
-                              type="number"
-                              min={0}
-                              value={ventaLocalSabores[String(sabor.id)] ?? 0}
-                              onChange={(event) => {
-                                const value = Math.max(0, Number(event.target.value) || 0);
-                                setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
-                              }}
-                            />
+                            <FieldWithFloatingTip label={`Sabor ${sabor.nombre}`} tip="Cantidad de este sabor dentro de la caja. La suma debe completar la capacidad indicada.">
+                              <input
+                                className="adm-input"
+                                type="number"
+                                min={0}
+                                value={ventaLocalSabores[String(sabor.id)] ?? 0}
+                                onChange={(event) => {
+                                  const value = Math.max(0, Number(event.target.value) || 0);
+                                  setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
+                                }}
+                              />
+                            </FieldWithFloatingTip>
                           </label>
                         ))}
                       </div>

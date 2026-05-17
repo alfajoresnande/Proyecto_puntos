@@ -718,6 +718,48 @@
   box-shadow: 0 10px 24px rgba(74, 44, 26, 0.14);
 }
 /* ── BOTONES ── */
+.adm-field-with-tip {
+  position: relative;
+  min-width: 0;
+}
+
+.adm-field-with-tip .adm-input,
+.adm-field-with-tip .adm-btn-secondary {
+  padding-right: 3.4rem;
+  width: 100%;
+}
+
+.adm-floating-tip-wrap {
+  position: absolute;
+  right: 1.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+}
+
+.adm-floating-tip {
+  box-shadow: 0 4px 12px rgba(74, 44, 26, 0.14);
+}
+
+.adm-floating-tip-popover {
+  bottom: calc(100% + 0.45rem);
+  max-width: min(78vw, 320px);
+  min-width: 220px;
+  position: absolute;
+  right: -0.35rem;
+  z-index: 30;
+}
+
+.adm-floating-tip-popover::after {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid #2D1200;
+  bottom: -6px;
+  content: "";
+  position: absolute;
+  right: 0.52rem;
+}
+
 .adm-btn-primary {
   background: #D4621A;          /* ← fondo botón naranja */
   color: #ffffff;
