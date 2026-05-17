@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { scrollPageToTop } from "../lib/scrollTop";
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
 
@@ -119,6 +120,11 @@ export function Navbar() {
 
   const closeMenu = () => setMenuOpen(false);
 
+  function closeMenuAndScrollTop() {
+    closeMenu();
+    scrollPageToTop();
+  }
+
   function renderNavLabel(label: string, unreadCount = 0) {
     return (
       <span className="navbar-link-content">
@@ -134,6 +140,7 @@ export function Navbar() {
 
   function handleIrACarrito(target: string) {
     closeMenu();
+    scrollPageToTop();
     if (location.pathname !== target) {
       navigate(target);
     }
@@ -201,13 +208,13 @@ export function Navbar() {
             <img src="/logo.png" alt="Nande" />
           </Link>
 
-          <Link to="/tienda" className="navbar-mobile-store-shortcut" onClick={closeMenu}>
+          <Link to="/tienda" className="navbar-mobile-store-shortcut" onClick={closeMenuAndScrollTop}>
             Tienda Online
           </Link>
 
           <div className="navbar-links">
             <NavLink to="/inicio" className={({ isActive }) => navClass(isActive)}>Inicio</NavLink>
-            <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)}>Tienda Online</NavLink>
+            <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={() => scrollPageToTop()}>Tienda Online</NavLink>
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
@@ -357,7 +364,7 @@ export function Navbar() {
       {menuOpen ? (
         <div className="navbar-mobile navbar-mobile-shell">
           <NavLink to="/inicio" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inicio</NavLink>
-          <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Tienda Online</NavLink>
+          <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenuAndScrollTop}>Tienda Online</NavLink>
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}

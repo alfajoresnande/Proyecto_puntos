@@ -1,10 +1,12 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Footer } from "./components/Footer";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { Navbar } from "./components/Navbar";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RealtimeBridge } from "./components/RealtimeBridge";
 import { SeoRouteMeta } from "./components/SeoRouteMeta";
+import { scrollPageToTop } from "./lib/scrollTop";
 import { Admin } from "./pages/admin/Admin";
 import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
 import { ForgotPassword } from "./pages/auth/ForgotPassword";
@@ -30,11 +32,45 @@ import { ComprobantePedidoVendedor } from "./pages/vendedor/ComprobantePedidoVen
 import { Vendedor } from "./pages/vendedor/Vendedor";
 import { VendedorPedidos } from "./pages/vendedor/VendedorPedidos";
 
+function ScrollToTop() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    scrollPageToTop("auto");
+  }, [pathname, search]);
+
+  useEffect(() => {
+    function onInternalNavigationClick(event: MouseEvent) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!target || target.target && target.target !== "_self" || target.hasAttribute("download")) return;
+
+      const href = target.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+
+      const nextUrl = new URL(href, window.location.href);
+      if (nextUrl.origin !== window.location.origin) return;
+      if (nextUrl.hash && nextUrl.pathname === window.location.pathname && nextUrl.search === window.location.search) return;
+
+      scrollPageToTop();
+    }
+
+    document.addEventListener("click", onInternalNavigationClick);
+    return () => document.removeEventListener("click", onInternalNavigationClick);
+  }, []);
+
+  return null;
+}
+
 export default function App() {
   return (
     <>
       <RealtimeBridge />
       <SeoRouteMeta />
+      <ScrollToTop />
       <Navbar />
       <div className="app-main">
         <main>

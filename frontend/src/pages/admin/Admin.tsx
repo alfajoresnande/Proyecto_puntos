@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useMemo, useState, type DragEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
@@ -848,6 +848,7 @@ export function Admin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const adminContentRef = useRef<HTMLDivElement | null>(null);
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
   const isSuperAdmin = user?.rol === "superAdmin";
@@ -1138,42 +1139,18 @@ export function Admin() {
     const requestedTab = params.get("tab");
     const requestedVentasView = params.get("vista");
 
-    if (isAdminTab(requestedTab) && requestedTab !== tab) {
-      setTab(requestedTab);
+    if (isAdminTab(requestedTab)) {
+      setTab((prev) => (requestedTab !== prev ? requestedTab : prev));
     }
 
     if (requestedTab === "ordenes") {
       const nextVentasView = isVentasView(requestedVentasView) ? requestedVentasView : "pedidos";
-      if (nextVentasView !== ventasView) {
-        setVentasView(nextVentasView);
-      }
+      setVentasView((prev) => (nextVentasView !== prev ? nextVentasView : prev));
       setVentasNavOpen(true);
+    } else if (isAdminTab(requestedTab)) {
+      setVentasNavOpen(false);
     }
-  }, [location.search, tab, ventasView]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const currentTab = params.get("tab");
-    const currentVentasView = params.get("vista");
-    const expectedVentasView = tab === "ordenes" ? ventasView : null;
-    const locationHasPriority =
-      (isAdminTab(currentTab) && currentTab !== tab) ||
-      (currentTab === "ordenes" && isVentasView(currentVentasView) && currentVentasView !== ventasView);
-
-    if (locationHasPriority) return;
-
-    const needsUpdate =
-      currentTab !== tab ||
-      (expectedVentasView ? currentVentasView !== expectedVentasView : currentVentasView !== null);
-
-    if (!needsUpdate) return;
-
-    params.set("tab", tab);
-    if (expectedVentasView) params.set("vista", expectedVentasView);
-    else params.delete("vista");
-
-    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-  }, [location.pathname, location.search, navigate, tab, ventasView]);
+  }, [location.search]);
 
   useEffect(() => {
     if (!configuracionQuery.data) return;
@@ -1226,10 +1203,39 @@ export function Admin() {
     navigate(`${panelBasePath}/sucursales`);
   }
 
+  function syncAdminUrl(nextTab: AdminTab, nextVentasView?: AdminVentasViewKey) {
+    const params = new URLSearchParams(location.search);
+    params.set("tab", nextTab);
+    if (nextTab === "ordenes") {
+      params.set("vista", nextVentasView ?? ventasView);
+    } else {
+      params.delete("vista");
+    }
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  }
+
+  function scrollAdminContentToTop() {
+    window.requestAnimationFrame(() => {
+      adminContentRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    });
+  }
+
+  function seleccionarTab(nextTab: AdminTab) {
+    setTab(nextTab);
+    if (nextTab !== "ordenes") {
+      setVentasNavOpen(false);
+    }
+    syncAdminUrl(nextTab);
+    scrollAdminContentToTop();
+  }
+
   function abrirVistaVentas(view: AdminVentasViewKey) {
     setTab("ordenes");
     setVentasView(view);
     setVentasNavOpen(true);
+    syncAdminUrl("ordenes", view);
+    scrollAdminContentToTop();
   }
 
   function toggleVentasNav() {
@@ -1238,6 +1244,7 @@ export function Admin() {
       return;
     }
     setVentasNavOpen((prev) => !prev);
+    scrollAdminContentToTop();
   }
 
   const productos = productosQuery.data ?? [];
@@ -2816,18 +2823,18 @@ export function Admin() {
 
         <nav id="admin-nav-main" className={`admin-nav ${mobileAdminNavOpen ? "admin-nav-open" : ""}`}>
           <span className="admin-nav-section">General</span>
-          <button className={`admin-nav-btn ${tab === "inicio" ? "active" : ""}`} onClick={() => setTab("inicio")}>
+          <button className={`admin-nav-btn ${tab === "inicio" ? "active" : ""}`} onClick={() => seleccionarTab("inicio")}>
             {renderAdminNavLabel("Inicio")}
           </button>
 
           <span className="admin-nav-section">Gestion</span>
-          <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => setTab("usuarios")}>
+          <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => seleccionarTab("usuarios")}>
             {renderAdminNavLabel("Usuarios")}
           </button>
-          <button className={`admin-nav-btn ${tab === "productos" ? "active" : ""}`} onClick={() => setTab("productos")}>
+          <button className={`admin-nav-btn ${tab === "productos" ? "active" : ""}`} onClick={() => seleccionarTab("productos")}>
             {renderAdminNavLabel("Productos")}
           </button>
-          <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => setTab("inventario")}>
+          <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => seleccionarTab("inventario")}>
             {renderAdminNavLabel("Inventario")}
           </button>
           <div className={`admin-nav-group${tab === "ordenes" ? " active" : ""}`}>
@@ -2860,16 +2867,16 @@ export function Admin() {
               </div>
             ) : null}
           </div>
-          <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => setTab("categorias")}>
+          <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => seleccionarTab("categorias")}>
             {renderAdminNavLabel("Categorias")}
           </button>
-          <button className={`admin-nav-btn ${tab === "transacciones" ? "active" : ""}`} onClick={() => setTab("transacciones")}>
+          <button className={`admin-nav-btn ${tab === "transacciones" ? "active" : ""}`} onClick={() => seleccionarTab("transacciones")}>
             {renderAdminNavLabel("Transacciones")}
           </button>
-          <button className={`admin-nav-btn ${tab === "canjes" ? "active" : ""}`} onClick={() => setTab("canjes")}>
+          <button className={`admin-nav-btn ${tab === "canjes" ? "active" : ""}`} onClick={() => seleccionarTab("canjes")}>
             {renderAdminNavLabel("Canjes", adminAlerts.canjes)}
           </button>
-          <button className={`admin-nav-btn ${tab === "codigos" ? "active" : ""}`} onClick={() => setTab("codigos")}>
+          <button className={`admin-nav-btn ${tab === "codigos" ? "active" : ""}`} onClick={() => seleccionarTab("codigos")}>
             {renderAdminNavLabel("Codigos")}
           </button>
           <button className="admin-nav-btn" onClick={irAPanelSucursales}>
@@ -2877,13 +2884,13 @@ export function Admin() {
           </button>
 
           <span className="admin-nav-section">Configuracion</span>
-          <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => setTab("crear")}>
+          <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => seleccionarTab("crear")}>
             {renderAdminNavLabel("Crear usuario")}
           </button>
-          <button className={`admin-nav-btn ${tab === "sobre-nosotros" ? "active" : ""}`} onClick={() => setTab("sobre-nosotros")}>
+          <button className={`admin-nav-btn ${tab === "sobre-nosotros" ? "active" : ""}`} onClick={() => seleccionarTab("sobre-nosotros")}>
             {renderAdminNavLabel("Quienes Somos")}
           </button>
-          <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => setTab("terminos")}>
+          <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => seleccionarTab("terminos")}>
             {renderAdminNavLabel("Terminos")}
           </button>
         </nav>
@@ -2911,7 +2918,7 @@ export function Admin() {
           </div>
         </div>
 
-        <div className="admin-content">
+        <div className="admin-content" ref={adminContentRef}>
           <div className="admin-stats">
             <div className="admin-stat-card">
               <p className="admin-stat-label">Clientes</p>
@@ -2943,7 +2950,7 @@ export function Admin() {
                   <button className="adm-btn-link" onClick={() => setInicioMovimientosOpen((prev) => !prev)}>
                     {inicioMovimientosOpen ? "Ocultar" : "Mostrar"}
                   </button>
-                  <button className="adm-btn-link" onClick={() => setTab("transacciones")}>
+                  <button className="adm-btn-link" onClick={() => seleccionarTab("transacciones")}>
                     Ver todos
                   </button>
                 </div>
@@ -3266,7 +3273,7 @@ export function Admin() {
             <>
               <div className="admin-section-header">
                 <h2 className="admin-section-title">Usuarios registrados</h2>
-                <button className="adm-btn-link" onClick={() => setTab("crear")}>
+                <button className="adm-btn-link" onClick={() => seleccionarTab("crear")}>
                   Crear usuario
                 </button>
               </div>
