@@ -419,6 +419,20 @@ function isVentasView(value: string | null): value is AdminVentasViewKey {
   return value === "pedidos" || value === "venta-local" || value === "reportes";
 }
 
+function ventasViewFromPath(pathname: string): AdminVentasViewKey | null {
+  const match = pathname.match(/\/ventas\/([^/?#]+)/);
+  const segment = match?.[1];
+  if (segment === "pedidos") return "pedidos";
+  if (segment === "local") return "venta-local";
+  if (segment === "reportes") return "reportes";
+  return null;
+}
+
+function ventasPathSegment(view: AdminVentasViewKey): string {
+  if (view === "venta-local") return "local";
+  return view;
+}
+
 function readStoredIds(key: string): number[] {
   if (typeof window === "undefined") return [];
   try {
@@ -1135,6 +1149,14 @@ export function Admin() {
   }, [adminHint]);
 
   useEffect(() => {
+    const requestedVentasPathView = ventasViewFromPath(location.pathname);
+    if (requestedVentasPathView) {
+      setTab("ordenes");
+      setVentasView((prev) => (requestedVentasPathView !== prev ? requestedVentasPathView : prev));
+      setVentasNavOpen(true);
+      return;
+    }
+
     const params = new URLSearchParams(location.search);
     const requestedTab = params.get("tab");
     const requestedVentasView = params.get("vista");
@@ -1147,10 +1169,11 @@ export function Admin() {
       const nextVentasView = isVentasView(requestedVentasView) ? requestedVentasView : "pedidos";
       setVentasView((prev) => (nextVentasView !== prev ? nextVentasView : prev));
       setVentasNavOpen(true);
+      navigate(`${panelBasePath}/ventas/${ventasPathSegment(nextVentasView)}`, { replace: true });
     } else if (isAdminTab(requestedTab)) {
       setVentasNavOpen(false);
     }
-  }, [location.search]);
+  }, [location.pathname, location.search, navigate, panelBasePath]);
 
   useEffect(() => {
     if (!configuracionQuery.data) return;
@@ -1204,14 +1227,14 @@ export function Admin() {
   }
 
   function syncAdminUrl(nextTab: AdminTab, nextVentasView?: AdminVentasViewKey) {
-    const params = new URLSearchParams(location.search);
-    params.set("tab", nextTab);
     if (nextTab === "ordenes") {
-      params.set("vista", nextVentasView ?? ventasView);
-    } else {
-      params.delete("vista");
+      navigate(`${panelBasePath}/ventas/${ventasPathSegment(nextVentasView ?? ventasView)}`);
+      return;
     }
-    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+
+    const params = new URLSearchParams();
+    params.set("tab", nextTab);
+    navigate(`${panelBasePath}?${params.toString()}`);
   }
 
   function scrollAdminContentToTop() {
@@ -1313,16 +1336,6 @@ export function Admin() {
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
   );
-  const ordenesConAtencionCount = useMemo(
-    () =>
-      ordenes.filter((orden) => {
-        if (orden.estado === "pagada" || orden.estado === "preparada") return true;
-        if (orden.estado !== "pendiente_pago") return false;
-        return orden.pago?.proveedor === "efectivo" || orden.pago?.metodo === "cash";
-      }).length,
-    [ordenes],
-  );
-
   async function enableBrowserAlerts() {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setBrowserNotificationPermission("unsupported");
@@ -4144,9 +4157,6 @@ export function Admin() {
           {tab === "ordenes" ? (
             <AdminVentasView
               currentView={ventasView}
-              onChangeView={abrirVistaVentas}
-              orderAttentionCount={ordenesConAtencionCount}
-              localDraftCount={ventaLocalItems.length}
               ventaLocalContent={
                 <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                   <div>
