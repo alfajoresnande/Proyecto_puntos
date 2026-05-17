@@ -121,9 +121,13 @@ async function validateFlavorSelectionForLocalSale(conn, producto, sabores, cant
     if (!Number.isInteger(capacidad) || capacidad <= 0) {
         throw new Error(`La caja ${producto.nombre} no tiene capacidad configurada.`);
     }
+    if (!Number.isInteger(cantidadCajas) || cantidadCajas <= 0) {
+        throw new Error("La cantidad de cajas debe ser un entero mayor a 0.");
+    }
+    const totalRequerido = capacidad * cantidadCajas;
     const totalSeleccionado = sabores.reduce((acc, item) => acc + Number(item.cantidad), 0);
-    if (totalSeleccionado !== capacidad) {
-        throw new Error(`Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+    if (totalSeleccionado !== totalRequerido) {
+        throw new Error(`Selecciona exactamente ${totalRequerido} alfajores para ${cantidadCajas} caja${cantidadCajas === 1 ? "" : "s"} de ${producto.nombre}.`);
     }
     const allowedRows = await (0, db_1.qAll)(conn, `SELECT s.id, s.nombre, s.activo
      FROM producto_sabores ps
@@ -139,7 +143,7 @@ async function validateFlavorSelectionForLocalSale(conn, producto, sabores, cant
         return {
             sabor_id: Number(row.id),
             nombre: row.nombre,
-            cantidad: Number(item.cantidad) * cantidadCajas,
+            cantidad: Number(item.cantidad),
         };
     });
 }

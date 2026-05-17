@@ -195,10 +195,33 @@ export function VendedorPedidos() {
     () => Object.values(ventaSabores).reduce((acc, value) => acc + (Number(value) || 0), 0),
     [ventaSabores],
   );
+  const cantidadVentaSeleccionada = useMemo(() => {
+    const value = Math.floor(Number(ventaCantidad));
+    return Number.isInteger(value) && value > 0 ? value : 0;
+  }, [ventaCantidad]);
+  const totalAlfajoresVenta = useMemo(() => {
+    const capacidad = Number(productoVentaSeleccionado?.capacidad_sabores ?? 0);
+    return Math.max(0, capacidad * cantidadVentaSeleccionada);
+  }, [cantidadVentaSeleccionada, productoVentaSeleccionado?.capacidad_sabores]);
   const totalVentaLocal = useMemo(
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
   );
+
+  function getMaxSaborVenta(saborId: number): number {
+    const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
+    return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
+  }
+
+  function updateSaborVenta(saborId: number, rawValue: string) {
+    const max = getMaxSaborVenta(saborId);
+    const value = Math.floor(Number(rawValue) || 0);
+    setVentaSabores((prev) => ({
+      ...prev,
+      [String(saborId)]: Math.min(max, Math.max(0, value)),
+    }));
+  }
+
   const ordenesFiltradas = useMemo(() => {
     const q = busquedaOrdenes.trim().toLowerCase();
     return ordenes.filter((orden) => {
@@ -301,8 +324,9 @@ export function VendedorPedidos() {
       : [];
     if (producto.configuracion_tipo === "caja_sabores") {
       const capacidad = Number(producto.capacidad_sabores ?? 0);
-      if (totalSaboresVenta !== capacidad) {
-        setOrdenErr(`Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+      const totalRequerido = capacidad * cantidad;
+      if (totalSaboresVenta !== totalRequerido) {
+        setOrdenErr(`Selecciona exactamente ${totalRequerido} alfajores para ${cantidad} caja${cantidad === 1 ? "" : "s"} de ${producto.nombre}.`);
         return;
       }
     }
@@ -424,7 +448,7 @@ export function VendedorPedidos() {
             {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
               <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8" }}>
                 <p className="text-xs uppercase font-bold tracking-wider mb-2" style={{ color: "#A08060" }}>
-                  Sabores {totalSaboresVenta}/{productoVentaSeleccionado.capacidad_sabores ?? 0} por caja
+                  Sabores {totalSaboresVenta}/{totalAlfajoresVenta} alfajores para {cantidadVentaSeleccionada || 0} caja{cantidadVentaSeleccionada === 1 ? "" : "s"}
                 </p>
                 <div className="adm-form-grid">
                   {saboresProductoVenta.map((sabor) => (
@@ -434,11 +458,9 @@ export function VendedorPedidos() {
                         className="ios-input"
                         type="number"
                         min={0}
+                        max={getMaxSaborVenta(sabor.id)}
                         value={ventaSabores[String(sabor.id)] ?? 0}
-                        onChange={(event) => {
-                          const value = Math.max(0, Number(event.target.value) || 0);
-                          setVentaSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
-                        }}
+                        onChange={(event) => updateSaborVenta(sabor.id, event.target.value)}
                       />
                     </label>
                   ))}

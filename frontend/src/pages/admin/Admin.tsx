@@ -1365,10 +1365,33 @@ export function Admin() {
     () => Object.values(ventaLocalSabores).reduce((acc, value) => acc + (Number(value) || 0), 0),
     [ventaLocalSabores],
   );
+  const cantidadVentaLocalSeleccionada = useMemo(() => {
+    const value = Math.floor(Number(ventaLocalCantidad));
+    return Number.isInteger(value) && value > 0 ? value : 0;
+  }, [ventaLocalCantidad]);
+  const totalAlfajoresVentaLocal = useMemo(() => {
+    const capacidad = Number(productoVentaLocalSeleccionado?.capacidad_sabores ?? 0);
+    return Math.max(0, capacidad * cantidadVentaLocalSeleccionada);
+  }, [cantidadVentaLocalSeleccionada, productoVentaLocalSeleccionado?.capacidad_sabores]);
   const totalVentaLocal = useMemo(
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
   );
+
+  function getMaxSaborVentaLocal(saborId: number): number {
+    const actual = Number(ventaLocalSabores[String(saborId)] ?? 0) || 0;
+    return Math.max(0, totalAlfajoresVentaLocal - (totalSaboresVentaLocal - actual));
+  }
+
+  function updateSaborVentaLocal(saborId: number, rawValue: string) {
+    const max = getMaxSaborVentaLocal(saborId);
+    const value = Math.floor(Number(rawValue) || 0);
+    setVentaLocalSabores((prev) => ({
+      ...prev,
+      [String(saborId)]: Math.min(max, Math.max(0, value)),
+    }));
+  }
+
   async function enableBrowserAlerts() {
     if (typeof window === "undefined" || !("Notification" in window)) {
       setBrowserNotificationPermission("unsupported");
@@ -2083,8 +2106,9 @@ export function Admin() {
       : [];
     if (producto.configuracion_tipo === "caja_sabores") {
       const capacidad = Number(producto.capacidad_sabores ?? 0);
-      if (totalSaboresVentaLocal !== capacidad) {
-        setErrMsg(`Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
+      const totalRequerido = capacidad * cantidad;
+      if (totalSaboresVentaLocal !== totalRequerido) {
+        setErrMsg(`Selecciona exactamente ${totalRequerido} alfajores para ${cantidad} caja${cantidad === 1 ? "" : "s"} de ${producto.nombre}.`);
         return;
       }
     }
@@ -4266,22 +4290,20 @@ export function Admin() {
                   {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
                     <div className="adm-inline-points-box">
                       <p className="adm-inline-points-title">
-                        Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{productoVentaLocalSeleccionado.capacidad_sabores ?? 0} por caja
+                        Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{totalAlfajoresVentaLocal} alfajores para {cantidadVentaLocalSeleccionada || 0} caja{cantidadVentaLocalSeleccionada === 1 ? "" : "s"}
                       </p>
                       <div className="adm-form-grid">
                         {saboresVentaLocalProducto.map((sabor) => (
                           <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
                             {sabor.nombre}
-                            <FieldWithFloatingTip label={`Sabor ${sabor.nombre}`} tip="Cantidad de este sabor dentro de la caja. La suma debe completar la capacidad indicada.">
+                            <FieldWithFloatingTip label={`Sabor ${sabor.nombre}`} tip="Cantidad total de este sabor para todas las cajas seleccionadas. La suma debe completar cantidad de cajas x capacidad.">
                               <input
                                 className="adm-input"
                                 type="number"
                                 min={0}
+                                max={getMaxSaborVentaLocal(sabor.id)}
                                 value={ventaLocalSabores[String(sabor.id)] ?? 0}
-                                onChange={(event) => {
-                                  const value = Math.max(0, Number(event.target.value) || 0);
-                                  setVentaLocalSabores((prev) => ({ ...prev, [String(sabor.id)]: value }));
-                                }}
+                                onChange={(event) => updateSaborVentaLocal(sabor.id, event.target.value)}
                               />
                             </FieldWithFloatingTip>
                           </label>
