@@ -300,6 +300,11 @@
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .navbar-mobile .navbar-link {
@@ -1012,6 +1017,7 @@
   .navbar-mobile {
     contain: layout paint;
     top: 58px;
+    max-height: calc(100dvh - 58px);
   }
 
   .navbar-mobile-store-shortcut {

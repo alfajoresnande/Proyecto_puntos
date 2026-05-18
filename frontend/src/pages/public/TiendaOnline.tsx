@@ -1042,49 +1042,55 @@ export function TiendaOnline() {
                         </>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      className="product-card-btn product-card-btn-ver"
-                      onClick={() => openProductoModal(producto)}
-                    >
-                      Ver producto
-                    </button>
-                    {user && !esCaja ? (
-                      <div className="product-card-qty">
-                        <button
-                          type="button"
-                          className="vendedor-round-btn"
-                          disabled={addMutation.isPending || cantidadSeleccionada <= 1}
-                          onClick={() => ajustarCantidadSeleccionada(producto, -1)}
-                        >
-                          -
-                        </button>
-                        <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                          {cantidadSeleccionada}
-                        </span>
-                        <button
-                          type="button"
-                          className="vendedor-round-btn"
-                          disabled={addMutation.isPending || cantidadSeleccionada >= maxCantidad}
-                          onClick={() => ajustarCantidadSeleccionada(producto, +1)}
-                        >
-                          +
-                        </button>
+                    <div className="product-card-actions">
+                      <button
+                        type="button"
+                        className="product-card-btn product-card-btn-ver"
+                        onClick={() => openProductoModal(producto)}
+                      >
+                        Ver producto
+                      </button>
+                      <div className="product-card-action-slot">
+                        {user && !esCaja ? (
+                          <div className="product-card-qty">
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={addMutation.isPending || cantidadSeleccionada <= 1}
+                              onClick={() => ajustarCantidadSeleccionada(producto, -1)}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
+                              {cantidadSeleccionada}
+                            </span>
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={addMutation.isPending || cantidadSeleccionada >= maxCantidad}
+                              onClick={() => ajustarCantidadSeleccionada(producto, +1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="product-card-action-spacer" aria-hidden="true" />
+                        )}
                       </div>
-                    ) : null}
-                    <button
-                      className="product-card-btn product-card-btn-canjear"
-                      disabled={addMutation.isPending || sinStock}
-                      onClick={() => esCaja ? openProductoModal(producto) : agregar(producto, cantidadSeleccionada)}
-                    >
-                      {sinStock
-                        ? "Sin stock"
-                        : addMutation.isPending
-                          ? "Agregando..."
-                          : esCaja
-                            ? "Comprar caja"
-                            : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
-                    </button>
+                      <button
+                        className="product-card-btn product-card-btn-canjear"
+                        disabled={addMutation.isPending || sinStock}
+                        onClick={() => esCaja ? openProductoModal(producto) : agregar(producto, cantidadSeleccionada)}
+                      >
+                        {sinStock
+                          ? "Sin stock"
+                          : addMutation.isPending
+                            ? "Agregando..."
+                            : esCaja
+                              ? "Comprar caja"
+                              : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
+                      </button>
+                    </div>
                   </div>
                 </article>
               );

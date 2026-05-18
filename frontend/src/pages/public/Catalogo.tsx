@@ -1098,85 +1098,65 @@ export function Catalogo() {
                         <span className="cost">{producto.puntos_requeridos} pts</span>
                       </span>
                     </div>
-                    {producto.puntos_acumulables ? (
-                      <>
-                        <div className="product-card-divider" />
-                        <div className="product-card-row product-card-points-tile">
-                          <span className="product-points-copy">
-                            <span className="product-card-points-label">
-                              Suma:
-                              <button
-                                type="button"
-                                className="product-points-info"
-                                aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
-                              >
-                                i
-                                <span className="product-points-info-bubble">
-                                  Estos son los puntos que sumas al comprar el producto en la tienda.
-                                </span>
-                              </button>
-                            </span>
-                            <span className="earn">+{producto.puntos_acumulables} pts</span>
-                          </span>
-                        </div>
-                      </>
-                    ) : null}
                   </div>
-                  <button
-                    className="product-card-btn product-card-btn-ver"
-                    onClick={() => abrirProducto(producto)}
-                  >
-                    Ver producto
-                  </button>
+                  <div className="product-card-actions">
+                    <button
+                      className="product-card-btn product-card-btn-ver"
+                      onClick={() => abrirProducto(producto)}
+                    >
+                      Ver producto
+                    </button>
 
-                  {user ? (
-                    <>
-                      <div className="product-card-qty">
+                    {user ? (
+                      <>
+                        <div className="product-card-action-slot">
+                          <div className="product-card-qty">
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
+                              onClick={() => ajustarCantidadSeleccionada(producto.id, -1)}
+                            >
+                              -
+                            </button>
+                            <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
+                              {cantidadSeleccionada}
+                            </span>
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= 100}
+                              onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
                         <button
-                          type="button"
-                          className="vendedor-round-btn"
-                          disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
-                          onClick={() => ajustarCantidadSeleccionada(producto.id, -1)}
+                          className="product-card-btn product-card-btn-canjear"
+                          disabled={canjearCarritoMutation.isPending || sinStock}
+                          onClick={() =>
+                            agregarProductoAlCarrito(
+                              producto,
+                              () =>
+                                setCantidadesSeleccionadas((prev) => {
+                                  const next = { ...prev };
+                                  delete next[producto.id];
+                                  return next;
+                                }),
+                              cantidadSeleccionada
+                            )
+                          }
                         >
-                          -
+                          {sinStock ? "Sin stock" : "Agregar al carrito de compras"}
                         </button>
-                        <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                          {cantidadSeleccionada}
-                        </span>
-                        <button
-                          type="button"
-                          className="vendedor-round-btn"
-                          disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= 100}
-                          onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <button
-                        className="product-card-btn product-card-btn-canjear"
-                        style={{ marginTop: "0.5rem" }}
-                        disabled={canjearCarritoMutation.isPending || sinStock}
-                        onClick={() =>
-                          agregarProductoAlCarrito(
-                            producto,
-                            () =>
-                              setCantidadesSeleccionadas((prev) => {
-                                const next = { ...prev };
-                                delete next[producto.id];
-                                return next;
-                              }),
-                            cantidadSeleccionada
-                          )
-                        }
-                      >
-                        {sinStock ? "Sin stock" : "Agregar al carrito de compras"}
-                      </button>
-                    </>
-                  ) : (
-                    <Link to="/login" className="product-card-btn product-card-btn-login" style={{ marginTop: "0.5rem" }}>
-                      Iniciar sesion para canjear
-                    </Link>
-                  )}
+                      </>
+                    ) : (
+                      <Link to="/login" className="product-card-btn product-card-btn-login">
+                        Iniciar sesion para canjear
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
               );
@@ -1433,27 +1413,6 @@ export function Catalogo() {
                   <span>Puntos para canjear</span>
                   <span className="cost">{productoModal.puntos_requeridos} pts</span>
                 </div>
-                {productoModal.puntos_acumulables ? (
-                  <>
-                    <div className="product-card-divider" />
-                    <div className="product-card-row">
-                      <span className="product-card-points-label">
-                        Puntos que sumas al comprar
-                        <button
-                          type="button"
-                          className="product-points-info"
-                          aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
-                        >
-                          i
-                          <span className="product-points-info-bubble">
-                            Estos son los puntos que sumas al comprar el producto en la tienda.
-                          </span>
-                        </button>
-                      </span>
-                      <span className="earn">+{productoModal.puntos_acumulables} pts</span>
-                    </div>
-                  </>
-                ) : null}
               </div>
 
               {user ? (

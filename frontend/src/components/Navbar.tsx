@@ -179,6 +179,45 @@ export function Navbar() {
     setUserMenuOpen(false);
   }, [location.pathname, location.hash]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const scrollY = window.scrollY;
+    const { style: bodyStyle } = document.body;
+    const { style: htmlStyle } = document.documentElement;
+    const previousBody = {
+      overflow: bodyStyle.overflow,
+      position: bodyStyle.position,
+      top: bodyStyle.top,
+      left: bodyStyle.left,
+      right: bodyStyle.right,
+      width: bodyStyle.width,
+      touchAction: bodyStyle.touchAction,
+    };
+    const previousHtmlOverflow = htmlStyle.overflow;
+
+    htmlStyle.overflow = "hidden";
+    bodyStyle.overflow = "hidden";
+    bodyStyle.position = "fixed";
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.left = "0";
+    bodyStyle.right = "0";
+    bodyStyle.width = "100%";
+    bodyStyle.touchAction = "none";
+
+    return () => {
+      htmlStyle.overflow = previousHtmlOverflow;
+      bodyStyle.overflow = previousBody.overflow;
+      bodyStyle.position = previousBody.position;
+      bodyStyle.top = previousBody.top;
+      bodyStyle.left = previousBody.left;
+      bodyStyle.right = previousBody.right;
+      bodyStyle.width = previousBody.width;
+      bodyStyle.touchAction = previousBody.touchAction;
+      window.scrollTo(0, scrollY);
+    };
+  }, [menuOpen]);
+
   const cartButton = canSeeCliente ? (
     <div className="navbar-cart-wrap">
       <button
