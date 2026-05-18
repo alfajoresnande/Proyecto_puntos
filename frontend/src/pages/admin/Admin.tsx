@@ -1125,7 +1125,7 @@ export function Admin() {
     email: "",
     password: "",
     nombre: "",
-    rol: "vendedor" as Rol,
+    rol: "cliente" as Rol,
     tipo_cliente: "cliente" as TipoCliente,
     descuento_porcentaje: "0",
     dni: "",
@@ -3121,7 +3121,7 @@ export function Admin() {
           dni: nuevoUsuario.rol === "cliente" ? nuevoUsuario.dni : undefined,
         },
       });
-      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "vendedor", tipo_cliente: "cliente", descuento_porcentaje: "0", dni: "" });
+      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "cliente", tipo_cliente: "cliente", descuento_porcentaje: "0", dni: "" });
       setOkMsg("Usuario creado.");
       await refreshQueries([["admin", "usuarios"]]);
     } catch (error) {
@@ -6132,27 +6132,37 @@ export function Admin() {
                 <input className="adm-input" placeholder="Nombre" value={nuevoUsuario.nombre} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, nombre: event.target.value }))} />
                 <input className="adm-input" placeholder="Email" value={nuevoUsuario.email} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, email: event.target.value }))} />
                 <input type="password" className="adm-input" placeholder="Contrasena" value={nuevoUsuario.password} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, password: event.target.value }))} />
-                <select
-                  className="adm-input"
-                  value={nuevoUsuario.rol}
-                  onChange={(event) =>
-                    setNuevoUsuario((prev) => ({ ...prev, rol: event.target.value as Rol }))
-                  }
-                >
-                  <option value="vendedor">Vendedor</option>
-                  <option value="cliente">Cliente</option>
-                  <option value="admin">Admin</option>
-                </select>
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Tipo de acceso" tip="Define que panel puede usar. Para crear mayoristas o empleados con descuentos, elegi Cliente y abajo cambia el perfil comercial." />
+                  <select
+                    className="adm-input"
+                    value={nuevoUsuario.rol}
+                    onChange={(event) =>
+                      setNuevoUsuario((prev) => ({
+                        ...prev,
+                        rol: event.target.value as Rol,
+                        tipo_cliente: event.target.value === "cliente" ? prev.tipo_cliente : "cliente",
+                      }))
+                    }
+                  >
+                    <option value="cliente">Cliente web</option>
+                    <option value="vendedor">Vendedor</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
                 {nuevoUsuario.rol === "cliente" ? (
                   <>
                     <input className="adm-input" placeholder="DNI" value={nuevoUsuario.dni} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, dni: event.target.value }))} />
-                    <select className="adm-input" value={nuevoUsuario.tipo_cliente} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, tipo_cliente: event.target.value as TipoCliente }))}>
-                      <option value="cliente">Cliente</option>
-                      <option value="mayorista">Mayorista</option>
-                      <option value="empleado">Empleado</option>
-                    </select>
+                    <label style={{ display: "grid", gap: "0.35rem" }}>
+                      <FieldLabel text="Perfil comercial" tip="Este perfil cambia los precios del catalogo segun los descuentos por categoria: cliente, mayorista o empleado." />
+                      <select className="adm-input" value={nuevoUsuario.tipo_cliente} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, tipo_cliente: event.target.value as TipoCliente }))}>
+                        <option value="cliente">Cliente</option>
+                        <option value="mayorista">Mayorista</option>
+                        <option value="empleado">Empleado</option>
+                      </select>
+                    </label>
                     <p className="adm-field-help" style={{ margin: 0 }}>
-                      Los descuentos se configuran por tipo y categoria desde la seccion Categorias.
+                      Mayorista y empleado son clientes web con precios especiales. Los descuentos se configuran desde Descuentos.
                     </p>
                   </>
                 ) : null}
