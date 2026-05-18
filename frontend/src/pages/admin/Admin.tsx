@@ -17,6 +17,10 @@ type AdminTab =
   | "productos"
   | "inventario"
   | "ordenes"
+  | "caja"
+  | "gastos"
+  | "proveedores"
+  | "cobros"
   | "categorias"
   | "transacciones"
   | "canjes"
@@ -31,6 +35,10 @@ const ADMIN_TABS: AdminTab[] = [
   "productos",
   "inventario",
   "ordenes",
+  "caja",
+  "gastos",
+  "proveedores",
+  "cobros",
   "categorias",
   "transacciones",
   "canjes",
@@ -541,9 +549,25 @@ function ventasViewFromPath(pathname: string): AdminVentasViewKey | null {
   return null;
 }
 
+function adminTabFromPath(pathname: string): AdminTab | null {
+  if (/\/caja(?:[/?#]|$)/.test(pathname)) return "caja";
+  if (/\/gastos(?:[/?#]|$)/.test(pathname)) return "gastos";
+  if (/\/proveedores(?:[/?#]|$)/.test(pathname)) return "proveedores";
+  if (/\/cobros(?:[/?#]|$)/.test(pathname)) return "cobros";
+  return null;
+}
+
 function ventasPathSegment(view: AdminVentasViewKey): string {
   if (view === "venta-local") return "local";
   return view;
+}
+
+function adminPathSegment(tab: AdminTab): string | null {
+  if (tab === "caja") return "caja";
+  if (tab === "gastos") return "gastos";
+  if (tab === "proveedores") return "proveedores";
+  if (tab === "cobros") return "cobros";
+  return null;
 }
 
 function readStoredIds(key: string): number[] {
@@ -1423,6 +1447,13 @@ export function Admin() {
       return;
     }
 
+    const requestedDirectTab = adminTabFromPath(location.pathname);
+    if (requestedDirectTab) {
+      setTab(requestedDirectTab);
+      setVentasNavOpen(false);
+      return;
+    }
+
     const params = new URLSearchParams(location.search);
     const requestedTab = params.get("tab");
     const requestedVentasView = params.get("vista");
@@ -1541,6 +1572,12 @@ export function Admin() {
   function syncAdminUrl(nextTab: AdminTab, nextVentasView?: AdminVentasViewKey) {
     if (nextTab === "ordenes") {
       navigate(`${panelBasePath}/ventas/${ventasPathSegment(nextVentasView ?? ventasView)}`);
+      return;
+    }
+
+    const directPath = adminPathSegment(nextTab);
+    if (directPath) {
+      navigate(`${panelBasePath}/${directPath}`);
       return;
     }
 
@@ -3529,6 +3566,18 @@ export function Admin() {
               </div>
             ) : null}
           </div>
+          <button className={`admin-nav-btn ${tab === "caja" ? "active" : ""}`} onClick={() => seleccionarTab("caja")}>
+            {renderAdminNavLabel("Caja")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "gastos" ? "active" : ""}`} onClick={() => seleccionarTab("gastos")}>
+            {renderAdminNavLabel("Gastos")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "proveedores" ? "active" : ""}`} onClick={() => seleccionarTab("proveedores")}>
+            {renderAdminNavLabel("Proveedores")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "cobros" ? "active" : ""}`} onClick={() => seleccionarTab("cobros")}>
+            {renderAdminNavLabel("Cobros")}
+          </button>
           <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => seleccionarTab("categorias")}>
             {renderAdminNavLabel("Categorias")}
           </button>
@@ -5178,248 +5227,296 @@ export function Admin() {
                       El PDF se genera como archivo real para descargar. Todas las fechas salen en horario de Buenos Aires.
                     </p>
                   </div>
-
-                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
-                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Costos de cobro</h3>
-                    <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      Carga aca el porcentaje que te descuenta cada medio. En los reportes se mostrara bruto, comision y neto real. Efectivo normalmente va en 0%.
-                    </p>
-                    <div className="admin-table-wrap">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            <th>Proveedor</th>
-                            <th>Medio</th>
-                            <th>Descripcion</th>
-                            <th>% Comision</th>
-                            <th>Activo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {costosCobro.length === 0 ? (
-                            <tr>
-                              <td colSpan={5}>
-                                <div className="adm-empty">No hay reglas de costos de cobro para editar.</div>
-                              </td>
-                            </tr>
-                          ) : null}
-                          {costosCobro.map((item) => {
-                            const key = paymentFeeDraftKey(item.proveedor, item.metodo);
-                            const draft = costosCobroDraft[key] ?? {
-                              descripcion: item.descripcion,
-                              porcentaje: String(item.porcentaje ?? 0),
-                              activo: Boolean(item.activo),
-                            };
-                            return (
-                              <tr key={`costo-cobro-${item.id}`}>
-                                <td>{formatProveedorPago(item.proveedor)}</td>
-                                <td>{formatMetodoPago(item.metodo)}</td>
-                                <td>
-                                  <input
-                                    className="adm-input"
-                                    value={draft.descripcion}
-                                    onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { descripcion: event.target.value })}
-                                  />
-                                </td>
-                                <td>
-                                  <input
-                                    className="adm-input"
-                                    type="number"
-                                    min={0}
-                                    max={100}
-                                    step="0.01"
-                                    value={draft.porcentaje}
-                                    onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { porcentaje: normalizeDiscountDraftValue(event.target.value) })}
-                                  />
-                                </td>
-                                <td>
-                                  <label style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", fontWeight: 700, color: "#6C3B15" }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={draft.activo}
-                                      onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { activo: event.target.checked })}
-                                    />
-                                    {draft.activo ? "Si" : "No"}
-                                  </label>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <button type="button" className="adm-btn-primary" disabled={busy || costosCobro.length === 0} onClick={() => void guardarCostosCobro()}>
-                      {busy ? "Guardando..." : "Guardar costos de cobro"}
-                    </button>
-                  </div>
-
-                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
-                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Caja diaria</h3>
-                    <div className="adm-form-grid">
-                      <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
-                        <option value="">Sucursal</option>
-                        {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                          <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {cajaActual ? (
-                      <>
-                        <div className="adm-form-grid">
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Sucursal</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.sucursal_nombre}</p>
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Fecha operativa</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.fecha_operativa}</p>
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Ventas</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalVentas)}</p>
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Gastos</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalGastos)}</p>
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Efectivo del dia</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.efectivoSistema)}</p>
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Movimientos</strong>
-                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.summary.cantidadMovimientos}</p>
-                          </div>
-                        </div>
-                        <p className="adm-inline-tip" style={{ margin: 0 }}>
-                          La caja se abre automaticamente a las 00:00 y cierra al terminar el dia en horario Buenos Aires. Todas las ventas locales y gastos de esta sucursal se acumulan en este resumen diario.
-                        </p>
-                        <div className="adm-form-grid">
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Ventas por medio</strong>
-                            {Object.entries(cajaActual.summary.ventasPorMedio).map(([medio, monto]) => (
-                              <p key={`venta-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
-                                {formatMetodoPago(medio)}: {formatMoney(monto)}
-                              </p>
-                            ))}
-                          </div>
-                          <div className="admin-card" style={{ padding: "0.9rem" }}>
-                            <strong>Gastos por medio</strong>
-                            {Object.entries(cajaActual.summary.gastosPorMedio).map(([medio, monto]) => (
-                              <p key={`gasto-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
-                                {formatMetodoPago(medio)}: {formatMoney(monto)}
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <p className="adm-inline-tip" style={{ margin: 0 }}>
-                        No se pudo generar la caja diaria para esta sucursal.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
-                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Registrar gasto</h3>
-                    <div className="adm-form-grid">
-                      <select className="adm-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
-                        <option value="">Proveedor</option>
-                        {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
-                          <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
-                        ))}
-                      </select>
-                      <input className="adm-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} onChange={(event) => setGastoTerceroNombre(event.target.value)} disabled={Boolean(gastoProveedorId)} />
-                      <input className="adm-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
-                      <input className="adm-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
-                      <select className="adm-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
-                        <option value="cash">Efectivo</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="tarjeta">Tarjeta</option>
-                        <option value="qr">QR</option>
-                        <option value="otro">Otro</option>
-                      </select>
-                      <input className="adm-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
-                      <input className="adm-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
-                      <button type="button" className="adm-btn-secondary" disabled={busy || !cajaActual} onClick={() => void registrarGasto()}>
-                        Guardar gasto
-                      </button>
-                    </div>
-                    <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      Los gastos quedan atados automaticamente a la caja del dia de tu usuario en la sucursal elegida.
-                    </p>
-                  </div>
-
-                  <div className="adm-form-grid">
-                    <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
-                      <h3 style={{ margin: 0, color: "#3D1A02" }}>Nuevo proveedor</h3>
-                      <input className="adm-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
-                      <input className="adm-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
-                      <input className="adm-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
-                      <input className="adm-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
-                      <input className="adm-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
-                      <button type="button" className="adm-btn-secondary" disabled={busy} onClick={() => void crearProveedor()}>
-                        Crear proveedor
-                      </button>
-                    </div>
-
-                    <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
-                      <h3 style={{ margin: 0, color: "#3D1A02" }}>Ultimos gastos</h3>
-                      {gastos.length === 0 ? (
-                        <div className="adm-empty">Todavia no hay gastos cargados.</div>
-                      ) : (
-                        gastos.slice(0, 6).map((gasto) => (
-                          <div key={gasto.id} style={{ borderBottom: "1px solid rgba(180,84,20,0.14)", paddingBottom: "0.55rem" }}>
-                            <strong>{gasto.descripcion}</strong>
-                            <p style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
-                              {gasto.categoria} / {formatMoney(gasto.monto)} / {formatMetodoPago(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
-                            </p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
-                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Historial de cajas</h3>
-                    {cajaSesiones.length === 0 ? (
-                      <div className="adm-empty">Todavia no hay cajas registradas.</div>
-                    ) : (
-                      <div className="admin-table-wrap">
-                        <table className="admin-table">
-                          <thead>
-                            <tr>
-                              <th>Fecha</th>
-                              <th>Sucursal</th>
-                              <th>Estado</th>
-                              <th>Apertura</th>
-                              <th>Ventas</th>
-                              <th>Gastos</th>
-                              <th>Efectivo sistema</th>
-                              <th>Diferencia</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cajaSesiones.slice(0, 12).map((sesion) => (
-                              <tr key={sesion.id}>
-                                <td>{sesion.fecha_operativa}</td>
-                                <td>{sesion.sucursal_nombre}</td>
-                                <td>{sesion.estado === "abierta" ? "Abierta" : "Cerrada"}</td>
-                                <td>{formatMoney(sesion.monto_apertura)}</td>
-                                <td>{formatMoney(sesion.summary.totalVentas)}</td>
-                                <td>{formatMoney(sesion.summary.totalGastos)}</td>
-                                <td>{formatMoney(sesion.summary.efectivoSistema)}</td>
-                                <td>{sesion.diferencia_cierre === null ? "-" : formatMoney(sesion.diferencia_cierre)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
                 </div>
               }
             />
+          ) : null}
+
+          {tab === "caja" ? (
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <SectionTitle title="Caja diaria" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <div className="adm-form-grid">
+                  <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
+                    <option value="">Sucursal</option>
+                    {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                      <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                {cajaActual ? (
+                  <>
+                    <div className="adm-form-grid">
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Sucursal</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.sucursal_nombre}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Fecha operativa</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.fecha_operativa}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Ventas</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalVentas)}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Gastos</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalGastos)}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Efectivo del dia</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.efectivoSistema)}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Movimientos</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.summary.cantidadMovimientos}</p>
+                      </div>
+                    </div>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      La caja se abre automaticamente a las 00:00 y cierra al terminar el dia en horario Buenos Aires. Todas las ventas locales y gastos de esta sucursal se acumulan en este resumen diario.
+                    </p>
+                    <div className="adm-form-grid">
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Ventas por medio</strong>
+                        {Object.entries(cajaActual.summary.ventasPorMedio).map(([medio, monto]) => (
+                          <p key={`venta-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                            {formatMetodoPago(medio)}: {formatMoney(monto)}
+                          </p>
+                        ))}
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Gastos por medio</strong>
+                        {Object.entries(cajaActual.summary.gastosPorMedio).map(([medio, monto]) => (
+                          <p key={`gasto-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                            {formatMetodoPago(medio)}: {formatMoney(monto)}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="adm-inline-tip" style={{ margin: 0 }}>
+                    No se pudo generar la caja diaria para esta sucursal.
+                  </p>
+                )}
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Historial de cajas</h3>
+                {cajaSesiones.length === 0 ? (
+                  <div className="adm-empty">Todavia no hay cajas registradas.</div>
+                ) : (
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Sucursal</th>
+                          <th>Estado</th>
+                          <th>Apertura</th>
+                          <th>Ventas</th>
+                          <th>Gastos</th>
+                          <th>Efectivo sistema</th>
+                          <th>Diferencia</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cajaSesiones.slice(0, 12).map((sesion) => (
+                          <tr key={sesion.id}>
+                            <td>{sesion.fecha_operativa}</td>
+                            <td>{sesion.sucursal_nombre}</td>
+                            <td>{sesion.estado === "abierta" ? "Abierta" : "Cerrada"}</td>
+                            <td>{formatMoney(sesion.monto_apertura)}</td>
+                            <td>{formatMoney(sesion.summary.totalVentas)}</td>
+                            <td>{formatMoney(sesion.summary.totalGastos)}</td>
+                            <td>{formatMoney(sesion.summary.efectivoSistema)}</td>
+                            <td>{sesion.diferencia_cierre === null ? "-" : formatMoney(sesion.diferencia_cierre)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "gastos" ? (
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <SectionTitle title="Gastos" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Registrar gasto</h3>
+                <div className="adm-form-grid">
+                  <select className="adm-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
+                    <option value="">Proveedor</option>
+                    {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
+                      <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                    ))}
+                  </select>
+                  <input className="adm-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} onChange={(event) => setGastoTerceroNombre(event.target.value)} disabled={Boolean(gastoProveedorId)} />
+                  <input className="adm-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
+                  <input className="adm-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
+                  <select className="adm-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
+                    <option value="cash">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="qr">QR</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                  <input className="adm-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
+                  <input className="adm-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
+                  <button type="button" className="adm-btn-secondary" disabled={busy || !cajaActual} onClick={() => void registrarGasto()}>
+                    Guardar gasto
+                  </button>
+                </div>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Los gastos quedan atados automaticamente a la caja del dia de tu usuario en la sucursal elegida.
+                </p>
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Ultimos gastos</h3>
+                {gastos.length === 0 ? (
+                  <div className="adm-empty">Todavia no hay gastos cargados.</div>
+                ) : (
+                  gastos.slice(0, 12).map((gasto) => (
+                    <div key={gasto.id} style={{ borderBottom: "1px solid rgba(180,84,20,0.14)", paddingBottom: "0.55rem" }}>
+                      <strong>{gasto.descripcion}</strong>
+                      <p style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                        {gasto.categoria} / {formatMoney(gasto.monto)} / {formatMetodoPago(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "proveedores" ? (
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <SectionTitle title="Proveedores" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Nuevo proveedor</h3>
+                <input className="adm-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
+                <input className="adm-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
+                <input className="adm-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
+                <input className="adm-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
+                <input className="adm-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
+                <button type="button" className="adm-btn-secondary" disabled={busy} onClick={() => void crearProveedor()}>
+                  Crear proveedor
+                </button>
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Listado de proveedores</h3>
+                {proveedores.length === 0 ? (
+                  <div className="adm-empty">Todavia no hay proveedores cargados.</div>
+                ) : (
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Contacto</th>
+                          <th>Telefono</th>
+                          <th>Email</th>
+                          <th>Activo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {proveedores.map((proveedor) => (
+                          <tr key={proveedor.id}>
+                            <td>{proveedor.nombre}</td>
+                            <td>{proveedor.contacto || "-"}</td>
+                            <td>{proveedor.telefono || "-"}</td>
+                            <td>{proveedor.email || "-"}</td>
+                            <td>{proveedor.activo === false ? "No" : "Si"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "cobros" ? (
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <SectionTitle title="Costos de cobro" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Carga aca el porcentaje que te descuenta cada medio. En los reportes se mostrara bruto, comision y neto real. Efectivo normalmente va en 0%.
+                </p>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Proveedor</th>
+                        <th>Medio</th>
+                        <th>Descripcion</th>
+                        <th>% Comision</th>
+                        <th>Activo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {costosCobro.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="adm-empty">No hay reglas de costos de cobro para editar.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {costosCobro.map((item) => {
+                        const key = paymentFeeDraftKey(item.proveedor, item.metodo);
+                        const draft = costosCobroDraft[key] ?? {
+                          descripcion: item.descripcion,
+                          porcentaje: String(item.porcentaje ?? 0),
+                          activo: Boolean(item.activo),
+                        };
+                        return (
+                          <tr key={`costo-cobro-${item.id}`}>
+                            <td>{formatProveedorPago(item.proveedor)}</td>
+                            <td>{formatMetodoPago(item.metodo)}</td>
+                            <td>
+                              <input
+                                className="adm-input"
+                                value={draft.descripcion}
+                                onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { descripcion: event.target.value })}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="adm-input"
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={draft.porcentaje}
+                                onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { porcentaje: normalizeDiscountDraftValue(event.target.value) })}
+                              />
+                            </td>
+                            <td>
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", fontWeight: 700, color: "#6C3B15" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={draft.activo}
+                                  onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { activo: event.target.checked })}
+                                />
+                                {draft.activo ? "Si" : "No"}
+                              </label>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <button type="button" className="adm-btn-primary" disabled={busy || costosCobro.length === 0} onClick={() => void guardarCostosCobro()}>
+                  {busy ? "Guardando..." : "Guardar costos de cobro"}
+                </button>
+              </div>
+            </div>
           ) : null}
 
           {tab === "categorias" ? (

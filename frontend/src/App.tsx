@@ -211,6 +211,38 @@ export default function App() {
             />
             <Route path="/admin/ventas" element={<Navigate to="/admin/ventas/pedidos" replace />} />
             <Route
+              path="/admin/caja"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/gastos"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/proveedores"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/cobros"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/ventas/:ventasPage"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>
@@ -219,6 +251,38 @@ export default function App() {
               }
             />
             <Route path="/superadmin/ventas" element={<Navigate to="/superadmin/ventas/pedidos" replace />} />
+            <Route
+              path="/superadmin/caja"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/gastos"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/proveedores"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/cobros"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/superadmin/ventas/:ventasPage"
               element={
