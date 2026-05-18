@@ -3202,7 +3202,7 @@ body.catalogo-background .pagina-page {
   min-width: 0;
   padding: 2.6rem 1.15rem 1.05rem;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(3.2rem, auto) minmax(4.4rem, auto) minmax(5.5rem, auto) minmax(8rem, auto);
   gap: 0.8rem;
 }
 
@@ -3221,13 +3221,23 @@ body.catalogo-background .pagina-page {
   font-weight: 500;
   letter-spacing: 0;
   line-height: 0.98;
+  display: -webkit-box;
+  min-height: 3.05rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .catalog-redemption-page .product-card-desc,
 .store-page .product-card-desc {
   color: #51301F;
+  display: -webkit-box;
   font-size: 0.84rem;
   line-height: 1.45;
+  min-height: 3.65rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .store-page .product-card-desc {
@@ -3249,6 +3259,7 @@ body.catalogo-background .pagina-page {
   box-shadow: none;
   display: grid;
   gap: 0.58rem;
+  min-height: 5.7rem;
 }
 
 .store-page .product-card-points,
@@ -3315,7 +3326,7 @@ body.catalogo-background .pagina-page {
 .catalog-redemption-page .product-card-qty,
 .store-page .product-card-qty {
   justify-self: start;
-  align-self: end;
+  align-self: center;
   min-height: 34px;
   margin: 0;
   padding: 0.18rem;
@@ -3327,6 +3338,27 @@ body.catalogo-background .pagina-page {
 
 .store-page .product-card-qty {
   justify-self: center;
+}
+
+.catalog-redemption-page .product-card-actions,
+.store-page .product-card-actions {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-rows: auto minmax(40px, auto) auto;
+  align-content: end;
+}
+
+.catalog-redemption-page .product-card-action-slot,
+.store-page .product-card-action-slot {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.catalog-redemption-page .product-card-action-spacer,
+.store-page .product-card-action-spacer {
+  width: 100%;
+  min-height: 40px;
 }
 
 .catalog-redemption-page .product-card-qty .vendedor-round-btn,
@@ -3928,7 +3960,7 @@ body.catalogo-background .pagina-page {
   display: grid;
   flex: 1;
   gap: 0.75rem;
-  grid-template-rows: minmax(2.8rem, auto) 1fr auto auto auto auto;
+  grid-template-rows: minmax(3rem, auto) minmax(4.2rem, auto) auto minmax(7.8rem, auto);
   padding: 1.1rem 0.85rem 1rem;
   min-width: 0;
 }
@@ -3943,6 +3975,11 @@ body.catalogo-background .pagina-page {
   font-size: 0.9rem;
   font-weight: 900;
   line-height: 1.2;
+  display: -webkit-box;
+  min-height: 2.2rem;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .catalog-redemption-page .product-card-desc,
@@ -3968,6 +4005,7 @@ body.catalogo-background .pagina-page {
 .store-page .product-card-points {
   align-self: auto;
   gap: 0.42rem;
+  min-height: 5.25rem;
 }
 
 .store-page .product-card-points {
@@ -3997,11 +4035,32 @@ body.catalogo-background .pagina-page {
 .catalog-redemption-page .product-card-qty,
 .store-page .product-card-qty {
   justify-self: start;
-  margin-top: 0.1rem;
+  margin-top: 0;
 }
 
 .store-page .product-card-qty {
   justify-self: center;
+}
+
+.catalog-redemption-page .product-card-actions,
+.store-page .product-card-actions {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-rows: auto minmax(40px, auto) auto;
+  align-content: end;
+}
+
+.catalog-redemption-page .product-card-action-slot,
+.store-page .product-card-action-slot {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.catalog-redemption-page .product-card-action-spacer,
+.store-page .product-card-action-spacer {
+  width: 100%;
+  min-height: 40px;
 }
 
 .catalog-redemption-page .product-card-btn,
