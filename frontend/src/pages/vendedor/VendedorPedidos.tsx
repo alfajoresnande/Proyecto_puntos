@@ -346,6 +346,12 @@ export function VendedorPedidos() {
     }
   }, [sucursales, ventaSucursalId]);
 
+  useEffect(() => {
+    if (!cajaActual) return;
+    setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
+    setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
+  }, [cajaActual?.id]);
+
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
@@ -482,7 +488,7 @@ export function VendedorPedidos() {
     },
     onSuccess: async () => {
       setOrdenErr("");
-      setOrdenMsg("Caja abierta correctamente.");
+      setOrdenMsg("Apertura de caja guardada correctamente.");
       setCajaObservacionesApertura("");
       setCajaMontoCierre(cajaMontoApertura || "0");
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
@@ -756,10 +762,39 @@ export function VendedorPedidos() {
                 )}
               </select>
             </div>
+            <div className="ios-card p-3" style={{ background: "#FFFDF8", border: "1px solid #F5C8A8", display: "grid", gap: "0.65rem" }}>
+              <div>
+                <strong style={{ color: "#3D1A02" }}>Apertura / efectivo inicial</strong>
+                <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                  Es la plata en efectivo con la que arranca el dia. Se usa para calcular efectivo: apertura + ventas en efectivo - gastos en efectivo.
+                </p>
+              </div>
+              <div className="adm-form-grid">
+                <input
+                  className="ios-input"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="Monto inicial"
+                  value={cajaMontoApertura}
+                  onChange={(event) => setCajaMontoApertura(event.target.value)}
+                />
+                <input
+                  className="ios-input"
+                  placeholder="Nota de apertura opcional"
+                  value={cajaObservacionesApertura}
+                  onChange={(event) => setCajaObservacionesApertura(event.target.value)}
+                />
+                <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} disabled={abrirCajaMutation.isPending || !ventaSucursalId} onClick={() => abrirCajaMutation.mutate()}>
+                  {abrirCajaMutation.isPending ? "Guardando..." : "Guardar apertura"}
+                </button>
+              </div>
+            </div>
             {cajaActual ? (
               <>
                 <div className="adm-form-grid">
                   <div className="ios-row"><strong>Fecha:</strong> {cajaActual.fecha_operativa}</div>
+                  <div className="ios-row"><strong>Apertura:</strong> {money(cajaActual.monto_apertura)}</div>
                   <div className="ios-row"><strong>Ventas:</strong> {money(cajaActual.summary.totalVentas)}</div>
                   <div className="ios-row"><strong>Gastos:</strong> {money(cajaActual.summary.totalGastos)}</div>
                   <div className="ios-row"><strong>Efectivo del dia:</strong> {money(cajaActual.summary.efectivoSistema)}</div>

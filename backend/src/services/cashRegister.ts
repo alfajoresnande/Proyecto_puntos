@@ -234,6 +234,20 @@ export async function openCajaSesion(
   await closeStaleCajaSesiones(conn, { sucursalId: input.sucursalId });
   const existing = await getActiveCajaSesion(conn, { sucursalId: input.sucursalId });
   if (existing) {
+    await qRun(
+      conn,
+      `UPDATE caja_sesiones
+       SET usuario_id = ?,
+           monto_apertura = ?,
+           observaciones_apertura = ?
+       WHERE id = ?`,
+      [
+        input.usuarioId,
+        montoApertura,
+        input.observaciones?.trim() || "Apertura actualizada manualmente.",
+        existing.id,
+      ],
+    );
     return existing.id;
   }
 

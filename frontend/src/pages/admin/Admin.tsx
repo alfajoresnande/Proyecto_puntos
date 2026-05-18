@@ -1697,6 +1697,13 @@ export function Admin() {
   );
   const totalSeguridadPages = Math.max(1, Math.ceil(blockedAccessEvents.length / INTENTOS_SEGURIDAD_POR_PAGINA));
   const totalMovimientosInicioPages = Math.max(1, Math.ceil(movimientos.length / MOVIMIENTOS_INICIO_POR_PAGINA));
+
+  useEffect(() => {
+    if (!cajaActual) return;
+    setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
+    setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
+  }, [cajaActual?.id]);
+
   const inventarioPorProducto = useMemo(() => {
     const map = new Map<number, InventarioSucursal[]>();
     for (const row of inventario) {
@@ -2727,7 +2734,7 @@ export function Admin() {
     setErrMsg("");
     setOkMsg("");
     try {
-      if (!cajaSucursalId) throw new Error("Selecciona una sucursal para abrir caja.");
+      if (!cajaSucursalId) throw new Error("Selecciona una sucursal para guardar la apertura.");
       await commandMutation.mutateAsync({
         method: "post",
         path: "/admin/caja/apertura",
@@ -2739,7 +2746,7 @@ export function Admin() {
       });
       setCajaObservacionesApertura("");
       setCajaMontoCierre(cajaMontoApertura || "0");
-      setOkMsg("Caja abierta correctamente.");
+      setOkMsg("Apertura de caja guardada correctamente.");
       await refreshQueries([["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
     } catch (error) {
       setErrMsg((error as Error).message);
@@ -5522,6 +5529,39 @@ export function Admin() {
                     </select>
                   </label>
                 </div>
+                <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.75rem" }}>
+                  <div>
+                    <strong>Apertura / efectivo inicial</strong>
+                    <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
+                      Es la plata en efectivo con la que arranca la caja del dia. Se suma solo al calculo de efectivo: apertura + ventas en efectivo - gastos en efectivo.
+                    </p>
+                  </div>
+                  <div className="adm-form-grid">
+                    <label style={{ display: "grid", gap: "0.35rem" }}>
+                      <FieldLabel text="Monto inicial" tip="Carga el efectivo fisico que habia en la caja al empezar el dia. Si no habia efectivo, dejalo en 0." />
+                      <input
+                        className="adm-input"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={cajaMontoApertura}
+                        onChange={(event) => setCajaMontoApertura(event.target.value)}
+                      />
+                    </label>
+                    <label style={{ display: "grid", gap: "0.35rem" }}>
+                      <FieldLabel text="Nota de apertura" tip="Opcional. Sirve para dejar registro de quien conto la caja o alguna aclaracion." />
+                      <input
+                        className="adm-input"
+                        value={cajaObservacionesApertura}
+                        onChange={(event) => setCajaObservacionesApertura(event.target.value)}
+                        placeholder="Ej: fondo fijo contado al iniciar el dia"
+                      />
+                    </label>
+                    <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId} onClick={() => void abrirCaja()}>
+                      Guardar apertura
+                    </button>
+                  </div>
+                </div>
                 {cajaActual ? (
                   <>
                     <div className="adm-form-grid">
@@ -5532,6 +5572,10 @@ export function Admin() {
                       <div className="admin-card" style={{ padding: "0.9rem" }}>
                         <strong>Fecha operativa</strong>
                         <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.fecha_operativa}</p>
+                      </div>
+                      <div className="admin-card" style={{ padding: "0.9rem" }}>
+                        <strong>Apertura</strong>
+                        <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.monto_apertura)}</p>
                       </div>
                       <div className="admin-card" style={{ padding: "0.9rem" }}>
                         <strong>Ventas</strong>
