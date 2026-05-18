@@ -111,6 +111,27 @@ function normalizePaymentMethod(value: string): string {
   return VALID_PAYMENT_METHODS.has(method) ? method : "cash";
 }
 
+function normalizeManualDni(value: string): string {
+  const dni = value.trim();
+  if (!/^\d{6,10}$/.test(dni)) {
+    throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+  }
+  return dni;
+}
+
+function normalizeManualPhone(value: string | null | undefined): string | null {
+  const phone = value?.trim() || "";
+  if (!phone) return null;
+  if (!/^[0-9+()\-\s]+$/.test(phone)) {
+    throw new Error("El telefono del cliente manual solo puede contener numeros, espacios, +, guiones o parentesis.");
+  }
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 6 || digits.length > 15) {
+    throw new Error("El telefono del cliente manual debe tener entre 6 y 15 numeros.");
+  }
+  return phone;
+}
+
 function getTimeZoneParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -343,11 +364,10 @@ async function findOrCreateLocalCustomer(
   clienteLocal: NonNullable<RegisterLocalSaleInput["clienteLocal"]>,
 ): Promise<number> {
   const nombre = clienteLocal.nombre.trim();
-  const dni = clienteLocal.dni.trim();
-  const telefono = clienteLocal.telefono?.trim() || null;
+  const dni = normalizeManualDni(clienteLocal.dni);
+  const telefono = normalizeManualPhone(clienteLocal.telefono);
 
   if (nombre.length < 2) throw new Error("El nombre del cliente manual es obligatorio.");
-  if (dni.length < 6) throw new Error("El DNI del cliente manual debe tener al menos 6 caracteres.");
 
   const existing = await qOne<{ id: number }>(
     conn,

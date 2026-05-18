@@ -28,10 +28,28 @@ import { notifyOrderCancellation } from "../services/supportNotifications";
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
 
+const dniManualSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+
+const telefonoManualSchema = z
+  .string()
+  .trim()
+  .max(25)
+  .refine((value) => value === "" || /^[0-9+()\-\s]+$/.test(value), {
+    message: "El telefono manual solo puede contener numeros, espacios, +, guiones o parentesis.",
+  })
+  .refine((value) => {
+    if (value === "") return true;
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 6 && digits.length <= 15;
+  }, "El telefono manual debe tener entre 6 y 15 numeros.");
+
 const clienteLocalPayloadSchema = z.object({
   nombre: z.string().min(2).max(120),
-  dni: z.string().min(6).max(20),
-  telefono: z.string().max(25).optional().nullable(),
+  dni: dniManualSchema,
+  telefono: telefonoManualSchema.optional().nullable(),
 });
 const cajaAperturaSchema = z.object({
   sucursal_id: z.number().int().positive(),

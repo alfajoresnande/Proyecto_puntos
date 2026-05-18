@@ -735,6 +735,26 @@ function formatMoney(value: number | string | null | undefined): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n);
 }
 
+function sanitizeManualDni(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 10);
+}
+
+function sanitizeManualPhone(value: string): string {
+  return value.replace(/[^0-9+()\-\s]/g, "").slice(0, 25);
+}
+
+function validateManualDni(value: string): boolean {
+  return /^\d{6,10}$/.test(value.trim());
+}
+
+function validateManualPhone(value: string): boolean {
+  const phone = value.trim();
+  if (!phone) return true;
+  if (!/^[0-9+()\-\s]+$/.test(phone)) return false;
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 6 && digits.length <= 15;
+}
+
 function formatTipoProducto(tipo?: ProductoAdmin["tipo_producto"]): string {
   if (tipo === "venta") return "Venta";
   if (tipo === "mixto") return "Mixto";
@@ -1174,6 +1194,7 @@ export function Admin() {
   const [cajaMontoCierre, setCajaMontoCierre] = useState("0");
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
   const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
+  const [cajaReporteFecha, setCajaReporteFecha] = useState(() => getBuenosAiresDateStamp());
   const [gastoProveedorId, setGastoProveedorId] = useState("");
   const [gastoTerceroNombre, setGastoTerceroNombre] = useState("");
   const [gastoCategoria, setGastoCategoria] = useState("");
@@ -1181,12 +1202,32 @@ export function Admin() {
   const [gastoMonto, setGastoMonto] = useState("");
   const [gastoMedioPago, setGastoMedioPago] = useState("cash");
   const [gastoNotas, setGastoNotas] = useState("");
+  const [gastoEditId, setGastoEditId] = useState<number | null>(null);
+  const [gastoEditDraft, setGastoEditDraft] = useState({
+    sucursal_id: "",
+    proveedor_id: "",
+    tercero_nombre: "",
+    categoria: "",
+    descripcion: "",
+    medio_pago: "cash",
+    monto: "",
+    notas: "",
+  });
   const [nuevoProveedor, setNuevoProveedor] = useState({
     nombre: "",
     contacto: "",
     telefono: "",
     email: "",
     notas: "",
+  });
+  const [proveedorEditId, setProveedorEditId] = useState<number | null>(null);
+  const [proveedorEditDraft, setProveedorEditDraft] = useState({
+    nombre: "",
+    contacto: "",
+    telefono: "",
+    email: "",
+    notas: "",
+    activo: true,
   });
   const [inventarioDraft, setInventarioDraft] = useState<Record<string, string>>({});
   const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
@@ -2535,6 +2576,12 @@ export function Admin() {
       if (!ventaLocalClienteId && (!ventaLocalClienteManualNombre.trim() || !ventaLocalClienteManualDni.trim())) {
         throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
       }
+      if (!ventaLocalClienteId && !validateManualDni(ventaLocalClienteManualDni)) {
+        throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+      }
+      if (!ventaLocalClienteId && !validateManualPhone(ventaLocalClienteManualTelefono)) {
+        throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+      }
 
       const result = await commandMutation.mutateAsync({
         method: "post",
@@ -2620,6 +2667,39 @@ export function Admin() {
             ? "PDF generado correctamente."
             : "Excel generado correctamente.",
       );
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function descargarCajaPdf(fecha = cajaReporteFecha, sucursalId = cajaSucursalId) {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!sucursalId) throw new Error("Selecciona una sucursal para exportar la caja.");
+      if (!fecha) throw new Error("Selecciona el dia de caja que queres exportar.");
+      const params = new URLSearchParams({
+        sucursal_id: String(sucursalId),
+        fecha,
+      });
+      const headers = new Headers();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetch(apiUrl(`/api/admin/caja/export?${params.toString()}`), {
+        credentials: "include",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error || "No se pudo exportar la caja.");
+      }
+      const blob = await response.blob();
+      const filename = getDownloadFilename(response.headers.get("Content-Disposition"), `caja-${fecha}.pdf`);
+      const saveResult = await saveBlobWithPicker(blob, filename, "application/pdf");
+      if (saveResult === "cancelled") return;
+      setOkMsg("PDF de caja generado correctamente.");
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -2734,6 +2814,60 @@ export function Admin() {
     }
   }
 
+  function empezarEditarGasto(gasto: GastoAdmin) {
+    setErrMsg("");
+    setOkMsg("");
+    setGastoEditId(gasto.id);
+    setGastoEditDraft({
+      sucursal_id: String(gasto.sucursal_id),
+      proveedor_id: gasto.proveedor_id ? String(gasto.proveedor_id) : "",
+      tercero_nombre: gasto.tercero_nombre ?? "",
+      categoria: gasto.categoria ?? "",
+      descripcion: gasto.descripcion ?? "",
+      medio_pago: gasto.medio_pago || "cash",
+      monto: String(Number(gasto.monto ?? 0)),
+      notas: gasto.notas ?? "",
+    });
+  }
+
+  async function guardarGastoEditado() {
+    if (!gastoEditId) return;
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!gastoEditDraft.categoria.trim() || !gastoEditDraft.descripcion.trim()) {
+        throw new Error("Completa categoria y descripcion del gasto.");
+      }
+      if (!gastoEditDraft.proveedor_id && !gastoEditDraft.tercero_nombre.trim()) {
+        throw new Error("Selecciona un proveedor o escribe un tercero.");
+      }
+      const monto = Number(gastoEditDraft.monto || 0);
+      if (!Number.isFinite(monto) || monto <= 0) throw new Error("Completa un monto mayor a 0.");
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: `/admin/gastos/${gastoEditId}`,
+        body: {
+          sucursal_id: Number(gastoEditDraft.sucursal_id),
+          proveedor_id: gastoEditDraft.proveedor_id ? Number(gastoEditDraft.proveedor_id) : undefined,
+          tercero_nombre: gastoEditDraft.proveedor_id ? undefined : gastoEditDraft.tercero_nombre.trim(),
+          categoria: gastoEditDraft.categoria.trim(),
+          descripcion: gastoEditDraft.descripcion.trim(),
+          medio_pago: gastoEditDraft.medio_pago,
+          monto,
+          notas: gastoEditDraft.notas.trim() || undefined,
+        },
+      });
+      setGastoEditId(null);
+      setOkMsg("Gasto actualizado correctamente.");
+      await refreshQueries([["admin", "gastos", cajaSucursalId], ["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function crearProveedor() {
     setBusy(true);
     setErrMsg("");
@@ -2753,6 +2887,49 @@ export function Admin() {
       });
       setNuevoProveedor({ nombre: "", contacto: "", telefono: "", email: "", notas: "" });
       setOkMsg("Proveedor creado.");
+      await refreshQueries([["admin", "proveedores"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function empezarEditarProveedor(proveedor: ProveedorAdmin) {
+    setErrMsg("");
+    setOkMsg("");
+    setProveedorEditId(proveedor.id);
+    setProveedorEditDraft({
+      nombre: proveedor.nombre ?? "",
+      contacto: proveedor.contacto ?? "",
+      telefono: proveedor.telefono ?? "",
+      email: proveedor.email ?? "",
+      notas: proveedor.notas ?? "",
+      activo: proveedor.activo !== false,
+    });
+  }
+
+  async function guardarProveedorEditado() {
+    if (!proveedorEditId) return;
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!proveedorEditDraft.nombre.trim()) throw new Error("El nombre del proveedor es obligatorio.");
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: `/admin/proveedores/${proveedorEditId}`,
+        body: {
+          nombre: proveedorEditDraft.nombre.trim(),
+          contacto: proveedorEditDraft.contacto.trim() || undefined,
+          telefono: proveedorEditDraft.telefono.trim() || undefined,
+          email: proveedorEditDraft.email.trim() || undefined,
+          notas: proveedorEditDraft.notas.trim() || undefined,
+          activo: proveedorEditDraft.activo,
+        },
+      });
+      setProveedorEditId(null);
+      setOkMsg("Proveedor actualizado.");
       await refreshQueries([["admin", "proveedores"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
@@ -4957,18 +5134,22 @@ export function Admin() {
                       <input
                         className="adm-input"
                         placeholder="DNI cliente manual"
+                        inputMode="numeric"
+                        maxLength={10}
                         value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
                         disabled={Boolean(ventaLocalClienteId)}
-                        onChange={(event) => setVentaLocalClienteManualDni(event.target.value)}
+                        onChange={(event) => setVentaLocalClienteManualDni(sanitizeManualDni(event.target.value))}
                       />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Telefono manual" tip="Dato opcional para ubicar al cliente manual si hace falta contactarlo.">
                       <input
                         className="adm-input"
                         placeholder="Telefono opcional"
+                        inputMode="tel"
+                        maxLength={25}
                         value={ventaLocalClienteId ? "" : ventaLocalClienteManualTelefono}
                         disabled={Boolean(ventaLocalClienteId)}
-                        onChange={(event) => setVentaLocalClienteManualTelefono(event.target.value)}
+                        onChange={(event) => setVentaLocalClienteManualTelefono(sanitizeManualPhone(event.target.value))}
                       />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Sucursal" tip="Lugar donde se realizo la venta presencial. Ayuda a ordenar reportes por punto de venta.">
@@ -5309,6 +5490,26 @@ export function Admin() {
                   Si una venta se cancela antes de entregar, el sistema actualiza la orden y devuelve stock segun corresponda. Si hubo pago aprobado, la devolucion del dinero se coordina por mensaje con el cliente para dejar registro.
                 </p>
               </div>
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Reporte PDF de caja</h3>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Elegi una sucursal y un dia para exportar la caja completa: resumen, ventas, gastos y movimientos.
+                </p>
+                <div className="adm-form-grid">
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Dia de caja" tip="Fecha operativa en horario Buenos Aires. El PDF toma la caja de esa sucursal y ese dia." />
+                    <input
+                      className="adm-input"
+                      type="date"
+                      value={cajaReporteFecha}
+                      onChange={(event) => setCajaReporteFecha(event.target.value)}
+                    />
+                  </label>
+                  <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId || !cajaReporteFecha} onClick={() => void descargarCajaPdf()}>
+                    Exportar caja en PDF
+                  </button>
+                </div>
+              </div>
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
@@ -5395,6 +5596,7 @@ export function Admin() {
                           <th>Gastos</th>
                           <th>Efectivo sistema</th>
                           <th>Diferencia</th>
+                          <th>PDF</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -5408,6 +5610,11 @@ export function Admin() {
                             <td>{formatMoney(sesion.summary.totalGastos)}</td>
                             <td>{formatMoney(sesion.summary.efectivoSistema)}</td>
                             <td>{sesion.diferencia_cierre === null ? "-" : formatMoney(sesion.diferencia_cierre)}</td>
+                            <td>
+                              <button className="adm-btn-link" onClick={() => void descargarCajaPdf(sesion.fecha_operativa, String(sesion.sucursal_id))} disabled={busy}>
+                                Exportar
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -5468,7 +5675,7 @@ export function Admin() {
                   </button>
                 </div>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Los gastos quedan atados automaticamente a la caja del dia de tu usuario en la sucursal elegida.
+                  Los gastos quedan atados automaticamente a la caja diaria de la sucursal elegida.
                 </p>
               </div>
 
@@ -5477,14 +5684,93 @@ export function Admin() {
                 {gastos.length === 0 ? (
                   <div className="adm-empty">Todavia no hay gastos cargados.</div>
                 ) : (
-                  gastos.slice(0, 12).map((gasto) => (
-                    <div key={gasto.id} style={{ borderBottom: "1px solid rgba(180,84,20,0.14)", paddingBottom: "0.55rem" }}>
-                      <strong>{gasto.descripcion}</strong>
-                      <p style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
-                        {gasto.categoria} / {formatMoney(gasto.monto)} / {formatMetodoPago(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
-                      </p>
-                    </div>
-                  ))
+                  gastos.slice(0, 12).map((gasto) => {
+                    const editing = gastoEditId === gasto.id;
+                    return (
+                      <div key={gasto.id} style={{ borderBottom: "1px solid rgba(180,84,20,0.14)", paddingBottom: "0.75rem", display: "grid", gap: "0.55rem" }}>
+                        {editing ? (
+                          <>
+                            <div className="adm-form-grid">
+                              <select
+                                className="adm-input"
+                                value={gastoEditDraft.proveedor_id}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, proveedor_id: event.target.value, tercero_nombre: event.target.value ? "" : prev.tercero_nombre }))}
+                              >
+                                <option value="">Proveedor</option>
+                                {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
+                                  <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                                ))}
+                              </select>
+                              <input
+                                className="adm-input"
+                                placeholder="Persona o comercio"
+                                value={gastoEditDraft.tercero_nombre}
+                                disabled={Boolean(gastoEditDraft.proveedor_id)}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, tercero_nombre: event.target.value }))}
+                              />
+                              <input
+                                className="adm-input"
+                                placeholder="Categoria"
+                                value={gastoEditDraft.categoria}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, categoria: event.target.value }))}
+                              />
+                              <input
+                                className="adm-input"
+                                placeholder="Descripcion"
+                                value={gastoEditDraft.descripcion}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, descripcion: event.target.value }))}
+                              />
+                              <select
+                                className="adm-input"
+                                value={gastoEditDraft.medio_pago}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, medio_pago: event.target.value }))}
+                              >
+                                <option value="cash">Efectivo</option>
+                                <option value="transferencia">Transferencia</option>
+                                <option value="tarjeta">Tarjeta</option>
+                                <option value="qr">QR</option>
+                                <option value="otro">Otro</option>
+                              </select>
+                              <input
+                                className="adm-input"
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                placeholder="Monto"
+                                value={gastoEditDraft.monto}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, monto: event.target.value }))}
+                              />
+                              <input
+                                className="adm-input"
+                                placeholder="Notas"
+                                value={gastoEditDraft.notas}
+                                onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, notas: event.target.value }))}
+                              />
+                            </div>
+                            <div className="adm-row-actions">
+                              <button className="adm-btn-success" disabled={busy} onClick={() => void guardarGastoEditado()}>Guardar</button>
+                              <button className="adm-btn-link" disabled={busy} onClick={() => setGastoEditId(null)}>Cancelar</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <strong>{gasto.descripcion}</strong>
+                              <p style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                                {gasto.categoria} / {formatMoney(gasto.monto)} / {formatMetodoPago(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
+                              </p>
+                              {gasto.notas ? (
+                                <p style={{ margin: "0.15rem 0 0", color: "#8B5A30", fontSize: "0.82rem" }}>{gasto.notas}</p>
+                              ) : null}
+                            </div>
+                            <div className="adm-row-actions">
+                              <button className="adm-btn-link" disabled={busy} onClick={() => empezarEditarGasto(gasto)}>Editar</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -5533,19 +5819,86 @@ export function Admin() {
                           <th>Contacto</th>
                           <th>Telefono</th>
                           <th>Email</th>
+                          <th>Notas</th>
                           <th>Activo</th>
+                          <th>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {proveedores.map((proveedor) => (
-                          <tr key={proveedor.id}>
-                            <td>{proveedor.nombre}</td>
-                            <td>{proveedor.contacto || "-"}</td>
-                            <td>{proveedor.telefono || "-"}</td>
-                            <td>{proveedor.email || "-"}</td>
-                            <td>{proveedor.activo === false ? "No" : "Si"}</td>
-                          </tr>
-                        ))}
+                        {proveedores.map((proveedor) => {
+                          const editing = proveedorEditId === proveedor.id;
+                          return (
+                            <tr key={proveedor.id}>
+                              <td>
+                                {editing ? (
+                                  <input
+                                    className="adm-input"
+                                    value={proveedorEditDraft.nombre}
+                                    onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, nombre: event.target.value }))}
+                                  />
+                                ) : proveedor.nombre}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <input
+                                    className="adm-input"
+                                    value={proveedorEditDraft.contacto}
+                                    onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, contacto: event.target.value }))}
+                                  />
+                                ) : proveedor.contacto || "-"}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <input
+                                    className="adm-input"
+                                    value={proveedorEditDraft.telefono}
+                                    onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, telefono: event.target.value }))}
+                                  />
+                                ) : proveedor.telefono || "-"}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <input
+                                    className="adm-input"
+                                    value={proveedorEditDraft.email}
+                                    onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, email: event.target.value }))}
+                                  />
+                                ) : proveedor.email || "-"}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <input
+                                    className="adm-input"
+                                    value={proveedorEditDraft.notas}
+                                    onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, notas: event.target.value }))}
+                                  />
+                                ) : proveedor.notas || "-"}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontWeight: 700 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={proveedorEditDraft.activo}
+                                      onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, activo: event.target.checked }))}
+                                    />
+                                    {proveedorEditDraft.activo ? "Si" : "No"}
+                                  </label>
+                                ) : proveedor.activo === false ? "No" : "Si"}
+                              </td>
+                              <td>
+                                {editing ? (
+                                  <div className="adm-row-actions">
+                                    <button className="adm-btn-success" onClick={() => void guardarProveedorEditado()} disabled={busy}>Guardar</button>
+                                    <button className="adm-btn-link" onClick={() => setProveedorEditId(null)} disabled={busy}>Cancelar</button>
+                                  </div>
+                                ) : (
+                                  <button className="adm-btn-link" onClick={() => empezarEditarProveedor(proveedor)} disabled={busy}>Editar</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

@@ -43,6 +43,7 @@ import {
   openCajaSesion,
   registerCajaMovimiento,
 } from "../services/cashRegister";
+import { getCajaReportData, renderCajaPdfBuffer } from "../services/cashRegisterReports";
 import {
   getBuenosAiresDateStamp,
   getVentasReporteRows,
@@ -251,10 +252,26 @@ const descuentoTipoCategoriaSchema = z.object({
   descuento_porcentaje: z.number().min(0).max(100),
   activo: z.boolean().optional().default(true),
 });
+const dniManualSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const telefonoManualSchema = z
+  .string()
+  .trim()
+  .max(25)
+  .refine((value) => value === "" || /^[0-9+()\-\s]+$/.test(value), {
+    message: "El telefono manual solo puede contener numeros, espacios, +, guiones o parentesis.",
+  })
+  .refine((value) => {
+    if (value === "") return true;
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 6 && digits.length <= 15;
+  }, "El telefono manual debe tener entre 6 y 15 numeros.");
 const clienteLocalPayloadSchema = z.object({
   nombre: z.string().min(2).max(120),
-  dni: z.string().min(6).max(20),
-  telefono: z.string().max(25).optional().nullable(),
+  dni: dniManualSchema,
+  telefono: telefonoManualSchema.optional().nullable(),
 });
 const proveedorSchema = z.object({
   nombre: z.string().min(2).max(160),
@@ -1292,6 +1309,30 @@ router.get("/caja/sesiones", async (req, res) => {
   res.json(payload);
 });
 
+router.get("/caja/export", async (req, res) => {
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  const fecha = typeof req.query.fecha === "string" ? req.query.fecha : "";
+  if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+    res.status(400).json({ error: "Sucursal invalida." });
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    res.status(400).json({ error: "Fecha invalida. Usa formato YYYY-MM-DD." });
+    return;
+  }
+
+  try {
+    const data = await getCajaReportData(pool, { sucursalId, fecha });
+    const pdf = await renderCajaPdfBuffer(data);
+    const safeBranch = data.session.sucursal_nombre.replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40) || "sucursal";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="caja-${safeBranch}-${fecha}.pdf"`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || "No se pudo generar el reporte de caja." });
+  }
+});
+
 router.get("/gastos", async (req, res) => {
   const sucursalId = Number(req.query.sucursal_id ?? 0);
   const cajaSesionId = Number(req.query.caja_sesion_id ?? 0);
@@ -1388,6 +1429,97 @@ router.post("/gastos", async (req, res) => {
   } catch (err: any) {
     await conn.rollback();
     res.status(400).json({ error: err?.message || "No se pudo registrar el gasto." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.put("/gastos/:id", async (req, res) => {
+  const gastoId = Number(req.params.id);
+  const parsed = gastoSchema.safeParse(req.body);
+  if (!Number.isInteger(gastoId) || gastoId <= 0) {
+    res.status(400).json({ error: "Gasto invalido." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const gasto = await qOne<{ id: number; sucursal_id: number; caja_sesion_id: number; creado_por: number }>(
+      conn,
+      "SELECT id, sucursal_id, caja_sesion_id, creado_por FROM gastos WHERE id = ? LIMIT 1 FOR UPDATE",
+      [gastoId],
+    );
+    if (!gasto) {
+      res.status(404).json({ error: "Gasto no encontrado." });
+      await conn.rollback();
+      return;
+    }
+    if (Number(gasto.sucursal_id) !== Number(parsed.data.sucursal_id)) {
+      throw new Error("No se puede cambiar la sucursal de un gasto ya registrado.");
+    }
+    if (!parsed.data.proveedor_id && !parsed.data.tercero_nombre?.trim()) {
+      throw new Error("Selecciona un proveedor o completa un tercero.");
+    }
+    if (parsed.data.proveedor_id) {
+      const provider = await qOne<{ id: number }>(
+        conn,
+        "SELECT id FROM proveedores WHERE id = ? AND activo = 1 LIMIT 1",
+        [parsed.data.proveedor_id],
+      );
+      if (!provider) throw new Error("El proveedor seleccionado no existe o esta inactivo.");
+    }
+
+    const medioPago = normalizeCashPaymentMethod(parsed.data.medio_pago);
+    const descripcion = parsed.data.descripcion.trim();
+    await qRun(
+      conn,
+      `UPDATE gastos
+       SET proveedor_id = ?, tercero_nombre = ?, categoria = ?, descripcion = ?,
+           medio_pago = ?, monto = ?, notas = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        parsed.data.proveedor_id ?? null,
+        parsed.data.tercero_nombre?.trim() || null,
+        parsed.data.categoria.trim(),
+        descripcion,
+        medioPago,
+        Number(parsed.data.monto),
+        parsed.data.notas?.trim() || null,
+        gastoId,
+      ],
+    );
+
+    const movementUpdate = await qRun(
+      conn,
+      `UPDATE caja_movimientos
+       SET medio_pago = ?, monto = ?, descripcion = ?
+       WHERE referencia_tipo = 'gastos' AND referencia_id = ?`,
+      [medioPago, Number(parsed.data.monto), descripcion, gastoId],
+    );
+    if (!movementUpdate.affectedRows) {
+      await registerCajaMovimiento(conn, {
+        cajaSesionId: Number(gasto.caja_sesion_id),
+        tipo: "gasto",
+        medioPago,
+        monto: Number(parsed.data.monto),
+        descripcion,
+        referenciaTipo: "gastos",
+        referenciaId: gastoId,
+        creadoPor: req.user!.id,
+      });
+    }
+
+    await conn.commit();
+    emitRealtime(["ordenes"]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo actualizar el gasto." });
   } finally {
     conn.release();
   }

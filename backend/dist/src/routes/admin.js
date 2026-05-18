@@ -22,6 +22,7 @@ const points_1 = require("../services/points");
 const expirations_1 = require("../services/expirations");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const cashRegister_1 = require("../services/cashRegister");
+const cashRegisterReports_1 = require("../services/cashRegisterReports");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
@@ -178,10 +179,27 @@ const descuentoTipoCategoriaSchema = zod_1.z.object({
     descuento_porcentaje: zod_1.z.number().min(0).max(100),
     activo: zod_1.z.boolean().optional().default(true),
 });
+const dniManualSchema = zod_1.z
+    .string()
+    .trim()
+    .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const telefonoManualSchema = zod_1.z
+    .string()
+    .trim()
+    .max(25)
+    .refine((value) => value === "" || /^[0-9+()\-\s]+$/.test(value), {
+    message: "El telefono manual solo puede contener numeros, espacios, +, guiones o parentesis.",
+})
+    .refine((value) => {
+    if (value === "")
+        return true;
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 6 && digits.length <= 15;
+}, "El telefono manual debe tener entre 6 y 15 numeros.");
 const clienteLocalPayloadSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(2).max(120),
-    dni: zod_1.z.string().min(6).max(20),
-    telefono: zod_1.z.string().max(25).optional().nullable(),
+    dni: dniManualSchema,
+    telefono: telefonoManualSchema.optional().nullable(),
 });
 const proveedorSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(2).max(160),
@@ -1080,6 +1098,29 @@ router.get("/caja/sesiones", async (req, res) => {
     }
     res.json(payload);
 });
+router.get("/caja/export", async (req, res) => {
+    const sucursalId = Number(req.query.sucursal_id ?? 0);
+    const fecha = typeof req.query.fecha === "string" ? req.query.fecha : "";
+    if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+        res.status(400).json({ error: "Sucursal invalida." });
+        return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        res.status(400).json({ error: "Fecha invalida. Usa formato YYYY-MM-DD." });
+        return;
+    }
+    try {
+        const data = await (0, cashRegisterReports_1.getCajaReportData)(db_1.pool, { sucursalId, fecha });
+        const pdf = await (0, cashRegisterReports_1.renderCajaPdfBuffer)(data);
+        const safeBranch = data.session.sucursal_nombre.replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40) || "sucursal";
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="caja-${safeBranch}-${fecha}.pdf"`);
+        res.send(pdf);
+    }
+    catch (err) {
+        res.status(400).json({ error: err?.message || "No se pudo generar el reporte de caja." });
+    }
+});
 router.get("/gastos", async (req, res) => {
     const sucursalId = Number(req.query.sucursal_id ?? 0);
     const cajaSesionId = Number(req.query.caja_sesion_id ?? 0);
@@ -1159,6 +1200,79 @@ router.post("/gastos", async (req, res) => {
     catch (err) {
         await conn.rollback();
         res.status(400).json({ error: err?.message || "No se pudo registrar el gasto." });
+    }
+    finally {
+        conn.release();
+    }
+});
+router.put("/gastos/:id", async (req, res) => {
+    const gastoId = Number(req.params.id);
+    const parsed = gastoSchema.safeParse(req.body);
+    if (!Number.isInteger(gastoId) || gastoId <= 0) {
+        res.status(400).json({ error: "Gasto invalido." });
+        return;
+    }
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const gasto = await (0, db_1.qOne)(conn, "SELECT id, sucursal_id, caja_sesion_id, creado_por FROM gastos WHERE id = ? LIMIT 1 FOR UPDATE", [gastoId]);
+        if (!gasto) {
+            res.status(404).json({ error: "Gasto no encontrado." });
+            await conn.rollback();
+            return;
+        }
+        if (Number(gasto.sucursal_id) !== Number(parsed.data.sucursal_id)) {
+            throw new Error("No se puede cambiar la sucursal de un gasto ya registrado.");
+        }
+        if (!parsed.data.proveedor_id && !parsed.data.tercero_nombre?.trim()) {
+            throw new Error("Selecciona un proveedor o completa un tercero.");
+        }
+        if (parsed.data.proveedor_id) {
+            const provider = await (0, db_1.qOne)(conn, "SELECT id FROM proveedores WHERE id = ? AND activo = 1 LIMIT 1", [parsed.data.proveedor_id]);
+            if (!provider)
+                throw new Error("El proveedor seleccionado no existe o esta inactivo.");
+        }
+        const medioPago = (0, cashRegister_1.normalizeCashPaymentMethod)(parsed.data.medio_pago);
+        const descripcion = parsed.data.descripcion.trim();
+        await (0, db_1.qRun)(conn, `UPDATE gastos
+       SET proveedor_id = ?, tercero_nombre = ?, categoria = ?, descripcion = ?,
+           medio_pago = ?, monto = ?, notas = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`, [
+            parsed.data.proveedor_id ?? null,
+            parsed.data.tercero_nombre?.trim() || null,
+            parsed.data.categoria.trim(),
+            descripcion,
+            medioPago,
+            Number(parsed.data.monto),
+            parsed.data.notas?.trim() || null,
+            gastoId,
+        ]);
+        const movementUpdate = await (0, db_1.qRun)(conn, `UPDATE caja_movimientos
+       SET medio_pago = ?, monto = ?, descripcion = ?
+       WHERE referencia_tipo = 'gastos' AND referencia_id = ?`, [medioPago, Number(parsed.data.monto), descripcion, gastoId]);
+        if (!movementUpdate.affectedRows) {
+            await (0, cashRegister_1.registerCajaMovimiento)(conn, {
+                cajaSesionId: Number(gasto.caja_sesion_id),
+                tipo: "gasto",
+                medioPago,
+                monto: Number(parsed.data.monto),
+                descripcion,
+                referenciaTipo: "gastos",
+                referenciaId: gastoId,
+                creadoPor: req.user.id,
+            });
+        }
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.json({ ok: true });
+    }
+    catch (err) {
+        await conn.rollback();
+        res.status(400).json({ error: err?.message || "No se pudo actualizar el gasto." });
     }
     finally {
         conn.release();

@@ -179,6 +179,26 @@ function pagoLabel(pago: OrdenVendedor["pago"]): string {
   return `${metodo} / ${estado}`;
 }
 
+function sanitizeManualDni(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 10);
+}
+
+function sanitizeManualPhone(value: string): string {
+  return value.replace(/[^0-9+()\-\s]/g, "").slice(0, 25);
+}
+
+function validateManualDni(value: string): boolean {
+  return /^\d{6,10}$/.test(value.trim());
+}
+
+function validateManualPhone(value: string): boolean {
+  const phone = value.trim();
+  if (!phone) return true;
+  if (!/^[0-9+()\-\s]+$/.test(phone)) return false;
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 6 && digits.length <= 15;
+}
+
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
@@ -401,6 +421,12 @@ export function VendedorPedidos() {
       if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
       if (!ventaCliente && (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim())) {
         throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
+      }
+      if (!ventaCliente && !validateManualDni(ventaClienteManualDni)) {
+        throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+      }
+      if (!ventaCliente && !validateManualPhone(ventaClienteManualTelefono)) {
+        throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
       }
 
       return api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", {
@@ -907,16 +933,20 @@ export function VendedorPedidos() {
               <input
                 className="ios-input"
                 placeholder="Cliente manual: DNI"
+                inputMode="numeric"
+                maxLength={10}
                 value={ventaCliente ? "" : ventaClienteManualDni}
                 disabled={Boolean(ventaCliente)}
-                onChange={(event) => setVentaClienteManualDni(event.target.value)}
+                onChange={(event) => setVentaClienteManualDni(sanitizeManualDni(event.target.value))}
               />
               <input
                 className="ios-input"
                 placeholder="Cliente manual: telefono (opcional)"
+                inputMode="tel"
+                maxLength={25}
                 value={ventaCliente ? "" : ventaClienteManualTelefono}
                 disabled={Boolean(ventaCliente)}
-                onChange={(event) => setVentaClienteManualTelefono(event.target.value)}
+                onChange={(event) => setVentaClienteManualTelefono(sanitizeManualPhone(event.target.value))}
               />
               <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length}>
                 {sucursales.length ? (
