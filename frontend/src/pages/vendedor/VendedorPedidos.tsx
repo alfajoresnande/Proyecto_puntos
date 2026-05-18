@@ -288,6 +288,7 @@ export function VendedorPedidos() {
   const proveedores = proveedoresQuery.data ?? [];
   const cajaActual = cajaActualQuery.data ?? null;
   const gastos = gastosQuery.data ?? [];
+  const selectedSucursalValue = ventaSucursalId || (sucursales[0]?.id ? String(sucursales[0].id) : "");
   const productoVentaSeleccionado = useMemo(
     () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
     [productosLocales, ventaProductoId],
@@ -490,16 +491,20 @@ export function VendedorPedidos() {
   const registrarGastoMutation = useMutation({
     mutationFn: () => {
       if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
-      if (!gastoCategoria.trim() || !gastoDescripcion.trim()) throw new Error("Completa categoria y descripcion.");
+      const categoria = gastoCategoria.trim();
+      const descripcion = gastoDescripcion.trim() || categoria;
+      const monto = Number(gastoMonto || 0);
+      if (!categoria) throw new Error("Completa la categoria del gasto.");
       if (!gastoProveedorId && !gastoTerceroNombre.trim()) throw new Error("Selecciona proveedor o completa tercero.");
+      if (!Number.isFinite(monto) || monto <= 0) throw new Error("Completa un monto mayor a 0.");
       return api.post<{ ok: true; id: number }>("/vendedor/gastos", {
         sucursal_id: Number(ventaSucursalId),
         proveedor_id: gastoProveedorId ? Number(gastoProveedorId) : undefined,
         tercero_nombre: gastoProveedorId ? undefined : gastoTerceroNombre.trim(),
-        categoria: gastoCategoria.trim(),
-        descripcion: gastoDescripcion.trim(),
+        categoria,
+        descripcion,
         medio_pago: gastoMedioPago,
-        monto: Number(gastoMonto || 0),
+        monto,
         notas: gastoNotas.trim() || undefined,
       });
     },
@@ -684,22 +689,25 @@ export function VendedorPedidos() {
           </button>
         </div>
 
+        {ordenErr ? <div className="status-err-box mt-3"><p>{ordenErr}</p></div> : null}
+        {ordenMsg ? <div className="status-ok-box mt-3"><p>{ordenMsg}</p></div> : null}
+
         {currentPage === "caja" ? (
         <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
           <div style={{ display: "grid", gap: "0.75rem" }}>
             <div>
               <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Caja del dia</h2>
               <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
-                La caja se genera automaticamente por sucursal y por fecha Buenos Aires. Las ventas locales y los gastos se registran sobre esa caja del dia.
+                La caja se genera automaticamente por local y por fecha Buenos Aires. Las ventas locales y los gastos se registran sobre esa caja del dia.
               </p>
             </div>
             <div className="ios-card p-3" style={{ background: "#FFFDF8", border: "1px solid #F5C8A8", display: "grid", gap: "0.35rem" }}>
               <strong style={{ color: "#3D1A02" }}>Flujo exacto de caja</strong>
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                El sistema crea automaticamente una sola caja diaria por sucursal, desde las 00:00 hasta las 23:59 en horario Buenos Aires. No se crea una caja por usuario.
+                El sistema crea automaticamente una sola caja diaria por cada local, desde las 00:00 hasta las 23:59 en horario Buenos Aires.
               </p>
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                Todas las ventas y gastos que cargue cualquier vendedor en esa sucursal entran en la misma caja del dia.
+                Todas las ventas y gastos que cargue cualquier vendedor en ese local entran en la misma caja del dia.
               </p>
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
                 Las ventas locales suman como ingresos de caja y los gastos cargados restan como egresos. Ambos quedan separados por medio de pago: efectivo, transferencia, tarjeta, QR u otro.
@@ -712,11 +720,14 @@ export function VendedorPedidos() {
               </p>
             </div>
             <div className="adm-form-grid">
-              <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
-                <option value="">Sucursal</option>
-                {sucursales.map((sucursal) => (
-                  <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                ))}
+              <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length}>
+                {sucursales.length ? (
+                  sucursales.map((sucursal) => (
+                    <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                  ))
+                ) : (
+                  <option value="">Sin locales activos</option>
+                )}
               </select>
             </div>
             {cajaActual ? (
@@ -772,7 +783,7 @@ export function VendedorPedidos() {
               </select>
               <input className="ios-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} disabled={Boolean(gastoProveedorId)} onChange={(event) => setGastoTerceroNombre(event.target.value)} />
               <input className="ios-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
-              <input className="ios-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
+              <input className="ios-input" placeholder="Descripcion opcional" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
               <select className="ios-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
                 <option value="cash">Efectivo</option>
                 <option value="transferencia">Transferencia</option>
@@ -907,11 +918,14 @@ export function VendedorPedidos() {
                 disabled={Boolean(ventaCliente)}
                 onChange={(event) => setVentaClienteManualTelefono(event.target.value)}
               />
-              <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
-                <option value="">Sucursal</option>
-                {sucursales.map((sucursal) => (
-                  <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                ))}
+              <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length}>
+                {sucursales.length ? (
+                  sucursales.map((sucursal) => (
+                    <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                  ))
+                ) : (
+                  <option value="">Sin locales activos</option>
+                )}
               </select>
               <select className="ios-input" value={ventaMetodoPago} onChange={(event) => setVentaMetodoPago(event.target.value)}>
                 <option value="cash">Efectivo</option>
@@ -1034,9 +1048,6 @@ export function VendedorPedidos() {
             <option value="entregada">Entregada</option>
           </select>
         </div>
-
-        {ordenErr ? <div className="status-err-box mt-3"><p>{ordenErr}</p></div> : null}
-        {ordenMsg ? <div className="status-ok-box mt-3"><p>{ordenMsg}</p></div> : null}
 
         <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
           {ordenesQuery.isLoading ? <div className="ios-row text-ios-secondary text-sm">Cargando pedidos...</div> : null}
