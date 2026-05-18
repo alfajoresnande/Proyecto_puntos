@@ -3409,8 +3409,10 @@ body.catalogo-background .pagina-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 58px;
+  box-sizing: border-box;
+  height: 58px;
   padding: 0.75rem 0.9rem;
+  line-height: 1.2;
 }
 
 .catalog-redemption-page .product-card-btn-canjear:disabled,
