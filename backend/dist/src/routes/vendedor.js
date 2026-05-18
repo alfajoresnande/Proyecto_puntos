@@ -5,11 +5,68 @@ const zod_1 = require("zod");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
 const realtime_1 = require("../realtime");
+const cashRegister_1 = require("../services/cashRegister");
+const customerPricing_1 = require("../services/customerPricing");
 const points_1 = require("../services/points");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const localSales_1 = require("../services/localSales");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
+const clienteLocalPayloadSchema = zod_1.z.object({
+    nombre: zod_1.z.string().min(2).max(120),
+    dni: zod_1.z.string().min(6).max(20),
+    telefono: zod_1.z.string().max(25).optional().nullable(),
+});
+const cajaAperturaSchema = zod_1.z.object({
+    sucursal_id: zod_1.z.number().int().positive(),
+    monto_apertura: zod_1.z.number().min(0),
+    observaciones: zod_1.z.string().max(2000).optional().nullable(),
+});
+const cajaCierreSchema = zod_1.z.object({
+    monto_cierre_declarado: zod_1.z.number().min(0),
+    observaciones: zod_1.z.string().max(2000).optional().nullable(),
+});
+const gastoSchema = zod_1.z.object({
+    sucursal_id: zod_1.z.number().int().positive(),
+    proveedor_id: zod_1.z.number().int().positive().optional().nullable(),
+    tercero_nombre: zod_1.z.string().max(160).optional().nullable(),
+    categoria: zod_1.z.string().min(2).max(120),
+    descripcion: zod_1.z.string().min(2).max(255),
+    medio_pago: zod_1.z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
+    monto: zod_1.z.number().positive(),
+    fecha_gasto: zod_1.z.string().datetime().optional().nullable(),
+    notas: zod_1.z.string().max(2000).optional().nullable(),
+});
+const proveedorSchema = zod_1.z.object({
+    nombre: zod_1.z.string().min(2).max(160),
+    contacto: zod_1.z.string().max(160).optional().nullable(),
+    telefono: zod_1.z.string().max(25).optional().nullable(),
+    email: zod_1.z.string().email().max(160).optional().nullable().or(zod_1.z.literal("")),
+    notas: zod_1.z.string().max(2000).optional().nullable(),
+});
+async function getCajaSesionPayload(conn, sessionId) {
+    const session = await (0, db_1.qOne)(conn, `SELECT cs.id, cs.sucursal_id, s.nombre AS sucursal_nombre,
+            cs.usuario_id, u.nombre AS usuario_nombre,
+            cs.fecha_operativa, cs.estado, cs.monto_apertura, cs.monto_cierre_sistema,
+            cs.monto_cierre_declarado, cs.diferencia_cierre, cs.observaciones_apertura,
+            cs.observaciones_cierre, cs.apertura_at, cs.cierre_at
+     FROM caja_sesiones cs
+     JOIN sucursales s ON s.id = cs.sucursal_id
+     JOIN usuarios u ON u.id = cs.usuario_id
+     WHERE cs.id = ?
+     LIMIT 1`, [sessionId]);
+    if (!session)
+        return null;
+    const summary = await (0, cashRegister_1.getCajaSesionSummary)(conn, sessionId);
+    return {
+        ...session,
+        monto_apertura: Number(session.monto_apertura ?? 0),
+        monto_cierre_sistema: session.monto_cierre_sistema === null ? null : Number(session.monto_cierre_sistema),
+        monto_cierre_declarado: session.monto_cierre_declarado === null ? null : Number(session.monto_cierre_declarado),
+        diferencia_cierre: session.diferencia_cierre === null ? null : Number(session.diferencia_cierre),
+        summary,
+    };
+}
 function parseJsonField(value) {
     if (!value)
         return null;
@@ -123,7 +180,7 @@ router.get("/clientes/buscar", async (req, res, next) => {
             return res.json([]);
         }
         const term = `%${cleanQ}%`;
-        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, dni, email, puntos_saldo AS puntos 
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, dni, email, puntos_saldo AS puntos, tipo_cliente, descuento_porcentaje
        FROM usuarios 
        WHERE rol = 'cliente' 
          AND (nombre LIKE ? OR dni LIKE ?)
@@ -137,6 +194,11 @@ router.get("/clientes/buscar", async (req, res, next) => {
 // Cargar puntos usando productos del catálogo como referencia
 router.get("/productos-locales", async (_req, res, next) => {
     try {
+        const clienteUsuarioId = Number(_req.query.usuario_id ?? 0);
+        const pricingProfile = Number.isInteger(clienteUsuarioId) && clienteUsuarioId > 0
+            ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, clienteUsuarioId)
+            : null;
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "local", profile: pricingProfile });
         const productos = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, descripcion, imagen_url, categoria, tipo_producto,
               configuracion_tipo, capacidad_sabores, precio_dinero,
               puntaje_al_comprar, activo
@@ -164,10 +226,15 @@ router.get("/productos-locales", async (_req, res, next) => {
         }
         res.json(productos.map((producto) => {
             const productFlavors = flavorMap.get(Number(producto.id)) ?? [];
+            const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
             return {
                 ...producto,
                 activo: Boolean(producto.activo),
-                precio_dinero: producto.precio_dinero === null ? null : Number(producto.precio_dinero),
+                precio_dinero: pricing.precioFinal,
+                precio_dinero_original: pricing.precioLista,
+                precio_dinero_lista: pricing.precioLista,
+                descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+                tipo_cliente_precio: pricing.tipoCliente,
                 puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
                 capacidad_sabores: producto.capacidad_sabores === null ? null : Number(producto.capacidad_sabores),
                 sabores: productFlavors,
@@ -342,7 +409,8 @@ const ventaLocalItemSchema = zod_1.z.object({
     })).optional(),
 });
 const ventaLocalSchema = zod_1.z.object({
-    usuario_id: zod_1.z.number().int().positive(),
+    usuario_id: zod_1.z.number().int().positive().optional().nullable(),
+    cliente_local: clienteLocalPayloadSchema.optional().nullable(),
     sucursal_id: zod_1.z.number().int().positive(),
     metodo_pago: zod_1.z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
     acreditar_puntos: zod_1.z.boolean().optional().default(false),
@@ -358,9 +426,13 @@ router.post("/ventas-locales", async (req, res, next) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        if (!parsed.data.usuario_id && !parsed.data.cliente_local) {
+            throw new Error("Selecciona un cliente web o completa un cliente manual.");
+        }
         const result = await (0, localSales_1.registerLocalSale)(conn, {
             canal: "vendedor",
-            usuarioId: parsed.data.usuario_id,
+            usuarioId: parsed.data.usuario_id ?? null,
+            clienteLocal: parsed.data.cliente_local ?? null,
             sucursalId: parsed.data.sucursal_id,
             metodoPago: parsed.data.metodo_pago,
             acreditarPuntos: parsed.data.acreditar_puntos,
@@ -380,16 +452,247 @@ router.post("/ventas-locales", async (req, res, next) => {
         conn.release();
     }
 });
+router.get("/proveedores", async (_req, res, next) => {
+    try {
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, contacto, telefono, email, notas
+       FROM proveedores
+       WHERE activo = 1
+       ORDER BY nombre ASC, id ASC`);
+        res.json(rows);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.post("/proveedores", async (req, res, next) => {
+    const parsed = proveedorSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const result = await (0, db_1.qRun)(db_1.pool, `INSERT INTO proveedores (nombre, contacto, telefono, email, notas, activo)
+       VALUES (?, ?, ?, ?, ?, 1)`, [
+            parsed.data.nombre.trim(),
+            parsed.data.contacto?.trim() || null,
+            parsed.data.telefono?.trim() || null,
+            parsed.data.email?.trim() || null,
+            parsed.data.notas?.trim() || null,
+        ]);
+        (0, realtime_1.emitRealtime)(["admin-config"]);
+        res.status(201).json({ ok: true, id: result.insertId });
+    }
+    catch (err) {
+        if (err?.code === "ER_DUP_ENTRY") {
+            res.status(409).json({ error: "Ya existe un proveedor con ese nombre." });
+            return;
+        }
+        next(err);
+    }
+});
+router.get("/caja/actual", async (req, res, next) => {
+    try {
+        const sucursalId = Number(req.query.sucursal_id ?? 0);
+        if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+            res.status(400).json({ error: "Sucursal invalida." });
+            return;
+        }
+        const conn = await db_1.pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const session = await (0, cashRegister_1.ensureDailyCajaSesion)(conn, { usuarioId: req.user.id, sucursalId });
+            await conn.commit();
+            res.json(await getCajaSesionPayload(db_1.pool, Number(session.id)));
+        }
+        catch (err) {
+            await conn.rollback();
+            throw err;
+        }
+        finally {
+            conn.release();
+        }
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.post("/caja/apertura", async (req, res, next) => {
+    const parsed = cajaAperturaSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const sessionId = await (0, cashRegister_1.openCajaSesion)(conn, {
+            usuarioId: req.user.id,
+            sucursalId: parsed.data.sucursal_id,
+            montoApertura: Number(parsed.data.monto_apertura),
+            observaciones: parsed.data.observaciones,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.status(201).json(await getCajaSesionPayload(db_1.pool, sessionId));
+    }
+    catch (err) {
+        await conn.rollback();
+        next(err);
+    }
+    finally {
+        conn.release();
+    }
+});
+router.post("/caja/:id/cierre", async (req, res, next) => {
+    const sessionId = Number(req.params.id);
+    const parsed = cajaCierreSchema.safeParse(req.body);
+    if (!Number.isFinite(sessionId) || sessionId <= 0) {
+        res.status(400).json({ error: "Caja invalida." });
+        return;
+    }
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        await (0, cashRegister_1.closeCajaSesion)(conn, {
+            cajaSesionId: sessionId,
+            usuarioId: req.user.id,
+            montoCierreDeclarado: Number(parsed.data.monto_cierre_declarado),
+            observaciones: parsed.data.observaciones,
+            forceAdmin: req.user.rol === "admin" || req.user.rol === "superAdmin",
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.json(await getCajaSesionPayload(db_1.pool, sessionId));
+    }
+    catch (err) {
+        await conn.rollback();
+        next(err);
+    }
+    finally {
+        conn.release();
+    }
+});
+router.get("/caja/sesiones", async (req, res, next) => {
+    try {
+        await (0, cashRegister_1.closeStaleCajaSesiones)(db_1.pool, { usuarioId: req.user.id });
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id
+       FROM caja_sesiones
+       WHERE usuario_id = ?
+       ORDER BY apertura_at DESC, id DESC
+       LIMIT 40`, [req.user.id]);
+        const payload = [];
+        for (const row of rows) {
+            const session = await getCajaSesionPayload(db_1.pool, Number(row.id));
+            if (session)
+                payload.push(session);
+        }
+        res.json(payload);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/gastos", async (req, res, next) => {
+    try {
+        const sucursalId = Number(req.query.sucursal_id ?? 0);
+        const where = ["g.creado_por = ?"];
+        const params = [req.user.id];
+        if (Number.isInteger(sucursalId) && sucursalId > 0) {
+            where.push("g.sucursal_id = ?");
+            params.push(sucursalId);
+        }
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT g.id, g.sucursal_id, s.nombre AS sucursal_nombre, g.caja_sesion_id,
+              g.proveedor_id, p.nombre AS proveedor_nombre, g.tercero_nombre,
+              g.categoria, g.descripcion, g.medio_pago, g.monto, g.fecha_gasto, g.notas,
+              g.creado_por, u.nombre AS creado_por_nombre, g.created_at
+       FROM gastos g
+       JOIN sucursales s ON s.id = g.sucursal_id
+       LEFT JOIN proveedores p ON p.id = g.proveedor_id
+       JOIN usuarios u ON u.id = g.creado_por
+       WHERE ${where.join(" AND ")}
+       ORDER BY g.fecha_gasto DESC, g.id DESC
+       LIMIT 120`, params);
+        res.json(rows.map((row) => ({ ...row, monto: Number(row.monto ?? 0) })));
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.post("/gastos", async (req, res, next) => {
+    const parsed = gastoSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const session = await (0, cashRegister_1.ensureDailyCajaSesion)(conn, {
+            usuarioId: req.user.id,
+            sucursalId: parsed.data.sucursal_id,
+        });
+        if (!parsed.data.proveedor_id && !parsed.data.tercero_nombre?.trim()) {
+            throw new Error("Selecciona un proveedor o completa un tercero.");
+        }
+        if (parsed.data.proveedor_id) {
+            const provider = await (0, db_1.qOne)(conn, "SELECT id FROM proveedores WHERE id = ? AND activo = 1 LIMIT 1", [parsed.data.proveedor_id]);
+            if (!provider)
+                throw new Error("El proveedor seleccionado no existe o esta inactivo.");
+        }
+        const result = await (0, db_1.qRun)(conn, `INSERT INTO gastos
+        (sucursal_id, caja_sesion_id, proveedor_id, tercero_nombre, categoria, descripcion, medio_pago, monto, fecha_gasto, notas, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?)`, [
+            parsed.data.sucursal_id,
+            Number(session.id),
+            parsed.data.proveedor_id ?? null,
+            parsed.data.tercero_nombre?.trim() || null,
+            parsed.data.categoria.trim(),
+            parsed.data.descripcion.trim(),
+            (0, cashRegister_1.normalizeCashPaymentMethod)(parsed.data.medio_pago),
+            Number(parsed.data.monto),
+            parsed.data.fecha_gasto ?? null,
+            parsed.data.notas?.trim() || null,
+            req.user.id,
+        ]);
+        await (0, cashRegister_1.registerCajaMovimiento)(conn, {
+            cajaSesionId: Number(session.id),
+            tipo: "gasto",
+            medioPago: (0, cashRegister_1.normalizeCashPaymentMethod)(parsed.data.medio_pago),
+            monto: Number(parsed.data.monto),
+            descripcion: parsed.data.descripcion.trim(),
+            referenciaTipo: "gastos",
+            referenciaId: result.insertId,
+            creadoPor: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.status(201).json({ ok: true, id: result.insertId });
+    }
+    catch (err) {
+        await conn.rollback();
+        next(err);
+    }
+    finally {
+        conn.release();
+    }
+});
 router.get("/ordenes", async (_req, res, next) => {
     try {
-        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id,
+              COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
+              COALESCE(u.email, '') AS cliente_email,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
               o.notas, o.created_at, o.updated_at
        FROM ordenes o
-       JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
        LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
        WHERE o.tipo_orden IN ('venta', 'mixta')
        ORDER BY o.created_at DESC, o.id DESC
@@ -451,15 +754,19 @@ router.get("/ordenes/:id", async (req, res, next) => {
         return;
     }
     try {
-        const orden = await (0, db_1.qOne)(db_1.pool, `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
-              u.dni AS cliente_dni, u.telefono AS cliente_telefono,
+        const orden = await (0, db_1.qOne)(db_1.pool, `SELECT o.id, o.usuario_id,
+              COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
+              COALESCE(u.email, '') AS cliente_email,
+              COALESCE(u.dni, cl.dni) AS cliente_dni,
+              COALESCE(u.telefono, cl.telefono) AS cliente_telefono,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
               o.notas, o.created_at, o.updated_at
        FROM ordenes o
-       JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
        LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
        WHERE o.id = ? AND o.tipo_orden IN ('venta', 'mixta')
        LIMIT 1`, [orderId]);

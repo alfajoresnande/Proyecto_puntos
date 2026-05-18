@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
+import "../../styles/vendedor-ventas.css";
 
 type ClienteBuscado = {
   id: number;
@@ -11,6 +12,8 @@ type ClienteBuscado = {
   dni: string;
   email: string;
   puntos: number;
+  tipo_cliente?: "cliente" | "mayorista" | "empleado";
+  descuento_porcentaje?: number;
 };
 
 type SucursalPublica = {
@@ -83,6 +86,48 @@ type OrdenVendedor = {
   } | null;
 };
 
+type ProveedorVendedor = {
+  id: number;
+  nombre: string;
+  contacto?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+  notas?: string | null;
+};
+
+type CajaSesionVendedor = {
+  id: number;
+  sucursal_id: number;
+  sucursal_nombre: string;
+  fecha_operativa: string;
+  estado: "abierta" | "cerrada";
+  monto_apertura: number;
+  monto_cierre_sistema: number | null;
+  monto_cierre_declarado: number | null;
+  diferencia_cierre: number | null;
+  apertura_at: string;
+  cierre_at: string | null;
+  summary: {
+    totalVentas: number;
+    totalGastos: number;
+    neto: number;
+    efectivoSistema: number;
+    ventasPorMedio: Record<string, number>;
+    gastosPorMedio: Record<string, number>;
+    cantidadMovimientos: number;
+  };
+};
+
+type GastoVendedor = {
+  id: number;
+  proveedor_nombre: string | null;
+  tercero_nombre: string | null;
+  categoria: string;
+  descripcion: string;
+  medio_pago: string;
+  monto: number;
+};
+
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
@@ -134,8 +179,17 @@ function pagoLabel(pago: OrdenVendedor["pago"]): string {
   return `${metodo} / ${estado}`;
 }
 
+type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
+
+function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
+  return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
+}
+
 export function VendedorPedidos() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const params = useParams<{ ventasPage?: string }>();
+  const currentPage: VendedorVentasPage = isVendedorVentasPage(params.ventasPage) ? params.ventasPage : "pedidos";
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
   const [filtroEstadoOrden, setFiltroEstadoOrden] = useState("");
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
@@ -143,9 +197,30 @@ export function VendedorPedidos() {
   const [ordenErr, setOrdenErr] = useState("");
   const [ventaClienteQuery, setVentaClienteQuery] = useState("");
   const [ventaCliente, setVentaCliente] = useState<ClienteBuscado | null>(null);
+  const [ventaClienteManualNombre, setVentaClienteManualNombre] = useState("");
+  const [ventaClienteManualDni, setVentaClienteManualDni] = useState("");
+  const [ventaClienteManualTelefono, setVentaClienteManualTelefono] = useState("");
   const [ventaSucursalId, setVentaSucursalId] = useState("");
   const [ventaMetodoPago, setVentaMetodoPago] = useState("cash");
   const [ventaAcreditarPuntos, setVentaAcreditarPuntos] = useState(false);
+  const [cajaMontoApertura, setCajaMontoApertura] = useState("0");
+  const [cajaMontoCierre, setCajaMontoCierre] = useState("0");
+  const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
+  const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
+  const [gastoProveedorId, setGastoProveedorId] = useState("");
+  const [gastoTerceroNombre, setGastoTerceroNombre] = useState("");
+  const [gastoCategoria, setGastoCategoria] = useState("");
+  const [gastoDescripcion, setGastoDescripcion] = useState("");
+  const [gastoMonto, setGastoMonto] = useState("");
+  const [gastoMedioPago, setGastoMedioPago] = useState("cash");
+  const [gastoNotas, setGastoNotas] = useState("");
+  const [nuevoProveedor, setNuevoProveedor] = useState({
+    nombre: "",
+    contacto: "",
+    telefono: "",
+    email: "",
+    notas: "",
+  });
   const [ventaProductoId, setVentaProductoId] = useState("");
   const [ventaCantidad, setVentaCantidad] = useState("1");
   const [ventaSabores, setVentaSabores] = useState<Record<string, number>>({});
@@ -160,8 +235,8 @@ export function VendedorPedidos() {
   });
 
   const productosLocalesQuery = useQuery({
-    queryKey: ["vendedor", "productos-locales"],
-    queryFn: () => api.get<Producto[]>("/vendedor/productos-locales"),
+    queryKey: ["vendedor", "productos-locales", ventaCliente?.id ?? 0],
+    queryFn: () => api.get<Producto[]>(`/vendedor/productos-locales${ventaCliente?.id ? `?usuario_id=${ventaCliente.id}` : ""}`),
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   });
@@ -179,10 +254,35 @@ export function VendedorPedidos() {
     enabled: ventaClienteQuery.trim().length >= 2 && !ventaCliente,
   });
 
+  const proveedoresQuery = useQuery({
+    queryKey: ["vendedor", "proveedores"],
+    queryFn: () => api.get<ProveedorVendedor[]>("/vendedor/proveedores"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const cajaActualQuery = useQuery({
+    queryKey: ["vendedor", "caja-actual", ventaSucursalId],
+    queryFn: () => api.get<CajaSesionVendedor | null>(`/vendedor/caja/actual?sucursal_id=${Number(ventaSucursalId)}`),
+    enabled: Number(ventaSucursalId) > 0,
+    refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+  });
+
+  const gastosQuery = useQuery({
+    queryKey: ["vendedor", "gastos", ventaSucursalId],
+    queryFn: () => api.get<GastoVendedor[]>(`/vendedor/gastos${ventaSucursalId ? `?sucursal_id=${Number(ventaSucursalId)}` : ""}`),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  });
+
   const ordenes = ordenesQuery.data ?? [];
   const productosLocales = productosLocalesQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
   const clientesEncontrados = clientesQuery.data ?? [];
+  const proveedores = proveedoresQuery.data ?? [];
+  const cajaActual = cajaActualQuery.data ?? null;
+  const gastos = gastosQuery.data ?? [];
   const productoVentaSeleccionado = useMemo(
     () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
     [productosLocales, ventaProductoId],
@@ -207,6 +307,18 @@ export function VendedorPedidos() {
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
   );
+
+  useEffect(() => {
+    if (!params.ventasPage || isVendedorVentasPage(params.ventasPage)) return;
+    navigate("/vendedor/ventas/pedidos", { replace: true });
+  }, [navigate, params.ventasPage]);
+
+  useEffect(() => {
+    if (ventaSucursalId) return;
+    if (sucursales[0]) {
+      setVentaSucursalId(String(sucursales[0].id));
+    }
+  }, [sucursales, ventaSucursalId]);
 
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
@@ -256,12 +368,21 @@ export function VendedorPedidos() {
 
   const registrarVentaLocalMutation = useMutation({
     mutationFn: () => {
-      if (!ventaCliente) throw new Error("Selecciona un cliente para registrar la venta local.");
       if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
       if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
+      if (!ventaCliente && (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim())) {
+        throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
+      }
 
       return api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", {
-        usuario_id: ventaCliente.id,
+        usuario_id: ventaCliente?.id,
+        cliente_local: ventaCliente
+          ? undefined
+          : {
+              nombre: ventaClienteManualNombre.trim(),
+              dni: ventaClienteManualDni.trim(),
+              telefono: ventaClienteManualTelefono.trim() || undefined,
+            },
         sucursal_id: Number(ventaSucursalId),
         metodo_pago: ventaMetodoPago,
         acreditar_puntos: ventaAcreditarPuntos,
@@ -278,14 +399,121 @@ export function VendedorPedidos() {
     },
     onSuccess: async (data) => {
       setOrdenErr("");
-      setOrdenMsg(`Venta local registrada como orden #${data.ordenId}. No se desconto stock web.`);
+      setOrdenMsg(`Venta local registrada como orden #${data.ordenId}. El stock compartido de la sucursal se actualizo.`);
       setVentaItems([]);
       setVentaNotas("");
+      setVentaCliente(null);
+      setVentaClienteQuery("");
+      setVentaClienteManualNombre("");
+      setVentaClienteManualDni("");
+      setVentaClienteManualTelefono("");
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
     },
     onError: (err: Error) => {
       setOrdenMsg("");
       setOrdenErr(err.message || "No se pudo registrar la venta local.");
+    },
+  });
+
+  const abrirCajaMutation = useMutation({
+    mutationFn: () => {
+      if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
+      return api.post<CajaSesionVendedor>("/vendedor/caja/apertura", {
+        sucursal_id: Number(ventaSucursalId),
+        monto_apertura: Number(cajaMontoApertura || 0),
+        observaciones: cajaObservacionesApertura.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Caja abierta correctamente.");
+      setCajaObservacionesApertura("");
+      setCajaMontoCierre(cajaMontoApertura || "0");
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo abrir la caja.");
+    },
+  });
+
+  const cerrarCajaMutation = useMutation({
+    mutationFn: () => {
+      if (!cajaActual?.id) throw new Error("No hay una caja abierta.");
+      return api.post<CajaSesionVendedor>(`/vendedor/caja/${cajaActual.id}/cierre`, {
+        monto_cierre_declarado: Number(cajaMontoCierre || 0),
+        observaciones: cajaObservacionesCierre.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Caja cerrada correctamente.");
+      setCajaObservacionesCierre("");
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "gastos", ventaSucursalId] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo cerrar la caja.");
+    },
+  });
+
+  const registrarGastoMutation = useMutation({
+    mutationFn: () => {
+      if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
+      if (!gastoCategoria.trim() || !gastoDescripcion.trim()) throw new Error("Completa categoria y descripcion.");
+      if (!gastoProveedorId && !gastoTerceroNombre.trim()) throw new Error("Selecciona proveedor o completa tercero.");
+      return api.post<{ ok: true; id: number }>("/vendedor/gastos", {
+        sucursal_id: Number(ventaSucursalId),
+        proveedor_id: gastoProveedorId ? Number(gastoProveedorId) : undefined,
+        tercero_nombre: gastoProveedorId ? undefined : gastoTerceroNombre.trim(),
+        categoria: gastoCategoria.trim(),
+        descripcion: gastoDescripcion.trim(),
+        medio_pago: gastoMedioPago,
+        monto: Number(gastoMonto || 0),
+        notas: gastoNotas.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Gasto registrado correctamente.");
+      setGastoProveedorId("");
+      setGastoTerceroNombre("");
+      setGastoCategoria("");
+      setGastoDescripcion("");
+      setGastoMonto("");
+      setGastoMedioPago("cash");
+      setGastoNotas("");
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "gastos", ventaSucursalId] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo registrar el gasto.");
+    },
+  });
+
+  const crearProveedorMutation = useMutation({
+    mutationFn: () => {
+      if (!nuevoProveedor.nombre.trim()) throw new Error("El nombre del proveedor es obligatorio.");
+      return api.post<{ ok: true; id: number }>("/vendedor/proveedores", {
+        nombre: nuevoProveedor.nombre.trim(),
+        contacto: nuevoProveedor.contacto.trim() || undefined,
+        telefono: nuevoProveedor.telefono.trim() || undefined,
+        email: nuevoProveedor.email.trim() || undefined,
+        notas: nuevoProveedor.notas.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Proveedor creado correctamente.");
+      setNuevoProveedor({ nombre: "", contacto: "", telefono: "", email: "", notas: "" });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "proveedores"] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo crear el proveedor.");
     },
   });
 
@@ -347,8 +575,8 @@ export function VendedorPedidos() {
   }
 
   return (
-    <section className="dashboard-section vendedor-dashboard-section">
-      <div className="ios-card p-4" style={{ borderLeft: "4px solid #D4621A" }}>
+    <section className="dashboard-section vendedor-dashboard-section vendedor-ventas-shell">
+      <div className="ios-card p-4 vendedor-ventas-hero" style={{ borderLeft: "4px solid #D4621A" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Ventas y Pedidos</h1>
@@ -366,12 +594,195 @@ export function VendedorPedidos() {
           </button>
         </div>
 
-        <div className="ios-card p-4" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+        <div className="vendedor-ventas-nav">
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "pedidos" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/pedidos")}
+          >
+            Pedidos
+          </button>
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "local" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/local")}
+          >
+            Venta local
+          </button>
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "caja" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/caja")}
+          >
+            Caja diaria
+          </button>
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "gastos" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/gastos")}
+          >
+            Gastos
+          </button>
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "proveedores" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/proveedores")}
+          >
+            Proveedores
+          </button>
+        </div>
+
+        {currentPage === "caja" ? (
+        <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Caja del dia</h2>
+              <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                La caja se genera automaticamente por sucursal y por fecha Buenos Aires. Las ventas locales y los gastos se registran sobre esa caja del dia.
+              </p>
+            </div>
+            <div className="adm-form-grid">
+              <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
+                <option value="">Sucursal</option>
+                {sucursales.map((sucursal) => (
+                  <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                ))}
+              </select>
+            </div>
+            {cajaActual ? (
+              <>
+                <div className="adm-form-grid">
+                  <div className="ios-row"><strong>Fecha:</strong> {cajaActual.fecha_operativa}</div>
+                  <div className="ios-row"><strong>Ventas:</strong> {money(cajaActual.summary.totalVentas)}</div>
+                  <div className="ios-row"><strong>Gastos:</strong> {money(cajaActual.summary.totalGastos)}</div>
+                  <div className="ios-row"><strong>Efectivo del dia:</strong> {money(cajaActual.summary.efectivoSistema)}</div>
+                </div>
+                <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                  El cierre diario se toma automaticamente al terminar el dia en horario Buenos Aires.
+                </p>
+                <div className="adm-form-grid">
+                  <div className="ios-card p-3">
+                    <strong>Ventas por medio</strong>
+                    {Object.entries(cajaActual.summary.ventasPorMedio ?? {}).map(([medio, monto]) => (
+                      <p key={`venta-${medio}`} className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                        {metodoPagoLabel(medio)}: {money(monto)}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="ios-card p-3">
+                    <strong>Gastos por medio</strong>
+                    {Object.entries(cajaActual.summary.gastosPorMedio ?? {}).map(([medio, monto]) => (
+                      <p key={`gasto-${medio}`} className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                        {metodoPagoLabel(medio)}: {money(monto)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+        ) : null}
+
+        {currentPage === "gastos" ? (
+        <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Gastos de caja</h2>
+              <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                Registra pagos a proveedores o terceros para que el cierre de caja reste esos montos correctamente.
+              </p>
+            </div>
+            <div className="adm-form-grid">
+              <select className="ios-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
+                <option value="">Proveedor</option>
+                {proveedores.map((proveedor) => (
+                  <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                ))}
+              </select>
+              <input className="ios-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} disabled={Boolean(gastoProveedorId)} onChange={(event) => setGastoTerceroNombre(event.target.value)} />
+              <input className="ios-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
+              <input className="ios-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
+              <select className="ios-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
+                <option value="cash">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="qr">QR</option>
+                <option value="otro">Otro</option>
+              </select>
+              <input className="ios-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
+              <input className="ios-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
+              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} disabled={registrarGastoMutation.isPending || !cajaActual} onClick={() => registrarGastoMutation.mutate()}>
+                {registrarGastoMutation.isPending ? "Guardando..." : "Registrar gasto"}
+              </button>
+            </div>
+            {gastos.length ? (
+              <div style={{ display: "grid", gap: "0.45rem" }}>
+                {gastos.slice(0, 4).map((gasto) => (
+                  <div key={gasto.id} className="ios-row">
+                    <div>
+                      <strong>{gasto.descripcion}</strong>
+                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
+                        {gasto.categoria} / {money(gasto.monto)} / {metodoPagoLabel(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        ) : null}
+
+        {currentPage === "proveedores" ? (
+        <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+          <div style={{ display: "grid", gap: "0.75rem" }}>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Proveedores</h2>
+              <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
+                Carga proveedores para registrar luego los gastos de caja sin depender del panel admin.
+              </p>
+            </div>
+            <div className="adm-form-grid">
+              <input className="ios-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
+              <input className="ios-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
+              <input className="ios-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
+              <input className="ios-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
+              <input className="ios-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
+              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} disabled={crearProveedorMutation.isPending} onClick={() => crearProveedorMutation.mutate()}>
+                {crearProveedorMutation.isPending ? "Guardando..." : "Crear proveedor"}
+              </button>
+            </div>
+            <div style={{ display: "grid", gap: "0.45rem" }}>
+              {proveedores.length === 0 ? (
+                <div className="ios-row text-ios-secondary text-sm">Todavia no hay proveedores cargados.</div>
+              ) : (
+                proveedores.map((proveedor) => (
+                  <div key={proveedor.id} className="ios-row">
+                    <div>
+                      <strong>{proveedor.nombre}</strong>
+                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
+                        {[proveedor.contacto, proveedor.telefono, proveedor.email].filter(Boolean).join(" / ") || "Sin datos extra"}
+                      </p>
+                      {proveedor.notas ? (
+                        <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>{proveedor.notas}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+        ) : null}
+
+        {currentPage === "local" ? (
+        <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
           <div style={{ display: "grid", gap: "0.75rem" }}>
             <div>
               <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Registrar venta local</h2>
               <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
-                Queda unida a las ventas web para reportes, pero no descuenta stock online.
+                Queda unida a las ventas web para reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia.
               </p>
             </div>
 
@@ -379,7 +790,7 @@ export function VendedorPedidos() {
               <div style={{ position: "relative" }}>
                 <input
                   className="ios-input"
-                  placeholder="Buscar cliente por nombre o DNI"
+                  placeholder="Buscar cliente web por nombre o DNI"
                   value={ventaCliente ? `${ventaCliente.nombre} - ${ventaCliente.dni}` : ventaClienteQuery}
                   onChange={(event) => {
                     setVentaCliente(null);
@@ -405,6 +816,27 @@ export function VendedorPedidos() {
                   </div>
                 ) : null}
               </div>
+              <input
+                className="ios-input"
+                placeholder="Cliente manual: nombre"
+                value={ventaCliente ? "" : ventaClienteManualNombre}
+                disabled={Boolean(ventaCliente)}
+                onChange={(event) => setVentaClienteManualNombre(event.target.value)}
+              />
+              <input
+                className="ios-input"
+                placeholder="Cliente manual: DNI"
+                value={ventaCliente ? "" : ventaClienteManualDni}
+                disabled={Boolean(ventaCliente)}
+                onChange={(event) => setVentaClienteManualDni(event.target.value)}
+              />
+              <input
+                className="ios-input"
+                placeholder="Cliente manual: telefono (opcional)"
+                value={ventaCliente ? "" : ventaClienteManualTelefono}
+                disabled={Boolean(ventaCliente)}
+                onChange={(event) => setVentaClienteManualTelefono(event.target.value)}
+              />
               <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
                 <option value="">Sucursal</option>
                 {sucursales.map((sucursal) => (
@@ -424,6 +856,15 @@ export function VendedorPedidos() {
               <input type="checkbox" checked={ventaAcreditarPuntos} onChange={(event) => setVentaAcreditarPuntos(event.target.checked)} />
               Acreditar puntos de compra al cliente
             </label>
+            {ventaCliente ? (
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                Cliente web: {ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}. Los precios se calculan por categoria segun ese perfil.
+              </p>
+            ) : (
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                Si no elegis un cliente web, la venta se registra como cliente manual y usa el perfil cliente comun. No acredita puntos de usuario web.
+              </p>
+            )}
 
             <div className="adm-form-grid">
               <select
@@ -503,7 +944,10 @@ export function VendedorPedidos() {
             </div>
           </div>
         </div>
+        ) : null}
 
+        {currentPage === "pedidos" ? (
+        <>
         <div className="adm-form-grid" style={{ marginTop: "1rem" }}>
           <input
             className="ios-input"
@@ -617,6 +1061,8 @@ export function VendedorPedidos() {
             </div>
           ))}
         </div>
+        </>
+        ) : null}
       </div>
     </section>
   );

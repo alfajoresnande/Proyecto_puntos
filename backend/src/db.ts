@@ -630,7 +630,8 @@ async function ensureOrderCoreSchema() {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS ordenes (
       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-      usuario_id INT NOT NULL,
+      usuario_id INT NULL,
+      cliente_local_id INT NULL,
       carrito_id BIGINT UNSIGNED NULL,
       canal ENUM('web','admin','vendedor') NOT NULL DEFAULT 'web',
       tipo_orden ENUM('canje','venta','mixta') NOT NULL DEFAULT 'canje',
@@ -647,6 +648,9 @@ async function ensureOrderCoreSchema() {
       CONSTRAINT fk_orden_usuario
         FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         ON DELETE RESTRICT,
+      CONSTRAINT fk_orden_cliente_local
+        FOREIGN KEY (cliente_local_id) REFERENCES clientes_locales(id)
+        ON DELETE SET NULL,
       CONSTRAINT fk_orden_carrito
         FOREIGN KEY (carrito_id) REFERENCES carritos(id)
         ON DELETE SET NULL,
@@ -654,9 +658,57 @@ async function ensureOrderCoreSchema() {
         FOREIGN KEY (sucursal_retiro_id) REFERENCES sucursales(id)
         ON DELETE SET NULL,
       INDEX idx_ordenes_usuario_created_at (usuario_id, created_at),
+      INDEX idx_ordenes_cliente_local_created_at (cliente_local_id, created_at),
       INDEX idx_ordenes_estado_created_at (estado, created_at)
     )`
   );
+
+  await pool.query(
+    `ALTER TABLE ordenes
+     MODIFY COLUMN usuario_id INT NULL`
+  ).catch(() => {});
+
+  const [clienteLocalRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes' AND COLUMN_NAME = 'cliente_local_id'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!clienteLocalRows.length) {
+    await pool.query("ALTER TABLE ordenes ADD COLUMN cliente_local_id INT NULL AFTER usuario_id");
+  }
+
+  try {
+    const [idxRows] = await pool.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes'
+         AND INDEX_NAME = 'idx_ordenes_cliente_local_created_at'
+       LIMIT 1`
+    ) as [any[], any[]];
+    if (!idxRows.length) {
+      await pool.query("ALTER TABLE ordenes ADD INDEX idx_ordenes_cliente_local_created_at (cliente_local_id, created_at)");
+    }
+  } catch {
+    // No-op
+  }
+
+  try {
+    const [fkRows] = await pool.query(
+      `SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes'
+         AND CONSTRAINT_NAME = 'fk_orden_cliente_local'
+       LIMIT 1`
+    ) as [any[], any[]];
+    if (!fkRows.length) {
+      await pool.query(
+        `ALTER TABLE ordenes
+         ADD CONSTRAINT fk_orden_cliente_local
+         FOREIGN KEY (cliente_local_id) REFERENCES clientes_locales(id)
+         ON DELETE SET NULL`
+      );
+    }
+  } catch {
+    // No-op
+  }
 
   await pool.query(
     `CREATE TABLE IF NOT EXISTS orden_items (
@@ -748,6 +800,112 @@ async function ensureOrderCoreSchema() {
   } catch {
     // No detenemos el arranque si MySQL no permite modificar el enum en este momento.
   }
+}
+
+async function ensureUsuarioCommercialSchema() {
+  const [tipoRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'tipo_cliente'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!tipoRows.length) {
+    await pool.query(
+      "ALTER TABLE usuarios ADD COLUMN tipo_cliente ENUM('cliente','mayorista','empleado') NOT NULL DEFAULT 'cliente' AFTER rol"
+    );
+  } else {
+    try {
+      await pool.query(
+        "ALTER TABLE usuarios MODIFY COLUMN tipo_cliente ENUM('cliente','mayorista','empleado') NOT NULL DEFAULT 'cliente'"
+      );
+    } catch {
+      // No-op
+    }
+  }
+
+  const [discountRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'descuento_porcentaje'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!discountRows.length) {
+    await pool.query(
+      "ALTER TABLE usuarios ADD COLUMN descuento_porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0 AFTER tipo_cliente"
+    );
+  }
+
+  await pool.query(
+    `UPDATE usuarios
+     SET tipo_cliente = 'cliente'
+     WHERE tipo_cliente IS NULL OR tipo_cliente = ''`
+  ).catch(() => {});
+
+  await pool.query(
+    `UPDATE usuarios
+     SET descuento_porcentaje = 0
+     WHERE descuento_porcentaje IS NULL OR descuento_porcentaje < 0`
+  ).catch(() => {});
+}
+
+async function ensureClientesLocalesSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS clientes_locales (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(120) NOT NULL,
+      dni VARCHAR(20) NOT NULL,
+      telefono VARCHAR(25) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_clientes_locales_dni (dni),
+      INDEX idx_clientes_locales_nombre (nombre)
+    )`
+  );
+}
+
+async function ensurePricingDiscountSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS descuentos_tipo_categoria (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      tipo_cliente ENUM('cliente','mayorista','empleado') NOT NULL,
+      categoria VARCHAR(100) NOT NULL,
+      descuento_porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT uq_descuento_tipo_categoria UNIQUE (tipo_cliente, categoria),
+      INDEX idx_descuentos_tipo_categoria_categoria (categoria)
+    )`
+  );
+}
+
+async function ensurePaymentFeeRulesSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS costos_cobro (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      proveedor VARCHAR(40) NOT NULL,
+      metodo VARCHAR(40) NOT NULL,
+      descripcion VARCHAR(160) NOT NULL,
+      porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT uq_costos_cobro UNIQUE (proveedor, metodo)
+    )`
+  );
+
+  await pool.query(
+    `INSERT INTO costos_cobro (proveedor, metodo, descripcion, porcentaje, activo)
+     VALUES
+       ('efectivo', 'cash', 'Efectivo en sucursal', 0, 1),
+       ('mercadopago', 'brick', 'Mercado Pago tarjeta / checkout', 0, 1),
+       ('mercadopago', 'wallet', 'Mercado Pago wallet / link de pago', 0, 1),
+       ('mercadopago', 'qr', 'Mercado Pago QR', 0, 1),
+       ('local', 'cash', 'Venta local efectivo', 0, 1),
+       ('local', 'transferencia', 'Venta local transferencia', 0, 1),
+       ('local', 'tarjeta', 'Venta local tarjeta / point', 0, 1),
+       ('local', 'qr', 'Venta local QR', 0, 1),
+       ('local', 'otro', 'Venta local otro medio', 0, 1)
+     ON DUPLICATE KEY UPDATE descripcion = VALUES(descripcion)`
+  );
 }
 
 async function ensureSaboresSchema() {
@@ -953,6 +1111,33 @@ async function ensurePagosCheckoutSchema() {
     await pool.query("ALTER TABLE pagos ADD COLUMN checkout_url VARCHAR(500) NULL AFTER provider_payment_id");
   }
 
+  const [comisionPctRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'comision_porcentaje'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!comisionPctRows.length) {
+    await pool.query("ALTER TABLE pagos ADD COLUMN comision_porcentaje DECIMAL(5,2) NULL AFTER monto");
+  }
+
+  const [comisionMontoRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'comision_monto'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!comisionMontoRows.length) {
+    await pool.query("ALTER TABLE pagos ADD COLUMN comision_monto DECIMAL(10,2) NULL AFTER comision_porcentaje");
+  }
+
+  const [montoNetoRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos' AND COLUMN_NAME = 'monto_neto'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!montoNetoRows.length) {
+    await pool.query("ALTER TABLE pagos ADD COLUMN monto_neto DECIMAL(10,2) NULL AFTER comision_monto");
+  }
+
   try {
     const [idxRows] = await pool.query(
       `SELECT 1 FROM information_schema.STATISTICS
@@ -1093,6 +1278,111 @@ async function ensureAcreditacionPuntosSchema() {
   ).catch(() => {});
 }
 
+async function ensureCashOperationsSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS proveedores (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(160) NOT NULL,
+      contacto VARCHAR(160) NULL,
+      telefono VARCHAR(25) NULL,
+      email VARCHAR(160) NULL,
+      notas TEXT NULL,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_proveedores_nombre (nombre),
+      INDEX idx_proveedores_activo_nombre (activo, nombre)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS caja_sesiones (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      sucursal_id INT NOT NULL,
+      usuario_id INT NOT NULL,
+      fecha_operativa DATE NOT NULL,
+      estado ENUM('abierta','cerrada') NOT NULL DEFAULT 'abierta',
+      monto_apertura DECIMAL(12,2) NOT NULL DEFAULT 0,
+      monto_cierre_sistema DECIMAL(12,2) NULL,
+      monto_cierre_declarado DECIMAL(12,2) NULL,
+      diferencia_cierre DECIMAL(12,2) NULL,
+      observaciones_apertura TEXT NULL,
+      observaciones_cierre TEXT NULL,
+      apertura_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      cierre_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_caja_sesiones_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_caja_sesiones_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE RESTRICT,
+      INDEX idx_caja_sesiones_estado_usuario (estado, usuario_id),
+      INDEX idx_caja_sesiones_sucursal_fecha (sucursal_id, fecha_operativa),
+      INDEX idx_caja_sesiones_usuario_fecha (usuario_id, fecha_operativa)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS caja_movimientos (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      caja_sesion_id INT NOT NULL,
+      tipo ENUM('venta','gasto') NOT NULL,
+      referencia_tipo VARCHAR(40) NULL,
+      referencia_id INT NULL,
+      medio_pago ENUM('cash','transferencia','tarjeta','qr','otro') NOT NULL DEFAULT 'cash',
+      monto DECIMAL(12,2) NOT NULL,
+      descripcion VARCHAR(255) NULL,
+      creado_por INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_caja_movimientos_sesion
+        FOREIGN KEY (caja_sesion_id) REFERENCES caja_sesiones(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_caja_movimientos_creado_por
+        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+        ON DELETE RESTRICT,
+      INDEX idx_caja_movimientos_sesion_tipo (caja_sesion_id, tipo),
+      INDEX idx_caja_movimientos_referencia (referencia_tipo, referencia_id),
+      INDEX idx_caja_movimientos_medio (caja_sesion_id, medio_pago)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS gastos (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      sucursal_id INT NOT NULL,
+      caja_sesion_id INT NOT NULL,
+      proveedor_id INT NULL,
+      tercero_nombre VARCHAR(160) NULL,
+      categoria VARCHAR(120) NOT NULL,
+      descripcion VARCHAR(255) NOT NULL,
+      medio_pago ENUM('cash','transferencia','tarjeta','qr','otro') NOT NULL DEFAULT 'cash',
+      monto DECIMAL(12,2) NOT NULL,
+      fecha_gasto DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      notas TEXT NULL,
+      creado_por INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_gastos_sucursal
+        FOREIGN KEY (sucursal_id) REFERENCES sucursales(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_gastos_caja_sesion
+        FOREIGN KEY (caja_sesion_id) REFERENCES caja_sesiones(id)
+        ON DELETE RESTRICT,
+      CONSTRAINT fk_gastos_proveedor
+        FOREIGN KEY (proveedor_id) REFERENCES proveedores(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_gastos_creado_por
+        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+        ON DELETE RESTRICT,
+      INDEX idx_gastos_sucursal_fecha (sucursal_id, fecha_gasto),
+      INDEX idx_gastos_caja_sesion (caja_sesion_id),
+      INDEX idx_gastos_proveedor (proveedor_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+}
+
 pool
   .getConnection()
   .then(async (conn) => {
@@ -1102,6 +1392,11 @@ pool
       await ensureUsuarioRolesSchema();
     } catch (err: any) {
       console.error("Migracion roles de usuarios:", err.message);
+    }
+    try {
+      await ensureUsuarioCommercialSchema();
+    } catch (err: any) {
+      console.error("Migracion perfil comercial de usuarios:", err.message);
     }
     try {
       await ensureUsuarioTelefonoSchema();
@@ -1149,6 +1444,21 @@ pool
       console.error("⚠️  Migración productos e-commerce:", err.message);
     }
     try {
+      await ensureClientesLocalesSchema();
+    } catch (err: any) {
+      console.error("Migracion clientes locales:", err.message);
+    }
+    try {
+      await ensurePricingDiscountSchema();
+    } catch (err: any) {
+      console.error("Migracion descuentos por tipo y categoria:", err.message);
+    }
+    try {
+      await ensurePaymentFeeRulesSchema();
+    } catch (err: any) {
+      console.error("Migracion costos de cobro:", err.message);
+    }
+    try {
       await ensureInventarioSucursalSchema();
     } catch (err: any) {
       console.error("⚠️  Migración inventario por sucursal:", err.message);
@@ -1182,6 +1492,11 @@ pool
       await ensureAcreditacionPuntosSchema();
     } catch (err: any) {
       console.error("⚠️  Migración acreditación puntos:", err.message);
+    }
+    try {
+      await ensureCashOperationsSchema();
+    } catch (err: any) {
+      console.error("Migracion proveedores/gastos/caja:", err.message);
     }
   })
   .catch((err) => {

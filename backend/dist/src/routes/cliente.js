@@ -12,9 +12,14 @@ const realtime_1 = require("../realtime");
 const stock_1 = require("../services/stock");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const points_1 = require("../services/points");
+const customerPricing_1 = require("../services/customerPricing");
+const paymentFees_1 = require("../services/paymentFees");
 const paymentProviders_1 = require("../services/paymentProviders");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("cliente"));
+function getPrecioDineroConResolver(producto, resolvePrice) {
+    return resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
+}
 class HttpError extends Error {
     status;
     errorCode;
@@ -198,7 +203,7 @@ async function getActiveCartId(conn, usuarioId) {
     return existing?.id ? Number(existing.id) : null;
 }
 async function getProductoForCart(conn, productoId) {
-    const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
+    const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, categoria, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
             COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo,
             track_stock, imagen_url, puntaje_al_comprar
      FROM productos
@@ -1008,6 +1013,8 @@ router.post("/carrito/items", async (req, res) => {
         await conn.beginTransaction();
         const carritoId = await ensureActiveCart(conn, usuarioId);
         const producto = await getProductoForCart(conn, producto_id);
+        const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, usuarioId);
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
         validateProductoForMode(producto, modo_compra);
         const configHash = buildFlavorConfigHash(producto_id, saboresSeleccionados);
         const existente = await (0, db_1.qOne)(conn, `SELECT id, cantidad
@@ -1029,7 +1036,7 @@ router.post("/carrito/items", async (req, res) => {
             cantidad: nuevaCantidad,
             sucursalId: sucursal_id ?? null,
         });
-        const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+        const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
         const precioPuntosUnit = null;
         const subtotalDinero = toMoney(precioDineroUnit * nuevaCantidad);
         const subtotalPuntos = 0;
@@ -1105,6 +1112,8 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
             throw new HttpError(400, "Para cambiar una caja personalizada, elimina el item y vuelve a elegir los sabores.");
         }
         const producto = await getProductoForCart(conn, Number(item.producto_id));
+        const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, req.user.id);
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
         validateProductoForMode(producto, item.modo_compra);
         if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
             await assertCartQuantityWithinStock(conn, {
@@ -1113,7 +1122,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
                 sucursalId: parsed.data.sucursal_id ?? null,
             });
         }
-        const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+        const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
         const precioPuntosUnit = null;
         const subtotalDinero = toMoney(precioDineroUnit * parsed.data.cantidad);
         const subtotalPuntos = 0;
@@ -1217,6 +1226,8 @@ router.post("/checkout/preview", async (req, res) => {
             res.status(400).json({ error: "Tu carrito está vacío." });
             return;
         }
+        const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, req.user.id);
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
         const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
         const requiereStock = items.some((item) => Number(item.track_stock) === 1 || (item.sabores?.length ?? 0) > 0);
@@ -1260,7 +1271,7 @@ router.post("/checkout/preview", async (req, res) => {
                     }
                 }
             }
-            const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
+            const precioDineroUnit = item.modo_compra === "dinero" ? getPrecioDineroConResolver(producto, resolvePrice) : null;
             const precioPuntosUnit = null;
             const subtotalDinero = toMoney((precioDineroUnit ?? 0) * item.cantidad);
             const subtotalPuntos = 0;
@@ -1349,6 +1360,8 @@ router.post("/checkout/confirm", async (req, res) => {
         if (!items.length) {
             throw new HttpError(400, "Tu carrito está vacío.");
         }
+        const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, req.user.id);
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
         const usuario = await (0, db_1.qOne)(conn, "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ?", [req.user.id]);
         const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
         const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
@@ -1372,7 +1385,7 @@ router.post("/checkout/confirm", async (req, res) => {
         for (const item of items) {
             const producto = await getProductoForCart(conn, Number(item.producto_id));
             validateProductoForMode(producto, item.modo_compra);
-            const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+            const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
             const precioPuntosUnit = null;
             itemsNormalizados.push({
                 producto_id: Number(item.producto_id),
@@ -1478,6 +1491,11 @@ router.post("/checkout/confirm", async (req, res) => {
         let paymentExpiresAt = null;
         if (totalDinero > 0) {
             const choice = paymentChoice ?? { provider: "mercadopago", method: "brick" };
+            const paymentFee = await (0, paymentFees_1.resolvePaymentFee)(conn, {
+                proveedor: choice.provider,
+                metodo: choice.method,
+                monto: totalDinero,
+            });
             const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
                 choice,
                 orderId: Number(ordenId),
@@ -1487,15 +1505,24 @@ router.post("/checkout/confirm", async (req, res) => {
                 buyerEmail: usuario?.email || "",
                 description: `Pedido #${ordenId}`,
             });
-            await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url, payload_json)
-         VALUES (?, ?, ?, 'iniciado', ?, 'ARS', ?, ?, ?)`, [
+            await (0, db_1.qRun)(conn, `INSERT INTO pagos (
+           orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+           moneda, provider_payment_id, checkout_url, payload_json
+         )
+         VALUES (?, ?, ?, 'iniciado', ?, ?, ?, ?, 'ARS', ?, ?, ?)`, [
                 ordenId,
                 choice.provider,
                 choice.method,
                 totalDinero,
+                paymentFee.porcentaje,
+                paymentFee.montoComision,
+                paymentFee.montoNeto,
                 paymentSession.providerPaymentId,
                 paymentSession.checkoutUrl,
-                paymentSession.payload ? JSON.stringify(paymentSession.payload) : null,
+                JSON.stringify({
+                    ...(paymentSession.payload ?? {}),
+                    comision: paymentFee,
+                }),
             ]);
             checkoutUrl = paymentSession.checkoutUrl;
             paymentStatus = paymentSession.status;

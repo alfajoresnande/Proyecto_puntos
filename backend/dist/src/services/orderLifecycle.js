@@ -4,6 +4,7 @@ exports.getOrderForLifecycle = getOrderForLifecycle;
 exports.approvePaidOrder = approvePaidOrder;
 exports.rejectOrExpirePendingOrder = rejectOrExpirePendingOrder;
 const db_1 = require("../db");
+const paymentFees_1 = require("./paymentFees");
 const stock_1 = require("./stock");
 const points_1 = require("./points");
 function checkoutStockItems(items, descripcion) {
@@ -98,10 +99,29 @@ async function updatePaymentRows(conn, { orderId, provider, providerPaymentId, e
         if (effectivePaymentId) {
             const yaExiste = await (0, db_1.qOne)(conn, "SELECT id FROM pagos WHERE orden_id = ? AND provider_payment_id = ? AND estado = 'aprobado' LIMIT 1", [orderId, effectivePaymentId]);
             if (!yaExiste) {
-                await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-           SELECT id, ?, ?, ?, total_dinero, moneda, ?, ?
+                const orderAmount = await (0, db_1.qOne)(conn, "SELECT total_dinero, moneda FROM ordenes WHERE id = ? LIMIT 1", [orderId]);
+                const paymentFee = await (0, paymentFees_1.resolvePaymentFee)(conn, {
+                    proveedor: effectiveProvider,
+                    metodo: effectiveMethod,
+                    monto: Number(orderAmount?.total_dinero ?? 0),
+                });
+                await (0, db_1.qRun)(conn, `INSERT INTO pagos (
+             orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+             moneda, provider_payment_id, payload_json
+           )
+           SELECT id, ?, ?, ?, total_dinero, ?, ?, ?, moneda, ?, ?
            FROM ordenes
-           WHERE id = ?`, [effectiveProvider, effectiveMethod, estado, effectivePaymentId, payloadJson, orderId]);
+           WHERE id = ?`, [
+                    effectiveProvider,
+                    effectiveMethod,
+                    estado,
+                    paymentFee.porcentaje,
+                    paymentFee.montoComision,
+                    paymentFee.montoNeto,
+                    effectivePaymentId,
+                    payloadJson,
+                    orderId,
+                ]);
             }
         }
     }

@@ -1,0 +1,56 @@
+.vendedor-ventas-shell {
+  display: block;
+}
+
+.vendedor-ventas-hero {
+  display: grid;
+  gap: 1rem;
+}
+
+.vendedor-ventas-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.vendedor-ventas-nav-btn {
+  border: 1px solid #d8a073;
+  background: #fff8f1;
+  color: #6c3b15;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.vendedor-ventas-nav-btn:hover {
+  background: #fce8d6;
+  border-color: #d4621a;
+  transform: translateY(-1px);
+}
+
+.vendedor-ventas-nav-btn.active {
+  background: #d4621a;
+  border-color: #d4621a;
+  color: #fff8f1;
+}
+
+.vendedor-ventas-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .vendedor-ventas-nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vendedor-ventas-nav-btn {
+    width: 100%;
+    justify-self: stretch;
+    text-align: center;
+  }
+}

@@ -14,7 +14,11 @@ const crypto_1 = __importDefault(require("crypto"));
 const exceljs_1 = __importDefault(require("exceljs"));
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const db_1 = require("../db");
+const cashRegister_1 = require("./cashRegister");
+const customerPricing_1 = require("./customerPricing");
+const paymentFees_1 = require("./paymentFees");
 const points_1 = require("./points");
+const stock_1 = require("./stock");
 const VALID_PAYMENT_METHODS = new Set(["cash", "transferencia", "tarjeta", "qr", "otro"]);
 const BUENOS_AIRES_TIME_ZONE = "America/Argentina/Buenos_Aires";
 function toMoney(value) {
@@ -168,7 +172,7 @@ function mergePreparedItems(items) {
     }
     return Array.from(merged.values());
 }
-async function prepareLocalSaleItems(conn, items) {
+async function prepareLocalSaleItems(conn, items, resolvePrice) {
     const prepared = [];
     for (const item of items) {
         const productId = Number(item.producto_id);
@@ -179,7 +183,7 @@ async function prepareLocalSaleItems(conn, items) {
         if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 200) {
             throw new Error("La cantidad debe ser un entero entre 1 y 200.");
         }
-        const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, activo, tipo_producto, configuracion_tipo, capacidad_sabores,
+        const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, categoria, activo, tipo_producto, configuracion_tipo, capacidad_sabores,
               precio_dinero, puntaje_al_comprar
        FROM productos
        WHERE id = ?
@@ -190,18 +194,18 @@ async function prepareLocalSaleItems(conn, items) {
         if (producto.tipo_producto !== "venta" && producto.tipo_producto !== "mixto") {
             throw new Error(`${producto.nombre} no esta configurado para venta.`);
         }
-        const unitPrice = Number(producto.precio_dinero ?? 0);
-        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+        const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
+        if (!Number.isFinite(pricing.precioFinal) || pricing.precioFinal <= 0) {
             throw new Error(`${producto.nombre} no tiene precio de venta configurado.`);
         }
         const sabores = normalizeFlavorSelection(item.sabores);
         const saboresDetalle = await validateFlavorSelectionForLocalSale(conn, producto, sabores, quantity);
-        const subtotal = toMoney(unitPrice * quantity);
+        const subtotal = toMoney(pricing.precioFinal * quantity);
         prepared.push({
             producto_id: Number(producto.id),
             producto_nombre: producto.nombre,
             cantidad: quantity,
-            precio_dinero_unit: toMoney(unitPrice),
+            precio_dinero_unit: toMoney(pricing.precioFinal),
             puntaje_al_comprar_unitario: Number(producto.puntaje_al_comprar ?? 0),
             subtotal_dinero: subtotal,
             config_hash: buildFlavorConfigHash(Number(producto.id), sabores),
@@ -210,16 +214,52 @@ async function prepareLocalSaleItems(conn, items) {
     }
     return mergePreparedItems(prepared);
 }
+async function findOrCreateLocalCustomer(conn, clienteLocal) {
+    const nombre = clienteLocal.nombre.trim();
+    const dni = clienteLocal.dni.trim();
+    const telefono = clienteLocal.telefono?.trim() || null;
+    if (nombre.length < 2)
+        throw new Error("El nombre del cliente manual es obligatorio.");
+    if (dni.length < 6)
+        throw new Error("El DNI del cliente manual debe tener al menos 6 caracteres.");
+    const existing = await (0, db_1.qOne)(conn, "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1", [dni]);
+    if (existing) {
+        await (0, db_1.qRun)(conn, `UPDATE clientes_locales
+       SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`, [nombre, telefono, Number(existing.id)]);
+        return Number(existing.id);
+    }
+    const created = await (0, db_1.qRun)(conn, `INSERT INTO clientes_locales (nombre, dni, telefono)
+     VALUES (?, ?, ?)`, [nombre, dni, telefono]);
+    return created.insertId;
+}
 async function registerLocalSale(conn, input) {
-    const cliente = await (0, db_1.qOne)(conn, "SELECT id FROM usuarios WHERE id = ? AND rol = 'cliente' AND activo = 1 LIMIT 1", [input.usuarioId]);
-    if (!cliente) {
-        throw new Error("Selecciona un cliente activo para registrar la venta local.");
+    let usuarioId = null;
+    let clienteLocalId = null;
+    let pricingProfile = null;
+    if (input.usuarioId) {
+        const cliente = await (0, db_1.qOne)(conn, "SELECT id FROM usuarios WHERE id = ? AND rol = 'cliente' AND activo = 1 LIMIT 1", [input.usuarioId]);
+        if (!cliente) {
+            throw new Error("Selecciona un cliente activo para registrar la venta local.");
+        }
+        usuarioId = Number(cliente.id);
+        pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, usuarioId);
+    }
+    else if (input.clienteLocal) {
+        clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
+    }
+    else {
+        throw new Error("Selecciona un cliente web o completa un cliente manual.");
     }
     const sucursal = await (0, db_1.qOne)(conn, "SELECT id FROM sucursales WHERE id = ? AND activo = 1 LIMIT 1", [input.sucursalId]);
     if (!sucursal) {
         throw new Error("Selecciona una sucursal activa para registrar la venta local.");
     }
-    const preparedItems = await prepareLocalSaleItems(conn, input.items);
+    const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, {
+        source: "local",
+        profile: pricingProfile,
+    });
+    const preparedItems = await prepareLocalSaleItems(conn, input.items, resolvePrice);
     if (!preparedItems.length) {
         throw new Error("Agrega al menos un producto a la venta local.");
     }
@@ -227,13 +267,17 @@ async function registerLocalSale(conn, input) {
     const totalUnidades = preparedItems.reduce((acc, item) => acc + item.cantidad, 0);
     const totalPuntosGanados = preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0);
     const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
+    const cajaSesion = await (0, cashRegister_1.ensureDailyCajaSesion)(conn, {
+        usuarioId: input.creadoPor,
+        sucursalId: Number(sucursal.id),
+    });
     const notas = [
         `Venta local registrada desde panel ${input.canal}.`,
         input.notas?.trim() ? input.notas.trim() : null,
     ].filter(Boolean).join(" ");
     const insertedOrder = await (0, db_1.qRun)(conn, `INSERT INTO ordenes
-      (usuario_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
-     VALUES (?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`, [Number(cliente.id), input.canal, totalDinero, Number(sucursal.id), notas || null]);
+      (usuario_id, cliente_local_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
+     VALUES (?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`, [usuarioId, clienteLocalId, input.canal, totalDinero, Number(sucursal.id), notas || null]);
     const ordenId = insertedOrder.insertId;
     for (const item of preparedItems) {
         const insertedItem = await (0, db_1.qRun)(conn, `INSERT INTO orden_items
@@ -253,20 +297,66 @@ async function registerLocalSale(conn, input) {
          VALUES (?, ?, ?, ?)`, [insertedItem.insertId, sabor.sabor_id, sabor.nombre, sabor.cantidad]);
         }
     }
-    await (0, db_1.qRun)(conn, `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-     VALUES (?, 'local', ?, 'aprobado', ?, 'ARS', ?, ?)`, [
+    await (0, stock_1.finalizeStockForCheckoutItems)(conn, {
+        sucursalId: Number(sucursal.id),
+        items: preparedItems.map((item) => ({
+            producto_id: item.producto_id,
+            cantidad: item.cantidad,
+            origen: "compra",
+            descripcion: `Venta local #${ordenId}`,
+        })),
+        referencia: `venta local #${ordenId}`,
+        creadoPor: input.creadoPor,
+        ordenId: Number(ordenId),
+    });
+    await (0, stock_1.finalizeFlavorStockForCheckoutItems)(conn, {
+        sucursalId: Number(sucursal.id),
+        items: preparedItems.flatMap((item) => item.sabores.map((sabor) => ({
+            sabor_id: sabor.sabor_id,
+            cantidad: sabor.cantidad,
+            origen: "compra",
+            descripcion: `Venta local #${ordenId}`,
+        }))),
+        referencia: `venta local #${ordenId}`,
+        creadoPor: input.creadoPor,
+        ordenId: Number(ordenId),
+    });
+    const paymentFee = await (0, paymentFees_1.resolvePaymentFee)(conn, {
+        proveedor: "local",
+        metodo: metodoPago,
+        monto: totalDinero,
+    });
+    await (0, db_1.qRun)(conn, `INSERT INTO pagos (
+       orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+       moneda, provider_payment_id, payload_json
+     )
+     VALUES (?, 'local', ?, 'aprobado', ?, ?, ?, ?, 'ARS', ?, ?)`, [
         ordenId,
         metodoPago,
         totalDinero,
+        paymentFee.porcentaje,
+        paymentFee.montoComision,
+        paymentFee.montoNeto,
         `local-${input.canal}-${ordenId}`,
         JSON.stringify({
             canal: input.canal,
             metodo_pago: metodoPago,
             creado_por: input.creadoPor,
-            mueve_stock_web: false,
+            comparte_stock_web: true,
+            comision: paymentFee,
         }),
     ]);
-    if (input.acreditarPuntos) {
+    await (0, cashRegister_1.registerCajaMovimiento)(conn, {
+        cajaSesionId: Number(cajaSesion.id),
+        tipo: "venta",
+        medioPago: (0, cashRegister_1.normalizeCashPaymentMethod)(metodoPago),
+        monto: totalDinero,
+        descripcion: `Venta local #${ordenId}`,
+        referenciaTipo: "ordenes",
+        referenciaId: Number(ordenId),
+        creadoPor: input.creadoPor,
+    });
+    if (input.acreditarPuntos && usuarioId) {
         await (0, points_1.acreditarPuntosPorCompra)(conn, ordenId);
     }
     return {
@@ -308,15 +398,19 @@ async function getVentasReporteRows(conn, filters = {}) {
         params.push(filters.estado.trim());
     }
     const rows = await (0, db_1.qAll)(conn, `SELECT o.id, o.created_at AS fecha, o.canal, o.estado,
-            u.nombre AS cliente, u.email,
+            COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente,
+            COALESCE(u.email, '') AS email,
             COALESCE(s.nombre, '') AS sucursal,
             pay.proveedor, pay.metodo,
-            o.total_dinero, o.total_puntos, o.notas
+            o.total_dinero AS total_bruto,
+            pay.comision_porcentaje, pay.comision_monto, pay.monto_neto,
+            o.total_puntos, o.notas
      FROM ordenes o
-     JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      LEFT JOIN (
-       SELECT p1.orden_id, p1.proveedor, p1.metodo
+       SELECT p1.orden_id, p1.proveedor, p1.metodo, p1.comision_porcentaje, p1.comision_monto, p1.monto_neto
        FROM pagos p1
        JOIN (
          SELECT orden_id, MAX(id) AS last_id
@@ -329,6 +423,7 @@ async function getVentasReporteRows(conn, filters = {}) {
      LIMIT 2000`, params);
     if (!rows.length)
         return [];
+    const feeRuleMap = (0, paymentFees_1.buildPaymentFeeRuleMap)(await (0, paymentFees_1.getPaymentFeeRules)(conn));
     const orderIds = rows.map((row) => Number(row.id));
     const placeholders = orderIds.map(() => "?").join(", ");
     const itemRows = await (0, db_1.qAll)(conn, `SELECT oi.orden_id, oi.id AS item_id, p.nombre AS producto, oi.cantidad, oi.subtotal_dinero,
@@ -359,6 +454,19 @@ async function getVentasReporteRows(conn, filters = {}) {
         const productos = items
             .map((item) => item.sabores.length ? `${item.texto} (${item.sabores.join(", ")})` : item.texto)
             .join(" | ");
+        const totalBruto = toMoney(Number(row.total_bruto ?? 0));
+        const paymentFee = row.monto_neto === null || row.monto_neto === undefined
+            ? (0, paymentFees_1.resolvePaymentFeeFromRuleMap)(feeRuleMap, {
+                proveedor: row.proveedor,
+                metodo: row.metodo,
+                monto: totalBruto,
+            })
+            : {
+                porcentaje: Number(row.comision_porcentaje ?? 0),
+                montoComision: toMoney(Number(row.comision_monto ?? 0)),
+                montoNeto: toMoney(Number(row.monto_neto ?? totalBruto)),
+                descripcion: null,
+            };
         return {
             id: Number(row.id),
             fecha: formatBuenosAiresDateTime(String(row.fecha)),
@@ -368,7 +476,10 @@ async function getVentasReporteRows(conn, filters = {}) {
             email: row.email,
             sucursal: row.sucursal || "-",
             metodo_pago: [row.proveedor, row.metodo].filter(Boolean).join(" / ") || "-",
-            total_dinero: Number(row.total_dinero ?? 0),
+            total_bruto: totalBruto,
+            comision_porcentaje: paymentFee.porcentaje,
+            total_comision: paymentFee.montoComision,
+            total_dinero: paymentFee.montoNeto,
             total_puntos: Number(row.total_puntos ?? 0),
             total_unidades: items.reduce((acc, item) => acc + item.cantidad, 0),
             productos,
@@ -393,7 +504,9 @@ function pdfText(value) {
         .trim();
 }
 function renderVentasPdfBuffer(rows) {
-    const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+    const totalBruto = rows.reduce((acc, row) => acc + row.total_bruto, 0);
+    const totalComision = rows.reduce((acc, row) => acc + row.total_comision, 0);
+    const totalNeto = rows.reduce((acc, row) => acc + row.total_dinero, 0);
     const generadoEn = formatBuenosAiresDateTime(new Date());
     return new Promise((resolve, reject) => {
         const doc = new pdfkit_1.default({
@@ -411,16 +524,18 @@ function renderVentasPdfBuffer(rows) {
         doc.on("end", () => resolve(Buffer.concat(chunks)));
         doc.on("error", reject);
         const columns = [
-            { label: "Orden", width: 42, value: (row) => `#${row.id}` },
-            { label: "Fecha", width: 78, value: (row) => row.fecha },
-            { label: "Canal", width: 48, value: (row) => row.canal },
-            { label: "Estado", width: 62, value: (row) => row.estado },
-            { label: "Cliente", width: 96, value: (row) => row.cliente },
-            { label: "Sucursal", width: 82, value: (row) => row.sucursal },
-            { label: "Pago", width: 88, value: (row) => row.metodo_pago },
-            { label: "Unid.", width: 34, value: (row) => String(row.total_unidades), align: "right" },
-            { label: "Total", width: 70, value: (row) => money(row.total_dinero), align: "right" },
-            { label: "Productos", width: 184, value: (row) => row.productos },
+            { label: "Orden", width: 36, value: (row) => `#${row.id}` },
+            { label: "Fecha", width: 70, value: (row) => row.fecha },
+            { label: "Canal", width: 40, value: (row) => row.canal },
+            { label: "Estado", width: 52, value: (row) => row.estado },
+            { label: "Cliente", width: 82, value: (row) => row.cliente },
+            { label: "Sucursal", width: 68, value: (row) => row.sucursal },
+            { label: "Pago", width: 72, value: (row) => row.metodo_pago },
+            { label: "Unid.", width: 30, value: (row) => String(row.total_unidades), align: "right" },
+            { label: "Bruto", width: 54, value: (row) => money(row.total_bruto), align: "right" },
+            { label: "Com.", width: 46, value: (row) => `${row.comision_porcentaje.toFixed(2)}%`, align: "right" },
+            { label: "Neto", width: 54, value: (row) => money(row.total_dinero), align: "right" },
+            { label: "Productos", width: 136, value: (row) => row.productos },
         ];
         const left = doc.page.margins.left;
         const rightLimit = doc.page.width - doc.page.margins.right;
@@ -445,7 +560,7 @@ function renderVentasPdfBuffer(rows) {
                 .fillColor("#2b1606")
                 .font("Helvetica-Bold")
                 .fontSize(9)
-                .text(`Total: ${money(total)}    Ordenes: ${rows.length}`, left + 8, 88);
+                .text(`Bruto: ${money(totalBruto)}    Comisiones: ${money(totalComision)}    Neto: ${money(totalNeto)}    Ordenes: ${rows.length}`, left + 8, 88);
         }
         function drawTableHeader(y) {
             doc.rect(left, y, tableWidth, headerHeight).fillAndStroke("#f8ead9", "#e3c7ad");
@@ -513,6 +628,9 @@ function renderTableRows(rows) {
       <td>${escapeHtml(row.sucursal)}</td>
       <td>${escapeHtml(row.metodo_pago)}</td>
       <td>${escapeHtml(row.total_unidades)}</td>
+      <td>${escapeHtml(money(row.total_bruto))}</td>
+      <td>${escapeHtml(`${row.comision_porcentaje.toFixed(2)}%`)}</td>
+      <td>${escapeHtml(money(row.total_comision))}</td>
       <td>${escapeHtml(money(row.total_dinero))}</td>
       <td>${escapeHtml(row.productos)}</td>
       <td>${escapeHtml(row.notas)}</td>
@@ -536,7 +654,10 @@ async function renderVentasExcelBuffer(rows) {
         { header: "Sucursal", key: "sucursal", width: 24 },
         { header: "Pago", key: "pago", width: 24 },
         { header: "Unidades", key: "unidades", width: 12 },
-        { header: "Total", key: "total", width: 16 },
+        { header: "Bruto", key: "bruto", width: 16 },
+        { header: "% Comision", key: "comisionPorcentaje", width: 14 },
+        { header: "Comision", key: "comisionMonto", width: 16 },
+        { header: "Neto", key: "neto", width: 16 },
         { header: "Productos", key: "productos", width: 58 },
         { header: "Notas", key: "notas", width: 32 },
     ];
@@ -556,12 +677,18 @@ async function renderVentasExcelBuffer(rows) {
             sucursal: row.sucursal,
             pago: row.metodo_pago,
             unidades: row.total_unidades,
-            total: row.total_dinero,
+            bruto: row.total_bruto,
+            comisionPorcentaje: row.comision_porcentaje / 100,
+            comisionMonto: row.total_comision,
+            neto: row.total_dinero,
             productos: row.productos,
             notas: row.notas,
         });
     });
-    sheet.getColumn("total").numFmt = '"$"#,##0.00';
+    sheet.getColumn("bruto").numFmt = '"$"#,##0.00';
+    sheet.getColumn("comisionPorcentaje").numFmt = '0.00%';
+    sheet.getColumn("comisionMonto").numFmt = '"$"#,##0.00';
+    sheet.getColumn("neto").numFmt = '"$"#,##0.00';
     sheet.eachRow((row, rowNumber) => {
         row.eachCell((cell) => {
             cell.alignment = {
@@ -574,7 +701,9 @@ async function renderVentasExcelBuffer(rows) {
     return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }
 function renderVentasPrintableHtml(rows) {
-    const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+    const totalBruto = rows.reduce((acc, row) => acc + row.total_bruto, 0);
+    const totalComision = rows.reduce((acc, row) => acc + row.total_comision, 0);
+    const totalNeto = rows.reduce((acc, row) => acc + row.total_dinero, 0);
     const generadoEn = formatBuenosAiresDateTime(new Date());
     return `<!doctype html>
 <html lang="es">
@@ -598,15 +727,15 @@ function renderVentasPrintableHtml(rows) {
   <h1>Reporte de ventas</h1>
   <p>Ventas web y locales registradas en el sistema.</p>
   <p class="meta">Horario Argentina, Buenos Aires. Generado: ${escapeHtml(generadoEn)}</p>
-  <div class="summary"><strong>Total:</strong> ${escapeHtml(money(total))} &nbsp; <strong>Ordenes:</strong> ${rows.length}</div>
+  <div class="summary"><strong>Bruto:</strong> ${escapeHtml(money(totalBruto))} &nbsp; <strong>Comisiones:</strong> ${escapeHtml(money(totalComision))} &nbsp; <strong>Neto:</strong> ${escapeHtml(money(totalNeto))} &nbsp; <strong>Ordenes:</strong> ${rows.length}</div>
   <table>
     <thead>
       <tr>
         <th>Orden</th><th>Fecha</th><th>Canal</th><th>Estado</th><th>Cliente</th><th>Email</th>
-        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Total</th><th>Productos</th><th>Notas</th>
+        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Bruto</th><th>% Com.</th><th>Comision</th><th>Neto</th><th>Productos</th><th>Notas</th>
       </tr>
     </thead>
-    <tbody>${renderTableRows(rows) || `<tr><td colspan="12">Sin ventas para mostrar.</td></tr>`}</tbody>
+    <tbody>${renderTableRows(rows) || `<tr><td colspan="15">Sin ventas para mostrar.</td></tr>`}</tbody>
   </table>
 </body>
 </html>`;
@@ -620,7 +749,7 @@ function renderVentasExcelHtml(rows) {
     <thead>
       <tr>
         <th>Orden</th><th>Fecha</th><th>Canal</th><th>Estado</th><th>Cliente</th><th>Email</th>
-        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Total</th><th>Productos</th><th>Notas</th>
+        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Bruto</th><th>% Com.</th><th>Comision</th><th>Neto</th><th>Productos</th><th>Notas</th>
       </tr>
     </thead>
     <tbody>${renderTableRows(rows)}</tbody>

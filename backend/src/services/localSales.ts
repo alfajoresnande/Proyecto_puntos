@@ -2,7 +2,11 @@ import crypto from "crypto";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { Queryable, qAll, qOne, qRun } from "../db";
+import { ensureDailyCajaSesion, normalizeCashPaymentMethod, registerCajaMovimiento } from "./cashRegister";
+import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
+import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
 import { acreditarPuntosPorCompra } from "./points";
+import { finalizeFlavorStockForCheckoutItems, finalizeStockForCheckoutItems } from "./stock";
 
 export type LocalSaleChannel = "admin" | "vendedor";
 
@@ -20,6 +24,7 @@ export type LocalSaleItemInput = {
 type ProductForLocalSale = {
   id: number;
   nombre: string;
+  categoria: string | null;
   activo: number;
   tipo_producto: "canje" | "venta" | "mixto";
   configuracion_tipo: "simple" | "caja_sabores";
@@ -47,7 +52,12 @@ type PreparedItem = {
 
 export type RegisterLocalSaleInput = {
   canal: LocalSaleChannel;
-  usuarioId: number;
+  usuarioId?: number | null;
+  clienteLocal?: {
+    nombre: string;
+    dni: string;
+    telefono?: string | null;
+  } | null;
   sucursalId: number;
   metodoPago: string;
   notas?: string | null;
@@ -79,6 +89,9 @@ export type VentaReporteRow = {
   email: string;
   sucursal: string;
   metodo_pago: string;
+  total_bruto: number;
+  comision_porcentaje: number;
+  total_comision: number;
   total_dinero: number;
   total_puntos: number;
   total_unidades: number;
@@ -269,7 +282,11 @@ function mergePreparedItems(items: PreparedItem[]): PreparedItem[] {
   return Array.from(merged.values());
 }
 
-async function prepareLocalSaleItems(conn: Queryable, items: LocalSaleItemInput[]): Promise<PreparedItem[]> {
+async function prepareLocalSaleItems(
+  conn: Queryable,
+  items: LocalSaleItemInput[],
+  resolvePrice: (product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
+): Promise<PreparedItem[]> {
   const prepared: PreparedItem[] = [];
 
   for (const item of items) {
@@ -284,7 +301,7 @@ async function prepareLocalSaleItems(conn: Queryable, items: LocalSaleItemInput[
 
     const producto = await qOne<ProductForLocalSale>(
       conn,
-      `SELECT id, nombre, activo, tipo_producto, configuracion_tipo, capacidad_sabores,
+      `SELECT id, nombre, categoria, activo, tipo_producto, configuracion_tipo, capacidad_sabores,
               precio_dinero, puntaje_al_comprar
        FROM productos
        WHERE id = ?
@@ -298,19 +315,19 @@ async function prepareLocalSaleItems(conn: Queryable, items: LocalSaleItemInput[
       throw new Error(`${producto.nombre} no esta configurado para venta.`);
     }
 
-    const unitPrice = Number(producto.precio_dinero ?? 0);
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+    const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
+    if (!Number.isFinite(pricing.precioFinal) || pricing.precioFinal <= 0) {
       throw new Error(`${producto.nombre} no tiene precio de venta configurado.`);
     }
 
     const sabores = normalizeFlavorSelection(item.sabores);
     const saboresDetalle = await validateFlavorSelectionForLocalSale(conn, producto, sabores, quantity);
-    const subtotal = toMoney(unitPrice * quantity);
+    const subtotal = toMoney(pricing.precioFinal * quantity);
     prepared.push({
       producto_id: Number(producto.id),
       producto_nombre: producto.nombre,
       cantidad: quantity,
-      precio_dinero_unit: toMoney(unitPrice),
+      precio_dinero_unit: toMoney(pricing.precioFinal),
       puntaje_al_comprar_unitario: Number(producto.puntaje_al_comprar ?? 0),
       subtotal_dinero: subtotal,
       config_hash: buildFlavorConfigHash(Number(producto.id), sabores),
@@ -321,17 +338,65 @@ async function prepareLocalSaleItems(conn: Queryable, items: LocalSaleItemInput[
   return mergePreparedItems(prepared);
 }
 
+async function findOrCreateLocalCustomer(
+  conn: Queryable,
+  clienteLocal: NonNullable<RegisterLocalSaleInput["clienteLocal"]>,
+): Promise<number> {
+  const nombre = clienteLocal.nombre.trim();
+  const dni = clienteLocal.dni.trim();
+  const telefono = clienteLocal.telefono?.trim() || null;
+
+  if (nombre.length < 2) throw new Error("El nombre del cliente manual es obligatorio.");
+  if (dni.length < 6) throw new Error("El DNI del cliente manual debe tener al menos 6 caracteres.");
+
+  const existing = await qOne<{ id: number }>(
+    conn,
+    "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1",
+    [dni],
+  );
+  if (existing) {
+    await qRun(
+      conn,
+      `UPDATE clientes_locales
+       SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [nombre, telefono, Number(existing.id)],
+    );
+    return Number(existing.id);
+  }
+
+  const created = await qRun(
+    conn,
+    `INSERT INTO clientes_locales (nombre, dni, telefono)
+     VALUES (?, ?, ?)`,
+    [nombre, dni, telefono],
+  );
+  return created.insertId;
+}
+
 export async function registerLocalSale(
   conn: Queryable,
   input: RegisterLocalSaleInput,
 ): Promise<RegisterLocalSaleResult> {
-  const cliente = await qOne<{ id: number }>(
-    conn,
-    "SELECT id FROM usuarios WHERE id = ? AND rol = 'cliente' AND activo = 1 LIMIT 1",
-    [input.usuarioId],
-  );
-  if (!cliente) {
-    throw new Error("Selecciona un cliente activo para registrar la venta local.");
+  let usuarioId: number | null = null;
+  let clienteLocalId: number | null = null;
+  let pricingProfile: CustomerPricingProfile | null = null;
+
+  if (input.usuarioId) {
+    const cliente = await qOne<{ id: number }>(
+      conn,
+      "SELECT id FROM usuarios WHERE id = ? AND rol = 'cliente' AND activo = 1 LIMIT 1",
+      [input.usuarioId],
+    );
+    if (!cliente) {
+      throw new Error("Selecciona un cliente activo para registrar la venta local.");
+    }
+    usuarioId = Number(cliente.id);
+    pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
+  } else if (input.clienteLocal) {
+    clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
+  } else {
+    throw new Error("Selecciona un cliente web o completa un cliente manual.");
   }
 
   const sucursal = await qOne<{ id: number }>(
@@ -343,7 +408,11 @@ export async function registerLocalSale(
     throw new Error("Selecciona una sucursal activa para registrar la venta local.");
   }
 
-  const preparedItems = await prepareLocalSaleItems(conn, input.items);
+  const resolvePrice = await createPricingResolver(conn, {
+    source: "local",
+    profile: pricingProfile,
+  });
+  const preparedItems = await prepareLocalSaleItems(conn, input.items, resolvePrice);
   if (!preparedItems.length) {
     throw new Error("Agrega al menos un producto a la venta local.");
   }
@@ -355,6 +424,10 @@ export async function registerLocalSale(
     0,
   );
   const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
+  const cajaSesion = await ensureDailyCajaSesion(conn, {
+    usuarioId: input.creadoPor,
+    sucursalId: Number(sucursal.id),
+  });
   const notas = [
     `Venta local registrada desde panel ${input.canal}.`,
     input.notas?.trim() ? input.notas.trim() : null,
@@ -363,9 +436,9 @@ export async function registerLocalSale(
   const insertedOrder = await qRun(
     conn,
     `INSERT INTO ordenes
-      (usuario_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
+      (usuario_id, cliente_local_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
      VALUES (?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`,
-    [Number(cliente.id), input.canal, totalDinero, Number(sucursal.id), notas || null],
+    [usuarioId, clienteLocalId, input.canal, totalDinero, Number(sucursal.id), notas || null],
   );
   const ordenId = insertedOrder.insertId;
 
@@ -397,25 +470,77 @@ export async function registerLocalSale(
     }
   }
 
+  await finalizeStockForCheckoutItems(conn, {
+    sucursalId: Number(sucursal.id),
+    items: preparedItems.map((item) => ({
+      producto_id: item.producto_id,
+      cantidad: item.cantidad,
+      origen: "compra" as const,
+      descripcion: `Venta local #${ordenId}`,
+    })),
+    referencia: `venta local #${ordenId}`,
+    creadoPor: input.creadoPor,
+    ordenId: Number(ordenId),
+  });
+
+  await finalizeFlavorStockForCheckoutItems(conn, {
+    sucursalId: Number(sucursal.id),
+    items: preparedItems.flatMap((item) =>
+      item.sabores.map((sabor) => ({
+        sabor_id: sabor.sabor_id,
+        cantidad: sabor.cantidad,
+        origen: "compra" as const,
+        descripcion: `Venta local #${ordenId}`,
+      })),
+    ),
+    referencia: `venta local #${ordenId}`,
+    creadoPor: input.creadoPor,
+    ordenId: Number(ordenId),
+  });
+
+  const paymentFee = await resolvePaymentFee(conn, {
+    proveedor: "local",
+    metodo: metodoPago,
+    monto: totalDinero,
+  });
+
   await qRun(
     conn,
-    `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-     VALUES (?, 'local', ?, 'aprobado', ?, 'ARS', ?, ?)`,
+    `INSERT INTO pagos (
+       orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+       moneda, provider_payment_id, payload_json
+     )
+     VALUES (?, 'local', ?, 'aprobado', ?, ?, ?, ?, 'ARS', ?, ?)`,
     [
       ordenId,
       metodoPago,
       totalDinero,
+      paymentFee.porcentaje,
+      paymentFee.montoComision,
+      paymentFee.montoNeto,
       `local-${input.canal}-${ordenId}`,
       JSON.stringify({
         canal: input.canal,
         metodo_pago: metodoPago,
         creado_por: input.creadoPor,
-        mueve_stock_web: false,
+        comparte_stock_web: true,
+        comision: paymentFee,
       }),
     ],
   );
 
-  if (input.acreditarPuntos) {
+  await registerCajaMovimiento(conn, {
+    cajaSesionId: Number(cajaSesion.id),
+    tipo: "venta",
+    medioPago: normalizeCashPaymentMethod(metodoPago),
+    monto: totalDinero,
+    descripcion: `Venta local #${ordenId}`,
+    referenciaTipo: "ordenes",
+    referenciaId: Number(ordenId),
+    creadoPor: input.creadoPor,
+  });
+
+  if (input.acreditarPuntos && usuarioId) {
     await acreditarPuntosPorCompra(conn, ordenId);
   }
 
@@ -473,21 +598,28 @@ export async function getVentasReporteRows(
     sucursal: string | null;
     proveedor: string | null;
     metodo: string | null;
-    total_dinero: number;
+    total_bruto: number;
+    comision_porcentaje: number | null;
+    comision_monto: number | null;
+    monto_neto: number | null;
     total_puntos: number;
     notas: string | null;
   }>(
     conn,
     `SELECT o.id, o.created_at AS fecha, o.canal, o.estado,
-            u.nombre AS cliente, u.email,
+            COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente,
+            COALESCE(u.email, '') AS email,
             COALESCE(s.nombre, '') AS sucursal,
             pay.proveedor, pay.metodo,
-            o.total_dinero, o.total_puntos, o.notas
+            o.total_dinero AS total_bruto,
+            pay.comision_porcentaje, pay.comision_monto, pay.monto_neto,
+            o.total_puntos, o.notas
      FROM ordenes o
-     JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      LEFT JOIN (
-       SELECT p1.orden_id, p1.proveedor, p1.metodo
+       SELECT p1.orden_id, p1.proveedor, p1.metodo, p1.comision_porcentaje, p1.comision_monto, p1.monto_neto
        FROM pagos p1
        JOIN (
          SELECT orden_id, MAX(id) AS last_id
@@ -502,6 +634,8 @@ export async function getVentasReporteRows(
   );
 
   if (!rows.length) return [];
+
+  const feeRuleMap = buildPaymentFeeRuleMap(await getPaymentFeeRules(conn));
 
   const orderIds = rows.map((row) => Number(row.id));
   const placeholders = orderIds.map(() => "?").join(", ");
@@ -547,6 +681,21 @@ export async function getVentasReporteRows(
     const productos = items
       .map((item) => item.sabores.length ? `${item.texto} (${item.sabores.join(", ")})` : item.texto)
       .join(" | ");
+    const totalBruto = toMoney(Number(row.total_bruto ?? 0));
+    const paymentFee =
+      row.monto_neto === null || row.monto_neto === undefined
+        ? resolvePaymentFeeFromRuleMap(feeRuleMap, {
+            proveedor: row.proveedor,
+            metodo: row.metodo,
+            monto: totalBruto,
+          })
+        : {
+            porcentaje: Number(row.comision_porcentaje ?? 0),
+            montoComision: toMoney(Number(row.comision_monto ?? 0)),
+            montoNeto: toMoney(Number(row.monto_neto ?? totalBruto)),
+            descripcion: null,
+          };
+
     return {
       id: Number(row.id),
       fecha: formatBuenosAiresDateTime(String(row.fecha)),
@@ -556,7 +705,10 @@ export async function getVentasReporteRows(
       email: row.email,
       sucursal: row.sucursal || "-",
       metodo_pago: [row.proveedor, row.metodo].filter(Boolean).join(" / ") || "-",
-      total_dinero: Number(row.total_dinero ?? 0),
+      total_bruto: totalBruto,
+      comision_porcentaje: paymentFee.porcentaje,
+      total_comision: paymentFee.montoComision,
+      total_dinero: paymentFee.montoNeto,
       total_puntos: Number(row.total_puntos ?? 0),
       total_unidades: items.reduce((acc, item) => acc + item.cantidad, 0),
       productos,
@@ -585,7 +737,9 @@ function pdfText(value: unknown): string {
 }
 
 export function renderVentasPdfBuffer(rows: VentaReporteRow[]): Promise<Buffer> {
-  const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+  const totalBruto = rows.reduce((acc, row) => acc + row.total_bruto, 0);
+  const totalComision = rows.reduce((acc, row) => acc + row.total_comision, 0);
+  const totalNeto = rows.reduce((acc, row) => acc + row.total_dinero, 0);
   const generadoEn = formatBuenosAiresDateTime(new Date());
 
   return new Promise((resolve, reject) => {
@@ -606,16 +760,18 @@ export function renderVentasPdfBuffer(rows: VentaReporteRow[]): Promise<Buffer> 
     doc.on("error", reject);
 
     const columns = [
-      { label: "Orden", width: 42, value: (row: VentaReporteRow) => `#${row.id}` },
-      { label: "Fecha", width: 78, value: (row: VentaReporteRow) => row.fecha },
-      { label: "Canal", width: 48, value: (row: VentaReporteRow) => row.canal },
-      { label: "Estado", width: 62, value: (row: VentaReporteRow) => row.estado },
-      { label: "Cliente", width: 96, value: (row: VentaReporteRow) => row.cliente },
-      { label: "Sucursal", width: 82, value: (row: VentaReporteRow) => row.sucursal },
-      { label: "Pago", width: 88, value: (row: VentaReporteRow) => row.metodo_pago },
-      { label: "Unid.", width: 34, value: (row: VentaReporteRow) => String(row.total_unidades), align: "right" as const },
-      { label: "Total", width: 70, value: (row: VentaReporteRow) => money(row.total_dinero), align: "right" as const },
-      { label: "Productos", width: 184, value: (row: VentaReporteRow) => row.productos },
+      { label: "Orden", width: 36, value: (row: VentaReporteRow) => `#${row.id}` },
+      { label: "Fecha", width: 70, value: (row: VentaReporteRow) => row.fecha },
+      { label: "Canal", width: 40, value: (row: VentaReporteRow) => row.canal },
+      { label: "Estado", width: 52, value: (row: VentaReporteRow) => row.estado },
+      { label: "Cliente", width: 82, value: (row: VentaReporteRow) => row.cliente },
+      { label: "Sucursal", width: 68, value: (row: VentaReporteRow) => row.sucursal },
+      { label: "Pago", width: 72, value: (row: VentaReporteRow) => row.metodo_pago },
+      { label: "Unid.", width: 30, value: (row: VentaReporteRow) => String(row.total_unidades), align: "right" as const },
+      { label: "Bruto", width: 54, value: (row: VentaReporteRow) => money(row.total_bruto), align: "right" as const },
+      { label: "Com.", width: 46, value: (row: VentaReporteRow) => `${row.comision_porcentaje.toFixed(2)}%`, align: "right" as const },
+      { label: "Neto", width: 54, value: (row: VentaReporteRow) => money(row.total_dinero), align: "right" as const },
+      { label: "Productos", width: 136, value: (row: VentaReporteRow) => row.productos },
     ];
 
     const left = doc.page.margins.left;
@@ -644,7 +800,7 @@ export function renderVentasPdfBuffer(rows: VentaReporteRow[]): Promise<Buffer> 
         .fillColor("#2b1606")
         .font("Helvetica-Bold")
         .fontSize(9)
-        .text(`Total: ${money(total)}    Ordenes: ${rows.length}`, left + 8, 88);
+        .text(`Bruto: ${money(totalBruto)}    Comisiones: ${money(totalComision)}    Neto: ${money(totalNeto)}    Ordenes: ${rows.length}`, left + 8, 88);
     }
 
     function drawTableHeader(y: number): number {
@@ -727,6 +883,9 @@ function renderTableRows(rows: VentaReporteRow[]): string {
       <td>${escapeHtml(row.sucursal)}</td>
       <td>${escapeHtml(row.metodo_pago)}</td>
       <td>${escapeHtml(row.total_unidades)}</td>
+      <td>${escapeHtml(money(row.total_bruto))}</td>
+      <td>${escapeHtml(`${row.comision_porcentaje.toFixed(2)}%`)}</td>
+      <td>${escapeHtml(money(row.total_comision))}</td>
       <td>${escapeHtml(money(row.total_dinero))}</td>
       <td>${escapeHtml(row.productos)}</td>
       <td>${escapeHtml(row.notas)}</td>
@@ -753,7 +912,10 @@ export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<
     { header: "Sucursal", key: "sucursal", width: 24 },
     { header: "Pago", key: "pago", width: 24 },
     { header: "Unidades", key: "unidades", width: 12 },
-    { header: "Total", key: "total", width: 16 },
+    { header: "Bruto", key: "bruto", width: 16 },
+    { header: "% Comision", key: "comisionPorcentaje", width: 14 },
+    { header: "Comision", key: "comisionMonto", width: 16 },
+    { header: "Neto", key: "neto", width: 16 },
     { header: "Productos", key: "productos", width: 58 },
     { header: "Notas", key: "notas", width: 32 },
   ];
@@ -775,13 +937,19 @@ export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<
       sucursal: row.sucursal,
       pago: row.metodo_pago,
       unidades: row.total_unidades,
-      total: row.total_dinero,
+      bruto: row.total_bruto,
+      comisionPorcentaje: row.comision_porcentaje / 100,
+      comisionMonto: row.total_comision,
+      neto: row.total_dinero,
       productos: row.productos,
       notas: row.notas,
     });
   });
 
-  sheet.getColumn("total").numFmt = '"$"#,##0.00';
+  sheet.getColumn("bruto").numFmt = '"$"#,##0.00';
+  sheet.getColumn("comisionPorcentaje").numFmt = '0.00%';
+  sheet.getColumn("comisionMonto").numFmt = '"$"#,##0.00';
+  sheet.getColumn("neto").numFmt = '"$"#,##0.00';
   sheet.eachRow((row, rowNumber) => {
     row.eachCell((cell) => {
       cell.alignment = {
@@ -796,7 +964,9 @@ export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<
 }
 
 export function renderVentasPrintableHtml(rows: VentaReporteRow[]): string {
-  const total = rows.reduce((acc, row) => acc + row.total_dinero, 0);
+  const totalBruto = rows.reduce((acc, row) => acc + row.total_bruto, 0);
+  const totalComision = rows.reduce((acc, row) => acc + row.total_comision, 0);
+  const totalNeto = rows.reduce((acc, row) => acc + row.total_dinero, 0);
   const generadoEn = formatBuenosAiresDateTime(new Date());
   return `<!doctype html>
 <html lang="es">
@@ -820,15 +990,15 @@ export function renderVentasPrintableHtml(rows: VentaReporteRow[]): string {
   <h1>Reporte de ventas</h1>
   <p>Ventas web y locales registradas en el sistema.</p>
   <p class="meta">Horario Argentina, Buenos Aires. Generado: ${escapeHtml(generadoEn)}</p>
-  <div class="summary"><strong>Total:</strong> ${escapeHtml(money(total))} &nbsp; <strong>Ordenes:</strong> ${rows.length}</div>
+  <div class="summary"><strong>Bruto:</strong> ${escapeHtml(money(totalBruto))} &nbsp; <strong>Comisiones:</strong> ${escapeHtml(money(totalComision))} &nbsp; <strong>Neto:</strong> ${escapeHtml(money(totalNeto))} &nbsp; <strong>Ordenes:</strong> ${rows.length}</div>
   <table>
     <thead>
       <tr>
         <th>Orden</th><th>Fecha</th><th>Canal</th><th>Estado</th><th>Cliente</th><th>Email</th>
-        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Total</th><th>Productos</th><th>Notas</th>
+        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Bruto</th><th>% Com.</th><th>Comision</th><th>Neto</th><th>Productos</th><th>Notas</th>
       </tr>
     </thead>
-    <tbody>${renderTableRows(rows) || `<tr><td colspan="12">Sin ventas para mostrar.</td></tr>`}</tbody>
+    <tbody>${renderTableRows(rows) || `<tr><td colspan="15">Sin ventas para mostrar.</td></tr>`}</tbody>
   </table>
 </body>
 </html>`;
@@ -843,7 +1013,7 @@ export function renderVentasExcelHtml(rows: VentaReporteRow[]): string {
     <thead>
       <tr>
         <th>Orden</th><th>Fecha</th><th>Canal</th><th>Estado</th><th>Cliente</th><th>Email</th>
-        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Total</th><th>Productos</th><th>Notas</th>
+        <th>Sucursal</th><th>Pago</th><th>Unidades</th><th>Bruto</th><th>% Com.</th><th>Comision</th><th>Neto</th><th>Productos</th><th>Notas</th>
       </tr>
     </thead>
     <tbody>${renderTableRows(rows)}</tbody>

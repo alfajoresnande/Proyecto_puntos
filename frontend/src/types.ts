@@ -1,10 +1,13 @@
 export type Rol = "admin" | "superAdmin" | "vendedor" | "cliente";
+export type TipoCliente = "cliente" | "mayorista" | "empleado";
 
 export type User = {
   id: number;
   nombre: string;
   email: string;
   rol: Rol;
+  tipo_cliente?: TipoCliente;
+  descuento_porcentaje?: number;
   dni: string | null;
   telefono?: string | null;
   fecha_nacimiento?: string | null;
@@ -55,6 +58,10 @@ export type Producto = {
     stock_reservado?: number;
   }>;
   precio_dinero?: number | string | null;
+  precio_dinero_original?: number | null;
+  precio_dinero_lista?: number | null;
+  descuento_porcentaje_aplicado?: number;
+  tipo_cliente_precio?: TipoCliente;
   precio_puntos?: number | null;
   puntos_para_canjear?: number | null;
   stock_disponible?: number;

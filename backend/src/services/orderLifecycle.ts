@@ -1,4 +1,5 @@
 import { qAll, qOne, qRun, type Queryable } from "../db";
+import { resolvePaymentFee } from "./paymentFees";
 import {
   finalizeFlavorStockForCheckoutItems,
   finalizeStockForCheckoutItems,
@@ -177,13 +178,36 @@ async function updatePaymentRows(
       );
 
       if (!yaExiste) {
+        const orderAmount = await qOne<{ total_dinero: number; moneda: string }>(
+          conn,
+          "SELECT total_dinero, moneda FROM ordenes WHERE id = ? LIMIT 1",
+          [orderId],
+        );
+        const paymentFee = await resolvePaymentFee(conn, {
+          proveedor: effectiveProvider,
+          metodo: effectiveMethod,
+          monto: Number(orderAmount?.total_dinero ?? 0),
+        });
         await qRun(
           conn,
-          `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, payload_json)
-           SELECT id, ?, ?, ?, total_dinero, moneda, ?, ?
+          `INSERT INTO pagos (
+             orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+             moneda, provider_payment_id, payload_json
+           )
+           SELECT id, ?, ?, ?, total_dinero, ?, ?, ?, moneda, ?, ?
            FROM ordenes
            WHERE id = ?`,
-          [effectiveProvider, effectiveMethod, estado, effectivePaymentId, payloadJson, orderId],
+          [
+            effectiveProvider,
+            effectiveMethod,
+            estado,
+            paymentFee.porcentaje,
+            paymentFee.montoComision,
+            paymentFee.montoNeto,
+            effectivePaymentId,
+            payloadJson,
+            orderId,
+          ],
         );
       }
     }

@@ -394,6 +394,7 @@ router.post("/verify-email", async (req, res) => {
 
     const user = await qOne<any>(conn,
       `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+              tipo_cliente, descuento_porcentaje,
               puntos_saldo, codigo_invitacion, email_verificado, activo
        FROM usuarios
        WHERE email = ?
@@ -453,6 +454,7 @@ router.post("/verify-email", async (req, res) => {
 
     const verifiedUser = await qOne<any>(pool,
       `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+              tipo_cliente, descuento_porcentaje,
               puntos_saldo, codigo_invitacion, activo
        FROM usuarios
        WHERE id = ?`,
@@ -483,6 +485,7 @@ router.post("/login", async (req, res) => {
 
   const user = await qOne<any>(pool,
     `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+            tipo_cliente, descuento_porcentaje,
             puntos_saldo, codigo_invitacion, password_hash, activo, email_verificado
      FROM usuarios WHERE email = ?`,
     [email]
@@ -560,6 +563,7 @@ router.post("/google", async (req, res) => {
 
     let user = await qOne<any>(conn,
        `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+               tipo_cliente, descuento_porcentaje,
                puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
         FROM usuarios WHERE google_id = ?`,
       [googleId]
@@ -568,6 +572,7 @@ router.post("/google", async (req, res) => {
     if (!user) {
       user = await qOne<any>(conn,
         `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+                tipo_cliente, descuento_porcentaje,
                 puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
          FROM usuarios WHERE email = ?`,
         [email]
@@ -629,6 +634,7 @@ router.post("/google", async (req, res) => {
 
       user = await qOne<any>(conn,
         `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+                tipo_cliente, descuento_porcentaje,
                 puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
          FROM usuarios WHERE id = ?`,
         [nuevoId]
@@ -680,6 +686,7 @@ router.get("/me", async (req, res) => {
   const user = await qOne<any>(
     pool,
     `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+            tipo_cliente, descuento_porcentaje,
             puntos_saldo, codigo_invitacion, activo, email_verificado
      FROM usuarios
      WHERE id = ?`,

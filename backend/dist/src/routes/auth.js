@@ -324,6 +324,7 @@ router.post("/verify-email", async (req, res) => {
     try {
         await conn.beginTransaction();
         const user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+              tipo_cliente, descuento_porcentaje,
               puntos_saldo, codigo_invitacion, email_verificado, activo
        FROM usuarios
        WHERE email = ?
@@ -364,6 +365,7 @@ router.post("/verify-email", async (req, res) => {
         await grantReferralBonusAfterVerification(conn, user.id);
         await conn.commit();
         const verifiedUser = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+              tipo_cliente, descuento_porcentaje,
               puntos_saldo, codigo_invitacion, activo
        FROM usuarios
        WHERE id = ?`, [user.id]);
@@ -390,6 +392,7 @@ router.post("/login", async (req, res) => {
     const { password } = parsed.data;
     const email = parsed.data.email.trim().toLowerCase();
     const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+            tipo_cliente, descuento_porcentaje,
             puntos_saldo, codigo_invitacion, password_hash, activo, email_verificado
      FROM usuarios WHERE email = ?`, [email]);
     const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
@@ -456,10 +459,12 @@ router.post("/google", async (req, res) => {
     try {
         await conn.beginTransaction();
         let user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+               tipo_cliente, descuento_porcentaje,
                puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
         FROM usuarios WHERE google_id = ?`, [googleId]);
         if (!user) {
             user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+                tipo_cliente, descuento_porcentaje,
                 puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
          FROM usuarios WHERE email = ?`, [email]);
             if (user?.google_id && user.google_id !== googleId) {
@@ -501,6 +506,7 @@ router.post("/google", async (req, res) => {
            (nombre, email, email_verificado, email_verificado_at, google_id, password_hash, rol, dni, fecha_nacimiento, localidad, provincia, codigo_invitacion)
          VALUES (?, ?, 1, NOW(), ?, ?, 'cliente', NULL, ?, ?, ?, ?)`, [nombre, email, googleId, hash, fechaNacimiento, localidad, provincia, codigoPropio]);
             user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+                tipo_cliente, descuento_porcentaje,
                 puntos_saldo, codigo_invitacion, google_id, activo, email_verificado
          FROM usuarios WHERE id = ?`, [nuevoId]);
         }
@@ -546,6 +552,7 @@ router.get("/me", async (req, res) => {
         console.error(`[AUTH/ME] Error recalculando saldo:`, err);
     }
     const user = await (0, db_1.qOne)(db_1.pool, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
+            tipo_cliente, descuento_porcentaje,
             puntos_saldo, codigo_invitacion, activo, email_verificado
      FROM usuarios
      WHERE id = ?`, [auth.id]);

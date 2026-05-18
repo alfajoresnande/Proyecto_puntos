@@ -230,7 +230,7 @@ export function Navbar() {
             ) : null}
             {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
             {canSeeVendedor ? (
-              <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)}>
+              <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)}>
                 {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
               </NavLink>
             ) : null}
@@ -307,7 +307,7 @@ export function Navbar() {
                             Puntos y Canjes
                           </Link>
                           <Link
-                            to="/vendedor/pedidos"
+                            to="/vendedor/ventas/pedidos"
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
@@ -381,7 +381,7 @@ export function Navbar() {
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
           {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
           {canSeeVendedor ? (
-            <NavLink to="/vendedor/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
+            <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
               {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
             </NavLink>
           ) : null}
@@ -413,7 +413,7 @@ export function Navbar() {
                   <div className="navbar-mobile-user-links">
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link>
-                    <Link to="/vendedor/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
+                    <Link to="/vendedor/ventas/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
                     {(user.rol === "admin" || user.rol === "superAdmin") ? (
                       <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
                     ) : null}

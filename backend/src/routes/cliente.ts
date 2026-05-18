@@ -16,6 +16,8 @@ import {
   recalcularSaldoPuntosUsuario,
   registrarMovimientoPuntos,
 } from "../services/points";
+import { createPricingResolver, getActiveClientePricingProfile, type ResolvedMoneyPrice } from "../services/customerPricing";
+import { resolvePaymentFee } from "../services/paymentFees";
 import {
   createPaymentSession,
   getMercadoPagoPublicKey,
@@ -104,6 +106,7 @@ type ModoCompra = "dinero" | "puntos";
 type ProductoCarritoDB = {
   id: number;
   nombre: string;
+  categoria: string | null;
   activo: number;
   tipo_producto: "canje" | "venta" | "mixto";
   configuracion_tipo: "simple" | "caja_sabores";
@@ -215,6 +218,13 @@ type OrdenItemClienteRow = {
   track_stock: number;
   sabores?: ItemFlavorDetalle[];
 };
+
+function getPrecioDineroConResolver(
+  producto: Pick<ProductoCarritoDB, "precio_dinero" | "categoria">,
+  resolvePrice: (product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
+): number {
+  return resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
+}
 
 class HttpError extends Error {
   status: number;
@@ -417,7 +427,7 @@ async function getActiveCartId(conn: Queryable, usuarioId: number): Promise<numb
 async function getProductoForCart(conn: Queryable, productoId: number): Promise<ProductoCarritoDB> {
   const producto = await qOne<ProductoCarritoDB>(
     conn,
-    `SELECT id, nombre, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
+    `SELECT id, nombre, categoria, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
             COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo,
             track_stock, imagen_url, puntaje_al_comprar
      FROM productos
@@ -1491,6 +1501,8 @@ router.post("/carrito/items", async (req, res) => {
     await conn.beginTransaction();
     const carritoId = await ensureActiveCart(conn, usuarioId);
     const producto = await getProductoForCart(conn, producto_id);
+    const pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
+    const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     validateProductoForMode(producto, modo_compra);
     const configHash = buildFlavorConfigHash(producto_id, saboresSeleccionados);
 
@@ -1519,7 +1531,7 @@ router.post("/carrito/items", async (req, res) => {
       sucursalId: sucursal_id ?? null,
     });
 
-    const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+    const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
     const precioPuntosUnit = null;
     const subtotalDinero = toMoney(precioDineroUnit * nuevaCantidad);
     const subtotalPuntos = 0;
@@ -1625,6 +1637,8 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     }
 
     const producto = await getProductoForCart(conn, Number(item.producto_id));
+    const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
+    const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     validateProductoForMode(producto, item.modo_compra);
     if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
       await assertCartQuantityWithinStock(conn, {
@@ -1634,7 +1648,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
       });
     }
 
-    const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+    const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
     const precioPuntosUnit = null;
     const subtotalDinero = toMoney(precioDineroUnit * parsed.data.cantidad);
     const subtotalPuntos = 0;
@@ -1757,6 +1771,8 @@ router.post("/checkout/preview", async (req, res) => {
       return;
     }
 
+    const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
+    const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
     const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
     const requiereStock = items.some((item) => Number(item.track_stock) === 1 || (item.sabores?.length ?? 0) > 0);
@@ -1811,7 +1827,7 @@ router.post("/checkout/preview", async (req, res) => {
         }
       }
 
-      const precioDineroUnit = item.modo_compra === "dinero" ? Number(producto.precio_dinero ?? 0) : null;
+      const precioDineroUnit = item.modo_compra === "dinero" ? getPrecioDineroConResolver(producto, resolvePrice) : null;
       const precioPuntosUnit = null;
       const subtotalDinero = toMoney((precioDineroUnit ?? 0) * item.cantidad);
       const subtotalPuntos = 0;
@@ -1906,6 +1922,8 @@ router.post("/checkout/confirm", async (req, res) => {
       throw new HttpError(400, "Tu carrito está vacío.");
     }
 
+    const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
+    const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     const usuario = await qOne<CheckoutBuyer>(
       conn,
       "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ?",
@@ -1950,7 +1968,7 @@ router.post("/checkout/confirm", async (req, res) => {
       const producto = await getProductoForCart(conn, Number(item.producto_id));
       validateProductoForMode(producto, item.modo_compra);
 
-      const precioDineroUnit = Number(producto.precio_dinero ?? 0);
+      const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
       const precioPuntosUnit = null;
 
       itemsNormalizados.push({
@@ -2079,6 +2097,11 @@ router.post("/checkout/confirm", async (req, res) => {
 
     if (totalDinero > 0) {
       const choice = paymentChoice ?? { provider: "mercadopago", method: "brick" };
+      const paymentFee = await resolvePaymentFee(conn, {
+        proveedor: choice.provider,
+        metodo: choice.method,
+        monto: totalDinero,
+      });
       const paymentSession = await createPaymentSession({
         choice,
         orderId: Number(ordenId),
@@ -2090,16 +2113,25 @@ router.post("/checkout/confirm", async (req, res) => {
       });
       await qRun(
         conn,
-        `INSERT INTO pagos (orden_id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url, payload_json)
-         VALUES (?, ?, ?, 'iniciado', ?, 'ARS', ?, ?, ?)`,
+        `INSERT INTO pagos (
+           orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+           moneda, provider_payment_id, checkout_url, payload_json
+         )
+         VALUES (?, ?, ?, 'iniciado', ?, ?, ?, ?, 'ARS', ?, ?, ?)`,
         [
           ordenId,
           choice.provider,
           choice.method,
           totalDinero,
+          paymentFee.porcentaje,
+          paymentFee.montoComision,
+          paymentFee.montoNeto,
           paymentSession.providerPaymentId,
           paymentSession.checkoutUrl,
-          paymentSession.payload ? JSON.stringify(paymentSession.payload) : null,
+          JSON.stringify({
+            ...(paymentSession.payload ?? {}),
+            comision: paymentFee,
+          }),
         ],
       );
 

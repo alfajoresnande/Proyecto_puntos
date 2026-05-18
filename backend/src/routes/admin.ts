@@ -33,6 +33,16 @@ import {
 import { runReservationExpirations } from "../services/expirations";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import {
+  closeCajaSesion,
+  closeStaleCajaSesiones,
+  ensureDailyCajaSesion,
+  getActiveCajaSesion,
+  getCajaSesionSummary,
+  normalizeCashPaymentMethod,
+  openCajaSesion,
+  registerCajaMovimiento,
+} from "../services/cashRegister";
+import {
   getBuenosAiresDateStamp,
   getVentasReporteRows,
   registerLocalSale,
@@ -232,6 +242,127 @@ type OrdenItemAdminRow = {
   }>;
 };
 
+const tipoClienteSchema = z.enum(["cliente", "mayorista", "empleado"]);
+const descuentoTipoCategoriaSchema = z.object({
+  tipo_cliente: tipoClienteSchema,
+  categoria: z.string().min(1).max(100),
+  descuento_porcentaje: z.number().min(0).max(100),
+  activo: z.boolean().optional().default(true),
+});
+const clienteLocalPayloadSchema = z.object({
+  nombre: z.string().min(2).max(120),
+  dni: z.string().min(6).max(20),
+  telefono: z.string().max(25).optional().nullable(),
+});
+const proveedorSchema = z.object({
+  nombre: z.string().min(2).max(160),
+  contacto: z.string().max(160).optional().nullable(),
+  telefono: z.string().max(25).optional().nullable(),
+  email: z.string().email().max(160).optional().nullable().or(z.literal("")),
+  notas: z.string().max(2000).optional().nullable(),
+  activo: z.boolean().optional().default(true),
+});
+const costoCobroSchema = z.object({
+  proveedor: z.string().min(1).max(40),
+  metodo: z.string().min(1).max(40),
+  descripcion: z.string().min(2).max(160),
+  porcentaje: z.number().min(0).max(100),
+  activo: z.boolean().optional().default(true),
+});
+const costosCobroBulkSchema = z.array(costoCobroSchema).min(1).max(50);
+const cajaAperturaSchema = z.object({
+  sucursal_id: z.number().int().positive(),
+  monto_apertura: z.number().min(0),
+  observaciones: z.string().max(2000).optional().nullable(),
+});
+const cajaCierreSchema = z.object({
+  monto_cierre_declarado: z.number().min(0),
+  observaciones: z.string().max(2000).optional().nullable(),
+});
+const gastoSchema = z.object({
+  sucursal_id: z.number().int().positive(),
+  proveedor_id: z.number().int().positive().optional().nullable(),
+  tercero_nombre: z.string().max(160).optional().nullable(),
+  categoria: z.string().min(2).max(120),
+  descripcion: z.string().min(2).max(255),
+  medio_pago: z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
+  monto: z.number().positive(),
+  fecha_gasto: z.string().datetime().optional().nullable(),
+  notas: z.string().max(2000).optional().nullable(),
+});
+
+async function getCajaSesionPayload(conn: any, sessionId: number) {
+  const session = await qOne<{
+    id: number;
+    sucursal_id: number;
+    sucursal_nombre: string;
+    usuario_id: number;
+    usuario_nombre: string;
+    fecha_operativa: string;
+    estado: "abierta" | "cerrada";
+    monto_apertura: number;
+    monto_cierre_sistema: number | null;
+    monto_cierre_declarado: number | null;
+    diferencia_cierre: number | null;
+    observaciones_apertura: string | null;
+    observaciones_cierre: string | null;
+    apertura_at: string;
+    cierre_at: string | null;
+  }>(
+    conn,
+    `SELECT cs.id, cs.sucursal_id, s.nombre AS sucursal_nombre,
+            cs.usuario_id, u.nombre AS usuario_nombre,
+            cs.fecha_operativa, cs.estado, cs.monto_apertura, cs.monto_cierre_sistema,
+            cs.monto_cierre_declarado, cs.diferencia_cierre, cs.observaciones_apertura,
+            cs.observaciones_cierre, cs.apertura_at, cs.cierre_at
+     FROM caja_sesiones cs
+     JOIN sucursales s ON s.id = cs.sucursal_id
+     JOIN usuarios u ON u.id = cs.usuario_id
+     WHERE cs.id = ?
+     LIMIT 1`,
+    [sessionId],
+  );
+  if (!session) return null;
+
+  const summary = await getCajaSesionSummary(conn, sessionId);
+  const movimientos = await qAll<{
+    id: number;
+    tipo: "venta" | "gasto";
+    referencia_tipo: string | null;
+    referencia_id: number | null;
+    medio_pago: string;
+    monto: number;
+    descripcion: string | null;
+    creado_por: number;
+    creado_por_nombre: string;
+    created_at: string;
+  }>(
+    conn,
+    `SELECT cm.id, cm.tipo, cm.referencia_tipo, cm.referencia_id, cm.medio_pago, cm.monto,
+            cm.descripcion, cm.creado_por, u.nombre AS creado_por_nombre, cm.created_at
+     FROM caja_movimientos cm
+     JOIN usuarios u ON u.id = cm.creado_por
+     WHERE cm.caja_sesion_id = ?
+     ORDER BY cm.created_at DESC, cm.id DESC
+     LIMIT 100`,
+    [sessionId],
+  );
+
+  return {
+    ...session,
+    monto_apertura: Number(session.monto_apertura ?? 0),
+    monto_cierre_sistema: session.monto_cierre_sistema === null ? null : Number(session.monto_cierre_sistema),
+    monto_cierre_declarado: session.monto_cierre_declarado === null ? null : Number(session.monto_cierre_declarado),
+    diferencia_cierre: session.diferencia_cierre === null ? null : Number(session.diferencia_cierre),
+    summary,
+    movimientos: movimientos.map((item) => ({
+      ...item,
+      monto: Number(item.monto ?? 0),
+      referencia_id: item.referencia_id === null ? null : Number(item.referencia_id),
+    })),
+  };
+}
+
 async function getCanjeItemsByCanjeIds(canjeIds: number[]): Promise<Map<number, CanjeItemDetalle[]>> {
   const map = new Map<number, CanjeItemDetalle[]>();
   if (!canjeIds.length) return map;
@@ -387,7 +518,7 @@ router.get("/usuarios", async (_req, res) => {
   const isSuperAdmin = _req.user?.rol === "superAdmin";
   const rows = await qAll(
     pool,
-    `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo, created_at
+    `SELECT id, nombre, email, rol, tipo_cliente, descuento_porcentaje, dni, telefono, fecha_nacimiento, localidad, provincia, puntos_saldo, codigo_invitacion, activo, created_at
      FROM usuarios
      ${isSuperAdmin ? "" : "WHERE rol <> 'superAdmin'"}
      ORDER BY created_at DESC`
@@ -401,6 +532,8 @@ router.post("/usuarios", async (req, res) => {
     email:    z.string().email(),
     password: strongPasswordSchema,
     rol:      z.enum(["cliente", "vendedor", "admin"]),
+    tipo_cliente: tipoClienteSchema.optional().default("cliente"),
+    descuento_porcentaje: z.number().min(0).max(100).optional().default(0),
     dni:      z.string().min(6).optional(),
     fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     localidad: z.string().min(2).max(120).optional().nullable(),
@@ -408,7 +541,7 @@ router.post("/usuarios", async (req, res) => {
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
-  const { nombre, email, password, rol, dni, fecha_nacimiento, localidad, provincia } = parsed.data;
+  const { nombre, email, password, rol, tipo_cliente, descuento_porcentaje, dni, fecha_nacimiento, localidad, provincia } = parsed.data;
 
   if (rol === "cliente" && !dni) { res.status(400).json({ error: "DNI requerido para clientes" }); return; }
   if (rol === "cliente" && fecha_nacimiento) {
@@ -428,9 +561,21 @@ router.post("/usuarios", async (req, res) => {
     }
     const { insertId } = await qRun(pool,
       `INSERT INTO usuarios
-         (nombre, email, email_verificado, email_verificado_at, password_hash, rol, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
-       VALUES (?, ?, 1, NOW(), ?, ?, ?, NULL, ?, ?, ?, ?)`,
-      [nombre, email.trim().toLowerCase(), hash, rol, dni ?? null, fecha_nacimiento ?? null, localidad?.trim() || null, provincia?.trim() || null, codigo]
+         (nombre, email, email_verificado, email_verificado_at, password_hash, rol, tipo_cliente, descuento_porcentaje, dni, telefono, fecha_nacimiento, localidad, provincia, codigo_invitacion)
+       VALUES (?, ?, 1, NOW(), ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
+      [
+        nombre,
+        email.trim().toLowerCase(),
+        hash,
+        rol,
+        rol === "cliente" ? tipo_cliente : "cliente",
+        rol === "cliente" ? descuento_porcentaje : 0,
+        dni ?? null,
+        fecha_nacimiento ?? null,
+        localidad?.trim() || null,
+        provincia?.trim() || null,
+        codigo,
+      ]
     );
     res.status(201).json({ id: insertId });
   } catch (err: any) {
@@ -452,6 +597,8 @@ router.put("/usuarios/:id", async (req, res) => {
     nombre: z.string().min(1).max(100),
     email: z.string().email(),
     rol: z.enum(["cliente", "vendedor", "admin"]),
+    tipo_cliente: tipoClienteSchema.optional().default("cliente"),
+    descuento_porcentaje: z.number().min(0).max(100).optional().default(0),
     dni: z.string().min(6).max(20).optional().nullable(),
     telefono: z.string().max(25).optional().nullable(),
     fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
@@ -464,7 +611,7 @@ router.put("/usuarios/:id", async (req, res) => {
     return;
   }
 
-  const { nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia } = parsed.data;
+  const { nombre, email, rol, tipo_cliente, descuento_porcentaje, dni, telefono, fecha_nacimiento, localidad, provincia } = parsed.data;
   if (rol === "cliente" && !dni?.trim()) {
     res.status(400).json({ error: "DNI requerido para clientes" });
     return;
@@ -481,12 +628,14 @@ router.put("/usuarios/:id", async (req, res) => {
     const { affectedRows } = await qRun(
       pool,
        `UPDATE usuarios
-       SET nombre = ?, email = ?, rol = ?, dni = ?, telefono = ?, fecha_nacimiento = ?, localidad = ?, provincia = ?
+       SET nombre = ?, email = ?, rol = ?, tipo_cliente = ?, descuento_porcentaje = ?, dni = ?, telefono = ?, fecha_nacimiento = ?, localidad = ?, provincia = ?
         WHERE id = ?`,
       [
         nombre.trim(),
         email.trim().toLowerCase(),
         rol,
+        rol === "cliente" ? tipo_cliente : "cliente",
+        rol === "cliente" ? descuento_porcentaje : 0,
         dni?.trim() || null,
         telefono?.trim() || null,
         fecha_nacimiento ?? null,
@@ -791,7 +940,8 @@ const ventaLocalItemSchema = z.object({
 });
 
 const ventaLocalSchema = z.object({
-  usuario_id: z.number().int().positive(),
+  usuario_id: z.number().int().positive().optional().nullable(),
+  cliente_local: clienteLocalPayloadSchema.optional().nullable(),
   sucursal_id: z.number().int().positive(),
   metodo_pago: z.enum(["cash", "transferencia", "tarjeta", "qr", "otro"]).default("cash"),
   acreditar_puntos: z.boolean().optional().default(false),
@@ -809,9 +959,13 @@ router.post("/ventas-locales", async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if (!parsed.data.usuario_id && !parsed.data.cliente_local) {
+      throw new Error("Selecciona un cliente web o completa un cliente manual.");
+    }
     const result = await registerLocalSale(conn, {
       canal: "admin",
-      usuarioId: parsed.data.usuario_id,
+      usuarioId: parsed.data.usuario_id ?? null,
+      clienteLocal: parsed.data.cliente_local ?? null,
       sucursalId: parsed.data.sucursal_id,
       metodoPago: parsed.data.metodo_pago,
       acreditarPuntos: parsed.data.acreditar_puntos,
@@ -874,6 +1028,364 @@ router.get("/ventas/export", async (req, res, next) => {
   }
 });
 
+router.get("/proveedores", async (_req, res) => {
+  const rows = await qAll(
+    pool,
+    `SELECT id, nombre, contacto, telefono, email, notas, activo, created_at, updated_at
+     FROM proveedores
+     ORDER BY activo DESC, nombre ASC, id ASC`,
+  );
+  res.json(rows.map((row: any) => ({ ...row, activo: Boolean(row.activo) })));
+});
+
+router.post("/proveedores", async (req, res) => {
+  const parsed = proveedorSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  try {
+    const result = await qRun(
+      pool,
+      `INSERT INTO proveedores (nombre, contacto, telefono, email, notas, activo)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        parsed.data.nombre.trim(),
+        parsed.data.contacto?.trim() || null,
+        parsed.data.telefono?.trim() || null,
+        parsed.data.email?.trim() || null,
+        parsed.data.notas?.trim() || null,
+        parsed.data.activo ? 1 : 0,
+      ],
+    );
+    emitRealtime(["admin-config"]);
+    res.status(201).json({ ok: true, id: result.insertId });
+  } catch (err: any) {
+    if (err?.code === "ER_DUP_ENTRY") {
+      res.status(409).json({ error: "Ya existe un proveedor con ese nombre." });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.put("/proveedores/:id", async (req, res) => {
+  const proveedorId = Number(req.params.id);
+  const parsed = proveedorSchema.safeParse(req.body);
+  if (!Number.isFinite(proveedorId) || proveedorId <= 0) {
+    res.status(400).json({ error: "Proveedor invalido." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  try {
+    const result = await qRun(
+      pool,
+      `UPDATE proveedores
+       SET nombre = ?, contacto = ?, telefono = ?, email = ?, notas = ?, activo = ?
+       WHERE id = ?`,
+      [
+        parsed.data.nombre.trim(),
+        parsed.data.contacto?.trim() || null,
+        parsed.data.telefono?.trim() || null,
+        parsed.data.email?.trim() || null,
+        parsed.data.notas?.trim() || null,
+        parsed.data.activo ? 1 : 0,
+        proveedorId,
+      ],
+    );
+    if (!result.affectedRows) {
+      res.status(404).json({ error: "Proveedor no encontrado." });
+      return;
+    }
+    emitRealtime(["admin-config"]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err?.code === "ER_DUP_ENTRY") {
+      res.status(409).json({ error: "Ya existe otro proveedor con ese nombre." });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.get("/costos-cobro", async (_req, res) => {
+  const rows = await qAll(
+    pool,
+    `SELECT id, proveedor, metodo, descripcion, porcentaje, activo, created_at, updated_at
+     FROM costos_cobro
+     ORDER BY proveedor ASC, metodo ASC, id ASC`,
+  );
+  res.json(rows.map((row: any) => ({
+    ...row,
+    porcentaje: Number(row.porcentaje ?? 0),
+    activo: Boolean(row.activo),
+  })));
+});
+
+router.put("/costos-cobro", async (req, res) => {
+  const parsed = costosCobroBulkSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const item of parsed.data) {
+      await qRun(
+        conn,
+        `INSERT INTO costos_cobro (proveedor, metodo, descripcion, porcentaje, activo)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           descripcion = VALUES(descripcion),
+           porcentaje = VALUES(porcentaje),
+           activo = VALUES(activo)`,
+        [
+          item.proveedor.trim().toLowerCase(),
+          item.metodo.trim().toLowerCase(),
+          item.descripcion.trim(),
+          item.porcentaje,
+          item.activo ? 1 : 0,
+        ],
+      );
+    }
+    await conn.commit();
+    emitRealtime(["admin-config"]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudieron guardar los costos de cobro." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get("/caja/actual", async (req, res) => {
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  if (!Number.isInteger(sucursalId) || sucursalId <= 0) {
+    res.status(400).json({ error: "Sucursal invalida." });
+    return;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const session = await ensureDailyCajaSesion(conn, { usuarioId: req.user!.id, sucursalId });
+    await conn.commit();
+    res.json(await getCajaSesionPayload(pool, Number(session.id)));
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo obtener la caja del dia." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/caja/apertura", async (req, res) => {
+  const parsed = cajaAperturaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const sessionId = await openCajaSesion(conn, {
+      usuarioId: req.user!.id,
+      sucursalId: parsed.data.sucursal_id,
+      montoApertura: Number(parsed.data.monto_apertura),
+      observaciones: parsed.data.observaciones,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes"]);
+    res.status(201).json(await getCajaSesionPayload(pool, sessionId));
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo abrir la caja." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post("/caja/:id/cierre", async (req, res) => {
+  const sessionId = Number(req.params.id);
+  const parsed = cajaCierreSchema.safeParse(req.body);
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    res.status(400).json({ error: "Caja invalida." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await closeCajaSesion(conn, {
+      cajaSesionId: sessionId,
+      usuarioId: req.user!.id,
+      montoCierreDeclarado: Number(parsed.data.monto_cierre_declarado),
+      observaciones: parsed.data.observaciones,
+      forceAdmin: req.user!.rol === "admin" || req.user!.rol === "superAdmin",
+    });
+    await conn.commit();
+    emitRealtime(["ordenes"]);
+    res.json(await getCajaSesionPayload(pool, sessionId));
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo cerrar la caja." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.get("/caja/sesiones", async (req, res) => {
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  const desde = typeof req.query.desde === "string" ? req.query.desde : null;
+  const hasta = typeof req.query.hasta === "string" ? req.query.hasta : null;
+  const where = ["1 = 1"];
+  const params: Array<string | number> = [];
+
+  if (Number.isInteger(sucursalId) && sucursalId > 0) {
+    where.push("cs.sucursal_id = ?");
+    params.push(sucursalId);
+  }
+  if (desde) {
+    where.push("cs.fecha_operativa >= ?");
+    params.push(desde);
+  }
+  if (hasta) {
+    where.push("cs.fecha_operativa <= ?");
+    params.push(hasta);
+  }
+
+  await closeStaleCajaSesiones(pool);
+  const rows = await qAll<{ id: number }>(
+    pool,
+    `SELECT cs.id
+     FROM caja_sesiones cs
+     WHERE ${where.join(" AND ")}
+     ORDER BY cs.apertura_at DESC, cs.id DESC
+     LIMIT 120`,
+    params,
+  );
+
+  const payload = [];
+  for (const row of rows) {
+    const session = await getCajaSesionPayload(pool, Number(row.id));
+    if (session) payload.push(session);
+  }
+  res.json(payload);
+});
+
+router.get("/gastos", async (req, res) => {
+  const sucursalId = Number(req.query.sucursal_id ?? 0);
+  const cajaSesionId = Number(req.query.caja_sesion_id ?? 0);
+  const where = ["1 = 1"];
+  const params: Array<string | number> = [];
+
+  if (Number.isInteger(sucursalId) && sucursalId > 0) {
+    where.push("g.sucursal_id = ?");
+    params.push(sucursalId);
+  }
+  if (Number.isInteger(cajaSesionId) && cajaSesionId > 0) {
+    where.push("g.caja_sesion_id = ?");
+    params.push(cajaSesionId);
+  }
+
+  const rows = await qAll(
+    pool,
+    `SELECT g.id, g.sucursal_id, s.nombre AS sucursal_nombre, g.caja_sesion_id,
+            g.proveedor_id, p.nombre AS proveedor_nombre, g.tercero_nombre,
+            g.categoria, g.descripcion, g.medio_pago, g.monto, g.fecha_gasto, g.notas,
+            g.creado_por, u.nombre AS creado_por_nombre, g.created_at
+     FROM gastos g
+     JOIN sucursales s ON s.id = g.sucursal_id
+     LEFT JOIN proveedores p ON p.id = g.proveedor_id
+     JOIN usuarios u ON u.id = g.creado_por
+     WHERE ${where.join(" AND ")}
+     ORDER BY g.fecha_gasto DESC, g.id DESC
+     LIMIT 200`,
+    params,
+  );
+  res.json(rows.map((row: any) => ({ ...row, monto: Number(row.monto ?? 0) })));
+});
+
+router.post("/gastos", async (req, res) => {
+  const parsed = gastoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const session = await ensureDailyCajaSesion(conn, {
+      usuarioId: req.user!.id,
+      sucursalId: parsed.data.sucursal_id,
+    });
+    if (!parsed.data.proveedor_id && !parsed.data.tercero_nombre?.trim()) {
+      throw new Error("Selecciona un proveedor o completa un tercero.");
+    }
+    if (parsed.data.proveedor_id) {
+      const provider = await qOne<{ id: number }>(
+        conn,
+        "SELECT id FROM proveedores WHERE id = ? AND activo = 1 LIMIT 1",
+        [parsed.data.proveedor_id],
+      );
+      if (!provider) throw new Error("El proveedor seleccionado no existe o esta inactivo.");
+    }
+
+    const result = await qRun(
+      conn,
+      `INSERT INTO gastos
+        (sucursal_id, caja_sesion_id, proveedor_id, tercero_nombre, categoria, descripcion, medio_pago, monto, fecha_gasto, notas, creado_por)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?, ?)`,
+      [
+        parsed.data.sucursal_id,
+        Number(session.id),
+        parsed.data.proveedor_id ?? null,
+        parsed.data.tercero_nombre?.trim() || null,
+        parsed.data.categoria.trim(),
+        parsed.data.descripcion.trim(),
+        normalizeCashPaymentMethod(parsed.data.medio_pago),
+        Number(parsed.data.monto),
+        parsed.data.fecha_gasto ?? null,
+        parsed.data.notas?.trim() || null,
+        req.user!.id,
+      ],
+    );
+
+    await registerCajaMovimiento(conn, {
+      cajaSesionId: Number(session.id),
+      tipo: "gasto",
+      medioPago: normalizeCashPaymentMethod(parsed.data.medio_pago),
+      monto: Number(parsed.data.monto),
+      descripcion: parsed.data.descripcion.trim(),
+      referenciaTipo: "gastos",
+      referenciaId: result.insertId,
+      creadoPor: req.user!.id,
+    });
+
+    await conn.commit();
+    emitRealtime(["ordenes"]);
+    res.status(201).json({ ok: true, id: result.insertId });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo registrar el gasto." });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/ordenes", async (_req, res) => {
   const rows = await qAll<{
     id: number;
@@ -898,14 +1410,17 @@ router.get("/ordenes", async (_req, res) => {
     updated_at: string;
   }>(
     pool,
-    `SELECT o.id, o.usuario_id, u.nombre AS cliente_nombre, u.email AS cliente_email,
-            o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
-            o.direccion_envio_json, o.sucursal_retiro_id,
-            s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
-            s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
-            o.notas, o.created_at, o.updated_at
+      `SELECT o.id, o.usuario_id,
+              COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
+              COALESCE(u.email, '') AS cliente_email,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.direccion_envio_json, o.sucursal_retiro_id,
+              s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
+              s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              o.notas, o.created_at, o.updated_at
      FROM ordenes o
-     JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN usuarios u ON u.id = o.usuario_id
+     LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      ORDER BY o.created_at DESC, o.id DESC`,
   );
@@ -1803,6 +2318,39 @@ router.patch("/productos/:id/activo", async (req, res) => {
 router.get("/categorias", async (_req, res) => {
   const rows = await qAll(pool, "SELECT id, nombre, created_at FROM categorias ORDER BY nombre ASC");
   res.json(rows);
+});
+
+router.get("/descuentos-categorias", async (_req, res) => {
+  const rows = await qAll(
+    pool,
+    `SELECT id, tipo_cliente, categoria, descuento_porcentaje, activo, created_at, updated_at
+     FROM descuentos_tipo_categoria
+     ORDER BY categoria ASC, tipo_cliente ASC, id ASC`,
+  );
+  res.json(rows);
+});
+
+router.put("/descuentos-categorias", async (req, res) => {
+  const parsed = descuentoTipoCategoriaSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const categoria = parsed.data.categoria.trim();
+  const descuento = Number(parsed.data.descuento_porcentaje ?? 0);
+  await qRun(
+    pool,
+    `INSERT INTO descuentos_tipo_categoria (tipo_cliente, categoria, descuento_porcentaje, activo)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       descuento_porcentaje = VALUES(descuento_porcentaje),
+       activo = VALUES(activo),
+       updated_at = CURRENT_TIMESTAMP`,
+    [parsed.data.tipo_cliente, categoria, descuento, parsed.data.activo ? 1 : 0],
+  );
+  emitRealtime(["admin-config", "productos"]);
+  res.json({ ok: true });
 });
 
 router.post("/categorias", async (req, res) => {

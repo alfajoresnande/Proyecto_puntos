@@ -9,7 +9,7 @@ import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateSta
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { useAuthStore } from "../../store/authStore";
-import type { Producto, Rol } from "../../types";
+import type { Producto, Rol, TipoCliente } from "../../types";
 
 type AdminTab =
   | "inicio"
@@ -71,6 +71,8 @@ type Usuario = {
   nombre: string;
   email: string;
   rol: Rol;
+  tipo_cliente?: TipoCliente;
+  descuento_porcentaje?: number;
   dni: string | null;
   telefono?: string | null;
   puntos_saldo: number;
@@ -145,9 +147,9 @@ type MovimientoStock = {
 
 type OrdenAdmin = {
   id: number;
-  usuario_id: number;
+  usuario_id: number | null;
   cliente_nombre: string;
-  cliente_email: string;
+  cliente_email: string | null;
   canal: "web" | "admin" | "vendedor";
   estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
@@ -206,6 +208,16 @@ type Categoria = {
   id: number;
   nombre: string;
   created_at: string;
+};
+
+type DescuentoCategoriaAdmin = {
+  id: number;
+  tipo_cliente: TipoCliente;
+  categoria: string;
+  descuento_porcentaje: number;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 type Codigo = {
@@ -315,6 +327,91 @@ type SucursalAdmin = {
   updated_at: string;
 };
 
+type ProveedorAdmin = {
+  id: number;
+  nombre: string;
+  contacto: string | null;
+  telefono: string | null;
+  email: string | null;
+  notas: string | null;
+  activo?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type CajaResumenAdmin = {
+  totalVentas: number;
+  totalGastos: number;
+  neto: number;
+  efectivoSistema: number;
+  ventasPorMedio: Record<string, number>;
+  gastosPorMedio: Record<string, number>;
+  cantidadMovimientos: number;
+};
+
+type CajaMovimientoAdmin = {
+  id: number;
+  tipo: "venta" | "gasto";
+  referencia_tipo: string | null;
+  referencia_id: number | null;
+  medio_pago: string;
+  monto: number;
+  descripcion: string | null;
+  creado_por: number;
+  creado_por_nombre: string;
+  created_at: string;
+};
+
+type CajaSesionAdmin = {
+  id: number;
+  sucursal_id: number;
+  sucursal_nombre: string;
+  usuario_id: number;
+  usuario_nombre: string;
+  fecha_operativa: string;
+  estado: "abierta" | "cerrada";
+  monto_apertura: number;
+  monto_cierre_sistema: number | null;
+  monto_cierre_declarado: number | null;
+  diferencia_cierre: number | null;
+  observaciones_apertura: string | null;
+  observaciones_cierre: string | null;
+  apertura_at: string;
+  cierre_at: string | null;
+  summary: CajaResumenAdmin;
+  movimientos?: CajaMovimientoAdmin[];
+};
+
+type GastoAdmin = {
+  id: number;
+  sucursal_id: number;
+  sucursal_nombre: string;
+  caja_sesion_id: number;
+  proveedor_id: number | null;
+  proveedor_nombre: string | null;
+  tercero_nombre: string | null;
+  categoria: string;
+  descripcion: string;
+  medio_pago: string;
+  monto: number;
+  fecha_gasto: string;
+  notas: string | null;
+  creado_por: number;
+  creado_por_nombre: string;
+  created_at: string;
+};
+
+type CostoCobroAdmin = {
+  id: number;
+  proveedor: string;
+  metodo: string;
+  descripcion: string;
+  porcentaje: number;
+  activo: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 type ConfirmacionCanje = {
   id: number;
   estado: "entregado" | "cancelado";
@@ -347,8 +444,23 @@ type UsuarioEditDraft = {
   nombre: string;
   email: string;
   rol: Rol;
+  tipo_cliente: TipoCliente;
+  descuento_porcentaje: string;
   dni: string;
   telefono: string;
+};
+
+type WebDiscountDraft = {
+  activo: boolean;
+  cliente: string;
+  mayorista: string;
+  empleado: string;
+};
+
+type PaymentFeeDraftValue = {
+  descripcion: string;
+  porcentaje: string;
+  activo: boolean;
 };
 
 type EditorDraft = {
@@ -386,6 +498,7 @@ const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
 const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
+const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"];
 
 type AdminAlertState = {
   ordenes: number;
@@ -537,6 +650,23 @@ function formatRolLabel(rol: Usuario["rol"]): string {
   return "Cliente";
 }
 
+function formatTipoClienteLabel(tipo?: TipoCliente): string {
+  if (tipo === "empleado") return "Empleado";
+  if (tipo === "mayorista") return "Mayorista";
+  return "Cliente";
+}
+
+function discountDraftKey(tipoCliente: TipoCliente, categoria: string): string {
+  return `${tipoCliente}:${String(categoria || "").trim().toLowerCase()}`;
+}
+
+function normalizeDiscountDraftValue(value: string): string {
+  if (value.trim() === "") return "";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "0";
+  return String(Math.max(0, Math.min(100, numeric)));
+}
+
 function formatEstadoCanje(estado: string): string {
   const labels: Record<string, string> = {
     pendiente: "Pendiente",
@@ -612,9 +742,24 @@ function formatMetodoPago(metodo?: string | null): string {
     transferencia: "Transferencia",
     tarjeta: "Tarjeta",
     qr: "QR",
+    brick: "Tarjeta / checkout",
+    wallet: "Wallet / link",
     otro: "Otro",
   };
   return metodo ? labels[metodo] ?? metodo : "-";
+}
+
+function formatProveedorPago(proveedor?: string | null): string {
+  const labels: Record<string, string> = {
+    mercadopago: "Mercado Pago",
+    efectivo: "Efectivo",
+    local: "Venta local",
+  };
+  return proveedor ? labels[proveedor] ?? proveedor : "-";
+}
+
+function paymentFeeDraftKey(proveedor: string, metodo: string): string {
+  return `${String(proveedor).trim().toLowerCase()}::${String(metodo).trim().toLowerCase()}`;
 }
 
 function formatPagoOrden(orden: OrdenAdmin): string {
@@ -929,6 +1074,8 @@ export function Admin() {
     nombre: "",
     email: "",
     rol: "cliente",
+    tipo_cliente: "cliente",
+    descuento_porcentaje: "0",
     dni: "",
     telefono: "",
   });
@@ -951,6 +1098,8 @@ export function Admin() {
     password: "",
     nombre: "",
     rol: "vendedor" as Rol,
+    tipo_cliente: "cliente" as TipoCliente,
+    descuento_porcentaje: "0",
     dni: "",
   });
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
@@ -973,6 +1122,9 @@ export function Admin() {
   const [ordenesFiltroEntrega, setOrdenesFiltroEntrega] = useState("");
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [ventaLocalClienteId, setVentaLocalClienteId] = useState("");
+  const [ventaLocalClienteManualNombre, setVentaLocalClienteManualNombre] = useState("");
+  const [ventaLocalClienteManualDni, setVentaLocalClienteManualDni] = useState("");
+  const [ventaLocalClienteManualTelefono, setVentaLocalClienteManualTelefono] = useState("");
   const [ventaLocalSucursalId, setVentaLocalSucursalId] = useState("");
   const [ventaLocalMetodoPago, setVentaLocalMetodoPago] = useState("cash");
   const [ventaLocalAcreditarPuntos, setVentaLocalAcreditarPuntos] = useState(false);
@@ -984,6 +1136,25 @@ export function Admin() {
   const [ventasExportCanal, setVentasExportCanal] = useState("");
   const [ventasExportDesde, setVentasExportDesde] = useState("");
   const [ventasExportHasta, setVentasExportHasta] = useState("");
+  const [cajaSucursalId, setCajaSucursalId] = useState("");
+  const [cajaMontoApertura, setCajaMontoApertura] = useState("0");
+  const [cajaMontoCierre, setCajaMontoCierre] = useState("0");
+  const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
+  const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
+  const [gastoProveedorId, setGastoProveedorId] = useState("");
+  const [gastoTerceroNombre, setGastoTerceroNombre] = useState("");
+  const [gastoCategoria, setGastoCategoria] = useState("");
+  const [gastoDescripcion, setGastoDescripcion] = useState("");
+  const [gastoMonto, setGastoMonto] = useState("");
+  const [gastoMedioPago, setGastoMedioPago] = useState("cash");
+  const [gastoNotas, setGastoNotas] = useState("");
+  const [nuevoProveedor, setNuevoProveedor] = useState({
+    nombre: "",
+    contacto: "",
+    telefono: "",
+    email: "",
+    notas: "",
+  });
   const [inventarioDraft, setInventarioDraft] = useState<Record<string, string>>({});
   const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
   const [inventarioFiltroProducto, setInventarioFiltroProducto] = useState("");
@@ -994,6 +1165,17 @@ export function Admin() {
   const [configBusy, setConfigBusy] = useState(false);
   const [configMsg, setConfigMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
+  const [webDiscountLoaded, setWebDiscountLoaded] = useState(false);
+  const [webDiscountDraft, setWebDiscountDraft] = useState<WebDiscountDraft>({
+    activo: false,
+    cliente: "0",
+    mayorista: "0",
+    empleado: "0",
+  });
+  const [costosCobroLoaded, setCostosCobroLoaded] = useState(false);
+  const [costosCobroDraft, setCostosCobroDraft] = useState<Record<string, PaymentFeeDraftValue>>({});
+  const [descuentosCategoriasLoaded, setDescuentosCategoriasLoaded] = useState(false);
+  const [descuentosCategoriasDraft, setDescuentosCategoriasDraft] = useState<Record<string, string>>({});
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
   const [backupErr, setBackupErr] = useState("");
@@ -1099,6 +1281,13 @@ export function Admin() {
     refetchIntervalInBackground: true,
   });
 
+  const descuentosCategoriasQuery = useQuery({
+    queryKey: ["admin", "descuentos-categorias"],
+    queryFn: () => api.get<DescuentoCategoriaAdmin[]>("/admin/descuentos-categorias"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
   const codigosQuery = useQuery({
     queryKey: ["admin", "codigos"],
     queryFn: () => api.get<Codigo[]>("/admin/codigos"),
@@ -1116,6 +1305,42 @@ export function Admin() {
   const sucursalesQuery = useQuery({
     queryKey: ["admin", "sucursales"],
     queryFn: () => api.get<SucursalAdmin[]>("/admin/sucursales"),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  });
+
+  const proveedoresQuery = useQuery({
+    queryKey: ["admin", "proveedores"],
+    queryFn: () => api.get<ProveedorAdmin[]>("/admin/proveedores"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const costosCobroQuery = useQuery({
+    queryKey: ["admin", "costos-cobro"],
+    queryFn: () => api.get<CostoCobroAdmin[]>("/admin/costos-cobro"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const cajaActualQuery = useQuery({
+    queryKey: ["admin", "caja-actual", cajaSucursalId],
+    queryFn: () => api.get<CajaSesionAdmin | null>(`/admin/caja/actual?sucursal_id=${Number(cajaSucursalId)}`),
+    enabled: Number(cajaSucursalId) > 0,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  });
+
+  const cajaSesionesQuery = useQuery({
+    queryKey: ["admin", "caja-sesiones", cajaSucursalId],
+    queryFn: () => api.get<CajaSesionAdmin[]>(`/admin/caja/sesiones${Number(cajaSucursalId) > 0 ? `?sucursal_id=${Number(cajaSucursalId)}` : ""}`),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const gastosQuery = useQuery({
+    queryKey: ["admin", "gastos", cajaSucursalId],
+    queryFn: () => api.get<GastoAdmin[]>(`/admin/gastos${Number(cajaSucursalId) > 0 ? `?sucursal_id=${Number(cajaSucursalId)}` : ""}`),
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   });
@@ -1182,6 +1407,14 @@ export function Admin() {
   }, [adminHint]);
 
   useEffect(() => {
+    if (cajaSucursalId) return;
+    const firstActiveSucursal = sucursalesQuery.data?.find((item) => item.activo);
+    if (firstActiveSucursal) {
+      setCajaSucursalId(String(firstActiveSucursal.id));
+    }
+  }, [cajaSucursalId, sucursalesQuery.data]);
+
+  useEffect(() => {
     const requestedVentasPathView = ventasViewFromPath(location.pathname);
     if (requestedVentasPathView) {
       setTab("ordenes");
@@ -1225,6 +1458,52 @@ export function Admin() {
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
+
+  useEffect(() => {
+    if (!configuracionQuery.data || webDiscountLoaded) return;
+    const byKey = new Map(configuracionQuery.data.map((item) => [item.clave, item.valor]));
+    const activeValue = String(byKey.get("descuento_web_global_activo") ?? "0").trim().toLowerCase();
+    setWebDiscountDraft({
+      activo: activeValue === "1" || activeValue === "true" || activeValue === "si" || activeValue === "yes" || activeValue === "on",
+      cliente: String(byKey.get("descuento_web_global_cliente") ?? "0"),
+      mayorista: String(byKey.get("descuento_web_global_mayorista") ?? "0"),
+      empleado: String(byKey.get("descuento_web_global_empleado") ?? "0"),
+    });
+    setWebDiscountLoaded(true);
+  }, [configuracionQuery.data, webDiscountLoaded]);
+
+  useEffect(() => {
+    if (!costosCobroQuery.data || costosCobroLoaded) return;
+    const nextDraft: Record<string, PaymentFeeDraftValue> = {};
+    for (const item of costosCobroQuery.data) {
+      nextDraft[paymentFeeDraftKey(item.proveedor, item.metodo)] = {
+        descripcion: item.descripcion,
+        porcentaje: String(Number(item.porcentaje ?? 0)),
+        activo: Boolean(item.activo),
+      };
+    }
+    setCostosCobroDraft(nextDraft);
+    setCostosCobroLoaded(true);
+  }, [costosCobroLoaded, costosCobroQuery.data]);
+
+  useEffect(() => {
+    if (!(categoriasQuery.data?.length) || !descuentosCategoriasQuery.data || descuentosCategoriasLoaded) return;
+    const currentRows = new Map(
+      descuentosCategoriasQuery.data.map((item) => [
+        discountDraftKey(item.tipo_cliente, item.categoria),
+        item.activo ? String(Number(item.descuento_porcentaje ?? 0)) : "0",
+      ]),
+    );
+    const nextDraft: Record<string, string> = {};
+    for (const categoria of categoriasQuery.data) {
+      for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
+        const key = discountDraftKey(tipoCliente, categoria.nombre);
+        nextDraft[key] = currentRows.get(key) ?? "0";
+      }
+    }
+    setDescuentosCategoriasDraft(nextDraft);
+    setDescuentosCategoriasLoaded(true);
+  }, [categoriasQuery.data, descuentosCategoriasLoaded, descuentosCategoriasQuery.data]);
 
   const uploadImageMutation = useMutation({
     mutationFn: (file: File) => {
@@ -1311,9 +1590,15 @@ export function Admin() {
   const usuarios = usuariosQuery.data ?? [];
   const movimientos = movimientosQuery.data ?? [];
   const categorias = categoriasQuery.data ?? [];
+  const descuentosCategorias = descuentosCategoriasQuery.data ?? [];
   const codigos = codigosQuery.data ?? [];
   const canjes = canjesQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
+  const proveedores = proveedoresQuery.data ?? [];
+  const costosCobro = costosCobroQuery.data ?? [];
+  const cajaActual = cajaActualQuery.data ?? null;
+  const cajaSesiones = cajaSesionesQuery.data ?? [];
+  const gastos = gastosQuery.data ?? [];
   const browserAlertsSupported = browserNotificationPermission !== "unsupported";
   const securityEvents = securityMonitorQuery.data?.persistidos ?? [];
   const blockedAccessEvents = useMemo(
@@ -1338,14 +1623,38 @@ export function Admin() {
     () => usuarios.filter((usuario) => usuario.rol === "cliente" && usuario.activo),
     [usuarios],
   );
+  const clienteVentaLocalSeleccionado = useMemo(
+    () => clientesVentaLocal.find((usuario) => String(usuario.id) === ventaLocalClienteId) ?? null,
+    [clientesVentaLocal, ventaLocalClienteId],
+  );
+  const descuentosCategoriasMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of descuentosCategorias) {
+      const descuento = Number(item.descuento_porcentaje ?? 0);
+      if (!item.activo || !Number.isFinite(descuento) || descuento <= 0) continue;
+      map.set(discountDraftKey(item.tipo_cliente, item.categoria), Math.max(0, Math.min(100, descuento)));
+    }
+    return map;
+  }, [descuentosCategorias]);
   const productosVentaLocal = useMemo(
     () =>
       productos.filter((producto) =>
         producto.activo &&
         (producto.tipo_producto === "venta" || producto.tipo_producto === "mixto") &&
         Number(producto.precio_dinero ?? 0) > 0
-      ),
-    [productos],
+      ).map((producto) => {
+        const tipoClientePrecio = clienteVentaLocalSeleccionado?.tipo_cliente ?? "cliente";
+        const descuento = descuentosCategoriasMap.get(discountDraftKey(tipoClientePrecio, producto.categoria ?? "")) ?? 0;
+        const precioBase = Number(producto.precio_dinero ?? 0);
+        const precioFinal = Math.round((precioBase * (1 - descuento / 100) + Number.EPSILON) * 100) / 100;
+        return {
+          ...producto,
+          precio_dinero_original: precioBase,
+          precio_dinero: precioFinal,
+          descuento_porcentaje_aplicado: descuento,
+        };
+      }),
+    [clienteVentaLocalSeleccionado?.tipo_cliente, descuentosCategoriasMap, productos],
   );
   const productoVentaLocalSeleccionado = useMemo(
     () => productosVentaLocal.find((producto) => Number(producto.id) === Number(ventaLocalProductoId)) ?? null,
@@ -2131,15 +2440,24 @@ export function Admin() {
     setErrMsg("");
     setOkMsg("");
     try {
-      if (!ventaLocalClienteId) throw new Error("Selecciona un cliente para la venta local.");
       if (!ventaLocalSucursalId) throw new Error("Selecciona una sucursal para la venta local.");
       if (!ventaLocalItems.length) throw new Error("Agrega al menos un producto a la venta local.");
+      if (!ventaLocalClienteId && (!ventaLocalClienteManualNombre.trim() || !ventaLocalClienteManualDni.trim())) {
+        throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
+      }
 
       const result = await commandMutation.mutateAsync({
         method: "post",
         path: "/admin/ventas-locales",
         body: {
-          usuario_id: Number(ventaLocalClienteId),
+          usuario_id: ventaLocalClienteId ? Number(ventaLocalClienteId) : undefined,
+          cliente_local: ventaLocalClienteId
+            ? undefined
+            : {
+                nombre: ventaLocalClienteManualNombre.trim(),
+                dni: ventaLocalClienteManualDni.trim(),
+                telefono: ventaLocalClienteManualTelefono.trim() || undefined,
+              },
           sucursal_id: Number(ventaLocalSucursalId),
           metodo_pago: ventaLocalMetodoPago,
           acreditar_puntos: ventaLocalAcreditarPuntos,
@@ -2156,8 +2474,12 @@ export function Admin() {
       }) as { ordenId?: number };
       setVentaLocalItems([]);
       setVentaLocalNotas("");
-      setOkMsg(`Venta local registrada${result.ordenId ? ` como orden #${result.ordenId}` : ""}. No se desconto stock web.`);
-      await refreshQueries([["admin", "ordenes"], ["admin", "movimientos"], ["admin", "usuarios"], ["admin", "stats"]]);
+      setVentaLocalClienteId("");
+      setVentaLocalClienteManualNombre("");
+      setVentaLocalClienteManualDni("");
+      setVentaLocalClienteManualTelefono("");
+      setOkMsg(`Venta local registrada${result.ordenId ? ` como orden #${result.ordenId}` : ""}. El stock compartido de la sucursal se actualizo.`);
+      await refreshQueries([["admin", "ordenes"], ["admin", "movimientos"], ["admin", "usuarios"], ["admin", "stats"], ["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -2230,6 +2552,180 @@ export function Admin() {
     }
   }
 
+  async function abrirCaja() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!cajaSucursalId) throw new Error("Selecciona una sucursal para abrir caja.");
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: "/admin/caja/apertura",
+        body: {
+          sucursal_id: Number(cajaSucursalId),
+          monto_apertura: Number(cajaMontoApertura || 0),
+          observaciones: cajaObservacionesApertura.trim() || undefined,
+        },
+      });
+      setCajaObservacionesApertura("");
+      setCajaMontoCierre(cajaMontoApertura || "0");
+      setOkMsg("Caja abierta correctamente.");
+      await refreshQueries([["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cerrarCaja() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!cajaActual?.id) throw new Error("No hay una caja abierta para cerrar.");
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: `/admin/caja/${cajaActual.id}/cierre`,
+        body: {
+          monto_cierre_declarado: Number(cajaMontoCierre || 0),
+          observaciones: cajaObservacionesCierre.trim() || undefined,
+        },
+      });
+      setCajaObservacionesCierre("");
+      setOkMsg("Caja cerrada correctamente.");
+      await refreshQueries([["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId], ["admin", "gastos", cajaSucursalId]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function registrarGasto() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!cajaSucursalId) throw new Error("Selecciona una sucursal para registrar el gasto.");
+      if (!gastoCategoria.trim() || !gastoDescripcion.trim()) {
+        throw new Error("Completa categoria y descripcion del gasto.");
+      }
+      if (!gastoProveedorId && !gastoTerceroNombre.trim()) {
+        throw new Error("Selecciona un proveedor o escribe un tercero.");
+      }
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: "/admin/gastos",
+        body: {
+          sucursal_id: Number(cajaSucursalId),
+          proveedor_id: gastoProveedorId ? Number(gastoProveedorId) : undefined,
+          tercero_nombre: gastoProveedorId ? undefined : gastoTerceroNombre.trim(),
+          categoria: gastoCategoria.trim(),
+          descripcion: gastoDescripcion.trim(),
+          medio_pago: gastoMedioPago,
+          monto: Number(gastoMonto || 0),
+          notas: gastoNotas.trim() || undefined,
+        },
+      });
+      setGastoProveedorId("");
+      setGastoTerceroNombre("");
+      setGastoCategoria("");
+      setGastoDescripcion("");
+      setGastoMonto("");
+      setGastoMedioPago("cash");
+      setGastoNotas("");
+      setOkMsg("Gasto registrado correctamente.");
+      await refreshQueries([["admin", "gastos", cajaSucursalId], ["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function crearProveedor() {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      if (!nuevoProveedor.nombre.trim()) throw new Error("El nombre del proveedor es obligatorio.");
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: "/admin/proveedores",
+        body: {
+          nombre: nuevoProveedor.nombre.trim(),
+          contacto: nuevoProveedor.contacto.trim() || undefined,
+          telefono: nuevoProveedor.telefono.trim() || undefined,
+          email: nuevoProveedor.email.trim() || undefined,
+          notas: nuevoProveedor.notas.trim() || undefined,
+        },
+      });
+      setNuevoProveedor({ nombre: "", contacto: "", telefono: "", email: "", notas: "" });
+      setOkMsg("Proveedor creado.");
+      await refreshQueries([["admin", "proveedores"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function updateCostoCobroDraft(
+    proveedor: string,
+    metodo: string,
+    patch: Partial<PaymentFeeDraftValue>,
+  ) {
+    const key = paymentFeeDraftKey(proveedor, metodo);
+    setCostosCobroDraft((prev) => ({
+      ...prev,
+      [key]: {
+        descripcion: prev[key]?.descripcion ?? "",
+        porcentaje: prev[key]?.porcentaje ?? "0",
+        activo: prev[key]?.activo ?? true,
+        ...patch,
+      },
+    }));
+  }
+
+  async function guardarCostosCobro() {
+    setErrMsg("");
+    setOkMsg("");
+    setBusy(true);
+    try {
+      const payload = costosCobro.map((item) => {
+        const draft = costosCobroDraft[paymentFeeDraftKey(item.proveedor, item.metodo)] ?? {
+          descripcion: item.descripcion,
+          porcentaje: String(item.porcentaje ?? 0),
+          activo: Boolean(item.activo),
+        };
+        const porcentaje = Math.max(0, Math.min(100, Number(draft.porcentaje || 0)));
+        if (!Number.isFinite(porcentaje)) {
+          throw new Error(`El porcentaje de ${formatProveedorPago(item.proveedor)} / ${formatMetodoPago(item.metodo)} es invalido.`);
+        }
+        return {
+          proveedor: item.proveedor,
+          metodo: item.metodo,
+          descripcion: draft.descripcion.trim() || item.descripcion,
+          porcentaje,
+          activo: draft.activo,
+        };
+      });
+
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: "/admin/costos-cobro",
+        body: payload,
+      });
+      setOkMsg("Costos de cobro guardados.");
+      await refreshQueries([["admin", "costos-cobro"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function crearCategoria() {
     setErrMsg("");
     setOkMsg("");
@@ -2248,8 +2744,96 @@ export function Admin() {
         },
       });
       setNuevaCategoria({ nombre: "" });
+      setDescuentosCategoriasLoaded(false);
       setOkMsg("Categoria creada.");
-      await refreshQueries([["admin", "categorias"]]);
+      await refreshQueries([["admin", "categorias"], ["admin", "descuentos-categorias"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function updateDescuentoCategoriaDraft(tipoCliente: TipoCliente, categoria: string, rawValue: string) {
+    const key = discountDraftKey(tipoCliente, categoria);
+    setDescuentosCategoriasDraft((prev) => ({
+      ...prev,
+      [key]: normalizeDiscountDraftValue(rawValue),
+    }));
+  }
+
+  async function guardarDescuentosCategorias() {
+    setErrMsg("");
+    setOkMsg("");
+    setBusy(true);
+    try {
+      for (const categoria of categorias) {
+        for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
+          const rawValue = descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "0";
+          const descuento = Math.max(0, Math.min(100, Number(rawValue || 0)));
+          if (!Number.isFinite(descuento)) {
+            throw new Error(`Hay un descuento invalido en ${categoria.nombre} para ${formatTipoClienteLabel(tipoCliente).toLowerCase()}.`);
+          }
+          await commandMutation.mutateAsync({
+            method: "put",
+            path: "/admin/descuentos-categorias",
+            body: {
+              tipo_cliente: tipoCliente,
+              categoria: categoria.nombre,
+              descuento_porcentaje: descuento,
+              activo: descuento > 0,
+            },
+          });
+        }
+      }
+      setOkMsg("Descuentos por categoria guardados.");
+      await refreshQueries([["admin", "descuentos-categorias"], ["admin", "productos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function guardarCampaniaWeb() {
+    setErrMsg("");
+    setOkMsg("");
+    setBusy(true);
+    try {
+      const values = {
+        cliente: Math.max(0, Math.min(100, Number(webDiscountDraft.cliente || 0))),
+        mayorista: Math.max(0, Math.min(100, Number(webDiscountDraft.mayorista || 0))),
+        empleado: Math.max(0, Math.min(100, Number(webDiscountDraft.empleado || 0))),
+      };
+      if (Object.values(values).some((value) => !Number.isFinite(value))) {
+        throw new Error("Revisa los porcentajes de la campana web.");
+      }
+
+      await Promise.all([
+        commandMutation.mutateAsync({
+          method: "put",
+          path: "/admin/configuracion/descuento_web_global_activo",
+          body: { valor: webDiscountDraft.activo ? "1" : "0", descripcion: "Activa una campana global web temporal." },
+        }),
+        commandMutation.mutateAsync({
+          method: "put",
+          path: "/admin/configuracion/descuento_web_global_cliente",
+          body: { valor: String(values.cliente), descripcion: "Descuento global web para clientes." },
+        }),
+        commandMutation.mutateAsync({
+          method: "put",
+          path: "/admin/configuracion/descuento_web_global_mayorista",
+          body: { valor: String(values.mayorista), descripcion: "Descuento global web para mayoristas." },
+        }),
+        commandMutation.mutateAsync({
+          method: "put",
+          path: "/admin/configuracion/descuento_web_global_empleado",
+          body: { valor: String(values.empleado), descripcion: "Descuento global web para empleados." },
+        }),
+      ]);
+
+      setOkMsg("Campana global web actualizada.");
+      await refreshQueries([["admin", "configuracion"], ["admin", "productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -2277,6 +2861,8 @@ export function Admin() {
       nombre: usuario.nombre,
       email: usuario.email,
       rol: usuario.rol,
+      tipo_cliente: usuario.tipo_cliente ?? "cliente",
+      descuento_porcentaje: "0",
       dni: usuario.dni || "",
       telefono: usuario.telefono || "",
     });
@@ -2290,6 +2876,8 @@ export function Admin() {
       nombre: "",
       email: "",
       rol: "cliente",
+      tipo_cliente: "cliente",
+      descuento_porcentaje: "0",
       dni: "",
       telefono: "",
     });
@@ -2316,6 +2904,8 @@ export function Admin() {
           nombre: editUsuarioDraft.nombre.trim(),
           email: editUsuarioDraft.email.trim().toLowerCase(),
           rol: editUsuarioDraft.rol,
+          tipo_cliente: editUsuarioDraft.rol === "cliente" ? editUsuarioDraft.tipo_cliente : "cliente",
+          descuento_porcentaje: 0,
           dni: editUsuarioDraft.dni.trim() || null,
           telefono: editUsuarioDraft.telefono.trim() || null,
         },
@@ -2436,10 +3026,12 @@ export function Admin() {
           email: nuevoUsuario.email,
           password: nuevoUsuario.password,
           rol: nuevoUsuario.rol,
+          tipo_cliente: nuevoUsuario.rol === "cliente" ? nuevoUsuario.tipo_cliente : "cliente",
+          descuento_porcentaje: 0,
           dni: nuevoUsuario.rol === "cliente" ? nuevoUsuario.dni : undefined,
         },
       });
-      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "vendedor", dni: "" });
+      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "vendedor", tipo_cliente: "cliente", descuento_porcentaje: "0", dni: "" });
       setOkMsg("Usuario creado.");
       await refreshQueries([["admin", "usuarios"]]);
     } catch (error) {
@@ -3463,7 +4055,21 @@ export function Admin() {
                                         value={editUsuarioDraft.dni}
                                         onChange={(event) => setEditUsuarioDraft((prev) => ({ ...prev, dni: event.target.value }))}
                                       />
+                                      <select
+                                        className="adm-input"
+                                        value={editUsuarioDraft.tipo_cliente}
+                                        onChange={(event) => setEditUsuarioDraft((prev) => ({ ...prev, tipo_cliente: event.target.value as TipoCliente }))}
+                                      >
+                                        <option value="cliente">Cliente</option>
+                                        <option value="mayorista">Mayorista</option>
+                                        <option value="empleado">Empleado</option>
+                                      </select>
                                     </div>
+                                  ) : null}
+                                  {editUsuarioDraft.rol === "cliente" ? (
+                                    <p className="adm-field-help" style={{ marginTop: "0.45rem" }}>
+                                      Los descuentos de clientes se manejan por tipo y categoria desde la seccion Categorias.
+                                    </p>
                                   ) : null}
                                   <div className="adm-inline-points-actions">
                                     <button className="adm-btn-primary adm-btn-inline" disabled={busy} onClick={() => guardarEdicionUsuario(usuario.id)}>
@@ -4219,7 +4825,7 @@ export function Admin() {
                   <div>
                     <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>Registrar venta local</h3>
                     <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, pero no descuenta stock web ni stock de sabores.
+                      Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia.
                     </p>
                   </div>
                   <div className="adm-form-grid">
@@ -4232,6 +4838,33 @@ export function Admin() {
                           </option>
                         ))}
                       </select>
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Cliente manual" tip="Si no existe como usuario web, puedes registrar nombre y DNI para dejar asentada la venta presencial.">
+                      <input
+                        className="adm-input"
+                        placeholder="Nombre cliente manual"
+                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualNombre}
+                        disabled={Boolean(ventaLocalClienteId)}
+                        onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
+                      />
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="DNI manual" tip="Documento del cliente manual. Se usa para reconocerlo en futuras ventas locales.">
+                      <input
+                        className="adm-input"
+                        placeholder="DNI cliente manual"
+                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
+                        disabled={Boolean(ventaLocalClienteId)}
+                        onChange={(event) => setVentaLocalClienteManualDni(event.target.value)}
+                      />
+                    </FieldWithFloatingTip>
+                    <FieldWithFloatingTip label="Telefono manual" tip="Dato opcional para ubicar al cliente manual si hace falta contactarlo.">
+                      <input
+                        className="adm-input"
+                        placeholder="Telefono opcional"
+                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualTelefono}
+                        disabled={Boolean(ventaLocalClienteId)}
+                        onChange={(event) => setVentaLocalClienteManualTelefono(event.target.value)}
+                      />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Sucursal" tip="Lugar donde se realizo la venta presencial. Ayuda a ordenar reportes por punto de venta.">
                       <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
@@ -4260,6 +4893,11 @@ export function Admin() {
                       Acreditar puntos de compra al cliente
                     </label>
                   </FieldWithFloatingTip>
+                  <p className="adm-inline-tip" style={{ margin: 0 }}>
+                    {clienteVentaLocalSeleccionado
+                      ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. Los precios se ajustan por categoria segun ese perfil.`
+                      : "Si completas un cliente manual, la venta queda asociada a DNI/nombre y usa el perfil cliente comun para precios. No acredita puntos de usuario web."}
+                  </p>
                   <div className="adm-form-grid">
                     <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">
                       <select
@@ -4278,7 +4916,7 @@ export function Admin() {
                         ))}
                       </select>
                     </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Cantidad" tip="Cantidad de unidades o cajas del producto seleccionado que se agregan a esta venta.">
+                    <FieldWithFloatingTip label="Cantidad" tip="Cantidad de cajas del producto seleccionado. Si la caja es de 3 o 6, luego podras repartir cantidad x capacidad entre los sabores.">
                       <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Agregar producto" tip="Suma el producto elegido al detalle de la venta. Puedes agregar varios productos antes de registrar.">
@@ -4517,27 +5155,268 @@ export function Admin() {
                 </>
               }
               reportesContent={
-                <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
-                  <h3 style={{ margin: 0, color: "#3D1A02" }}>Exportar ventas</h3>
-                  <div className="adm-form-grid">
-                    <select className="adm-input" value={ventasExportCanal} onChange={(event) => setVentasExportCanal(event.target.value)}>
-                      <option value="">Web + locales</option>
-                      <option value="web">Solo web</option>
-                      <option value="admin">Solo local admin</option>
-                      <option value="vendedor">Solo local vendedor</option>
-                    </select>
-                    <input className="adm-input" type="date" value={ventasExportDesde} onChange={(event) => setVentasExportDesde(event.target.value)} />
-                    <input className="adm-input" type="date" value={ventasExportHasta} onChange={(event) => setVentasExportHasta(event.target.value)} />
-                    <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("pdf")} disabled={busy}>
-                      Descargar PDF
-                    </button>
-                    <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("xlsx")} disabled={busy}>
-                      Excel
+                <div style={{ display: "grid", gap: "1rem" }}>
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Exportar ventas</h3>
+                    <div className="adm-form-grid">
+                      <select className="adm-input" value={ventasExportCanal} onChange={(event) => setVentasExportCanal(event.target.value)}>
+                        <option value="">Web + locales</option>
+                        <option value="web">Solo web</option>
+                        <option value="admin">Solo local admin</option>
+                        <option value="vendedor">Solo local vendedor</option>
+                      </select>
+                      <input className="adm-input" type="date" value={ventasExportDesde} onChange={(event) => setVentasExportDesde(event.target.value)} />
+                      <input className="adm-input" type="date" value={ventasExportHasta} onChange={(event) => setVentasExportHasta(event.target.value)} />
+                      <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("pdf")} disabled={busy}>
+                        Descargar PDF
+                      </button>
+                      <button type="button" className="adm-btn-secondary" onClick={() => void descargarVentas("xlsx")} disabled={busy}>
+                        Excel
+                      </button>
+                    </div>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      El PDF se genera como archivo real para descargar. Todas las fechas salen en horario de Buenos Aires.
+                    </p>
+                  </div>
+
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Costos de cobro</h3>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      Carga aca el porcentaje que te descuenta cada medio. En los reportes se mostrara bruto, comision y neto real. Efectivo normalmente va en 0%.
+                    </p>
+                    <div className="admin-table-wrap">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Proveedor</th>
+                            <th>Medio</th>
+                            <th>Descripcion</th>
+                            <th>% Comision</th>
+                            <th>Activo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {costosCobro.length === 0 ? (
+                            <tr>
+                              <td colSpan={5}>
+                                <div className="adm-empty">No hay reglas de costos de cobro para editar.</div>
+                              </td>
+                            </tr>
+                          ) : null}
+                          {costosCobro.map((item) => {
+                            const key = paymentFeeDraftKey(item.proveedor, item.metodo);
+                            const draft = costosCobroDraft[key] ?? {
+                              descripcion: item.descripcion,
+                              porcentaje: String(item.porcentaje ?? 0),
+                              activo: Boolean(item.activo),
+                            };
+                            return (
+                              <tr key={`costo-cobro-${item.id}`}>
+                                <td>{formatProveedorPago(item.proveedor)}</td>
+                                <td>{formatMetodoPago(item.metodo)}</td>
+                                <td>
+                                  <input
+                                    className="adm-input"
+                                    value={draft.descripcion}
+                                    onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { descripcion: event.target.value })}
+                                  />
+                                </td>
+                                <td>
+                                  <input
+                                    className="adm-input"
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    step="0.01"
+                                    value={draft.porcentaje}
+                                    onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { porcentaje: normalizeDiscountDraftValue(event.target.value) })}
+                                  />
+                                </td>
+                                <td>
+                                  <label style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", fontWeight: 700, color: "#6C3B15" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={draft.activo}
+                                      onChange={(event) => updateCostoCobroDraft(item.proveedor, item.metodo, { activo: event.target.checked })}
+                                    />
+                                    {draft.activo ? "Si" : "No"}
+                                  </label>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button type="button" className="adm-btn-primary" disabled={busy || costosCobro.length === 0} onClick={() => void guardarCostosCobro()}>
+                      {busy ? "Guardando..." : "Guardar costos de cobro"}
                     </button>
                   </div>
-                  <p className="adm-inline-tip" style={{ margin: 0 }}>
-                    El PDF se genera como archivo real para descargar. Todas las fechas salen en horario de Buenos Aires.
-                  </p>
+
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Caja diaria</h3>
+                    <div className="adm-form-grid">
+                      <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
+                        <option value="">Sucursal</option>
+                        {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                          <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {cajaActual ? (
+                      <>
+                        <div className="adm-form-grid">
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Sucursal</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.sucursal_nombre}</p>
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Fecha operativa</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.fecha_operativa}</p>
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Ventas</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalVentas)}</p>
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Gastos</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.totalGastos)}</p>
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Efectivo del dia</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaActual.summary.efectivoSistema)}</p>
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Movimientos</strong>
+                            <p style={{ margin: "0.25rem 0 0" }}>{cajaActual.summary.cantidadMovimientos}</p>
+                          </div>
+                        </div>
+                        <p className="adm-inline-tip" style={{ margin: 0 }}>
+                          La caja se abre automaticamente a las 00:00 y cierra al terminar el dia en horario Buenos Aires. Todas las ventas locales y gastos de esta sucursal se acumulan en este resumen diario.
+                        </p>
+                        <div className="adm-form-grid">
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Ventas por medio</strong>
+                            {Object.entries(cajaActual.summary.ventasPorMedio).map(([medio, monto]) => (
+                              <p key={`venta-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                                {formatMetodoPago(medio)}: {formatMoney(monto)}
+                              </p>
+                            ))}
+                          </div>
+                          <div className="admin-card" style={{ padding: "0.9rem" }}>
+                            <strong>Gastos por medio</strong>
+                            {Object.entries(cajaActual.summary.gastosPorMedio).map(([medio, monto]) => (
+                              <p key={`gasto-${medio}`} style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                                {formatMetodoPago(medio)}: {formatMoney(monto)}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="adm-inline-tip" style={{ margin: 0 }}>
+                        No se pudo generar la caja diaria para esta sucursal.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Registrar gasto</h3>
+                    <div className="adm-form-grid">
+                      <select className="adm-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
+                        <option value="">Proveedor</option>
+                        {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
+                          <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                        ))}
+                      </select>
+                      <input className="adm-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} onChange={(event) => setGastoTerceroNombre(event.target.value)} disabled={Boolean(gastoProveedorId)} />
+                      <input className="adm-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
+                      <input className="adm-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
+                      <select className="adm-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
+                        <option value="cash">Efectivo</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="qr">QR</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                      <input className="adm-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
+                      <input className="adm-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
+                      <button type="button" className="adm-btn-secondary" disabled={busy || !cajaActual} onClick={() => void registrarGasto()}>
+                        Guardar gasto
+                      </button>
+                    </div>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      Los gastos quedan atados automaticamente a la caja del dia de tu usuario en la sucursal elegida.
+                    </p>
+                  </div>
+
+                  <div className="adm-form-grid">
+                    <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                      <h3 style={{ margin: 0, color: "#3D1A02" }}>Nuevo proveedor</h3>
+                      <input className="adm-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
+                      <input className="adm-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
+                      <input className="adm-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
+                      <input className="adm-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
+                      <input className="adm-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
+                      <button type="button" className="adm-btn-secondary" disabled={busy} onClick={() => void crearProveedor()}>
+                        Crear proveedor
+                      </button>
+                    </div>
+
+                    <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                      <h3 style={{ margin: 0, color: "#3D1A02" }}>Ultimos gastos</h3>
+                      {gastos.length === 0 ? (
+                        <div className="adm-empty">Todavia no hay gastos cargados.</div>
+                      ) : (
+                        gastos.slice(0, 6).map((gasto) => (
+                          <div key={gasto.id} style={{ borderBottom: "1px solid rgba(180,84,20,0.14)", paddingBottom: "0.55rem" }}>
+                            <strong>{gasto.descripcion}</strong>
+                            <p style={{ margin: "0.2rem 0 0", color: "#8B5A30" }}>
+                              {gasto.categoria} / {formatMoney(gasto.monto)} / {formatMetodoPago(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
+                    <h3 style={{ margin: 0, color: "#3D1A02" }}>Historial de cajas</h3>
+                    {cajaSesiones.length === 0 ? (
+                      <div className="adm-empty">Todavia no hay cajas registradas.</div>
+                    ) : (
+                      <div className="admin-table-wrap">
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Sucursal</th>
+                              <th>Estado</th>
+                              <th>Apertura</th>
+                              <th>Ventas</th>
+                              <th>Gastos</th>
+                              <th>Efectivo sistema</th>
+                              <th>Diferencia</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cajaSesiones.slice(0, 12).map((sesion) => (
+                              <tr key={sesion.id}>
+                                <td>{sesion.fecha_operativa}</td>
+                                <td>{sesion.sucursal_nombre}</td>
+                                <td>{sesion.estado === "abierta" ? "Abierta" : "Cerrada"}</td>
+                                <td>{formatMoney(sesion.monto_apertura)}</td>
+                                <td>{formatMoney(sesion.summary.totalVentas)}</td>
+                                <td>{formatMoney(sesion.summary.totalGastos)}</td>
+                                <td>{formatMoney(sesion.summary.efectivoSistema)}</td>
+                                <td>{sesion.diferencia_cierre === null ? "-" : formatMoney(sesion.diferencia_cierre)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               }
             />
@@ -4545,6 +5424,111 @@ export function Admin() {
 
           {tab === "categorias" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Descuentos por categoria" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Define el descuento fijo por tipo de cliente y categoria. Esto aplica tanto en web como en venta local. Si dejas 0%, esa categoria queda sin descuento para ese perfil.
+                </p>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Categoria</th>
+                        <th>Cliente</th>
+                        <th>Mayorista</th>
+                        <th>Empleado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categorias.length === 0 ? (
+                        <tr>
+                          <td colSpan={4}>
+                            <div className="adm-empty">Primero crea categorias para poder asignar descuentos.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {categorias.map((categoria) => (
+                        <tr key={`discount-${categoria.id}`}>
+                          <td>{categoria.nombre}</td>
+                          {DISCOUNT_CLIENT_TYPES.map((tipoCliente) => (
+                            <td key={`${categoria.id}-${tipoCliente}`}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                className="adm-input"
+                                value={descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "0"}
+                                onChange={(event) => updateDescuentoCategoriaDraft(tipoCliente, categoria.nombre, event.target.value)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button className="adm-btn-primary" disabled={busy || categorias.length === 0} onClick={guardarDescuentosCategorias}>
+                  {busy ? "Guardando..." : "Guardar descuentos por categoria"}
+                </button>
+              </div>
+
+              <SectionTitle title="Campana Web Global" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Usa esta campana para Hot Sale, Black Friday o promos generales de la tienda online. Solo afecta compras web y no se aplica a ventas locales.
+                </p>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    checked={webDiscountDraft.activo}
+                    onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, activo: event.target.checked }))}
+                  />
+                  Activar campana global web
+                </label>
+                <div className="adm-form-grid">
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Cliente</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      className="adm-input"
+                      value={webDiscountDraft.cliente}
+                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, cliente: normalizeDiscountDraftValue(event.target.value) }))}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Mayorista</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      className="adm-input"
+                      value={webDiscountDraft.mayorista}
+                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, mayorista: normalizeDiscountDraftValue(event.target.value) }))}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Empleado</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      className="adm-input"
+                      value={webDiscountDraft.empleado}
+                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, empleado: normalizeDiscountDraftValue(event.target.value) }))}
+                    />
+                  </label>
+                </div>
+                <button className="adm-btn-primary" disabled={busy} onClick={guardarCampaniaWeb}>
+                  {busy ? "Guardando..." : "Guardar campana web"}
+                </button>
+              </div>
+
               <SectionTitle title="Nueva categoria" />
               <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
                 <input className="adm-input" placeholder="Nombre" value={nuevaCategoria.nombre} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, nombre: event.target.value }))} />
@@ -4962,7 +5946,17 @@ export function Admin() {
                   <option value="admin">Admin</option>
                 </select>
                 {nuevoUsuario.rol === "cliente" ? (
-                  <input className="adm-input" placeholder="DNI" value={nuevoUsuario.dni} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, dni: event.target.value }))} />
+                  <>
+                    <input className="adm-input" placeholder="DNI" value={nuevoUsuario.dni} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, dni: event.target.value }))} />
+                    <select className="adm-input" value={nuevoUsuario.tipo_cliente} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, tipo_cliente: event.target.value as TipoCliente }))}>
+                      <option value="cliente">Cliente</option>
+                      <option value="mayorista">Mayorista</option>
+                      <option value="empleado">Empleado</option>
+                    </select>
+                    <p className="adm-field-help" style={{ margin: 0 }}>
+                      Los descuentos se configuran por tipo y categoria desde la seccion Categorias.
+                    </p>
+                  </>
                 ) : null}
                 <button className="adm-btn-primary" disabled={busy} onClick={crearUsuario}>
                   {busy ? "Creando..." : "Crear usuario"}

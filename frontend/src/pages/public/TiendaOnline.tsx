@@ -67,6 +67,16 @@ function productPrice(producto: Producto): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function productOriginalPrice(producto: Producto): number {
+  const n = Number(producto.precio_dinero_original ?? producto.precio_dinero_lista ?? producto.precio_dinero ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function productDiscount(producto: Producto): number {
+  const n = Number(producto.descuento_porcentaje_aplicado ?? 0);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
 function productHasStock(producto: Producto): boolean {
   if (isCajaSabores(producto)) {
     const capacity = Number(producto.capacidad_sabores ?? 0);
@@ -1008,6 +1018,19 @@ export function TiendaOnline() {
                         <span>Precio</span>
                         <span className="cost">{money(producto.precio_dinero)}</span>
                       </div>
+                      {productDiscount(producto) > 0 ? (
+                        <>
+                          <div className="product-card-divider" />
+                          <div className="product-card-row" style={{ color: "#8B5A30" }}>
+                            <span>Lista</span>
+                            <span style={{ textDecoration: "line-through" }}>{money(productOriginalPrice(producto))}</span>
+                          </div>
+                          <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
+                            <span>Descuento {productDiscount(producto)}%</span>
+                            <span>{producto.tipo_cliente_precio === "empleado" ? "Empleado" : "Mayorista"}</span>
+                          </div>
+                        </>
+                      ) : null}
                       {(producto.puntaje_al_comprar ?? 0) > 0 ? (
                         <>
                           <div className="product-card-divider" />
@@ -1203,6 +1226,19 @@ export function TiendaOnline() {
                   <span>Precio</span>
                   <span className="cost">{money(productoModal.precio_dinero)}</span>
                 </div>
+                {productDiscount(productoModal) > 0 ? (
+                  <>
+                    <div className="product-card-divider" />
+                    <div className="product-card-row" style={{ color: "#8B5A30" }}>
+                      <span>Lista</span>
+                      <span style={{ textDecoration: "line-through" }}>{money(productOriginalPrice(productoModal))}</span>
+                    </div>
+                    <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
+                      <span>Descuento {productDiscount(productoModal)}%</span>
+                      <span>{productoModal.tipo_cliente_precio === "empleado" ? "Empleado" : "Mayorista"}</span>
+                    </div>
+                  </>
+                ) : null}
                 {(productoModal.puntaje_al_comprar ?? 0) > 0 ? (
                   <>
                     <div className="product-card-divider" />

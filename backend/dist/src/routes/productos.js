@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
+const auth_1 = require("../auth");
+const customerPricing_1 = require("../services/customerPricing");
 const urlSafety_1 = require("../urlSafety");
 const router = (0, express_1.Router)();
 // Catálogo público — no requiere autenticación
@@ -56,6 +58,11 @@ router.get("/", async (req, res) => {
         res.json([]);
         return;
     }
+    const auth = (0, auth_1.getAuthPayload)(req);
+    const pricingProfile = auth?.rol === "cliente"
+        ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
+        : null;
+    const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "web", profile: pricingProfile });
     const allIds = rows.map((row) => row.id);
     const allPlaceholders = allIds.map(() => "?").join(", ");
     const [flavorRowsRaw] = await db_1.pool.query(`SELECT ps.producto_id, s.id, s.nombre, s.descripcion, s.activo,
@@ -124,6 +131,7 @@ router.get("/", async (req, res) => {
         const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
         const stockReservadoSucursal = Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0);
         const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
+        const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
         return {
             id: row.id,
             nombre: row.nombre,
@@ -137,7 +145,11 @@ router.get("/", async (req, res) => {
             tipo_producto: row.tipo_producto,
             configuracion_tipo: row.configuracion_tipo,
             capacidad_sabores: row.capacidad_sabores === null ? null : Number(row.capacidad_sabores),
-            precio_dinero: row.precio_dinero,
+            precio_dinero: pricing.precioFinal,
+            precio_dinero_original: pricing.precioLista,
+            precio_dinero_lista: pricing.precioLista,
+            descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+            tipo_cliente_precio: pricing.tipoCliente,
             precio_puntos: row.precio_puntos,
             puntos_para_canjear: row.puntos_para_canjear,
             stock_disponible: stockSucursal,
