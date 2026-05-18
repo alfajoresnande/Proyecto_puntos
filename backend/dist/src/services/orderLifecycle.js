@@ -250,15 +250,15 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
     if (!cancellableStates.includes(previousState)) {
         throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
     }
-    const stockItems = checkoutStockItems(await getOrderStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
-    const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
+    const stockItems = checkoutStockItems(await getOrderStockItems(conn, orderId), `Cancelacion orden #${orderId}`);
+    const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Cancelacion orden #${orderId}`);
     if (order.sucursal_retiro_id && (stockItems.length || flavorItems.length)) {
         if (previousState === "pendiente_pago" || previousState === "borrador") {
             if (stockItems.length) {
                 await (0, stock_1.releaseStockForCheckoutItems)(conn, {
                     sucursalId: order.sucursal_retiro_id,
                     items: stockItems,
-                    referencia: `cancelacion urgente orden #${orderId}`,
+                    referencia: `cancelacion orden #${orderId}`,
                     creadoPor,
                     ordenId: orderId,
                 });
@@ -267,7 +267,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
                 await (0, stock_1.releaseFlavorStockForCheckoutItems)(conn, {
                     sucursalId: order.sucursal_retiro_id,
                     items: flavorItems,
-                    referencia: `cancelacion urgente orden #${orderId}`,
+                    referencia: `cancelacion orden #${orderId}`,
                     creadoPor,
                     ordenId: orderId,
                 });
@@ -278,7 +278,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
                 await (0, stock_1.restoreStockForCheckoutItems)(conn, {
                     sucursalId: order.sucursal_retiro_id,
                     items: stockItems,
-                    referencia: `cancelacion urgente orden #${orderId}`,
+                    referencia: `cancelacion orden #${orderId}`,
                     creadoPor,
                     ordenId: orderId,
                 });
@@ -287,7 +287,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
                 await (0, stock_1.restoreFlavorStockForCheckoutItems)(conn, {
                     sucursalId: order.sucursal_retiro_id,
                     items: flavorItems,
-                    referencia: `cancelacion urgente orden #${orderId}`,
+                    referencia: `cancelacion orden #${orderId}`,
                     creadoPor,
                     ordenId: orderId,
                 });
@@ -299,7 +299,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
             usuarioId: Number(order.usuario_id),
             tipo: "devolucion_canje",
             puntos: Number(order.total_puntos),
-            descripcion: `Devolucion puntos por cancelacion urgente orden #${orderId}`,
+            descripcion: `Devolucion puntos por cancelacion orden #${orderId}`,
             referenciaId: orderId,
             referenciaTipo: "ordenes",
             creadoPor: creadoPor ?? undefined,
@@ -319,7 +319,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
     const cleanReason = reason.trim();
     const cleanRefundMessage = refundMessage?.trim() || "";
     const cancellationNote = [
-        `Cancelacion urgente: ${cleanReason}`,
+        `Cancelacion de pedido: ${cleanReason}`,
         cleanRefundMessage ? `Mensaje sobre devolucion: ${cleanRefundMessage}` : null,
     ].filter(Boolean).join(" ");
     await (0, db_1.qRun)(conn, `UPDATE ordenes

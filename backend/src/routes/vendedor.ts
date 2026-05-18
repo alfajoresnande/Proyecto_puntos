@@ -720,15 +720,23 @@ router.post("/caja/:id/cierre", async (req, res, next) => {
 
 router.get("/caja/sesiones", async (req, res, next) => {
   try {
-    await closeStaleCajaSesiones(pool, { usuarioId: req.user!.id });
+    const sucursalId = Number(req.query.sucursal_id ?? 0);
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+    if (Number.isInteger(sucursalId) && sucursalId > 0) {
+      where.push("sucursal_id = ?");
+      params.push(sucursalId);
+    }
+
+    await closeStaleCajaSesiones(pool, Number.isInteger(sucursalId) && sucursalId > 0 ? { sucursalId } : {});
     const rows = await qAll<{ id: number }>(
       pool,
       `SELECT id
        FROM caja_sesiones
-       WHERE usuario_id = ?
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY apertura_at DESC, id DESC
        LIMIT 40`,
-      [req.user!.id],
+      params,
     );
     const payload = [];
     for (const row of rows) {

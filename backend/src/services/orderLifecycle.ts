@@ -416,8 +416,8 @@ export async function cancelOrderUrgently(
     throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
   }
 
-  const stockItems = checkoutStockItems(await getOrderStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
-  const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
+  const stockItems = checkoutStockItems(await getOrderStockItems(conn, orderId), `Cancelacion orden #${orderId}`);
+  const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Cancelacion orden #${orderId}`);
 
   if (order.sucursal_retiro_id && (stockItems.length || flavorItems.length)) {
     if (previousState === "pendiente_pago" || previousState === "borrador") {
@@ -425,7 +425,7 @@ export async function cancelOrderUrgently(
         await releaseStockForCheckoutItems(conn, {
           sucursalId: order.sucursal_retiro_id,
           items: stockItems,
-          referencia: `cancelacion urgente orden #${orderId}`,
+          referencia: `cancelacion orden #${orderId}`,
           creadoPor,
           ordenId: orderId,
         });
@@ -434,7 +434,7 @@ export async function cancelOrderUrgently(
         await releaseFlavorStockForCheckoutItems(conn, {
           sucursalId: order.sucursal_retiro_id,
           items: flavorItems,
-          referencia: `cancelacion urgente orden #${orderId}`,
+          referencia: `cancelacion orden #${orderId}`,
           creadoPor,
           ordenId: orderId,
         });
@@ -444,7 +444,7 @@ export async function cancelOrderUrgently(
         await restoreStockForCheckoutItems(conn, {
           sucursalId: order.sucursal_retiro_id,
           items: stockItems,
-          referencia: `cancelacion urgente orden #${orderId}`,
+          referencia: `cancelacion orden #${orderId}`,
           creadoPor,
           ordenId: orderId,
         });
@@ -453,7 +453,7 @@ export async function cancelOrderUrgently(
         await restoreFlavorStockForCheckoutItems(conn, {
           sucursalId: order.sucursal_retiro_id,
           items: flavorItems,
-          referencia: `cancelacion urgente orden #${orderId}`,
+          referencia: `cancelacion orden #${orderId}`,
           creadoPor,
           ordenId: orderId,
         });
@@ -466,7 +466,7 @@ export async function cancelOrderUrgently(
       usuarioId: Number(order.usuario_id),
       tipo: "devolucion_canje",
       puntos: Number(order.total_puntos),
-      descripcion: `Devolucion puntos por cancelacion urgente orden #${orderId}`,
+      descripcion: `Devolucion puntos por cancelacion orden #${orderId}`,
       referenciaId: orderId,
       referenciaTipo: "ordenes",
       creadoPor: creadoPor ?? undefined,
@@ -492,7 +492,7 @@ export async function cancelOrderUrgently(
   const cleanReason = reason.trim();
   const cleanRefundMessage = refundMessage?.trim() || "";
   const cancellationNote = [
-    `Cancelacion urgente: ${cleanReason}`,
+    `Cancelacion de pedido: ${cleanReason}`,
     cleanRefundMessage ? `Mensaje sobre devolucion: ${cleanRefundMessage}` : null,
   ].filter(Boolean).join(" ");
 

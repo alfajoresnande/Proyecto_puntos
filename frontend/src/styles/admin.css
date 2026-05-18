@@ -489,6 +489,9 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 0.25rem;
+  max-width: 100%;
+  min-width: 0;
+  position: relative;
 }
 
 .adm-label {
@@ -695,6 +698,9 @@
   flex-shrink: 0;
   user-select: none;
   font-family: inherit;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: none;
 }
 
 .adm-tip:hover,
@@ -716,6 +722,30 @@
   font-weight: 400;
   line-height: 1.45;
   box-shadow: 0 10px 24px rgba(74, 44, 26, 0.14);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+  user-select: none;
+  white-space: normal;
+}
+
+.adm-label-wrap > .adm-tip-inline {
+  left: 0;
+  max-width: min(78vw, 320px);
+  min-width: 220px;
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  z-index: 60;
+}
+
+.adm-label-wrap > .adm-tip-inline::before {
+  border-bottom: 6px solid #2D1200;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  content: "";
+  left: 0.7rem;
+  position: absolute;
+  top: -6px;
 }
 /* ── BOTONES ── */
 .adm-field-with-tip {

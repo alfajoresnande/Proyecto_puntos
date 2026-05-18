@@ -696,7 +696,10 @@ export function VendedorPedidos() {
             <div className="ios-card p-3" style={{ background: "#FFFDF8", border: "1px solid #F5C8A8", display: "grid", gap: "0.35rem" }}>
               <strong style={{ color: "#3D1A02" }}>Flujo exacto de caja</strong>
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                El sistema crea automaticamente una caja por usuario, sucursal y fecha operativa en horario Buenos Aires. No hace falta abrirla a mano.
+                El sistema crea automaticamente una sola caja diaria por sucursal, desde las 00:00 hasta las 23:59 en horario Buenos Aires. No se crea una caja por usuario.
+              </p>
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                Todas las ventas y gastos que cargue cualquier vendedor en esa sucursal entran en la misma caja del dia.
               </p>
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
                 Las ventas locales suman como ingresos de caja y los gastos cargados restan como egresos. Ambos quedan separados por medio de pago: efectivo, transferencia, tarjeta, QR u otro.
@@ -1105,17 +1108,6 @@ export function VendedorPedidos() {
                     Entregar
                   </button>
                 ) : null}
-                {["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado) ? (
-                  <button
-                    type="button"
-                    className="ios-btn-secondary"
-                    style={{ width: "auto", padding: "0.55rem 0.85rem", color: "#9B2C2C", borderColor: "#9B2C2C" }}
-                    disabled={cancelarOrdenMutation.isPending}
-                    onClick={() => abrirCancelacionUrgente(orden)}
-                  >
-                    Cancelar urgente
-                  </button>
-                ) : null}
               </div>
 
               {ordenExpandidaId === orden.id ? (
@@ -1157,7 +1149,7 @@ export function VendedorPedidos() {
           <div className="ios-card p-4" style={{ width: "min(100%, 560px)", background: "#FFF8F1", display: "grid", gap: "0.8rem" }}>
             <div>
               <p className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>
-                Cancelar pedido #{cancelacionOrden.orden.id}
+                Cancelar #{cancelacionOrden.orden.id}
               </p>
               <p className="text-sm" style={{ color: "#8B5A30", margin: "0.25rem 0 0" }}>
                 Se cancelara la orden, se devolvera el stock si corresponde y se enviara este aviso al cliente.
@@ -1170,7 +1162,7 @@ export function VendedorPedidos() {
                 rows={4}
                 value={cancelacionOrden.motivo}
                 onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, motivo: event.target.value } : prev)}
-                placeholder="Ej: Tuvimos un problema urgente de stock y no podemos preparar el pedido a tiempo."
+                placeholder="Ej: Tuvimos un problema de stock y no podemos preparar el pedido a tiempo."
               />
             </label>
             <label style={{ display: "grid", gap: "0.35rem" }}>

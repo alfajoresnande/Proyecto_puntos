@@ -584,12 +584,19 @@ router.post("/caja/:id/cierre", async (req, res, next) => {
 });
 router.get("/caja/sesiones", async (req, res, next) => {
     try {
-        await (0, cashRegister_1.closeStaleCajaSesiones)(db_1.pool, { usuarioId: req.user.id });
+        const sucursalId = Number(req.query.sucursal_id ?? 0);
+        const where = [];
+        const params = [];
+        if (Number.isInteger(sucursalId) && sucursalId > 0) {
+            where.push("sucursal_id = ?");
+            params.push(sucursalId);
+        }
+        await (0, cashRegister_1.closeStaleCajaSesiones)(db_1.pool, Number.isInteger(sucursalId) && sucursalId > 0 ? { sucursalId } : {});
         const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id
        FROM caja_sesiones
-       WHERE usuario_id = ?
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY apertura_at DESC, id DESC
-       LIMIT 40`, [req.user.id]);
+       LIMIT 40`, params);
         const payload = [];
         for (const row of rows) {
             const session = await getCajaSesionPayload(db_1.pool, Number(row.id));

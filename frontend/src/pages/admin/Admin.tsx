@@ -5194,7 +5194,7 @@ export function Admin() {
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
                                     ) : null}
                                     {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
-                                      <button className="adm-btn-danger" onClick={() => abrirCancelacionUrgente(orden)} disabled={busy}>Cancelar urgente</button>
+                                      <button className="adm-btn-danger" onClick={() => abrirCancelacionUrgente(orden)} disabled={busy}>Cancelar</button>
                                     ) : null}
                                   </div>
                                 </td>
@@ -5294,7 +5294,10 @@ export function Admin() {
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.45rem" }}>
                 <h3 style={{ margin: 0, color: "#3D1A02" }}>Como funciona la caja</h3>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  La caja no se abre manualmente: el sistema crea una caja por usuario, sucursal y fecha operativa en horario Buenos Aires. Al cambiar el dia, las cajas abiertas de dias anteriores se cierran automaticamente con el efectivo calculado por sistema.
+                  La caja no se abre manualmente: el sistema crea una sola caja diaria por sucursal, desde las 00:00 hasta las 23:59 en horario Buenos Aires. No se crea una caja por usuario.
+                </p>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Todas las ventas y gastos que cargue cualquier vendedor en esa sucursal entran en la misma caja del dia. El usuario queda como auditoria del movimiento, no como una caja aparte.
                 </p>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
                   Cada venta local registrada en esa sucursal suma como movimiento de venta en la caja del dia. Cada gasto cargado suma como movimiento de gasto y queda atado a la misma caja. Las ventas web aparecen en ventas/reportes, pero la caja diaria se usa para controlar lo que se cobra o paga presencialmente.
@@ -6343,7 +6346,7 @@ export function Admin() {
         <div className="adm-modal-overlay">
           <div className="adm-modal" style={{ maxWidth: 620 }}>
             <div className="adm-modal-icon warning">!</div>
-            <h3 className="adm-modal-title">Cancelar pedido #{cancelacionOrden.orden.id}</h3>
+            <h3 className="adm-modal-title">Cancelar #{cancelacionOrden.orden.id}</h3>
             <p className="adm-modal-desc">
               Esto cancela la orden, devuelve stock si corresponde y envia un mensaje visible al cliente en soporte.
             </p>
@@ -6355,7 +6358,7 @@ export function Admin() {
                   rows={4}
                   value={cancelacionOrden.motivo}
                   onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, motivo: event.target.value } : prev)}
-                  placeholder="Ej: Tuvimos un problema urgente de stock en sucursal y no podemos preparar el pedido a tiempo."
+                  placeholder="Ej: Tuvimos un problema de stock en sucursal y no podemos preparar el pedido a tiempo."
                 />
               </label>
               <label style={{ display: "grid", gap: "0.35rem" }}>

@@ -58,15 +58,13 @@ function emptyTotals() {
 }
 async function getActiveCajaSesion(conn, input) {
     const fechaOperativa = getBuenosAiresDateStamp();
-    const whereSucursal = input.sucursalId ? "AND sucursal_id = ?" : "";
-    const params = input.sucursalId ? [input.usuarioId, fechaOperativa, input.sucursalId] : [input.usuarioId, fechaOperativa];
     return (0, db_1.qOne)(conn, `SELECT id, sucursal_id, usuario_id, fecha_operativa, estado,
             monto_apertura, monto_cierre_sistema, monto_cierre_declarado, diferencia_cierre,
             observaciones_apertura, observaciones_cierre, apertura_at, cierre_at
      FROM caja_sesiones
-     WHERE usuario_id = ? AND fecha_operativa = ? AND estado = 'abierta' ${whereSucursal}
+     WHERE sucursal_id = ? AND fecha_operativa = ? AND estado = 'abierta'
      ORDER BY apertura_at DESC, id DESC
-     LIMIT 1`, params);
+     LIMIT 1`, [input.sucursalId, fechaOperativa]);
 }
 async function closeCajaSesionAutomatically(conn, cajaSesionId) {
     const session = await (0, db_1.qOne)(conn, `SELECT id, estado
@@ -89,10 +87,6 @@ async function closeCajaSesionAutomatically(conn, cajaSesionId) {
 async function closeStaleCajaSesiones(conn, input = {}) {
     const where = ["estado = 'abierta'", "fecha_operativa < ?"];
     const params = [getBuenosAiresDateStamp()];
-    if (input.usuarioId) {
-        where.push("usuario_id = ?");
-        params.push(input.usuarioId);
-    }
     if (input.sucursalId) {
         where.push("sucursal_id = ?");
         params.push(input.sucursalId);
@@ -109,8 +103,8 @@ async function ensureDailyCajaSesion(conn, input) {
     if (!sucursal) {
         throw new Error("La sucursal seleccionada no existe o esta inactiva.");
     }
-    await closeStaleCajaSesiones(conn, input);
-    const existing = await getActiveCajaSesion(conn, input);
+    await closeStaleCajaSesiones(conn, { sucursalId: input.sucursalId });
+    const existing = await getActiveCajaSesion(conn, { sucursalId: input.sucursalId });
     if (existing)
         return existing;
     const created = await (0, db_1.qRun)(conn, `INSERT INTO caja_sesiones
@@ -135,9 +129,10 @@ async function openCajaSesion(conn, input) {
     const sucursal = await (0, db_1.qOne)(conn, "SELECT id FROM sucursales WHERE id = ? AND activo = 1 LIMIT 1", [input.sucursalId]);
     if (!sucursal)
         throw new Error("La sucursal seleccionada no existe o esta inactiva.");
-    const existing = await getActiveCajaSesion(conn, { usuarioId: input.usuarioId });
+    await closeStaleCajaSesiones(conn, { sucursalId: input.sucursalId });
+    const existing = await getActiveCajaSesion(conn, { sucursalId: input.sucursalId });
     if (existing) {
-        throw new Error("Ya tienes una caja abierta. Debes cerrarla antes de abrir otra.");
+        return existing.id;
     }
     const created = await (0, db_1.qRun)(conn, `INSERT INTO caja_sesiones
       (sucursal_id, usuario_id, fecha_operativa, estado, monto_apertura, observaciones_apertura)
@@ -214,9 +209,7 @@ async function closeCajaSesion(conn, input) {
         throw new Error("La caja solicitada no existe.");
     if (session.estado !== "abierta")
         throw new Error("La caja ya fue cerrada.");
-    if (!input.forceAdmin && Number(session.usuario_id) !== input.usuarioId) {
-        throw new Error("No puedes cerrar una caja que no te pertenece.");
-    }
+    // La caja diaria pertenece a la sucursal; usuario_id solo identifica quien la creo.
     const summary = await getCajaSesionSummary(conn, input.cajaSesionId);
     const montoDeclarado = toMoney(input.montoCierreDeclarado);
     if (!Number.isFinite(montoDeclarado) || montoDeclarado < 0) {
