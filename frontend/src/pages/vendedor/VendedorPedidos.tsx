@@ -693,6 +693,21 @@ export function VendedorPedidos() {
                 La caja se genera automaticamente por sucursal y por fecha Buenos Aires. Las ventas locales y los gastos se registran sobre esa caja del dia.
               </p>
             </div>
+            <div className="ios-card p-3" style={{ background: "#FFFDF8", border: "1px solid #F5C8A8", display: "grid", gap: "0.35rem" }}>
+              <strong style={{ color: "#3D1A02" }}>Flujo exacto de caja</strong>
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                El sistema crea automaticamente una caja por usuario, sucursal y fecha operativa en horario Buenos Aires. No hace falta abrirla a mano.
+              </p>
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                Las ventas locales suman como ingresos de caja y los gastos cargados restan como egresos. Ambos quedan separados por medio de pago: efectivo, transferencia, tarjeta, QR u otro.
+              </p>
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                El efectivo del dia se calcula solo con efectivo: apertura + ventas en efectivo - gastos en efectivo. Los otros medios quedan visibles aparte para control y reportes.
+              </p>
+              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
+                Al terminar el dia, la caja anterior se cierra automaticamente y al dia siguiente se empieza una nueva.
+              </p>
+            </div>
             <div className="adm-form-grid">
               <select className="ios-input" value={ventaSucursalId} onChange={(event) => setVentaSucursalId(event.target.value)}>
                 <option value="">Sucursal</option>

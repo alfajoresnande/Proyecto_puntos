@@ -5291,6 +5291,21 @@ export function Admin() {
           {tab === "caja" ? (
             <div style={{ display: "grid", gap: "1.5rem" }}>
               <SectionTitle title="Caja diaria" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.45rem" }}>
+                <h3 style={{ margin: 0, color: "#3D1A02" }}>Como funciona la caja</h3>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  La caja no se abre manualmente: el sistema crea una caja por usuario, sucursal y fecha operativa en horario Buenos Aires. Al cambiar el dia, las cajas abiertas de dias anteriores se cierran automaticamente con el efectivo calculado por sistema.
+                </p>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Cada venta local registrada en esa sucursal suma como movimiento de venta en la caja del dia. Cada gasto cargado suma como movimiento de gasto y queda atado a la misma caja. Las ventas web aparecen en ventas/reportes, pero la caja diaria se usa para controlar lo que se cobra o paga presencialmente.
+                </p>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Ventas y gastos se separan por medio de pago: efectivo, transferencia, tarjeta, QR u otro. El total de ventas muestra todo lo vendido en la caja; el total de gastos muestra todo lo pagado; y el efectivo del dia calcula solo efectivo: apertura + ventas en efectivo - gastos en efectivo.
+                </p>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Si una venta se cancela antes de entregar, el sistema actualiza la orden y devuelve stock segun corresponda. Si hubo pago aprobado, la devolucion del dinero se coordina por mensaje con el cliente para dejar registro.
+                </p>
+              </div>
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
