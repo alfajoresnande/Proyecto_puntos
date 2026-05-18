@@ -277,7 +277,7 @@ async function registerLocalSale(conn, input) {
     ].filter(Boolean).join(" ");
     const insertedOrder = await (0, db_1.qRun)(conn, `INSERT INTO ordenes
       (usuario_id, cliente_local_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
-     VALUES (?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`, [usuarioId, clienteLocalId, input.canal, totalDinero, Number(sucursal.id), notas || null]);
+     VALUES (?, ?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`, [usuarioId, clienteLocalId, input.canal, totalDinero, Number(sucursal.id), notas || null]);
     const ordenId = insertedOrder.insertId;
     for (const item of preparedItems) {
         const insertedItem = await (0, db_1.qRun)(conn, `INSERT INTO orden_items

@@ -17,7 +17,7 @@ function ruleKey(proveedor, metodo) {
 async function getPaymentFeeRules(conn) {
     const rows = await (0, db_1.qAll)(conn, `SELECT id, proveedor, metodo, descripcion, porcentaje, activo
      FROM costos_cobro
-     ORDER BY proveedor ASC, metodo ASC, id ASC`);
+     ORDER BY proveedor ASC, metodo ASC, id ASC`).catch(() => []);
     return rows.map((row) => ({
         id: Number(row.id),
         proveedor: normalizeKeyPart(row.proveedor),

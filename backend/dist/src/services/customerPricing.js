@@ -104,6 +104,7 @@ async function createPricingResolver(conn, options) {
         };
     return (product) => {
         const precioLista = normalizeMoney(product.precio_dinero);
+        const descuentoUsuarioPorcentaje = normalizeDiscount(options.profile?.descuentoPorcentaje ?? 0);
         const categoriaKey = normalizeCategoryKey(product.categoria);
         const descuentoCategoriaPorcentaje = categoriaKey
             ? normalizeDiscount(categoryDiscounts.get(`${tipoCliente}:${categoriaKey}`) ?? 0)
@@ -112,9 +113,10 @@ async function createPricingResolver(conn, options) {
             ? getGlobalDiscountForType(webGlobalConfig, tipoCliente)
             : 0;
         // Regla conservadora: aplica el mejor descuento individual y evita acumulaciones inesperadas.
-        const descuentoPorcentajeAplicado = Math.max(descuentoCategoriaPorcentaje, descuentoWebGlobalPorcentaje);
+        const descuentoPorcentajeAplicado = Math.max(descuentoUsuarioPorcentaje, descuentoCategoriaPorcentaje, descuentoWebGlobalPorcentaje);
         return {
             precioLista,
+            descuentoUsuarioPorcentaje,
             descuentoCategoriaPorcentaje,
             descuentoWebGlobalPorcentaje,
             descuentoPorcentajeAplicado,

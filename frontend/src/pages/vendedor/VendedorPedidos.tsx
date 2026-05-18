@@ -195,6 +195,11 @@ export function VendedorPedidos() {
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [ordenMsg, setOrdenMsg] = useState("");
   const [ordenErr, setOrdenErr] = useState("");
+  const [cancelacionOrden, setCancelacionOrden] = useState<{
+    orden: OrdenVendedor;
+    motivo: string;
+    mensaje_devolucion: string;
+  } | null>(null);
   const [ventaClienteQuery, setVentaClienteQuery] = useState("");
   const [ventaCliente, setVentaCliente] = useState<ClienteBuscado | null>(null);
   const [ventaClienteManualNombre, setVentaClienteManualNombre] = useState("");
@@ -366,6 +371,29 @@ export function VendedorPedidos() {
     },
   });
 
+  const cancelarOrdenMutation = useMutation({
+    mutationFn: ({ id, motivo, mensaje_devolucion }: { id: number; motivo: string; mensaje_devolucion?: string }) =>
+      api.post<{ ok: true; requiere_devolucion?: boolean; conversacion_id?: number | null }>(`/vendedor/ordenes/${id}/cancelar-urgente`, {
+        motivo,
+        mensaje_devolucion,
+      }),
+    onSuccess: async (data, variables) => {
+      setOrdenErr("");
+      setOrdenMsg(
+        data.requiere_devolucion
+          ? `Pedido #${variables.id} cancelado. Se aviso al cliente y queda pendiente coordinar devolucion.`
+          : `Pedido #${variables.id} cancelado y cliente notificado.`,
+      );
+      setCancelacionOrden(null);
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "productos-locales"] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo cancelar el pedido.");
+    },
+  });
+
   const registrarVentaLocalMutation = useMutation({
     mutationFn: () => {
       if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
@@ -525,6 +553,30 @@ export function VendedorPedidos() {
     setOrdenErr("");
     setOrdenMsg("");
     actualizarOrdenMutation.mutate({ id, estado });
+  }
+
+  function abrirCancelacionUrgente(orden: OrdenVendedor) {
+    setOrdenErr("");
+    setOrdenMsg("");
+    setCancelacionOrden({
+      orden,
+      motivo: "",
+      mensaje_devolucion: "Si ya abonaste el pedido, por este mismo chat coordinamos la devolucion del dinero como ultima instancia.",
+    });
+  }
+
+  function confirmarCancelacionUrgente() {
+    if (!cancelacionOrden) return;
+    const motivo = cancelacionOrden.motivo.trim();
+    if (motivo.length < 8) {
+      setOrdenErr("Escribe un motivo claro para informar al cliente.");
+      return;
+    }
+    cancelarOrdenMutation.mutate({
+      id: cancelacionOrden.orden.id,
+      motivo,
+      mensaje_devolucion: cancelacionOrden.mensaje_devolucion.trim() || undefined,
+    });
   }
 
   function agregarItemVentaLocal() {
@@ -1038,6 +1090,17 @@ export function VendedorPedidos() {
                     Entregar
                   </button>
                 ) : null}
+                {["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado) ? (
+                  <button
+                    type="button"
+                    className="ios-btn-secondary"
+                    style={{ width: "auto", padding: "0.55rem 0.85rem", color: "#9B2C2C", borderColor: "#9B2C2C" }}
+                    disabled={cancelarOrdenMutation.isPending}
+                    onClick={() => abrirCancelacionUrgente(orden)}
+                  >
+                    Cancelar urgente
+                  </button>
+                ) : null}
               </div>
 
               {ordenExpandidaId === orden.id ? (
@@ -1064,6 +1127,63 @@ export function VendedorPedidos() {
         </>
         ) : null}
       </div>
+      {cancelacionOrden ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            background: "rgba(37, 20, 8, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: "1rem",
+          }}
+        >
+          <div className="ios-card p-4" style={{ width: "min(100%, 560px)", background: "#FFF8F1", display: "grid", gap: "0.8rem" }}>
+            <div>
+              <p className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>
+                Cancelar pedido #{cancelacionOrden.orden.id}
+              </p>
+              <p className="text-sm" style={{ color: "#8B5A30", margin: "0.25rem 0 0" }}>
+                Se cancelara la orden, se devolvera el stock si corresponde y se enviara este aviso al cliente.
+              </p>
+            </div>
+            <label style={{ display: "grid", gap: "0.35rem" }}>
+              <strong>Motivo para el cliente</strong>
+              <textarea
+                className="ios-input"
+                rows={4}
+                value={cancelacionOrden.motivo}
+                onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, motivo: event.target.value } : prev)}
+                placeholder="Ej: Tuvimos un problema urgente de stock y no podemos preparar el pedido a tiempo."
+              />
+            </label>
+            <label style={{ display: "grid", gap: "0.35rem" }}>
+              <strong>Mensaje sobre devolucion</strong>
+              <textarea
+                className="ios-input"
+                rows={3}
+                value={cancelacionOrden.mensaje_devolucion}
+                onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, mensaje_devolucion: event.target.value } : prev)}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.55rem", flexWrap: "wrap" }}>
+              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} onClick={() => setCancelacionOrden(null)} disabled={cancelarOrdenMutation.isPending}>
+                Volver
+              </button>
+              <button
+                type="button"
+                className="ios-btn-primary"
+                style={{ width: "auto", background: "#9B2C2C", borderColor: "#9B2C2C" }}
+                onClick={confirmarCancelacionUrgente}
+                disabled={cancelarOrdenMutation.isPending || cancelacionOrden.motivo.trim().length < 8}
+              >
+                {cancelarOrdenMutation.isPending ? "Cancelando..." : "Cancelar y avisar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

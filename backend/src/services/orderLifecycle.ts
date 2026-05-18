@@ -5,6 +5,8 @@ import {
   finalizeStockForCheckoutItems,
   releaseFlavorStockForCheckoutItems,
   releaseStockForCheckoutItems,
+  restoreFlavorStockForCheckoutItems,
+  restoreStockForCheckoutItems,
 } from "./stock";
 import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
 
@@ -359,4 +361,157 @@ export async function rejectOrExpirePendingOrder(
   await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
   await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [nextState, orderId]);
   return { ok: true, orderId, previousState: order.estado, state: nextState, changed: true };
+}
+
+export type UrgentOrderCancellationResult = OrderLifecycleResult & {
+  usuarioId: number | null;
+  paymentRequiresRefund: boolean;
+};
+
+export async function cancelOrderUrgently(
+  conn: Queryable,
+  {
+    orderId,
+    reason,
+    refundMessage,
+    creadoPor = null,
+  }: {
+    orderId: number;
+    reason: string;
+    refundMessage?: string | null;
+    creadoPor?: number | null;
+  },
+): Promise<UrgentOrderCancellationResult> {
+  const order = await qOne<OrderForLifecycle & { usuario_id: number | null }>(
+    conn,
+    `SELECT id, usuario_id, estado, total_puntos, total_dinero, sucursal_retiro_id
+     FROM ordenes
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [orderId],
+  );
+  if (!order) {
+    throw new Error("Orden no encontrada.");
+  }
+
+  const previousState = order.estado;
+  if (previousState === "cancelada") {
+    return {
+      ok: true,
+      orderId,
+      previousState,
+      state: "cancelada",
+      changed: false,
+      usuarioId: order.usuario_id === null ? null : Number(order.usuario_id),
+      paymentRequiresRefund: false,
+    };
+  }
+  if (previousState === "entregada" || previousState === "expirada") {
+    throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
+  }
+
+  const cancellableStates: OrderState[] = ["borrador", "pendiente_pago", "pagada", "preparada", "enviada"];
+  if (!cancellableStates.includes(previousState)) {
+    throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
+  }
+
+  const stockItems = checkoutStockItems(await getOrderStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
+  const flavorItems = checkoutFlavorStockItems(await getOrderFlavorStockItems(conn, orderId), `Cancelacion urgente orden #${orderId}`);
+
+  if (order.sucursal_retiro_id && (stockItems.length || flavorItems.length)) {
+    if (previousState === "pendiente_pago" || previousState === "borrador") {
+      if (stockItems.length) {
+        await releaseStockForCheckoutItems(conn, {
+          sucursalId: order.sucursal_retiro_id,
+          items: stockItems,
+          referencia: `cancelacion urgente orden #${orderId}`,
+          creadoPor,
+          ordenId: orderId,
+        });
+      }
+      if (flavorItems.length) {
+        await releaseFlavorStockForCheckoutItems(conn, {
+          sucursalId: order.sucursal_retiro_id,
+          items: flavorItems,
+          referencia: `cancelacion urgente orden #${orderId}`,
+          creadoPor,
+          ordenId: orderId,
+        });
+      }
+    } else {
+      if (stockItems.length) {
+        await restoreStockForCheckoutItems(conn, {
+          sucursalId: order.sucursal_retiro_id,
+          items: stockItems,
+          referencia: `cancelacion urgente orden #${orderId}`,
+          creadoPor,
+          ordenId: orderId,
+        });
+      }
+      if (flavorItems.length) {
+        await restoreFlavorStockForCheckoutItems(conn, {
+          sucursalId: order.sucursal_retiro_id,
+          items: flavorItems,
+          referencia: `cancelacion urgente orden #${orderId}`,
+          creadoPor,
+          ordenId: orderId,
+        });
+      }
+    }
+  }
+
+  if (Number(order.total_puntos ?? 0) > 0 && order.usuario_id) {
+    await registrarMovimientoPuntos(conn, {
+      usuarioId: Number(order.usuario_id),
+      tipo: "devolucion_canje",
+      puntos: Number(order.total_puntos),
+      descripcion: `Devolucion puntos por cancelacion urgente orden #${orderId}`,
+      referenciaId: orderId,
+      referenciaTipo: "ordenes",
+      creadoPor: creadoPor ?? undefined,
+    });
+    await recalcularSaldoPuntosUsuario(conn, Number(order.usuario_id));
+  }
+
+  const latestPayment = await qOne<{ estado: string; monto: number }>(
+    conn,
+    `SELECT estado, monto
+     FROM pagos
+     WHERE orden_id = ?
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [orderId],
+  );
+  const paymentRequiresRefund = Number(order.total_dinero ?? 0) > 0 && latestPayment?.estado === "aprobado";
+  if (latestPayment?.estado === "iniciado") {
+    await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
+  }
+
+  const cleanReason = reason.trim();
+  const cleanRefundMessage = refundMessage?.trim() || "";
+  const cancellationNote = [
+    `Cancelacion urgente: ${cleanReason}`,
+    cleanRefundMessage ? `Mensaje sobre devolucion: ${cleanRefundMessage}` : null,
+  ].filter(Boolean).join(" ");
+
+  await qRun(
+    conn,
+    `UPDATE ordenes
+     SET estado = 'cancelada',
+         notas = TRIM(CONCAT(COALESCE(notas, ''), CASE WHEN COALESCE(notas, '') = '' THEN '' ELSE '\n' END, ?))
+     WHERE id = ?`,
+    [cancellationNote, orderId],
+  );
+
+  return {
+    ok: true,
+    orderId,
+    previousState,
+    state: "cancelada",
+    changed: true,
+    usuarioId: order.usuario_id === null ? null : Number(order.usuario_id),
+    paymentRequiresRefund,
+  };
 }

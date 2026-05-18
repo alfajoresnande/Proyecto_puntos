@@ -21,6 +21,7 @@ type AdminTab =
   | "gastos"
   | "proveedores"
   | "cobros"
+  | "descuentos"
   | "categorias"
   | "transacciones"
   | "canjes"
@@ -39,6 +40,7 @@ const ADMIN_TABS: AdminTab[] = [
   "gastos",
   "proveedores",
   "cobros",
+  "descuentos",
   "categorias",
   "transacciones",
   "canjes",
@@ -554,6 +556,7 @@ function adminTabFromPath(pathname: string): AdminTab | null {
   if (/\/gastos(?:[/?#]|$)/.test(pathname)) return "gastos";
   if (/\/proveedores(?:[/?#]|$)/.test(pathname)) return "proveedores";
   if (/\/cobros(?:[/?#]|$)/.test(pathname)) return "cobros";
+  if (/\/descuentos(?:[/?#]|$)/.test(pathname)) return "descuentos";
   return null;
 }
 
@@ -567,6 +570,7 @@ function adminPathSegment(tab: AdminTab): string | null {
   if (tab === "gastos") return "gastos";
   if (tab === "proveedores") return "proveedores";
   if (tab === "cobros") return "cobros";
+  if (tab === "descuentos") return "descuentos";
   return null;
 }
 
@@ -1144,6 +1148,11 @@ export function Admin() {
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
   const [ordenesFiltroEstado, setOrdenesFiltroEstado] = useState("");
   const [ordenesFiltroEntrega, setOrdenesFiltroEntrega] = useState("");
+  const [cancelacionOrden, setCancelacionOrden] = useState<{
+    orden: OrdenAdmin;
+    motivo: string;
+    mensaje_devolucion: string;
+  } | null>(null);
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [ventaLocalClienteId, setVentaLocalClienteId] = useState("");
   const [ventaLocalClienteManualNombre, setVentaLocalClienteManualNombre] = useState("");
@@ -2422,6 +2431,50 @@ export function Admin() {
     }
   }
 
+  function abrirCancelacionUrgente(orden: OrdenAdmin) {
+    setErrMsg("");
+    setOkMsg("");
+    setCancelacionOrden({
+      orden,
+      motivo: "",
+      mensaje_devolucion:
+        "Si ya abonaste el pedido, por este mismo chat coordinamos la devolucion del dinero como ultima instancia.",
+    });
+  }
+
+  async function confirmarCancelacionUrgente() {
+    if (!cancelacionOrden) return;
+    const motivo = cancelacionOrden.motivo.trim();
+    if (motivo.length < 8) {
+      setErrMsg("Escribe un motivo claro para informar al cliente.");
+      return;
+    }
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      const result = await commandMutation.mutateAsync({
+        method: "post",
+        path: `/admin/ordenes/${cancelacionOrden.orden.id}/cancelar-urgente`,
+        body: {
+          motivo,
+          mensaje_devolucion: cancelacionOrden.mensaje_devolucion.trim() || undefined,
+        },
+      }) as { requiere_devolucion?: boolean; conversacion_id?: number | null };
+      setOkMsg(
+        result.requiere_devolucion
+          ? `Orden #${cancelacionOrden.orden.id} cancelada. Se aviso al cliente y queda pendiente coordinar devolucion.`
+          : `Orden #${cancelacionOrden.orden.id} cancelada y cliente notificado.`,
+      );
+      setCancelacionOrden(null);
+      await refreshQueries([["admin", "ordenes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function resetVentaLocalProductoDraft() {
     setVentaLocalProductoId("");
     setVentaLocalCantidad("1");
@@ -3577,6 +3630,9 @@ export function Admin() {
           </button>
           <button className={`admin-nav-btn ${tab === "cobros" ? "active" : ""}`} onClick={() => seleccionarTab("cobros")}>
             {renderAdminNavLabel("Cobros")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "descuentos" ? "active" : ""}`} onClick={() => seleccionarTab("descuentos")}>
+            {renderAdminNavLabel("Descuentos")}
           </button>
           <button className={`admin-nav-btn ${tab === "categorias" ? "active" : ""}`} onClick={() => seleccionarTab("categorias")}>
             {renderAdminNavLabel("Categorias")}
@@ -5138,7 +5194,7 @@ export function Admin() {
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
                                     ) : null}
                                     {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
-                                      <button className="adm-btn-danger" onClick={() => void actualizarEstadoOrden(orden.id, "cancelada")} disabled={busy}>Cancelar</button>
+                                      <button className="adm-btn-danger" onClick={() => abrirCancelacionUrgente(orden)} disabled={busy}>Cancelar urgente</button>
                                     ) : null}
                                   </div>
                                 </td>
@@ -5237,12 +5293,15 @@ export function Admin() {
               <SectionTitle title="Caja diaria" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <div className="adm-form-grid">
-                  <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
-                    <option value="">Sucursal</option>
-                    {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                      <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                    ))}
-                  </select>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Sucursal" tip="Sucursal que queres revisar. La caja diaria y el historial cambian segun este punto de venta." />
+                    <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
+                      <option value="">Sucursal</option>
+                      {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                        <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 {cajaActual ? (
                   <>
@@ -5347,24 +5406,45 @@ export function Admin() {
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <h3 style={{ margin: 0, color: "#3D1A02" }}>Registrar gasto</h3>
                 <div className="adm-form-grid">
-                  <select className="adm-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
-                    <option value="">Proveedor</option>
-                    {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
-                      <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
-                    ))}
-                  </select>
-                  <input className="adm-input" placeholder="Tercero (si no es proveedor)" value={gastoTerceroNombre} onChange={(event) => setGastoTerceroNombre(event.target.value)} disabled={Boolean(gastoProveedorId)} />
-                  <input className="adm-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
-                  <input className="adm-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
-                  <select className="adm-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
-                    <option value="cash">Efectivo</option>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="tarjeta">Tarjeta</option>
-                    <option value="qr">QR</option>
-                    <option value="otro">Otro</option>
-                  </select>
-                  <input className="adm-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
-                  <input className="adm-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Proveedor" tip="Elegilo si el gasto fue para un proveedor ya cargado. Si no existe en la lista, usa el campo de persona o comercio manual." />
+                    <select className="adm-input" value={gastoProveedorId} onChange={(event) => setGastoProveedorId(event.target.value)}>
+                      <option value="">Proveedor</option>
+                      {proveedores.filter((proveedor) => proveedor.activo !== false).map((proveedor) => (
+                        <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Persona o comercio manual" tip="Usa este campo cuando el gasto fue para alguien que no esta cargado en Proveedores. Ejemplo: un fletero, tecnico o compra puntual." />
+                    <input className="adm-input" placeholder="Persona o comercio (si no esta en proveedores)" value={gastoTerceroNombre} onChange={(event) => setGastoTerceroNombre(event.target.value)} disabled={Boolean(gastoProveedorId)} />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Categoria" tip="Sirve para ordenar el gasto despues en reportes. Ejemplos: insumos, envio, mantenimiento, servicios." />
+                    <input className="adm-input" placeholder="Categoria" value={gastoCategoria} onChange={(event) => setGastoCategoria(event.target.value)} />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Descripcion" tip="Detalle corto para entender rapido que se pago." />
+                    <input className="adm-input" placeholder="Descripcion" value={gastoDescripcion} onChange={(event) => setGastoDescripcion(event.target.value)} />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Medio de pago" tip="Forma en la que se pagó el gasto. Esto impacta en el resumen de caja del dia." />
+                    <select className="adm-input" value={gastoMedioPago} onChange={(event) => setGastoMedioPago(event.target.value)}>
+                      <option value="cash">Efectivo</option>
+                      <option value="transferencia">Transferencia</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="qr">QR</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Monto" tip="Importe real del gasto. Se descuenta del resumen diario segun el medio de pago elegido." />
+                    <input className="adm-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoMonto} onChange={(event) => setGastoMonto(event.target.value)} />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Notas" tip="Dato interno opcional para dejar aclaraciones del gasto." />
+                    <input className="adm-input" placeholder="Notas" value={gastoNotas} onChange={(event) => setGastoNotas(event.target.value)} />
+                  </label>
                   <button type="button" className="adm-btn-secondary" disabled={busy || !cajaActual} onClick={() => void registrarGasto()}>
                     Guardar gasto
                   </button>
@@ -5397,11 +5477,26 @@ export function Admin() {
               <SectionTitle title="Proveedores" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
                 <h3 style={{ margin: 0, color: "#3D1A02" }}>Nuevo proveedor</h3>
-                <input className="adm-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
-                <input className="adm-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
-                <input className="adm-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
-                <input className="adm-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
-                <input className="adm-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Nombre proveedor" tip="Nombre principal con el que vas a identificar a este proveedor en compras y gastos." />
+                  <input className="adm-input" placeholder="Nombre proveedor" value={nuevoProveedor.nombre} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, nombre: event.target.value }))} />
+                </label>
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Contacto" tip="Persona de referencia dentro del proveedor. Puede ser quien vende o atiende." />
+                  <input className="adm-input" placeholder="Contacto" value={nuevoProveedor.contacto} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, contacto: event.target.value }))} />
+                </label>
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Telefono" tip="Telefono del proveedor o del contacto principal." />
+                  <input className="adm-input" placeholder="Telefono" value={nuevoProveedor.telefono} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, telefono: event.target.value }))} />
+                </label>
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Email" tip="Correo para pedidos, consultas o seguimiento del proveedor." />
+                  <input className="adm-input" placeholder="Email" value={nuevoProveedor.email} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, email: event.target.value }))} />
+                </label>
+                <label style={{ display: "grid", gap: "0.35rem" }}>
+                  <FieldLabel text="Notas" tip="Aclaraciones internas utiles para el equipo: horarios, condiciones, observaciones, etc." />
+                  <input className="adm-input" placeholder="Notas" value={nuevoProveedor.notas} onChange={(event) => setNuevoProveedor((prev) => ({ ...prev, notas: event.target.value }))} />
+                </label>
                 <button type="button" className="adm-btn-secondary" disabled={busy} onClick={() => void crearProveedor()}>
                   Crear proveedor
                 </button>
@@ -5452,11 +5547,11 @@ export function Admin() {
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Proveedor</th>
-                        <th>Medio</th>
-                        <th>Descripcion</th>
-                        <th>% Comision</th>
-                        <th>Activo</th>
+                        <th><FieldLabel text="Proveedor" tip="Empresa o fuente del cobro. Ejemplo: Mercado Pago, efectivo o venta local." /></th>
+                        <th><FieldLabel text="Medio" tip="Forma concreta con la que entra el dinero: efectivo, QR, tarjeta, wallet, transferencia, etc." /></th>
+                        <th><FieldLabel text="Descripcion" tip="Nombre interno de la regla para que el equipo entienda rapido a que cobro corresponde." /></th>
+                        <th><FieldLabel text="% Comision" tip="Porcentaje que queres descontar del bruto para calcular el neto real en reportes." /></th>
+                        <th><FieldLabel text="Activo" tip="Si esta apagado, esa regla no descuenta nada aunque exista cargada." /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5519,10 +5614,11 @@ export function Admin() {
             </div>
           ) : null}
 
-          {tab === "categorias" ? (
+          {tab === "descuentos" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <SectionTitle title="Descuentos por categoria" />
+              <SectionTitle title="Descuentos" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <FieldLabel text="Descuentos por categoria" tip="Aca defines descuentos normales por perfil y categoria. Ejemplo: empleado 50% en alfajores, mayorista 20% en cajas." />
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
                   Define el descuento fijo por tipo de cliente y categoria. Esto aplica tanto en web como en venta local. Si dejas 0%, esa categoria queda sin descuento para ese perfil.
                 </p>
@@ -5530,10 +5626,10 @@ export function Admin() {
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Categoria</th>
-                        <th>Cliente</th>
-                        <th>Mayorista</th>
-                        <th>Empleado</th>
+                        <th><FieldLabel text="Categoria" tip="Linea de producto a la que se aplica el descuento: alfajores, cajas, confites, etc." /></th>
+                        <th><FieldLabel text="Cliente" tip="Descuento para clientes web normales o comunes." /></th>
+                        <th><FieldLabel text="Mayorista" tip="Descuento para usuarios marcados como mayoristas." /></th>
+                        <th><FieldLabel text="Empleado" tip="Descuento para usuarios marcados como empleados o vendedores con beneficio interno." /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5570,8 +5666,8 @@ export function Admin() {
                 </button>
               </div>
 
-              <SectionTitle title="Campana Web Global" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <FieldLabel text="Campana Web Global" tip="Esto es para promociones generales web como Hot Sale o Black Friday. No reemplaza los descuentos por categoria: se usa para campañas temporales." />
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
                   Usa esta campana para Hot Sale, Black Friday o promos generales de la tienda online. Solo afecta compras web y no se aplica a ventas locales.
                 </p>
@@ -5582,10 +5678,11 @@ export function Admin() {
                     onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, activo: event.target.checked }))}
                   />
                   Activar campana global web
+                  <FloatingTip label="Campana global web" tip="Si se activa, la tienda online usa estos porcentajes temporales para cada perfil. No afecta ventas locales." />
                 </label>
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Cliente</span>
+                    <FieldLabel text="Cliente" tip="Descuento global temporal para clientes comunes en la web." />
                     <input
                       type="number"
                       min={0}
@@ -5597,7 +5694,7 @@ export function Admin() {
                     />
                   </label>
                   <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Mayorista</span>
+                    <FieldLabel text="Mayorista" tip="Descuento global temporal para usuarios mayoristas en la web." />
                     <input
                       type="number"
                       min={0}
@@ -5609,7 +5706,7 @@ export function Admin() {
                     />
                   </label>
                   <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <span style={{ color: "#6C3B15", fontWeight: 700 }}>Empleado</span>
+                    <FieldLabel text="Empleado" tip="Descuento global temporal para empleados cuando compran desde la tienda web." />
                     <input
                       type="number"
                       min={0}
@@ -5625,7 +5722,11 @@ export function Admin() {
                   {busy ? "Guardando..." : "Guardar campana web"}
                 </button>
               </div>
+            </div>
+          ) : null}
 
+          {tab === "categorias" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Nueva categoria" />
               <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
                 <input className="adm-input" placeholder="Nombre" value={nuevaCategoria.nombre} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, nombre: event.target.value }))} />
@@ -6211,6 +6312,48 @@ export function Admin() {
           ) : null}
         </div>
       </main>
+
+      {/* MODAL DE CONFIRMACION */}
+      {cancelacionOrden && (
+        <div className="adm-modal-overlay">
+          <div className="adm-modal" style={{ maxWidth: 620 }}>
+            <div className="adm-modal-icon warning">!</div>
+            <h3 className="adm-modal-title">Cancelar pedido #{cancelacionOrden.orden.id}</h3>
+            <p className="adm-modal-desc">
+              Esto cancela la orden, devuelve stock si corresponde y envia un mensaje visible al cliente en soporte.
+            </p>
+            <div style={{ display: "grid", gap: "0.75rem", textAlign: "left" }}>
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                <strong>Motivo para el cliente</strong>
+                <textarea
+                  className="adm-input"
+                  rows={4}
+                  value={cancelacionOrden.motivo}
+                  onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, motivo: event.target.value } : prev)}
+                  placeholder="Ej: Tuvimos un problema urgente de stock en sucursal y no podemos preparar el pedido a tiempo."
+                />
+              </label>
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                <strong>Mensaje sobre devolucion</strong>
+                <textarea
+                  className="adm-input"
+                  rows={3}
+                  value={cancelacionOrden.mensaje_devolucion}
+                  onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, mensaje_devolucion: event.target.value } : prev)}
+                />
+              </label>
+            </div>
+            <div className="adm-modal-actions">
+              <button className="adm-btn-secondary" onClick={() => setCancelacionOrden(null)} disabled={busy}>
+                Volver
+              </button>
+              <button className="adm-btn-danger" onClick={() => void confirmarCancelacionUrgente()} disabled={busy || cancelacionOrden.motivo.trim().length < 8}>
+                {busy ? "Cancelando..." : "Cancelar y avisar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE CONFIRMACION */}
       {confirmacion && (

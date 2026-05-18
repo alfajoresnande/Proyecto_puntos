@@ -8,6 +8,7 @@ import {
   closeCajaSesion,
   closeStaleCajaSesiones,
   ensureDailyCajaSesion,
+  formatCashDateStamp,
   getActiveCajaSesion,
   getCajaSesionSummary,
   normalizeCashPaymentMethod,
@@ -20,8 +21,9 @@ import {
   recalcularSaldoPuntosUsuario,
   registrarMovimientoPuntos,
 } from "../services/points";
-import { approvePaidOrder } from "../services/orderLifecycle";
+import { approvePaidOrder, cancelOrderUrgently } from "../services/orderLifecycle";
 import { registerLocalSale } from "../services/localSales";
+import { notifyOrderCancellation } from "../services/supportNotifications";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
@@ -57,6 +59,10 @@ const proveedorSchema = z.object({
   telefono: z.string().max(25).optional().nullable(),
   email: z.string().email().max(160).optional().nullable().or(z.literal("")),
   notas: z.string().max(2000).optional().nullable(),
+});
+const cancelacionUrgenteOrdenSchema = z.object({
+  motivo: z.string().trim().min(8).max(1000),
+  mensaje_devolucion: z.string().trim().max(1000).optional().nullable(),
 });
 
 async function getCajaSesionPayload(conn: any, sessionId: number) {
@@ -94,6 +100,7 @@ async function getCajaSesionPayload(conn: any, sessionId: number) {
   const summary = await getCajaSesionSummary(conn, sessionId);
   return {
     ...session,
+    fecha_operativa: formatCashDateStamp(session.fecha_operativa),
     monto_apertura: Number(session.monto_apertura ?? 0),
     monto_cierre_sistema: session.monto_cierre_sistema === null ? null : Number(session.monto_cierre_sistema),
     monto_cierre_declarado: session.monto_cierre_declarado === null ? null : Number(session.monto_cierre_declarado),
@@ -1042,6 +1049,50 @@ router.get("/ordenes/:id", async (req, res, next) => {
     });
   } catch (err) {
     next(err);
+  }
+});
+
+router.post("/ordenes/:id/cancelar-urgente", async (req, res, next) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido" });
+    return;
+  }
+  const parsed = cancelacionUrgenteOrdenSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await cancelOrderUrgently(conn, {
+      orderId,
+      reason: parsed.data.motivo,
+      refundMessage: parsed.data.mensaje_devolucion,
+      creadoPor: req.user!.id,
+    });
+    const conversacionId = await notifyOrderCancellation(conn, {
+      usuarioId: result.usuarioId,
+      orderId,
+      reason: parsed.data.motivo,
+      refundMessage: parsed.data.mensaje_devolucion,
+      authorUserId: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes", "inventario", "stats", "puntos", "support"]);
+    res.json({
+      ok: true,
+      estado: "cancelada",
+      conversacion_id: conversacionId,
+      requiere_devolucion: result.paymentRequiresRefund,
+    });
+  } catch (err) {
+    await conn.rollback();
+    next(err);
+  } finally {
+    conn.release();
   }
 });
 

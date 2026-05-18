@@ -10,6 +10,7 @@ const customerPricing_1 = require("../services/customerPricing");
 const points_1 = require("../services/points");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const localSales_1 = require("../services/localSales");
+const supportNotifications_1 = require("../services/supportNotifications");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
 const clienteLocalPayloadSchema = zod_1.z.object({
@@ -44,6 +45,10 @@ const proveedorSchema = zod_1.z.object({
     email: zod_1.z.string().email().max(160).optional().nullable().or(zod_1.z.literal("")),
     notas: zod_1.z.string().max(2000).optional().nullable(),
 });
+const cancelacionUrgenteOrdenSchema = zod_1.z.object({
+    motivo: zod_1.z.string().trim().min(8).max(1000),
+    mensaje_devolucion: zod_1.z.string().trim().max(1000).optional().nullable(),
+});
 async function getCajaSesionPayload(conn, sessionId) {
     const session = await (0, db_1.qOne)(conn, `SELECT cs.id, cs.sucursal_id, s.nombre AS sucursal_nombre,
             cs.usuario_id, u.nombre AS usuario_nombre,
@@ -60,6 +65,7 @@ async function getCajaSesionPayload(conn, sessionId) {
     const summary = await (0, cashRegister_1.getCajaSesionSummary)(conn, sessionId);
     return {
         ...session,
+        fecha_operativa: (0, cashRegister_1.formatCashDateStamp)(session.fecha_operativa),
         monto_apertura: Number(session.monto_apertura ?? 0),
         monto_cierre_sistema: session.monto_cierre_sistema === null ? null : Number(session.monto_cierre_sistema),
         monto_cierre_declarado: session.monto_cierre_declarado === null ? null : Number(session.monto_cierre_declarado),
@@ -812,6 +818,50 @@ router.get("/ordenes/:id", async (req, res, next) => {
     }
     catch (err) {
         next(err);
+    }
+});
+router.post("/ordenes/:id/cancelar-urgente", async (req, res, next) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+        res.status(400).json({ error: "ID de orden invalido" });
+        return;
+    }
+    const parsed = cancelacionUrgenteOrdenSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await (0, orderLifecycle_1.cancelOrderUrgently)(conn, {
+            orderId,
+            reason: parsed.data.motivo,
+            refundMessage: parsed.data.mensaje_devolucion,
+            creadoPor: req.user.id,
+        });
+        const conversacionId = await (0, supportNotifications_1.notifyOrderCancellation)(conn, {
+            usuarioId: result.usuarioId,
+            orderId,
+            reason: parsed.data.motivo,
+            refundMessage: parsed.data.mensaje_devolucion,
+            authorUserId: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos", "support"]);
+        res.json({
+            ok: true,
+            estado: "cancelada",
+            conversacion_id: conversacionId,
+            requiere_devolucion: result.paymentRequiresRefund,
+        });
+    }
+    catch (err) {
+        await conn.rollback();
+        next(err);
+    }
+    finally {
+        conn.release();
     }
 });
 router.patch("/ordenes/:id", async (req, res, next) => {

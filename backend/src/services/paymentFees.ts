@@ -34,7 +34,7 @@ export async function getPaymentFeeRules(conn: Queryable): Promise<PaymentFeeRul
     `SELECT id, proveedor, metodo, descripcion, porcentaje, activo
      FROM costos_cobro
      ORDER BY proveedor ASC, metodo ASC, id ASC`,
-  );
+  ).catch(() => []);
   return rows.map((row) => ({
     id: Number(row.id),
     proveedor: normalizeKeyPart(row.proveedor),

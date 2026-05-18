@@ -798,6 +798,43 @@ export async function finalizeFlavorStockForCheckoutItems(
   }
 }
 
+export async function restoreFlavorStockForCheckoutItems(
+  conn: Queryable,
+  {
+    sucursalId,
+    items,
+    referencia,
+    creadoPor = null,
+    ordenId = null,
+  }: {
+    sucursalId: number;
+    items: CheckoutFlavorStockItem[];
+    referencia?: string;
+    creadoPor?: number | null;
+    ordenId?: number | null;
+  },
+) {
+  for (const item of items) {
+    const saborId = Number(item.sabor_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(saborId) || saborId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0) continue;
+
+    const sabor = await getSaborMetaForStock(conn, saborId);
+    const inv = await lockFlavorInventoryRow(conn, saborId, sucursalId);
+    await writeFlavorInventoryRow(conn, saborId, sucursalId, inv.stock_disponible + cantidad, inv.stock_reservado);
+    await recordFlavorStockMovement(conn, {
+      saborId,
+      sucursalId,
+      tipo: "ingreso",
+      origen: "devolucion",
+      cantidad,
+      descripcion: item.descripcion ?? (referencia ? `Devolucion ${referencia}` : `Devolucion de ${sabor.nombre}`),
+      creadoPor,
+      ordenId,
+    });
+  }
+}
+
 export async function releaseStockForCheckoutItems(
   conn: Queryable,
   {
@@ -840,6 +877,46 @@ export async function releaseStockForCheckoutItems(
       origen: item.origen,
       cantidad: qtyToRelease,
       descripcion: item.descripcion ?? (referencia ? `Liberación ${referencia}` : "Liberación de checkout"),
+      creadoPor,
+      ordenId,
+    });
+    await syncProductoGlobalStock(conn, productoId);
+  }
+}
+
+export async function restoreStockForCheckoutItems(
+  conn: Queryable,
+  {
+    sucursalId,
+    items,
+    referencia,
+    creadoPor = null,
+    ordenId = null,
+  }: {
+    sucursalId: number;
+    items: CheckoutStockItem[];
+    referencia?: string;
+    creadoPor?: number | null;
+    ordenId?: number | null;
+  },
+) {
+  for (const item of items) {
+    const productoId = Number(item.producto_id);
+    const cantidad = Number(item.cantidad);
+    if (!Number.isFinite(productoId) || productoId <= 0 || !Number.isFinite(cantidad) || cantidad <= 0) continue;
+
+    const producto = await getProductoMetaForStock(conn, productoId);
+    if (!producto.track_stock) continue;
+
+    const inv = await lockInventoryRow(conn, productoId, sucursalId);
+    await writeInventoryRow(conn, productoId, sucursalId, inv.stock_disponible + cantidad, inv.stock_reservado);
+    await recordStockMovement(conn, {
+      productoId,
+      sucursalId,
+      tipo: "ingreso",
+      origen: "devolucion",
+      cantidad,
+      descripcion: item.descripcion ?? (referencia ? `Devolucion ${referencia}` : `Devolucion de ${producto.nombre}`),
       creadoPor,
       ordenId,
     });

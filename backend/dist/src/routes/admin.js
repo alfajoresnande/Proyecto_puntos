@@ -23,6 +23,7 @@ const expirations_1 = require("../services/expirations");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const cashRegister_1 = require("../services/cashRegister");
 const localSales_1 = require("../services/localSales");
+const supportNotifications_1 = require("../services/supportNotifications");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -241,6 +242,7 @@ async function getCajaSesionPayload(conn, sessionId) {
      LIMIT 100`, [sessionId]);
     return {
         ...session,
+        fecha_operativa: (0, cashRegister_1.formatCashDateStamp)(session.fecha_operativa),
         monto_apertura: Number(session.monto_apertura ?? 0),
         monto_cierre_sistema: session.monto_cierre_sistema === null ? null : Number(session.monto_cierre_sistema),
         monto_cierre_declarado: session.monto_cierre_declarado === null ? null : Number(session.monto_cierre_declarado),
@@ -770,6 +772,10 @@ const ventaLocalSchema = zod_1.z.object({
     notas: zod_1.z.string().max(1000).optional().nullable(),
     items: zod_1.z.array(ventaLocalItemSchema).min(1).max(80),
 });
+const cancelacionUrgenteOrdenSchema = zod_1.z.object({
+    motivo: zod_1.z.string().trim().min(8).max(1000),
+    mensaje_devolucion: zod_1.z.string().trim().max(1000).optional().nullable(),
+});
 router.post("/ventas-locales", async (req, res) => {
     const parsed = ventaLocalSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1218,6 +1224,50 @@ router.get("/ordenes", async (_req, res) => {
         };
     }));
 });
+router.post("/ordenes/:id/cancelar-urgente", async (req, res) => {
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+        res.status(400).json({ error: "ID de orden invalido" });
+        return;
+    }
+    const parsed = cancelacionUrgenteOrdenSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await (0, orderLifecycle_1.cancelOrderUrgently)(conn, {
+            orderId,
+            reason: parsed.data.motivo,
+            refundMessage: parsed.data.mensaje_devolucion,
+            creadoPor: req.user.id,
+        });
+        const conversacionId = await (0, supportNotifications_1.notifyOrderCancellation)(conn, {
+            usuarioId: result.usuarioId,
+            orderId,
+            reason: parsed.data.motivo,
+            refundMessage: parsed.data.mensaje_devolucion,
+            authorUserId: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos", "support"]);
+        res.json({
+            ok: true,
+            estado: "cancelada",
+            conversacion_id: conversacionId,
+            requiere_devolucion: result.paymentRequiresRefund,
+        });
+    }
+    catch (err) {
+        await conn.rollback();
+        res.status(400).json({ error: err?.message || "No se pudo cancelar la orden." });
+    }
+    finally {
+        conn.release();
+    }
+});
 router.patch("/ordenes/:id", async (req, res) => {
     const orderId = Number(req.params.id);
     if (!Number.isFinite(orderId) || orderId <= 0) {
@@ -1257,6 +1307,17 @@ router.patch("/ordenes/:id", async (req, res) => {
         }
         // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO
         // Si la orden está pendiente y se mueve a un estado que implica cobro (pagada, preparada, enviada, entregada)
+        if (estado === "cancelada") {
+            await (0, orderLifecycle_1.cancelOrderUrgently)(conn, {
+                orderId,
+                reason: notas?.trim() || "Cancelacion desde panel administrativo.",
+                creadoPor: req.user.id,
+            });
+            await conn.commit();
+            (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
+            res.json({ ok: true });
+            return;
+        }
         const paidStates = ["pagada", "preparada", "enviada", "entregada"];
         if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
             console.log(`[ADMIN/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
@@ -1320,7 +1381,7 @@ router.patch("/ordenes/:id", async (req, res) => {
                 // No debemos duplicarlo.
                 const skipStockIfPaidNow = (orden.estado === "pendiente_pago" && paidStates.includes(estado));
                 const shouldFinalizeStock = !skipStockIfPaidNow && (estado === "entregada" && orden.estado !== "pagada");
-                const shouldReleaseReservedStock = (estado === "cancelada" || estado === "expirada") &&
+                const shouldReleaseReservedStock = estado === "expirada" &&
                     (orden.estado === "pendiente_pago" || orden.estado === "preparada");
                 if (shouldFinalizeStock) {
                     if (stockItems.length) {
@@ -1364,7 +1425,7 @@ router.patch("/ordenes/:id", async (req, res) => {
                 }
             }
         }
-        if ((estado === "cancelada" || estado === "expirada") && Number(orden.total_puntos ?? 0) > 0) {
+        if (estado === "expirada" && Number(orden.total_puntos ?? 0) > 0) {
             await (0, points_1.registrarMovimientoPuntos)(conn, {
                 usuarioId: Number(orden.usuario_id),
                 tipo: 'devolucion_canje',
@@ -1381,7 +1442,7 @@ router.patch("/ordenes/:id", async (req, res) => {
             orderId,
         ]);
         if (Number(orden.total_dinero ?? 0) > 0) {
-            if (estado === "cancelada" || estado === "expirada") {
+            if (estado === "expirada") {
                 await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
             }
         }

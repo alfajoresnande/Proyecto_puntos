@@ -881,6 +881,13 @@ async function ensurePagosCheckoutSchema() {
     if (!montoNetoRows.length) {
         await exports.pool.query("ALTER TABLE pagos ADD COLUMN monto_neto DECIMAL(10,2) NULL AFTER comision_monto");
     }
+    await exports.pool.query(`UPDATE pagos
+     SET comision_porcentaje = COALESCE(comision_porcentaje, 0),
+         comision_monto = COALESCE(comision_monto, 0),
+         monto_neto = COALESCE(monto_neto, monto - COALESCE(comision_monto, 0))
+     WHERE comision_porcentaje IS NULL
+        OR comision_monto IS NULL
+        OR monto_neto IS NULL`).catch(() => { });
     try {
         const [idxRows] = await exports.pool.query(`SELECT 1 FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pagos'
