@@ -1098,29 +1098,6 @@ export function Catalogo() {
                         <span className="cost">{producto.puntos_requeridos} pts</span>
                       </span>
                     </div>
-                    {producto.puntos_acumulables ? (
-                      <>
-                        <div className="product-card-divider" />
-                        <div className="product-card-row product-card-points-tile">
-                          <span className="product-points-copy">
-                            <span className="product-card-points-label">
-                              Suma:
-                              <button
-                                type="button"
-                                className="product-points-info"
-                                aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
-                              >
-                                i
-                                <span className="product-points-info-bubble">
-                                  Estos son los puntos que sumas al comprar el producto en la tienda.
-                                </span>
-                              </button>
-                            </span>
-                            <span className="earn">+{producto.puntos_acumulables} pts</span>
-                          </span>
-                        </div>
-                      </>
-                    ) : null}
                   </div>
                   <div className="product-card-actions">
                     <button
@@ -1436,27 +1413,6 @@ export function Catalogo() {
                   <span>Puntos para canjear</span>
                   <span className="cost">{productoModal.puntos_requeridos} pts</span>
                 </div>
-                {productoModal.puntos_acumulables ? (
-                  <>
-                    <div className="product-card-divider" />
-                    <div className="product-card-row">
-                      <span className="product-card-points-label">
-                        Puntos que sumas al comprar
-                        <button
-                          type="button"
-                          className="product-points-info"
-                          aria-label="Estos son los puntos que sumas al comprar el producto en la tienda"
-                        >
-                          i
-                          <span className="product-points-info-bubble">
-                            Estos son los puntos que sumas al comprar el producto en la tienda.
-                          </span>
-                        </button>
-                      </span>
-                      <span className="earn">+{productoModal.puntos_acumulables} pts</span>
-                    </div>
-                  </>
-                ) : null}
               </div>
 
               {user ? (
