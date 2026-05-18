@@ -3405,6 +3405,14 @@ body.catalogo-background .pagina-page {
   box-shadow: none;
 }
 
+.store-page .product-card-btn-canjear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+  padding: 0.75rem 0.9rem;
+}
+
 .catalog-redemption-page .product-card-btn-canjear:disabled,
 .store-page .product-card-btn-canjear:disabled {
   background: #B9A397;
