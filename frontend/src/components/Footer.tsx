@@ -9,7 +9,7 @@ export function Footer() {
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-col footer-col-left">
-          <Link to="/inicio" className="footer-logo">
+          <Link to="/" className="footer-logo">
             <img src="/logo.png" alt="Nande" />
           </Link>
           <p className="footer-tagline">Casa de Alfajores, Dulces y Chocolates</p>
@@ -17,7 +17,7 @@ export function Footer() {
 
         <div className="footer-col footer-col-center">
           <nav className="footer-nav-inline">
-            <Link to="/inicio" className="footer-link">Inicio</Link>
+            <Link to="/" className="footer-link">Inicio</Link>
             <Link to="/tienda" className="footer-link">Tienda Online</Link>
             <Link to="/catalogo" className="footer-link">Canjes</Link>
             {!user ? <Link to="/login" className="footer-link">Iniciar Sesión</Link> : null}

@@ -31,7 +31,7 @@ function getMetaForPath(pathname: string): MetaConfig {
       title: "Ñandé Alfajores Correntinos",
       description:
         "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
-      canonicalPath: "/inicio",
+      canonicalPath: "/",
     },
     "/tienda": {
       title: "Comprar alfajores correntinos online | Ñandé Alfajores",

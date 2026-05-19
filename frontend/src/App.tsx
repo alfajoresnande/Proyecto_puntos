@@ -133,8 +133,8 @@ export default function App() {
       <div className="app-main">
         <main>
           <Routes>
-            <Route path="/" element={<Navigate to="/inicio" replace />} />
-            <Route path="/inicio" element={<Home />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/inicio" element={<Navigate to="/" replace />} />
             <Route path="/catalogo" element={<Catalogo />} />
             <Route path="/tienda" element={<TiendaOnline />} />
             <Route path="/login" element={<Login />} />
@@ -415,7 +415,7 @@ export default function App() {
             />
             <Route path="/sobre-nosotros" element={<SobreNosotros />} />
             <Route path="/terminos" element={<Terminos />} />
-            <Route path="*" element={<Navigate to="/inicio" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
         <Footer />

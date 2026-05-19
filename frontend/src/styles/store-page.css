@@ -3,16 +3,17 @@
 }
 
 .store-page-isolated .product-card-media-btn {
-  background: #ffffff;
+  background: #F6EADD;
 }
 
 .store-page-isolated .product-card-img,
 .store-page-isolated .product-card-placeholder {
-  background: #ffffff;
+  background: #F6EADD;
 }
 
 .store-page-isolated .product-card-img {
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center;
   padding: 0;
 }
 
@@ -42,6 +43,7 @@
 
 @media (max-width: 640px) {
   .store-page-isolated .product-card-img {
-    object-fit: contain;
+    object-fit: cover;
+    object-position: center;
   }
 }

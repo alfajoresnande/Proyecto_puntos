@@ -243,7 +243,7 @@ export function Navbar() {
 
       <nav className={`navbar navbar-app-shell${!user ? " navbar-guest" : ""}`}>
         <div className="navbar-inner">
-          <Link to="/inicio" className="navbar-logo" onClick={closeMenu}>
+          <Link to="/" className="navbar-logo" onClick={closeMenu}>
             <img src="/logo.png" alt="Nande" />
           </Link>
 
@@ -252,7 +252,7 @@ export function Navbar() {
           </Link>
 
           <div className="navbar-links">
-            <NavLink to="/inicio" className={({ isActive }) => navClass(isActive)}>Inicio</NavLink>
+            <NavLink to="/" className={({ isActive }) => navClass(isActive)}>Inicio</NavLink>
             <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={() => scrollPageToTop()}>Tienda Online</NavLink>
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
@@ -402,7 +402,7 @@ export function Navbar() {
 
       {menuOpen ? (
         <div className="navbar-mobile navbar-mobile-shell">
-          <NavLink to="/inicio" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inicio</NavLink>
+          <NavLink to="/" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inicio</NavLink>
           <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenuAndScrollTop}>Tienda Online</NavLink>
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
