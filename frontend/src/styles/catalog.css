@@ -3240,8 +3240,13 @@ body.catalogo-background .pagina-page {
   max-width: 34ch;
 }
 
-.catalog-redemption-page .product-card-desc-wrap {
+.catalog-redemption-page .product-card-desc-wrap,
+.store-page .product-card-desc-wrap {
   margin: 0;
+  height: 3.6rem;
+  min-height: 3.6rem;
+  max-height: 3.6rem;
+  overflow: hidden;
 }
 
 .catalog-redemption-page .product-card-points,
@@ -4128,6 +4133,9 @@ body.catalogo-background .pagina-page {
   .catalog-redemption-page .product-card-desc-wrap,
   .store-page .product-card-desc-wrap {
     margin: 0;
+    height: 3.2rem;
+    min-height: 3.2rem;
+    max-height: 3.2rem;
   }
 
   .catalog-redemption-page .product-card-points,
