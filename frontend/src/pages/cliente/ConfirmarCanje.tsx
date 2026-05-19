@@ -196,7 +196,16 @@ export function ConfirmarCanje() {
                       <div className="catalog-canje-item-qty">
                         <button type="button" onClick={() => cartDecrement(item.producto_id)} disabled={canjearMutation.isPending}>-</button>
                         <span>{item.cantidad}</span>
-                        <button type="button" onClick={() => cartIncrement(item.producto_id)} disabled={canjearMutation.isPending}>+</button>
+                        <button
+                          type="button"
+                          onClick={() => cartIncrement(item.producto_id)}
+                          disabled={
+                            canjearMutation.isPending ||
+                            (Number(item.stock_max ?? 0) > 0 && item.cantidad >= Number(item.stock_max ?? 0))
+                          }
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                   ))}

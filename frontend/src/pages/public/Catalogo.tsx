@@ -83,6 +83,16 @@ function productHasStock(producto: Producto): boolean {
   return producto.track_stock === false || Number(producto.stock_disponible ?? 0) > 0;
 }
 
+function productAvailableStock(producto: Producto): number {
+  const stock = Number(producto.stock_disponible ?? 0);
+  return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
+}
+
+function maxSelectableCanjeQuantity(producto: Producto): number {
+  if (producto.track_stock === false) return 100;
+  return Math.max(1, Math.min(100, productAvailableStock(producto)));
+}
+
 export function Catalogo() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -168,6 +178,9 @@ export function Catalogo() {
   const productoModalImagenes = productoModal ? getProductoImagenes(productoModal) : [];
   const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
   const productoModalTieneCarousel = productoModalImagenes.length > 1;
+  const productoModalCantidadDisponible = productoModal
+    ? Math.max(0, maxSelectableCanjeQuantity(productoModal) - (canjeCart[productoModal.id]?.cantidad ?? 0))
+    : 0;
 
   useEffect(() => {
     if (!sucursalesRetiro.length) return;
@@ -463,9 +476,11 @@ export function Catalogo() {
     }
 
     if (canjearCarritoMutation.isPending) return;
-    const cantidadSafe = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
-    const stock = Number(producto.stock_disponible ?? 0);
-    if (producto.track_stock !== false && stock <= 0) {
+    const cantidadPedida = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
+    const maxCantidad = maxSelectableCanjeQuantity(producto);
+    const cantidadYaCargada = canjeCart[producto.id]?.cantidad ?? 0;
+    const cantidadDisponibleParaCargar = Math.max(0, maxCantidad - cantidadYaCargada);
+    if (producto.track_stock !== false && productAvailableStock(producto) <= 0) {
       setToast({
         msg: "No hay stock disponible en la sucursal seleccionada.",
         variant: "error",
@@ -474,12 +489,23 @@ export function Catalogo() {
       });
       return;
     }
+    if (cantidadDisponibleParaCargar <= 0) {
+      setToast({
+        msg: "Ya cargaste todo el stock disponible de este producto en el carrito.",
+        variant: "error",
+        dismissLabel: "Cerrar",
+        autoHideMs: 7000,
+      });
+      return;
+    }
+    const cantidadSafe = Math.min(cantidadPedida, cantidadDisponibleParaCargar);
     cartAdd(
       {
         id: producto.id,
         nombre: producto.nombre,
         puntos_requeridos: producto.puntos_requeridos,
         imagen_url: producto.imagen_url,
+        stock_max: maxCantidad,
       },
       cantidadSafe,
     );
@@ -1046,9 +1072,14 @@ export function Catalogo() {
             {productosFiltrados.map((producto) => {
               const descripcion = producto.descripcion || "Producto disponible para canje.";
               const descripcionLarga = descripcion.length > 82;
-              const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = !productHasStock(producto);
-              const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
+              const maxCantidad = maxSelectableCanjeQuantity(producto);
+              const cantidadYaCargada = canjeCart[producto.id]?.cantidad ?? 0;
+              const cantidadDisponibleParaCargar = Math.max(0, maxCantidad - cantidadYaCargada);
+              const cantidadSeleccionada = Math.min(
+                getCantidadSeleccionada(producto.id),
+                Math.max(1, cantidadDisponibleParaCargar),
+              );
 
               return (
               <div key={producto.id} className="product-card">
@@ -1118,7 +1149,7 @@ export function Catalogo() {
                             <button
                               type="button"
                               className="vendedor-round-btn"
-                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= 100}
+                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= Math.max(1, cantidadDisponibleParaCargar)}
                               onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
                             >
                               +
@@ -1127,7 +1158,7 @@ export function Catalogo() {
                         </div>
                         <button
                           className="product-card-btn product-card-btn-canjear"
-                          disabled={canjearCarritoMutation.isPending || sinStock}
+                          disabled={canjearCarritoMutation.isPending || sinStock || cantidadDisponibleParaCargar <= 0}
                           onClick={() =>
                             agregarProductoAlCarrito(
                               producto,
@@ -1141,7 +1172,7 @@ export function Catalogo() {
                             )
                           }
                         >
-                          {sinStock ? "Sin stock" : "Agregar al carrito de compras"}
+                          {sinStock ? "Sin stock" : cantidadDisponibleParaCargar <= 0 ? "Stock cargado" : "Agregar al carrito"}
                         </button>
                       </>
                     ) : (
@@ -1425,18 +1456,18 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
-                      disabled={cantidadModalCanje >= 100}
-                      onClick={() => setCantidadModalCanje((prev) => Math.min(100, prev + 1))}
+                      disabled={cantidadModalCanje >= Math.max(1, productoModalCantidadDisponible)}
+                      onClick={() => setCantidadModalCanje((prev) => Math.min(Math.max(1, productoModalCantidadDisponible), prev + 1))}
                     >
                       +
                     </button>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={canjearCarritoMutation.isPending || productoModalSinStock}
+                    disabled={canjearCarritoMutation.isPending || productoModalSinStock || productoModalCantidadDisponible <= 0}
                     onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanje)}
                   >
-                    {productoModalSinStock ? "Sin stock" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito de compras` : "al carrito de compras"}`}
+                    {productoModalSinStock ? "Sin stock" : productoModalCantidadDisponible <= 0 ? "Stock cargado" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}`}
                   </button>
                 </>
               ) : (

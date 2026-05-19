@@ -7,6 +7,7 @@ export type CartItem = {
   puntos_requeridos: number;
   imagen_url: string | null;
   cantidad: number;
+  stock_max?: number | null;
 };
 
 type ProductoInfo = {
@@ -14,6 +15,7 @@ type ProductoInfo = {
   nombre: string;
   puntos_requeridos: number | null;
   imagen_url?: string | null;
+  stock_max?: number | null;
 };
 
 type CartStore = {
@@ -38,7 +40,9 @@ export const useCartStore = create<CartStore>()(
         const safe = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
         set((state) => {
           const existing = state.items[producto.id];
-          const nuevaCantidad = (existing?.cantidad || 0) + safe;
+          const max = Number(producto.stock_max ?? existing?.stock_max ?? 0);
+          const hasMax = Number.isFinite(max) && max > 0;
+          const nuevaCantidad = hasMax ? Math.min(max, (existing?.cantidad || 0) + safe) : (existing?.cantidad || 0) + safe;
           return {
             items: {
               ...state.items,
@@ -48,6 +52,7 @@ export const useCartStore = create<CartStore>()(
                 puntos_requeridos: producto.puntos_requeridos || 0,
                 imagen_url: producto.imagen_url ?? null,
                 cantidad: nuevaCantidad,
+                stock_max: hasMax ? max : null,
               },
             },
           };
@@ -57,6 +62,8 @@ export const useCartStore = create<CartStore>()(
         set((state) => {
           const existing = state.items[productoId];
           if (!existing) return state;
+          const max = Number(existing.stock_max ?? 0);
+          if (Number.isFinite(max) && max > 0 && existing.cantidad >= max) return state;
           return {
             items: {
               ...state.items,
@@ -84,8 +91,8 @@ export const useCartStore = create<CartStore>()(
       storage: createJSONStorage(() => localStorage),
       // Solo persistir items, no el flag pendingCanje
       partialize: (state) => ({ items: state.items }),
-      // Bump de versión para invalidar el formato anterior (Record<number, number>)
-      version: 2,
+      // Invalida carritos viejos sin limite de stock por item.
+      version: 3,
     },
   ),
 );

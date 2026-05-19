@@ -983,6 +983,8 @@ export function TiendaOnline() {
           <div className="catalog-grid">
             {productosFiltrados.map((producto) => {
               const img = productImage(producto);
+              const descripcion = producto.descripcion || "Producto disponible para comprar online.";
+              const descripcionLarga = descripcion.length > 86;
               const stock = Number(producto.stock_disponible ?? 0);
               const esCaja = isCajaSabores(producto);
               const sinStock = esCaja ? !productHasStock(producto) : producto.track_stock !== false && stock <= 0;
@@ -1012,7 +1014,23 @@ export function TiendaOnline() {
                   {producto.categoria ? <span className="product-card-cat">{producto.categoria}</span> : null}
                   <div className="product-card-body">
                     <h2 className="product-card-name">{producto.nombre}</h2>
-                    <p className="product-card-desc">{producto.descripcion || "Producto disponible para comprar online."}</p>
+                    <div className="product-card-desc-wrap">
+                      <p className={`product-card-desc ${descripcionLarga ? "is-collapsed" : "is-expanded"}`}>
+                        {descripcion}
+                      </p>
+                      {descripcionLarga ? (
+                        <button
+                          type="button"
+                          className="product-card-desc-toggle"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openProductoModal(producto);
+                          }}
+                        >
+                          Ver más
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="product-card-points store-price-box">
                       <div className="product-card-row">
                         <span>Precio</span>
