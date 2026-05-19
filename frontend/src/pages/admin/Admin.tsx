@@ -16,6 +16,7 @@ type AdminTab =
   | "inicio"
   | "usuarios"
   | "productos"
+  | "productos-crear"
   | "productos-edicion"
   | "productos-sabores"
   | "inventario"
@@ -37,6 +38,7 @@ const ADMIN_TABS: AdminTab[] = [
   "inicio",
   "usuarios",
   "productos",
+  "productos-crear",
   "productos-edicion",
   "productos-sabores",
   "inventario",
@@ -71,10 +73,15 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Usa esta vista para revisar rapidamente que productos estan activos, buscar por nombre o categoria y entrar a editar cuando haga falta.",
     "Si solo queres pausar un producto, conviene desactivarlo en vez de borrarlo para conservar ventas, stock e historial.",
   ],
+  "productos-crear": [
+    "Aca se cargan productos nuevos para la tienda online, canjes y venta local.",
+    "En esta vista se define nombre, categoria, precio, puntos, imagenes, retiro, envio, stock y si el producto sera una caja configurable por sabores.",
+    "Si el producto es una caja configurable, primero conviene revisar que los sabores existan en Sabores de cajas.",
+  ],
   "productos-edicion": [
-    "Aca se crean productos nuevos y se editan los productos existentes.",
-    "En esta vista se configuran precio, puntos, categoria, imagenes, retiro, envio, stock y si el producto es una caja configurable por sabores.",
-    "Para editar un producto existente, buscalo en esta misma vista y toca Editar. Los cambios se reflejan en tienda, ventas locales y reportes.",
+    "Aca se editan productos que ya existen sin mezclarlo con la carga de productos nuevos.",
+    "Buscá el producto, tocá Editar y cambiá precio, puntos, categoria, imagenes, stock o configuracion de caja.",
+    "Los cambios se reflejan en tienda, ventas locales, canjes y reportes.",
   ],
   "productos-sabores": [
     "Aca se cargan los sabores que despues se usan en las cajas configurables.",
@@ -654,9 +661,16 @@ function ventasViewFromPath(pathname: string): AdminVentasViewKey | null {
   return null;
 }
 
+function isProductosTab(tab: AdminTab): boolean {
+  return tab === "productos" || tab === "productos-crear" || tab === "productos-edicion" || tab === "productos-sabores";
+}
+
 function adminTabFromPath(pathname: string): AdminTab | null {
+  if (/\/productos\/crear(?:[/?#]|$)/.test(pathname)) return "productos-crear";
   if (/\/productos\/edicion(?:[/?#]|$)/.test(pathname)) return "productos-edicion";
+  if (/\/productos\/editar(?:[/?#]|$)/.test(pathname)) return "productos-edicion";
   if (/\/productos\/sabores(?:[/?#]|$)/.test(pathname)) return "productos-sabores";
+  if (/\/productos\/listado(?:[/?#]|$)/.test(pathname)) return "productos";
   if (/\/productos(?:[/?#]|$)/.test(pathname)) return "productos";
   if (/\/caja(?:[/?#]|$)/.test(pathname)) return "caja";
   if (/\/gastos(?:[/?#]|$)/.test(pathname)) return "gastos";
@@ -672,8 +686,9 @@ function ventasPathSegment(view: AdminVentasViewKey): string {
 }
 
 function adminPathSegment(tab: AdminTab): string | null {
-  if (tab === "productos") return "productos";
-  if (tab === "productos-edicion") return "productos/edicion";
+  if (tab === "productos") return "productos/listado";
+  if (tab === "productos-crear") return "productos/crear";
+  if (tab === "productos-edicion") return "productos/editar";
   if (tab === "productos-sabores") return "productos/sabores";
   if (tab === "caja") return "caja";
   if (tab === "gastos") return "gastos";
@@ -1207,6 +1222,7 @@ export function Admin() {
   const [tab, setTab] = useState<AdminTab>("inicio");
   const [ventasView, setVentasView] = useState<AdminVentasViewKey>("pedidos");
   const [ventasNavOpen, setVentasNavOpen] = useState(false);
+  const [productosNavOpen, setProductosNavOpen] = useState(false);
   const [okMsg, setOkMsg] = useState("");
   const [errMsg, setErrMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1610,6 +1626,7 @@ export function Admin() {
     if (requestedDirectTab) {
       setTab(requestedDirectTab);
       setVentasNavOpen(false);
+      setProductosNavOpen(isProductosTab(requestedDirectTab));
       return;
     }
 
@@ -1628,6 +1645,7 @@ export function Admin() {
       navigate(`${panelBasePath}/ventas/${ventasPathSegment(nextVentasView)}`, { replace: true });
     } else if (isAdminTab(requestedTab)) {
       setVentasNavOpen(false);
+      setProductosNavOpen(isProductosTab(requestedTab));
     }
   }, [location.pathname, location.search, navigate, panelBasePath]);
 
@@ -1757,6 +1775,17 @@ export function Admin() {
     if (nextTab !== "ordenes") {
       setVentasNavOpen(false);
     }
+    if (!isProductosTab(nextTab)) {
+      setProductosNavOpen(false);
+    }
+    syncAdminUrl(nextTab);
+    scrollAdminContentToTop();
+  }
+
+  function abrirVistaProductos(nextTab: Extract<AdminTab, "productos" | "productos-crear" | "productos-edicion" | "productos-sabores">) {
+    setTab(nextTab);
+    setProductosNavOpen(true);
+    setVentasNavOpen(false);
     syncAdminUrl(nextTab);
     scrollAdminContentToTop();
   }
@@ -1765,7 +1794,17 @@ export function Admin() {
     setTab("ordenes");
     setVentasView(view);
     setVentasNavOpen(true);
+    setProductosNavOpen(false);
     syncAdminUrl("ordenes", view);
+    scrollAdminContentToTop();
+  }
+
+  function toggleProductosNav() {
+    if (!isProductosTab(tab)) {
+      abrirVistaProductos("productos-crear");
+      return;
+    }
+    setProductosNavOpen((prev) => !prev);
     scrollAdminContentToTop();
   }
 
@@ -3847,6 +3886,9 @@ export function Admin() {
     if (tab !== "ordenes") {
       setVentasNavOpen(false);
     }
+    if (!isProductosTab(tab)) {
+      setProductosNavOpen(false);
+    }
   }, [tab]);
 
   return (
@@ -3876,15 +3918,42 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => seleccionarTab("usuarios")}>
             {renderAdminNavLabel("Usuarios")}
           </button>
-          <button className={`admin-nav-btn ${tab === "productos" ? "active" : ""}`} onClick={() => seleccionarTab("productos")}>
-            {renderAdminNavLabel("Productos")}
-          </button>
-          <button className={`admin-nav-btn ${tab === "productos-edicion" ? "active" : ""}`} onClick={() => seleccionarTab("productos-edicion")}>
-            {renderAdminNavLabel("Editar productos")}
-          </button>
-          <button className={`admin-nav-btn ${tab === "productos-sabores" ? "active" : ""}`} onClick={() => seleccionarTab("productos-sabores")}>
-            {renderAdminNavLabel("Sabores cajas")}
-          </button>
+          <div className={`admin-nav-group${isProductosTab(tab) ? " active" : ""}`}>
+            <button className={`admin-nav-btn ${isProductosTab(tab) ? "active" : ""}`} onClick={toggleProductosNav}>
+              <span className="admin-nav-label-with-caret">
+                {renderAdminNavLabel("Productos")}
+                <span className={`admin-nav-caret${productosNavOpen && isProductosTab(tab) ? " open" : ""}`} aria-hidden="true" />
+              </span>
+            </button>
+            {productosNavOpen ? (
+              <div className="admin-nav-submenu">
+                <button
+                  className={`admin-nav-subbtn${tab === "productos-crear" ? " active" : ""}`}
+                  onClick={() => abrirVistaProductos("productos-crear")}
+                >
+                  Crear producto
+                </button>
+                <button
+                  className={`admin-nav-subbtn${tab === "productos-edicion" ? " active" : ""}`}
+                  onClick={() => abrirVistaProductos("productos-edicion")}
+                >
+                  Editar producto
+                </button>
+                <button
+                  className={`admin-nav-subbtn${tab === "productos" ? " active" : ""}`}
+                  onClick={() => abrirVistaProductos("productos")}
+                >
+                  Listar productos
+                </button>
+                <button
+                  className={`admin-nav-subbtn${tab === "productos-sabores" ? " active" : ""}`}
+                  onClick={() => abrirVistaProductos("productos-sabores")}
+                >
+                  Sabores de cajas
+                </button>
+              </div>
+            ) : null}
+          </div>
           <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => seleccionarTab("inventario")}>
             {renderAdminNavLabel("Inventario")}
           </button>
@@ -4561,7 +4630,7 @@ export function Admin() {
                   <option value="venta">Solo tienda</option>
                   <option value="mixto">Mixto</option>
                 </select>
-                <button className="adm-btn-secondary adm-btn-inline" onClick={() => seleccionarTab("productos-edicion")}>
+                <button className="adm-btn-secondary adm-btn-inline" onClick={() => abrirVistaProductos("productos-crear")}>
                   Crear producto
                 </button>
               </div>
@@ -4597,7 +4666,7 @@ export function Admin() {
                           className="adm-btn-link"
                           onClick={() => {
                             startEdit(producto);
-                            seleccionarTab("productos-edicion");
+                            abrirVistaProductos("productos-edicion");
                           }}
                         >
                           Editar
@@ -4694,7 +4763,7 @@ export function Admin() {
             </div>
           ) : null}
 
-          {tab === "productos-edicion" ? (
+          {tab === "productos-crear" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Nuevo producto" />
 
@@ -4875,8 +4944,12 @@ export function Admin() {
                   {busy ? "Creando..." : "Crear producto"}
                 </button>
               </div>
+            </div>
+          ) : null}
 
-              <SectionTitle title="Productos existentes" />
+          {tab === "productos-edicion" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Editar producto" />
               <div className="adm-list-search" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
                 <input
                   className="adm-input"
