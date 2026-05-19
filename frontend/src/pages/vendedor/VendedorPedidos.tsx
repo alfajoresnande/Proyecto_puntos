@@ -1458,14 +1458,20 @@ export function VendedorPedidos() {
                 onChange={(event) => setCancelacionOrden((prev) => prev ? { ...prev, mensaje_devolucion: event.target.value } : prev)}
               />
             </label>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.55rem", flexWrap: "wrap" }}>
-              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} onClick={() => setCancelacionOrden(null)} disabled={cancelarOrdenMutation.isPending}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.65rem", marginTop: "0.25rem" }}>
+              <button
+                type="button"
+                className="ios-btn-secondary"
+                style={{ width: "100%", padding: "0.75rem 1rem", fontSize: "0.95rem" }}
+                onClick={() => setCancelacionOrden(null)}
+                disabled={cancelarOrdenMutation.isPending}
+              >
                 Volver
               </button>
               <button
                 type="button"
                 className="ios-btn-primary"
-                style={{ width: "auto", background: "#9B2C2C", borderColor: "#9B2C2C" }}
+                style={{ width: "100%", padding: "0.75rem 1rem", fontSize: "0.95rem", background: "#9B2C2C", borderColor: "#9B2C2C" }}
                 onClick={confirmarCancelacionUrgente}
                 disabled={cancelarOrdenMutation.isPending || cancelacionOrden.motivo.trim().length < 8}
               >
