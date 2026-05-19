@@ -4,26 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#D4621A" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="256x256" href="/favicon-256x256.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512x512.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/favicon-192x192.png" />
 
-    <title>Ñandé Alfajores Correntinos | Tienda Online y Programa de Puntos</title>
+    <title>Ñandé Alfajores Correntinos</title>
     <meta
       name="description"
-      content="Comprá alfajores correntinos artesanales online. Compra web con retiro en sucursal y programa de puntos para canjear productos gratis. Hecho en Corrientes, Argentina."
+      content="Comprá alfajores correntinos artesanales online. Tienda del Nordeste Argentino con retiro en sucursal, catálogo de productos y programa de puntos."
     />
     <meta
       name="keywords"
-      content="alfajores correntinos, alfajores artesanales, alfajores Corrientes, tienda de alfajores, alfajores online Argentina, Ñandé alfajores"
+      content="alfajores correntinos, alfajores artesanales, alfajores del nordeste argentino, alfajores NEA, tienda online de alfajores, alfajores Corrientes, alfajores online Argentina, Ñandé alfajores"
     />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://alfajorescorrentinos.com/" />
+    <meta name="geo.region" content="AR-W" />
+    <meta name="geo.placename" content="Corrientes, Argentina" />
+    <link rel="canonical" href="https://alfajorescorrentinos.com/inicio" />
 
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://alfajorescorrentinos.com/" />
-    <meta property="og:title" content="Ñandé Alfajores Correntinos | Tienda Online" />
+    <meta property="og:url" content="https://alfajorescorrentinos.com/inicio" />
+    <meta property="og:title" content="Ñandé Alfajores Correntinos" />
     <meta
       property="og:description"
-      content="Alfajores correntinos artesanales. Comprá online, retirás en sucursal y acumulás puntos para canjear productos gratis."
+      content="Alfajores correntinos artesanales del NEA. Comprá online, retirá en sucursal y acumulá puntos para canjear productos."
     />
     <meta property="og:image" content="https://alfajorescorrentinos.com/logo.png" />
     <meta property="og:locale" content="es_AR" />
@@ -33,28 +38,58 @@
     <meta name="twitter:title" content="Ñandé Alfajores Correntinos" />
     <meta
       name="twitter:description"
-      content="Alfajores correntinos artesanales con tienda online y programa de puntos."
+      content="Tienda online de alfajores correntinos artesanales con retiro en sucursal y programa de puntos."
     />
     <meta name="twitter:image" content="https://alfajorescorrentinos.com/logo.png" />
 
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "Bakery",
-        "name": "Ñandé Alfajores Correntinos",
-        "description": "Alfajores correntinos artesanales. Tienda online con retiro en sucursal y programa de puntos de fidelización.",
-        "url": "https://alfajorescorrentinos.com",
-        "logo": "https://alfajorescorrentinos.com/logo.png",
-        "image": "https://alfajorescorrentinos.com/logo.png",
-        "address": {
-          "@type": "PostalAddress",
-          "addressLocality": "Corrientes",
-          "addressRegion": "Corrientes",
-          "addressCountry": "AR"
-        },
-        "servesCuisine": "Repostería argentina",
-        "priceRange": "$$",
-        "hasMap": "https://alfajorescorrentinos.com"
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://alfajorescorrentinos.com/#website",
+            "name": "Ñandé Alfajores Correntinos",
+            "alternateName": "Ñandé Alfajores",
+            "url": "https://alfajorescorrentinos.com/inicio",
+            "inLanguage": "es-AR",
+            "description": "Tienda online de alfajores correntinos artesanales del Nordeste Argentino."
+          },
+          {
+            "@type": ["Bakery", "Store"],
+            "@id": "https://alfajorescorrentinos.com/#business",
+            "name": "Ñandé Alfajores Correntinos",
+            "alternateName": "Ñandé Alfajores",
+            "description": "Alfajores correntinos artesanales del Nordeste Argentino. Tienda online con retiro en sucursal y programa de puntos.",
+            "url": "https://alfajorescorrentinos.com/inicio",
+            "logo": "https://alfajorescorrentinos.com/logo.png",
+            "image": "https://alfajorescorrentinos.com/logo.png",
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Corrientes",
+              "addressRegion": "Corrientes",
+              "addressCountry": "AR"
+            },
+            "areaServed": [
+              { "@type": "AdministrativeArea", "name": "Corrientes" },
+              { "@type": "AdministrativeArea", "name": "Nordeste Argentino" },
+              { "@type": "Country", "name": "Argentina" }
+            ],
+            "servesCuisine": ["Repostería argentina", "Alfajores artesanales"],
+            "knowsAbout": [
+              "alfajores correntinos",
+              "alfajores artesanales",
+              "alfajores del Nordeste Argentino",
+              "tienda online de alfajores"
+            ],
+            "priceRange": "$$",
+            "hasOfferCatalog": {
+              "@type": "OfferCatalog",
+              "name": "Catálogo online de alfajores y productos Ñandé",
+              "url": "https://alfajorescorrentinos.com/tienda"
+            }
+          }
+        ]
       }
     </script>
   </head>

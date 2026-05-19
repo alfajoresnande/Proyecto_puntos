@@ -2,9 +2,9 @@ import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 const SITE_ORIGIN = "https://alfajorescorrentinos.com";
-const DEFAULT_TITLE = "Ñandé Alfajores Correntinos | Tienda Online y Programa de Puntos";
+const DEFAULT_TITLE = "Ñandé Alfajores Correntinos";
 const DEFAULT_DESCRIPTION =
-  "Comprá alfajores correntinos artesanales online. Compra web con retiro en sucursal y programa de puntos para canjear productos.";
+  "Comprá alfajores correntinos artesanales online. Tienda del NEA con retiro en sucursal, catálogo de productos y programa de puntos.";
 
 type MetaConfig = {
   title: string;
@@ -22,33 +22,39 @@ function setMeta(selector: string, attr: "content" | "href", value: string) {
 function getMetaForPath(pathname: string): MetaConfig {
   const publicRoutes: Record<string, Omit<MetaConfig, "robots">> = {
     "/": {
-      title: "Ñandé Alfajores Correntinos | Alfajores artesanales, puntos y canjes",
+      title: "Ñandé Alfajores Correntinos",
       description:
-        "Descubrí Ñandé Alfajores Correntinos: compra online, retiro en sucursal, programa de puntos y catálogo de canjes.",
+        "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
       canonicalPath: "/",
     },
-    "/tienda": {
-      title: "Tienda Online | Ñandé Alfajores Correntinos",
+    "/inicio": {
+      title: "Ñandé Alfajores Correntinos",
       description:
-        "Comprá alfajores correntinos y productos de Ñandé online con retiro en sucursal. Catálogo actualizado y compra simple.",
+        "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
+      canonicalPath: "/inicio",
+    },
+    "/tienda": {
+      title: "Comprar alfajores correntinos online | Ñandé Alfajores",
+      description:
+        "Comprá alfajores correntinos artesanales en la tienda online de Ñandé. Productos del Nordeste Argentino con retiro en sucursal.",
       canonicalPath: "/tienda",
     },
     "/catalogo": {
-      title: "Canjes y Programa de Puntos | Ñandé Alfajores Correntinos",
+      title: "Canjes y programa de puntos | Ñandé Alfajores Correntinos",
       description:
-        "Canjeá tus puntos por productos de Ñandé. Descubrí el catálogo de canjes y elegí tu sucursal de retiro.",
+        "Canjeá tus puntos por alfajores y productos de Ñandé. Descubrí el catálogo de canjes y elegí tu sucursal de retiro.",
       canonicalPath: "/catalogo",
     },
     "/sobre-nosotros": {
       title: "Quiénes Somos | Ñandé Alfajores Correntinos",
       description:
-        "Conocé la historia de Ñandé Alfajores Correntinos, nuestra propuesta artesanal y el origen de nuestros productos.",
+        "Conocé la historia de Ñandé Alfajores Correntinos, nuestra propuesta artesanal y el sabor regional del Nordeste Argentino.",
       canonicalPath: "/sobre-nosotros",
     },
     "/terminos": {
       title: "Términos y Condiciones | Ñandé Alfajores Correntinos",
       description:
-        "Consultá los términos y condiciones de uso, compras, canjes y programa de puntos de Ñandé Alfajores Correntinos.",
+        "Consultá los términos y condiciones de compras online, retiro en sucursal, canjes y programa de puntos de Ñandé Alfajores.",
       canonicalPath: "/terminos",
     },
   };

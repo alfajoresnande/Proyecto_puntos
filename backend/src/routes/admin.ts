@@ -1626,7 +1626,7 @@ router.get("/ordenes", async (_req, res) => {
   );
 });
 
-router.post("/ordenes/:id/cancelar-urgente", async (req, res) => {
+router.post(["/ordenes/:id/cancelar", "/ordenes/:id/cancelar-urgente"], async (req, res) => {
   const orderId = Number(req.params.id);
   if (!Number.isFinite(orderId) || orderId <= 0) {
     res.status(400).json({ error: "ID de orden invalido" });

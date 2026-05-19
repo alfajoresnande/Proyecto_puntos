@@ -160,6 +160,17 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
   ],
 };
 
+const KARDEX_STOCK_EXPLANATION = [
+  "El kardex es el historial del stock: muestra cada entrada, reserva, salida, liberacion o ajuste que hizo cambiar las unidades.",
+  "La columna Movimiento se lee como tipo / origen. El tipo dice que paso con el stock y el origen dice de donde vino ese movimiento.",
+  "Ingreso: entra stock disponible. Por ejemplo, una devolucion vuelve unidades al stock para poder venderlas otra vez.",
+  "Reserva: el stock se aparta para un pedido o canje pendiente. Todavia no salio definitivamente, pero ya no queda libre para otra venta.",
+  "Liberacion: una reserva vuelve al stock disponible. Liberacion / canje significa que un producto reservado para un canje de puntos se libero porque el canje se cancelo, expiro o no se entrego.",
+  "Descuento: el stock sale definitivamente. Puede ser por una venta con dinero o por un canje entregado.",
+  "Ajuste: correccion manual hecha desde inventario, por ejemplo para corregir una carga, rotura, diferencia fisica o conteo.",
+  "Origen compra: movimiento relacionado con una venta con dinero. Origen canje: movimiento relacionado con canjes de puntos. Origen admin: cambio manual. Origen devolucion: stock que vuelve despues de una devolucion.",
+];
+
 type Stats = {
   clientes: number;
   productos: number;
@@ -2651,7 +2662,7 @@ export function Admin() {
     try {
       const result = await commandMutation.mutateAsync({
         method: "post",
-        path: `/admin/ordenes/${cancelacionOrden.orden.id}/cancelar-urgente`,
+        path: `/admin/ordenes/${cancelacionOrden.orden.id}/cancelar`,
         body: {
           motivo,
           mensaje_devolucion: cancelacionOrden.mensaje_devolucion.trim() || undefined,
@@ -5346,6 +5357,7 @@ export function Admin() {
               </div>
 
               <SectionTitle title="Kardex de stock" />
+              <AreaExplanation items={KARDEX_STOCK_EXPLANATION} defaultOpen={false} />
               <div className="admin-card">
                 <div className="admin-table-wrap">
                   <table className="admin-table">

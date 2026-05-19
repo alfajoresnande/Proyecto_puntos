@@ -513,6 +513,43 @@ router.post("/proveedores", async (req, res, next) => {
         next(err);
     }
 });
+router.put("/proveedores/:id", async (req, res, next) => {
+    const proveedorId = Number(req.params.id);
+    const parsed = proveedorSchema.safeParse(req.body);
+    if (!Number.isFinite(proveedorId) || proveedorId <= 0) {
+        res.status(400).json({ error: "Proveedor invalido." });
+        return;
+    }
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const result = await (0, db_1.qRun)(db_1.pool, `UPDATE proveedores
+       SET nombre = ?, contacto = ?, telefono = ?, email = ?, notas = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND activo = 1`, [
+            parsed.data.nombre.trim(),
+            parsed.data.contacto?.trim() || null,
+            parsed.data.telefono?.trim() || null,
+            parsed.data.email?.trim() || null,
+            parsed.data.notas?.trim() || null,
+            proveedorId,
+        ]);
+        if (!result.affectedRows) {
+            res.status(404).json({ error: "Proveedor no encontrado o inactivo." });
+            return;
+        }
+        (0, realtime_1.emitRealtime)(["admin-config"]);
+        res.json({ ok: true });
+    }
+    catch (err) {
+        if (err?.code === "ER_DUP_ENTRY") {
+            res.status(409).json({ error: "Ya existe otro proveedor con ese nombre." });
+            return;
+        }
+        next(err);
+    }
+});
 router.get("/caja/actual", async (req, res, next) => {
     try {
         const sucursalId = Number(req.query.sucursal_id ?? 0);
@@ -710,6 +747,82 @@ router.post("/gastos", async (req, res, next) => {
         conn.release();
     }
 });
+router.put("/gastos/:id", async (req, res, next) => {
+    const gastoId = Number(req.params.id);
+    const parsed = gastoSchema.safeParse(req.body);
+    if (!Number.isInteger(gastoId) || gastoId <= 0) {
+        res.status(400).json({ error: "Gasto invalido." });
+        return;
+    }
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const gasto = await (0, db_1.qOne)(conn, "SELECT id, sucursal_id, caja_sesion_id, creado_por FROM gastos WHERE id = ? LIMIT 1 FOR UPDATE", [gastoId]);
+        if (!gasto) {
+            res.status(404).json({ error: "Gasto no encontrado." });
+            await conn.rollback();
+            return;
+        }
+        if (req.user.rol === "vendedor" && Number(gasto.creado_por) !== Number(req.user.id)) {
+            throw new Error("No puedes editar un gasto cargado por otro usuario.");
+        }
+        if (Number(gasto.sucursal_id) !== Number(parsed.data.sucursal_id)) {
+            throw new Error("No se puede cambiar la sucursal de un gasto ya registrado.");
+        }
+        if (!parsed.data.proveedor_id && !parsed.data.tercero_nombre?.trim()) {
+            throw new Error("Selecciona un proveedor o completa un tercero.");
+        }
+        if (parsed.data.proveedor_id) {
+            const provider = await (0, db_1.qOne)(conn, "SELECT id FROM proveedores WHERE id = ? AND activo = 1 LIMIT 1", [parsed.data.proveedor_id]);
+            if (!provider)
+                throw new Error("El proveedor seleccionado no existe o esta inactivo.");
+        }
+        const medioPago = (0, cashRegister_1.normalizeCashPaymentMethod)(parsed.data.medio_pago);
+        const descripcion = parsed.data.descripcion.trim();
+        await (0, db_1.qRun)(conn, `UPDATE gastos
+       SET proveedor_id = ?, tercero_nombre = ?, categoria = ?, descripcion = ?,
+           medio_pago = ?, monto = ?, notas = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`, [
+            parsed.data.proveedor_id ?? null,
+            parsed.data.tercero_nombre?.trim() || null,
+            parsed.data.categoria.trim(),
+            descripcion,
+            medioPago,
+            Number(parsed.data.monto),
+            parsed.data.notas?.trim() || null,
+            gastoId,
+        ]);
+        const movementUpdate = await (0, db_1.qRun)(conn, `UPDATE caja_movimientos
+       SET medio_pago = ?, monto = ?, descripcion = ?
+       WHERE referencia_tipo = 'gastos' AND referencia_id = ?`, [medioPago, Number(parsed.data.monto), descripcion, gastoId]);
+        if (!movementUpdate.affectedRows) {
+            await (0, cashRegister_1.registerCajaMovimiento)(conn, {
+                cajaSesionId: Number(gasto.caja_sesion_id),
+                tipo: "gasto",
+                medioPago,
+                monto: Number(parsed.data.monto),
+                descripcion,
+                referenciaTipo: "gastos",
+                referenciaId: gastoId,
+                creadoPor: req.user.id,
+            });
+        }
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.json({ ok: true });
+    }
+    catch (err) {
+        await conn.rollback();
+        next(err);
+    }
+    finally {
+        conn.release();
+    }
+});
 router.get("/ordenes", async (_req, res, next) => {
     try {
         const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id,
@@ -844,7 +957,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
         next(err);
     }
 });
-router.post("/ordenes/:id/cancelar-urgente", async (req, res, next) => {
+router.post(["/ordenes/:id/cancelar", "/ordenes/:id/cancelar-urgente"], async (req, res, next) => {
     const orderId = Number(req.params.id);
     if (!Number.isFinite(orderId) || orderId <= 0) {
         res.status(400).json({ error: "ID de orden invalido" });

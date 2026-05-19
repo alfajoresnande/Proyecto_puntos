@@ -120,12 +120,15 @@ type CajaSesionVendedor = {
 
 type GastoVendedor = {
   id: number;
+  sucursal_id: number;
+  proveedor_id: number | null;
   proveedor_nombre: string | null;
   tercero_nombre: string | null;
   categoria: string;
   descripcion: string;
   medio_pago: string;
   monto: number;
+  notas?: string | null;
 };
 
 function money(value: number | string | null | undefined): string {
@@ -240,6 +243,25 @@ export function VendedorPedidos() {
   const [gastoMedioPago, setGastoMedioPago] = useState("cash");
   const [gastoNotas, setGastoNotas] = useState("");
   const [nuevoProveedor, setNuevoProveedor] = useState({
+    nombre: "",
+    contacto: "",
+    telefono: "",
+    email: "",
+    notas: "",
+  });
+  const [gastoEditId, setGastoEditId] = useState<number | null>(null);
+  const [gastoEditDraft, setGastoEditDraft] = useState({
+    sucursal_id: "",
+    proveedor_id: "",
+    tercero_nombre: "",
+    categoria: "",
+    descripcion: "",
+    medio_pago: "cash",
+    monto: "",
+    notas: "",
+  });
+  const [proveedorEditId, setProveedorEditId] = useState<number | null>(null);
+  const [proveedorEditDraft, setProveedorEditDraft] = useState({
     nombre: "",
     contacto: "",
     telefono: "",
@@ -400,7 +422,7 @@ export function VendedorPedidos() {
 
   const cancelarOrdenMutation = useMutation({
     mutationFn: ({ id, motivo, mensaje_devolucion }: { id: number; motivo: string; mensaje_devolucion?: string }) =>
-      api.post<{ ok: true; requiere_devolucion?: boolean; conversacion_id?: number | null }>(`/vendedor/ordenes/${id}/cancelar-urgente`, {
+      api.post<{ ok: true; requiere_devolucion?: boolean; conversacion_id?: number | null }>(`/vendedor/ordenes/${id}/cancelar`, {
         motivo,
         mensaje_devolucion,
       }),
@@ -559,6 +581,41 @@ export function VendedorPedidos() {
     },
   });
 
+  const editarGastoMutation = useMutation({
+    mutationFn: () => {
+      if (!gastoEditId) throw new Error("Selecciona un gasto para editar.");
+      const categoria = gastoEditDraft.categoria.trim();
+      const descripcion = gastoEditDraft.descripcion.trim() || categoria;
+      const monto = Number(gastoEditDraft.monto || 0);
+      if (!categoria) throw new Error("Completa la categoria del gasto.");
+      if (!gastoEditDraft.proveedor_id && !gastoEditDraft.tercero_nombre.trim()) {
+        throw new Error("Selecciona proveedor o completa tercero.");
+      }
+      if (!Number.isFinite(monto) || monto <= 0) throw new Error("Completa un monto mayor a 0.");
+      return api.put<{ ok: true }>(`/vendedor/gastos/${gastoEditId}`, {
+        sucursal_id: Number(gastoEditDraft.sucursal_id || ventaSucursalId),
+        proveedor_id: gastoEditDraft.proveedor_id ? Number(gastoEditDraft.proveedor_id) : undefined,
+        tercero_nombre: gastoEditDraft.proveedor_id ? undefined : gastoEditDraft.tercero_nombre.trim(),
+        categoria,
+        descripcion,
+        medio_pago: gastoEditDraft.medio_pago,
+        monto,
+        notas: gastoEditDraft.notas.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Gasto actualizado correctamente.");
+      setGastoEditId(null);
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "gastos", ventaSucursalId] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo actualizar el gasto.");
+    },
+  });
+
   const crearProveedorMutation = useMutation({
     mutationFn: () => {
       if (!nuevoProveedor.nombre.trim()) throw new Error("El nombre del proveedor es obligatorio.");
@@ -582,8 +639,66 @@ export function VendedorPedidos() {
     },
   });
 
+  const editarProveedorMutation = useMutation({
+    mutationFn: () => {
+      if (!proveedorEditId) throw new Error("Selecciona un proveedor para editar.");
+      if (!proveedorEditDraft.nombre.trim()) throw new Error("El nombre del proveedor es obligatorio.");
+      return api.put<{ ok: true }>(`/vendedor/proveedores/${proveedorEditId}`, {
+        nombre: proveedorEditDraft.nombre.trim(),
+        contacto: proveedorEditDraft.contacto.trim() || undefined,
+        telefono: proveedorEditDraft.telefono.trim() || undefined,
+        email: proveedorEditDraft.email.trim() || undefined,
+        notas: proveedorEditDraft.notas.trim() || undefined,
+      });
+    },
+    onSuccess: async () => {
+      setOrdenErr("");
+      setOrdenMsg("Proveedor actualizado correctamente.");
+      setProveedorEditId(null);
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "proveedores"] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "gastos", ventaSucursalId] });
+    },
+    onError: (err: Error) => {
+      setOrdenMsg("");
+      setOrdenErr(err.message || "No se pudo actualizar el proveedor.");
+    },
+  });
+
+  function empezarEditarGasto(gasto: GastoVendedor) {
+    setOrdenErr("");
+    setOrdenMsg("");
+    setGastoEditId(gasto.id);
+    setGastoEditDraft({
+      sucursal_id: String(gasto.sucursal_id || ventaSucursalId),
+      proveedor_id: gasto.proveedor_id ? String(gasto.proveedor_id) : "",
+      tercero_nombre: gasto.tercero_nombre ?? "",
+      categoria: gasto.categoria ?? "",
+      descripcion: gasto.descripcion ?? "",
+      medio_pago: gasto.medio_pago || "cash",
+      monto: String(Number(gasto.monto ?? 0)),
+      notas: gasto.notas ?? "",
+    });
+  }
+
+  function empezarEditarProveedor(proveedor: ProveedorVendedor) {
+    setOrdenErr("");
+    setOrdenMsg("");
+    setProveedorEditId(proveedor.id);
+    setProveedorEditDraft({
+      nombre: proveedor.nombre ?? "",
+      contacto: proveedor.contacto ?? "",
+      telefono: proveedor.telefono ?? "",
+      email: proveedor.email ?? "",
+      notas: proveedor.notas ?? "",
+    });
+  }
+
   function puedeMarcarPagada(orden: OrdenVendedor): boolean {
     return orden.estado === "pendiente_pago" && (orden.pago?.proveedor === "efectivo" || orden.pago?.metodo === "cash");
+  }
+
+  function puedeCancelarOrden(orden: OrdenVendedor): boolean {
+    return ["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado);
   }
 
   function actualizarOrden(id: number, estado: "pagada" | "preparada" | "enviada" | "entregada") {
@@ -860,16 +975,70 @@ export function VendedorPedidos() {
             </div>
             {gastos.length ? (
               <div style={{ display: "grid", gap: "0.45rem" }}>
-                {gastos.slice(0, 4).map((gasto) => (
-                  <div key={gasto.id} className="ios-row">
-                    <div>
-                      <strong>{gasto.descripcion}</strong>
-                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
-                        {gasto.categoria} / {money(gasto.monto)} / {metodoPagoLabel(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
-                      </p>
+                {gastos.slice(0, 8).map((gasto) => {
+                  const editing = gastoEditId === gasto.id;
+                  return (
+                    <div key={gasto.id} className="ios-row" style={{ display: "grid", gap: "0.65rem" }}>
+                      {editing ? (
+                        <>
+                          <div className="adm-form-grid">
+                            <select
+                              className="ios-input"
+                              value={gastoEditDraft.proveedor_id}
+                              onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, proveedor_id: event.target.value, tercero_nombre: event.target.value ? "" : prev.tercero_nombre }))}
+                            >
+                              <option value="">Proveedor</option>
+                              {proveedores.map((proveedor) => (
+                                <option key={proveedor.id} value={proveedor.id}>{proveedor.nombre}</option>
+                              ))}
+                            </select>
+                            <input
+                              className="ios-input"
+                              placeholder="Tercero (si no es proveedor)"
+                              value={gastoEditDraft.tercero_nombre}
+                              disabled={Boolean(gastoEditDraft.proveedor_id)}
+                              onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, tercero_nombre: event.target.value }))}
+                            />
+                            <input className="ios-input" placeholder="Categoria" value={gastoEditDraft.categoria} onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, categoria: event.target.value }))} />
+                            <input className="ios-input" placeholder="Descripcion" value={gastoEditDraft.descripcion} onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, descripcion: event.target.value }))} />
+                            <select className="ios-input" value={gastoEditDraft.medio_pago} onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, medio_pago: event.target.value }))}>
+                              <option value="cash">Efectivo</option>
+                              <option value="transferencia">Transferencia</option>
+                              <option value="tarjeta">Tarjeta</option>
+                              <option value="qr">QR</option>
+                              <option value="otro">Otro</option>
+                            </select>
+                            <input className="ios-input" type="number" min={0} step="0.01" placeholder="Monto" value={gastoEditDraft.monto} onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, monto: event.target.value }))} />
+                            <input className="ios-input" placeholder="Notas" value={gastoEditDraft.notas} onChange={(event) => setGastoEditDraft((prev) => ({ ...prev, notas: event.target.value }))} />
+                          </div>
+                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                            <button type="button" className="ios-btn-primary" style={{ width: "auto" }} disabled={editarGastoMutation.isPending} onClick={() => editarGastoMutation.mutate()}>
+                              {editarGastoMutation.isPending ? "Guardando..." : "Guardar"}
+                            </button>
+                            <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} disabled={editarGastoMutation.isPending} onClick={() => setGastoEditId(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <strong>{gasto.descripcion}</strong>
+                            <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
+                              {gasto.categoria} / {money(gasto.monto)} / {metodoPagoLabel(gasto.medio_pago)} / {gasto.proveedor_nombre || gasto.tercero_nombre || "Sin nombre"}
+                            </p>
+                            {gasto.notas ? (
+                              <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>{gasto.notas}</p>
+                            ) : null}
+                          </div>
+                          <button type="button" className="ios-btn-secondary" style={{ width: "fit-content", padding: "0.45rem 0.8rem" }} onClick={() => empezarEditarGasto(gasto)}>
+                            Editar
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : null}
           </div>
@@ -899,19 +1068,47 @@ export function VendedorPedidos() {
               {proveedores.length === 0 ? (
                 <div className="ios-row text-ios-secondary text-sm">Todavia no hay proveedores cargados.</div>
               ) : (
-                proveedores.map((proveedor) => (
-                  <div key={proveedor.id} className="ios-row">
-                    <div>
-                      <strong>{proveedor.nombre}</strong>
-                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
-                        {[proveedor.contacto, proveedor.telefono, proveedor.email].filter(Boolean).join(" / ") || "Sin datos extra"}
-                      </p>
-                      {proveedor.notas ? (
-                        <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>{proveedor.notas}</p>
-                      ) : null}
+                proveedores.map((proveedor) => {
+                  const editing = proveedorEditId === proveedor.id;
+                  return (
+                    <div key={proveedor.id} className="ios-row" style={{ display: "grid", gap: "0.65rem" }}>
+                      {editing ? (
+                        <>
+                          <div className="adm-form-grid">
+                            <input className="ios-input" placeholder="Nombre proveedor" value={proveedorEditDraft.nombre} onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, nombre: event.target.value }))} />
+                            <input className="ios-input" placeholder="Contacto" value={proveedorEditDraft.contacto} onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, contacto: event.target.value }))} />
+                            <input className="ios-input" placeholder="Telefono" value={proveedorEditDraft.telefono} onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, telefono: event.target.value }))} />
+                            <input className="ios-input" placeholder="Email" value={proveedorEditDraft.email} onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, email: event.target.value }))} />
+                            <input className="ios-input" placeholder="Notas" value={proveedorEditDraft.notas} onChange={(event) => setProveedorEditDraft((prev) => ({ ...prev, notas: event.target.value }))} />
+                          </div>
+                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                            <button type="button" className="ios-btn-primary" style={{ width: "auto" }} disabled={editarProveedorMutation.isPending} onClick={() => editarProveedorMutation.mutate()}>
+                              {editarProveedorMutation.isPending ? "Guardando..." : "Guardar"}
+                            </button>
+                            <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} disabled={editarProveedorMutation.isPending} onClick={() => setProveedorEditId(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <strong>{proveedor.nombre}</strong>
+                            <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
+                              {[proveedor.contacto, proveedor.telefono, proveedor.email].filter(Boolean).join(" / ") || "Sin datos extra"}
+                            </p>
+                            {proveedor.notas ? (
+                              <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>{proveedor.notas}</p>
+                            ) : null}
+                          </div>
+                          <button type="button" className="ios-btn-secondary" style={{ width: "fit-content", padding: "0.45rem 0.8rem" }} onClick={() => empezarEditarProveedor(proveedor)}>
+                            Editar
+                          </button>
+                        </>
+                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -1182,6 +1379,17 @@ export function VendedorPedidos() {
                 {orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada" ? (
                   <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem", background: "#16a34a", borderColor: "#16a34a" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "entregada")}>
                     Entregar
+                  </button>
+                ) : null}
+                {puedeCancelarOrden(orden) ? (
+                  <button
+                    type="button"
+                    className="ios-btn-danger"
+                    style={{ width: "auto", padding: "0.55rem 0.85rem" }}
+                    disabled={cancelarOrdenMutation.isPending}
+                    onClick={() => abrirCancelacionUrgente(orden)}
+                  >
+                    Cancelar
                   </button>
                 ) : null}
               </div>
