@@ -12,9 +12,10 @@
 }
 
 .store-page-isolated .product-card-img {
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   padding: 0;
+  transform: scale(1.05);
 }
 
 .store-page-isolated .product-card-body {
@@ -43,7 +44,8 @@
 
 @media (max-width: 640px) {
   .store-page-isolated .product-card-img {
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
+    transform: scale(1.05);
   }
 }

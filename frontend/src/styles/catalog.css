@@ -3166,16 +3166,18 @@ body.catalogo-background .pagina-page {
   width: 100%;
   height: 160px;
   min-height: 160px;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   background: #F6EADD;
+  transform: scale(1.05);
 }
 
 .store-page .product-card-img {
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
   padding: 0;
   background: #F6EADD;
+  transform: scale(1.05);
 }
 
 /* grid-column/grid-row no longer needed for vertical card layout */
@@ -3869,8 +3871,9 @@ body.catalogo-background .pagina-page {
 
 .store-page .product-card-img {
   padding: 0;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+  transform: scale(1.05);
 }
 
 .store-page .product-card > .product-card-img,
@@ -4103,8 +4106,9 @@ body.catalogo-background .pagina-page {
 
   .catalog-redemption-page .product-card-img,
   .store-page .product-card-img {
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
+    transform: scale(1.05);
   }
 
   .catalog-redemption-page .product-card-body,
@@ -4228,8 +4232,9 @@ body.catalogo-background .pagina-page {
 
   .store-page .product-card-img {
     padding: 0;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
+    transform: scale(1.05);
   }
 
   .catalog-redemption-page .catalog-products-shell,
