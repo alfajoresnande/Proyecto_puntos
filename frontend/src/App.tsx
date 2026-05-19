@@ -211,6 +211,22 @@ export default function App() {
             />
             <Route path="/admin/ventas" element={<Navigate to="/admin/ventas/pedidos" replace />} />
             <Route
+              path="/admin/productos"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/productos/:productosPage"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/caja"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>
@@ -259,6 +275,22 @@ export default function App() {
               }
             />
             <Route path="/superadmin/ventas" element={<Navigate to="/superadmin/ventas/pedidos" replace />} />
+            <Route
+              path="/superadmin/productos"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/productos/:productosPage"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/superadmin/caja"
               element={

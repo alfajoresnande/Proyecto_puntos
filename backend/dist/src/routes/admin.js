@@ -100,7 +100,7 @@ async function ensureCanManageUser(req, res, userId) {
         res.status(404).json({ error: "Usuario no encontrado" });
         return false;
     }
-    if (req.user?.rol !== "superAdmin" && target.rol === "superAdmin") {
+    if (req.user?.rol !== "superAdmin" && (target.rol === "superAdmin" || target.rol === "admin")) {
         res.status(404).json({ error: "Usuario no encontrado" });
         return false;
     }
@@ -415,6 +415,10 @@ router.post("/usuarios", async (req, res) => {
         return;
     }
     const { nombre, email, password, rol, tipo_cliente, descuento_porcentaje, dni, fecha_nacimiento, localidad, provincia } = parsed.data;
+    if (rol === "admin" && req.user?.rol !== "superAdmin") {
+        res.status(403).json({ error: "Solo superAdmin puede crear administradores." });
+        return;
+    }
     if (rol === "cliente" && !dni) {
         res.status(400).json({ error: "DNI requerido para clientes" });
         return;
@@ -484,6 +488,10 @@ router.put("/usuarios/:id", async (req, res) => {
         return;
     }
     const { nombre, email, rol, tipo_cliente, descuento_porcentaje, dni, telefono, fecha_nacimiento, localidad, provincia } = parsed.data;
+    if (rol === "admin" && req.user?.rol !== "superAdmin") {
+        res.status(403).json({ error: "Solo superAdmin puede asignar rol administrador." });
+        return;
+    }
     if (rol === "cliente" && !dni?.trim()) {
         res.status(400).json({ error: "DNI requerido para clientes" });
         return;
