@@ -116,7 +116,6 @@ export function Catalogo() {
   const [canjeConfirmOpen, setCanjeConfirmOpen] = useState(false);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
   const [cantidadModalCanje, setCantidadModalCanje] = useState(1);
-  const [expandedProductDescriptions, setExpandedProductDescriptions] = useState<Record<number, boolean>>({});
   const [codigoCopiado, setCodigoCopiado] = useState(false);
 
   const productosQuery = useQuery({
@@ -1047,13 +1046,12 @@ export function Catalogo() {
             {productosFiltrados.map((producto) => {
               const descripcion = producto.descripcion || "Producto disponible para canje.";
               const descripcionLarga = descripcion.length > 82;
-              const descripcionExpandida = Boolean(expandedProductDescriptions[producto.id]);
               const stock = Number(producto.stock_disponible ?? 0);
               const sinStock = !productHasStock(producto);
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
 
               return (
-              <div key={producto.id} className={`product-card ${descripcionExpandida ? "product-card-expanded" : ""}`}>
+              <div key={producto.id} className="product-card">
                 <button
                   type="button"
                   className="product-card-media-btn"
@@ -1072,21 +1070,16 @@ export function Catalogo() {
                 <div className="product-card-body">
                   <p className="product-card-name">{producto.nombre}</p>
                   <div className="product-card-desc-wrap">
-                    <p className={`product-card-desc ${descripcionLarga && !descripcionExpandida ? "is-collapsed" : "is-expanded"}`}>
+                    <p className={`product-card-desc ${descripcionLarga ? "is-collapsed" : "is-expanded"}`}>
                       {descripcion}
                     </p>
                     {descripcionLarga ? (
                       <button
                         type="button"
                         className="product-card-desc-toggle"
-                        onClick={() =>
-                          setExpandedProductDescriptions((prev) => ({
-                            ...prev,
-                            [producto.id]: !prev[producto.id],
-                          }))
-                        }
+                        onClick={() => abrirProducto(producto)}
                       >
-                        {descripcionExpandida ? "Ver menos" : "Ver más"}
+                        Ver más
                       </button>
                     ) : null}
                   </div>
