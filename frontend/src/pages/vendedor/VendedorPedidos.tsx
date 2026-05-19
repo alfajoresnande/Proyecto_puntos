@@ -231,8 +231,8 @@ export function VendedorPedidos() {
   const [ventaSucursalId, setVentaSucursalId] = useState("");
   const [ventaMetodoPago, setVentaMetodoPago] = useState("cash");
   const [ventaAcreditarPuntos, setVentaAcreditarPuntos] = useState(false);
-  const [cajaMontoApertura, setCajaMontoApertura] = useState("0");
-  const [cajaMontoCierre, setCajaMontoCierre] = useState("0");
+  const [cajaMontoApertura, setCajaMontoApertura] = useState("");
+  const [cajaMontoCierre, setCajaMontoCierre] = useState("");
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
   const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
   const [gastoProveedorId, setGastoProveedorId] = useState("");
@@ -881,7 +881,7 @@ export function VendedorPedidos() {
               <div>
                 <strong style={{ color: "#3D1A02" }}>Apertura / efectivo inicial</strong>
                 <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
-                  Es la plata en efectivo con la que arranca el dia. Se usa para calcular efectivo: apertura + ventas en efectivo - gastos en efectivo.
+                  Es la plata en efectivo con la que arranca el dia. Si no habia efectivo, dejalo vacio. Se usa para calcular efectivo: apertura + ventas en efectivo - gastos en efectivo.
                 </p>
               </div>
               <div className="adm-form-grid">

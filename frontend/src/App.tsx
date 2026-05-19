@@ -65,12 +65,70 @@ function ScrollToTop() {
   return null;
 }
 
+function NumberInputGuards() {
+  useEffect(() => {
+    function isNumberInput(target: EventTarget | null): target is HTMLInputElement {
+      return target instanceof HTMLInputElement && target.type === "number";
+    }
+
+    function onWheel(event: WheelEvent) {
+      if (!isNumberInput(event.target) || document.activeElement !== event.target) return;
+      event.preventDefault();
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (!isNumberInput(event.target)) return;
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+      }
+    }
+
+    function onBeforeInput(event: InputEvent) {
+      if (!isNumberInput(event.target) || !event.data) return;
+      if (/[eE+-]/.test(event.data)) {
+        event.preventDefault();
+      }
+    }
+
+    function onInput(event: Event) {
+      if (!isNumberInput(event.target)) return;
+      const input = event.target;
+      if (input.value === "") return;
+
+      const numeric = Number(input.value);
+      if (!Number.isFinite(numeric)) {
+        input.value = "";
+        return;
+      }
+
+      if (numeric < 0) {
+        input.value = "0";
+      }
+    }
+
+    document.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("beforeinput", onBeforeInput, true);
+    document.addEventListener("input", onInput, true);
+
+    return () => {
+      document.removeEventListener("wheel", onWheel, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("beforeinput", onBeforeInput, true);
+      document.removeEventListener("input", onInput, true);
+    };
+  }, []);
+
+  return null;
+}
+
 export default function App() {
   return (
     <>
       <RealtimeBridge />
       <SeoRouteMeta />
       <ScrollToTop />
+      <NumberInputGuards />
       <Navbar />
       <div className="app-main">
         <main>

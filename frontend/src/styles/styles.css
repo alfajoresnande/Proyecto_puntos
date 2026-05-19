@@ -63,6 +63,17 @@ body {
     min-height: 1.25em;
   }
 
+  input[type="number"] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   .ios-btn {
     @apply w-full py-3 rounded-xl font-semibold text-base transition
       active:scale-[0.98] disabled:opacity-40 disabled:active:scale-100;

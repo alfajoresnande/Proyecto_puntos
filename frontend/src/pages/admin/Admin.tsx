@@ -1326,8 +1326,8 @@ export function Admin() {
   const [ventasExportDesde, setVentasExportDesde] = useState("");
   const [ventasExportHasta, setVentasExportHasta] = useState("");
   const [cajaSucursalId, setCajaSucursalId] = useState("");
-  const [cajaMontoApertura, setCajaMontoApertura] = useState("0");
-  const [cajaMontoCierre, setCajaMontoCierre] = useState("0");
+  const [cajaMontoApertura, setCajaMontoApertura] = useState("");
+  const [cajaMontoCierre, setCajaMontoCierre] = useState("");
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
   const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
   const [cajaReporteFecha, setCajaReporteFecha] = useState(() => getBuenosAiresDateStamp());
@@ -1369,7 +1369,7 @@ export function Admin() {
   const [inventarioFiltroSucursal, setInventarioFiltroSucursal] = useState("");
   const [inventarioFiltroProducto, setInventarioFiltroProducto] = useState("");
   const [asignacionUsuarioId, setAsignacionUsuarioId] = useState<number | null>(null);
-  const [asignacionPuntos, setAsignacionPuntos] = useState("100");
+  const [asignacionPuntos, setAsignacionPuntos] = useState("");
   const [asignacionDescripcion, setAsignacionDescripcion] = useState("");
   const [configLoaded, setConfigLoaded] = useState(false);
   const [configBusy, setConfigBusy] = useState(false);
@@ -4826,7 +4826,7 @@ export function Admin() {
                   ) : null}
                   <div className="adm-field">
                     <label className="adm-label">Puntos que suma al comprar</label>
-                    <input type="number" className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
+                    <input type="number" min={0} className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
                   </div>
                 </div>
 
@@ -5808,7 +5808,7 @@ export function Admin() {
                   </div>
                   <div className="adm-form-grid">
                     <label style={{ display: "grid", gap: "0.35rem" }}>
-                      <FieldLabel text="Monto inicial" tip="Carga el efectivo fisico que habia en la caja al empezar el dia. Si no habia efectivo, dejalo en 0." />
+                      <FieldLabel text="Monto inicial" tip="Carga el efectivo fisico que habia en la caja al empezar el dia. Si no habia efectivo, dejalo vacio." />
                       <input
                         className="adm-input"
                         type="number"
