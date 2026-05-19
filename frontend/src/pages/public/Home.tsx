@@ -273,17 +273,20 @@ export function Home() {
           <div className="home-timeline">
             <div className="home-timeline-line" aria-hidden="true" />
             {timelineEntries.map((entry, index) => (
-              <article key={`${entry.year}-${entry.title}`} className={`home-timeline-card${index % 2 === 1 ? " is-right" : " is-left"}`}>
-                <div className="home-timeline-media">
-                  <img src={entry.image} alt={entry.title} />
-                </div>
-                <div className="home-timeline-copy">
-                  <span className="home-timeline-year">{entry.year}</span>
-                  <h3>{entry.title}</h3>
-                  <p>{entry.text}</p>
-                  {entry.detail ? <p>{entry.detail}</p> : null}
-                </div>
-              </article>
+              <div key={`${entry.year}-${entry.title}`} className={`home-timeline-row${index % 2 === 1 ? " is-right" : " is-left"}`}>
+                <article className="home-timeline-card">
+                  <div className="home-timeline-media">
+                    <img src={entry.image} alt={entry.title} />
+                  </div>
+                  <div className="home-timeline-copy">
+                    <span className="home-timeline-year">{entry.year}</span>
+                    <h3>{entry.title}</h3>
+                    <p>{entry.text}</p>
+                    {entry.detail ? <p>{entry.detail}</p> : null}
+                  </div>
+                </article>
+                <span className="home-timeline-dot" aria-hidden="true" />
+              </div>
             ))}
           </div>
         </section>
