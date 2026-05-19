@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { AreaExplanation } from "../components/AreaExplanation";
 
 export type AdminVentasViewKey = "pedidos" | "venta-local" | "reportes";
 
@@ -12,22 +13,34 @@ type AdminVentasViewProps = {
 const SALES_VIEWS: Array<{
   key: AdminVentasViewKey;
   label: string;
-  description: string;
+  explanation: string[];
 }> = [
   {
     key: "pedidos",
     label: "Pedidos",
-    description: "Seguimiento de ventas web, estados y reservas.",
+    explanation: [
+      "Aca se revisan los pedidos web y su estado: pagado, preparado, entregado, cancelado o expirado.",
+      "Usa esta vista para preparar pedidos, entregar compras, ver comprobantes y cancelar pedidos cuando haga falta avisando el motivo.",
+      "Las fechas se muestran en horario Buenos Aires para que el control coincida con reportes y comprobantes.",
+    ],
   },
   {
     key: "venta-local",
     label: "Venta local",
-    description: "Registro separado para ventas presenciales.",
+    explanation: [
+      "Aca se cargan ventas presenciales del local, ya sea a un cliente web o a una persona manual con nombre, DNI y telefono opcional.",
+      "La venta local descuenta stock compartido de la sucursal y suma en la caja diaria segun el medio de pago elegido.",
+      "Si se elige un cliente web, se pueden aplicar sus descuentos y acreditar puntos cuando corresponda.",
+    ],
   },
   {
     key: "reportes",
     label: "Reportes",
-    description: "Exportacion y cierre de ventas.",
+    explanation: [
+      "Aca se descargan reportes de ventas para revisar lo vendido por canal y por fecha.",
+      "Los reportes separan ventas web, ventas locales de admin y ventas locales de vendedor para no mezclar origenes.",
+      "Los archivos salen en horario Buenos Aires y pueden descargarse en PDF o Excel.",
+    ],
   },
 ];
 
@@ -41,7 +54,8 @@ export function AdminVentasView({
 
   return (
     <div className="adm-sales-shell">
-      <SectionTitle title={activeView.label} description={activeView.description} />
+      <SectionTitle title={activeView.label} />
+      <AreaExplanation key={activeView.key} items={activeView.explanation} />
 
       <div style={{ display: "grid", gap: "1.5rem" }}>
         {currentView === "pedidos" ? pedidosContent : null}
@@ -52,14 +66,11 @@ export function AdminVentasView({
   );
 }
 
-function SectionTitle({ title, description }: { title: string; description: string }) {
+function SectionTitle({ title }: { title: string }) {
   return (
     <div className="admin-section-header" style={{ marginBottom: "0.25rem" }}>
       <div>
         <h2 className="admin-section-title" style={{ fontSize: "1.05rem" }}>Ventas / {title}</h2>
-        <p className="adm-inline-tip" style={{ margin: "0.35rem 0 0" }}>
-          {description} Todo se muestra en horario de Buenos Aires para que pedidos, reportes y comprobantes coincidan.
-        </p>
       </div>
     </div>
   );

@@ -906,6 +906,32 @@
   padding: 0.55rem 0.7rem;
 }
 
+.adm-area-explanation {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  background: #fffaf4;
+}
+
+.adm-area-explanation-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.adm-area-explanation-title {
+  margin: 0;
+  color: #3D1A02;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.adm-area-explanation-body {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .adm-sales-shell {
   display: grid;
   gap: 1.5rem;

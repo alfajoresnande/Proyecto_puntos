@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { formatBuenosAiresDate } from "../../lib/dateTime";
 import { useAuthStore } from "../../store/authStore";
+import { AreaExplanation } from "./components/AreaExplanation";
 
 type SucursalAdmin = {
   id: number;
@@ -26,6 +27,11 @@ type SucursalForm = {
 };
 
 const LISTA_POR_PAGINA = 5;
+const SUCURSALES_AREA_EXPLANATION = [
+  "Aca se cargan los locales o puntos de retiro que ve el cliente al hacer un pedido o un canje.",
+  "Cada sucursal tambien sirve para separar stock, ventas locales, gastos y caja diaria.",
+  "Si una sucursal ya no se usa, conviene desactivarla en vez de borrarla para conservar el historial.",
+];
 
 function emptySucursalForm(): SucursalForm {
   return {
@@ -245,6 +251,7 @@ export function SucursalesAdmin() {
         <div className="admin-content">
           {errMsg ? <div className="adm-msg-err" style={{ marginBottom: "1rem" }}>{errMsg}</div> : null}
           {okMsg ? <div className="adm-msg-ok" style={{ marginBottom: "1rem" }}>{okMsg}</div> : null}
+          <AreaExplanation items={SUCURSALES_AREA_EXPLANATION} />
 
           <div className="admin-section-header adm-config-header">
             <h2 className="admin-section-title">Alta de sucursal</h2>

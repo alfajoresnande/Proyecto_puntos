@@ -8,6 +8,7 @@ import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
+import { AreaExplanation } from "./components/AreaExplanation";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto, Rol, TipoCliente } from "../../types";
 
@@ -49,6 +50,94 @@ const ADMIN_TABS: AdminTab[] = [
   "sobre-nosotros",
   "terminos",
 ];
+
+const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
+  inicio: [
+    "Aca ves un resumen rapido del sistema: clientes, productos, canjes pendientes y ultimos movimientos.",
+    "Tambien podes ajustar reglas generales del programa, como vencimientos de canjes, reservas en efectivo y datos que aparecen en comprobantes.",
+    "Si necesitas cambiar sucursales, respaldos o revisar seguridad, desde esta area tenes los accesos principales.",
+  ],
+  usuarios: [
+    "Aca se revisan los usuarios registrados y se pueden editar datos importantes como rol, perfil comercial, puntos y estado de la cuenta.",
+    "El perfil comercial sirve para que un cliente vea precios distintos en la tienda, por ejemplo mayorista o empleado, segun los descuentos configurados.",
+    "Usa esta area cuando necesites corregir datos de una cuenta, activar o bloquear usuarios, o revisar quien tiene permisos de vendedor o administrador.",
+  ],
+  productos: [
+    "Aca se cargan y editan los productos que aparecen en la tienda online y en la venta local.",
+    "Cada producto puede tener precio, puntos, imagenes, categoria, stock por sucursal y configuracion de sabores si es una caja.",
+    "Si un producto no debe venderse por un canal, podes ajustar su disponibilidad sin borrar el historial de ventas.",
+  ],
+  inventario: [
+    "Aca se controla el stock disponible por sucursal y se revisan los movimientos de entrada, salida y reserva.",
+    "El stock compartido se usa tanto para ventas web como para ventas locales, asi se evita vender mas unidades de las disponibles.",
+    "El historial ayuda a entender por que cambio el stock: ventas, cancelaciones, ajustes manuales o movimientos internos.",
+  ],
+  ordenes: [
+    "Aca se gestionan pedidos web, ventas locales y reportes de ventas. Cada vista tiene su propia explicacion.",
+  ],
+  caja: [
+    "Cada dia el sistema prepara la caja de la sucursal automaticamente, desde las 00:00 hasta las 23:59 en horario Buenos Aires.",
+    "Todo lo que se cobre o pague en el local durante ese dia queda anotado en esa caja. Asi al final del dia se puede revisar cuanto entro, cuanto salio y por que medio se movio el dinero.",
+    "Las ventas locales suman como ingresos y los gastos cargados restan como egresos. Las ventas web se ven en pedidos y reportes, pero esta caja se usa para controlar la plata del local.",
+    "Los movimientos se separan por medio de pago: efectivo, transferencia, tarjeta, QR u otro. El efectivo del dia se calcula con el efectivo inicial mas las ventas en efectivo, menos los gastos en efectivo.",
+    "Si una venta se cancela antes de entregar, el sistema actualiza la orden y devuelve stock segun corresponda. Si hubo pago aprobado, la devolucion del dinero se coordina por mensaje con el cliente para dejar registro.",
+  ],
+  gastos: [
+    "Aca se registran pagos que salen de la caja, como compras a proveedores, servicios o pagos a terceros.",
+    "Cada gasto queda asociado a una sucursal, a la caja del dia y a un medio de pago para que el cierre reste correctamente.",
+    "Si el gasto fue para alguien que no esta en proveedores, usa persona o comercio manual para dejarlo identificado.",
+  ],
+  proveedores: [
+    "Aca se cargan los proveedores habituales para elegirlos rapido cuando registres un gasto.",
+    "Tener proveedores ordenados ayuda a revisar a quien se le pago, cuanto se gasto y de que tipo fueron los egresos.",
+    "Si un proveedor deja de usarse, conviene desactivarlo en vez de perder el historial.",
+  ],
+  cobros: [
+    "Aca se cargan los porcentajes que descuenta cada medio de cobro, por ejemplo Mercado Pago, QR, tarjeta o link de pago.",
+    "Cuando una venta usa un medio con comision, los reportes pueden mostrar bruto, comision y neto real cobrado.",
+    "Efectivo normalmente queda en 0%, porque no tiene descuento de plataforma.",
+  ],
+  descuentos: [
+    "Aca se configuran descuentos por tipo de cliente y categoria, por ejemplo mayoristas con descuento en alfajores o empleados con otro descuento.",
+    "Estos descuentos afectan el precio que ve el cliente al iniciar sesion y tambien se usan en ventas locales si se elige ese cliente.",
+    "La campana web global sirve para promociones generales tipo Hot Sale o Black Friday, y se aplica solo a compras web.",
+  ],
+  categorias: [
+    "Aca se organizan las lineas de producto, como alfajores, cajas, bebidas o confites.",
+    "Las categorias ayudan a filtrar la tienda, ordenar el catalogo y aplicar descuentos por tipo de cliente.",
+    "Antes de crear muchos productos, conviene tener bien definidas las categorias principales.",
+  ],
+  transacciones: [
+    "Aca se ve el historial de movimientos de puntos de los clientes.",
+    "Sirve para revisar puntos sumados, puntos usados, ajustes manuales, canjes y referencias.",
+    "Cuando haya dudas con el saldo de un cliente, esta area muestra de donde viene cada movimiento.",
+  ],
+  canjes: [
+    "Aca se gestionan los canjes de puntos que hicieron los clientes.",
+    "Desde esta vista se revisa si el canje esta pendiente, preparado, entregado, cancelado o expirado.",
+    "Si un canje se cancela o expira, el sistema puede devolver stock y puntos segun corresponda.",
+  ],
+  codigos: [
+    "Aca se crean codigos promocionales de puntos para campanas, sorteos o acciones especiales.",
+    "Cada codigo puede tener limite de usos, fecha de vencimiento y cantidad de puntos a acreditar.",
+    "El listado permite ver cuales siguen activos y controlar si ya se usaron.",
+  ],
+  crear: [
+    "Aca se crean usuarios manualmente cuando no queres que la persona pase por el registro normal.",
+    "Podes crear clientes web, vendedores o administradores. Si es cliente, tambien podes elegir si sera cliente comun, mayorista o empleado.",
+    "Los permisos deben asignarse con cuidado: vendedor puede operar ventas locales y admin puede gestionar el panel.",
+  ],
+  "sobre-nosotros": [
+    "Aca se edita la pagina publica Quienes Somos.",
+    "El contenido se escribe en Markdown y se puede previsualizar antes de guardar.",
+    "Tambien podes agregar fotos para acompanar la historia o informacion de la marca.",
+  ],
+  terminos: [
+    "Aca se editan los Terminos y Condiciones que ven los clientes.",
+    "Conviene mantener esta pagina clara para explicar canjes, pedidos, retiros, vencimientos y condiciones de uso.",
+    "El editor permite guardar texto e imagenes sin tocar codigo.",
+  ],
+};
 
 type Stats = {
   clientes: number;
@@ -3892,6 +3981,7 @@ export function Admin() {
           {errMsg ? <div className="adm-msg-err" style={{ marginBottom: "1rem" }}>{errMsg}</div> : null}
           {okMsg ? <div className="adm-msg-ok" style={{ marginBottom: "1rem" }}>{okMsg}</div> : null}
           {adminHint ? <div className="adm-floating-note">{adminHint}</div> : null}
+          {tab !== "ordenes" ? <AreaExplanation key={tab} items={ADMIN_AREA_EXPLANATIONS[tab]} /> : null}
 
           {tab === "inicio" ? (
             <>
@@ -5479,24 +5569,6 @@ export function Admin() {
           {tab === "caja" ? (
             <div style={{ display: "grid", gap: "1.5rem" }}>
               <SectionTitle title="Caja diaria" />
-              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.45rem" }}>
-                <h3 style={{ margin: 0, color: "#3D1A02" }}>Como funciona la caja</h3>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  La caja no se abre manualmente: el sistema crea una sola caja diaria por sucursal, desde las 00:00 hasta las 23:59 en horario Buenos Aires. No se crea una caja por usuario.
-                </p>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Todas las ventas y gastos que cargue cualquier vendedor en esa sucursal entran en la misma caja del dia. El usuario queda como auditoria del movimiento, no como una caja aparte.
-                </p>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Cada venta local registrada en esa sucursal suma como movimiento de venta en la caja del dia. Cada gasto cargado suma como movimiento de gasto y queda atado a la misma caja. Las ventas web aparecen en ventas/reportes, pero la caja diaria se usa para controlar lo que se cobra o paga presencialmente.
-                </p>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Ventas y gastos se separan por medio de pago: efectivo, transferencia, tarjeta, QR u otro. El total de ventas muestra todo lo vendido en la caja; el total de gastos muestra todo lo pagado; y el efectivo del dia calcula solo efectivo: apertura + ventas en efectivo - gastos en efectivo.
-                </p>
-                <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Si una venta se cancela antes de entregar, el sistema actualiza la orden y devuelve stock segun corresponda. Si hubo pago aprobado, la devolucion del dinero se coordina por mensaje con el cliente para dejar registro.
-                </p>
-              </div>
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem" }}>
                 <h3 style={{ margin: 0, color: "#3D1A02" }}>Reporte PDF de caja</h3>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
