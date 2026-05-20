@@ -243,11 +243,11 @@ export function Home() {
                 <article key={producto.id} className="home-product-card">
                   <div className="home-product-media">
                     <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
+                    <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
                   </div>
                   <div className="home-product-body">
-                    <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
                     <h3>{producto.nombre}</h3>
-                    {producto.descripcion ? <p>{producto.descripcion}</p> : null}
+                    <p>{producto.descripcion || "Producto disponible para comprar online."}</p>
                     <div className="home-product-meta home-product-meta-static">
                       <strong>{money(producto.precio_dinero)}</strong>
                       <span>{rewardPoints(producto) > 0 ? `+${rewardPoints(producto)} pts` : "Comprar"}</span>
