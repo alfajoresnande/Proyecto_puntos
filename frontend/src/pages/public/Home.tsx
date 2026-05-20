@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -48,6 +48,8 @@ function rewardPoints(producto: Producto): number {
 
 export function Home() {
   const user = useAuthStore((state) => state.user);
+  const cvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
     nombre: "",
     email: "",
@@ -104,8 +106,7 @@ export function Home() {
       await api.post<{ ok: boolean; id: number }>("/postulaciones", formData);
       setCvForm({ nombre: "", email: "", telefono: "", mensaje: "" });
       setCvFile(null);
-      const input = event.currentTarget.querySelector<HTMLInputElement>('input[type="file"]');
-      if (input) input.value = "";
+      if (cvFileInputRef.current) cvFileInputRef.current.value = "";
       setCvStatus({ type: "ok", text: "Recibimos tu postulacion. Gracias por acercarte a Nande." });
     } catch (err) {
       setCvStatus({ type: "error", text: err instanceof Error ? err.message : "No pudimos enviar la postulacion." });
@@ -342,66 +343,73 @@ export function Home() {
           </div>
         </section>
 
-        <section id="trabaja-con-nosotros" className="home-section home-section-cv">
-          <div className="home-cv-shell">
-            <div className="home-cv-copy">
-              <span className="home-kicker home-kicker-accent">Trabaja con nosotros</span>
-              <h2>Dejanos tu CV</h2>
-              <p>Si queres sumarte al equipo, podes enviar tus datos y un archivo en PDF, DOC o DOCX. Lo vamos a revisar desde el panel interno.</p>
+        {shouldShowCvSection ? (
+          <section id="trabaja-con-nosotros" className="home-section home-section-cv">
+            <div className="home-cv-shell">
+              <div className="home-cv-copy">
+                <span className="home-kicker home-kicker-accent">Trabaja con nosotros</span>
+                <h2>Dejanos tu CV</h2>
+                <p>Si queres sumarte al equipo, podes enviar tus datos y un archivo en PDF, DOC o DOCX. Lo vamos a revisar desde el panel interno.</p>
+              </div>
+
+              <form className="home-cv-form" onSubmit={handleCvSubmit}>
+                <label className="home-cv-file">
+                  <span>{cvFile ? cvFile.name : "Sin archivo seleccionado"}</span>
+                  <strong>Seleccionar archivo</strong>
+                  <input
+                    ref={cvFileInputRef}
+                    type="file"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={handleCvFileChange}
+                  />
+                </label>
+
+                <div className="home-cv-grid">
+                  <label>
+                    <span>Nombre y apellido*</span>
+                    <input
+                      required
+                      value={cvForm.nombre}
+                      onChange={(event) => setCvForm((prev) => ({ ...prev, nombre: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>E-mail*</span>
+                    <input
+                      required
+                      type="email"
+                      value={cvForm.email}
+                      onChange={(event) => setCvForm((prev) => ({ ...prev, email: event.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                <label>
+                  <span>Telefono</span>
+                  <input
+                    value={cvForm.telefono}
+                    onChange={(event) => setCvForm((prev) => ({ ...prev, telefono: event.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  <span>Mensaje o comentario*</span>
+                  <textarea
+                    required
+                    rows={4}
+                    value={cvForm.mensaje}
+                    onChange={(event) => setCvForm((prev) => ({ ...prev, mensaje: event.target.value }))}
+                  />
+                </label>
+
+                <div className="home-cv-actions">
+                  <button type="submit" disabled={cvSending}>{cvSending ? "Enviando..." : "Enviar"}</button>
+                  {cvStatus ? <p className={`home-cv-status ${cvStatus.type}`}>{cvStatus.text}</p> : null}
+                </div>
+              </form>
             </div>
-
-            <form className="home-cv-form" onSubmit={handleCvSubmit}>
-              <label className="home-cv-file">
-                <span>{cvFile ? cvFile.name : "Sin archivo seleccionado"}</span>
-                <strong>Seleccionar archivo</strong>
-                <input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleCvFileChange} />
-              </label>
-
-              <div className="home-cv-grid">
-                <label>
-                  <span>Nombre y apellido*</span>
-                  <input
-                    required
-                    value={cvForm.nombre}
-                    onChange={(event) => setCvForm((prev) => ({ ...prev, nombre: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>E-mail*</span>
-                  <input
-                    required
-                    type="email"
-                    value={cvForm.email}
-                    onChange={(event) => setCvForm((prev) => ({ ...prev, email: event.target.value }))}
-                  />
-                </label>
-              </div>
-
-              <label>
-                <span>Telefono</span>
-                <input
-                  value={cvForm.telefono}
-                  onChange={(event) => setCvForm((prev) => ({ ...prev, telefono: event.target.value }))}
-                />
-              </label>
-
-              <label>
-                <span>Mensaje o comentario*</span>
-                <textarea
-                  required
-                  rows={4}
-                  value={cvForm.mensaje}
-                  onChange={(event) => setCvForm((prev) => ({ ...prev, mensaje: event.target.value }))}
-                />
-              </label>
-
-              <div className="home-cv-actions">
-                <button type="submit" disabled={cvSending}>{cvSending ? "Enviando..." : "Enviar"}</button>
-                {cvStatus ? <p className={`home-cv-status ${cvStatus.type}`}>{cvStatus.text}</p> : null}
-              </div>
-            </form>
-          </div>
-        </section>
+          </section>
+        ) : null}
       </div>
     </div>
   );
