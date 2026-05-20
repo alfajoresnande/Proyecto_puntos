@@ -4178,6 +4178,13 @@ body.catalogo-background .pagina-page {
   }
 }
 
+@media (min-width: 981px) and (max-width: 1500px) {
+  .catalog-redemption-page .catalog-grid,
+  .store-page .catalog-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
 @media (max-width: 980px) {
   .catalog-layout-shell {
     grid-template-columns: minmax(0, 1fr);
