@@ -153,6 +153,7 @@ export function TiendaOnline() {
   const productos = productosQuery.data ?? [];
   const productoUrlId = searchParams.get("producto");
   const openedProductUrlIdRef = useRef<string | null>(null);
+  const dismissedProductUrlIdRef = useRef<string | null>(null);
   const sucursales = sucursalesQuery.data ?? [];
   const preciosCatalogo = useMemo(
     () => productos.map(productPrice).filter((precio) => Number.isFinite(precio) && precio > 0),
@@ -173,17 +174,19 @@ export function TiendaOnline() {
   useEffect(() => {
     if (!productoUrlId) {
       openedProductUrlIdRef.current = null;
+      dismissedProductUrlIdRef.current = null;
       return;
     }
+    if (dismissedProductUrlIdRef.current === productoUrlId) return;
     if (openedProductUrlIdRef.current === productoUrlId) return;
 
     const id = Number(productoUrlId);
     if (!Number.isFinite(id)) return;
     const producto = productos.find((item) => Number(item.id) === id);
-    if (!producto || productoModal?.id === producto.id) return;
+    if (!producto) return;
     openedProductUrlIdRef.current = productoUrlId;
     openProductoModal(producto);
-  }, [productoUrlId, productos, productoModal?.id]);
+  }, [productoUrlId, productos]);
 
   useEffect(() => {
     if (!sucursales.length) return;
@@ -341,6 +344,10 @@ export function TiendaOnline() {
   }
 
   function closeProductoModal() {
+    if (productoUrlId) {
+      dismissedProductUrlIdRef.current = productoUrlId;
+      openedProductUrlIdRef.current = productoUrlId;
+    }
     setProductoModal(null);
     setProductoModalImageIndex(0);
     setImgZoomed(false);

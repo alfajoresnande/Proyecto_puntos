@@ -42,7 +42,7 @@ function money(value: number | string | null | undefined): string {
 }
 
 function rewardPoints(producto: Producto): number {
-  const value = Number(producto.puntos_requeridos ?? producto.precio_puntos ?? producto.puntos_para_canjear ?? 0);
+  const value = Number(producto.puntaje_al_comprar ?? producto.puntos_acumulables ?? 0);
   return Number.isFinite(value) ? value : 0;
 }
 
@@ -79,7 +79,7 @@ export function Home() {
     const productos = productosVentaQuery.data ?? [];
     const conImagen = productos.filter(hasProductImage);
     const destacados = conImagen.filter((producto) => producto.destacado_home);
-    return destacados.slice(0, 4);
+    return destacados.slice(0, 5);
   }, [productosVentaQuery.data]);
 
   const heroImage = "/hero.webp";
@@ -249,12 +249,17 @@ export function Home() {
                     <h3>{producto.nombre}</h3>
                     <p>{producto.descripcion || "Producto disponible para comprar online."}</p>
                     <div className="home-product-meta home-product-meta-static">
-                      <strong>{money(producto.precio_dinero)}</strong>
-                      <span>{rewardPoints(producto) > 0 ? `+${rewardPoints(producto)} pts` : "Comprar"}</span>
+                      <div className="home-product-price-row">
+                        <span>Precio</span>
+                        <strong>{money(producto.precio_dinero)}</strong>
+                      </div>
+                      {rewardPoints(producto) > 0 ? (
+                        <span className="home-product-earned-points">Sumás {rewardPoints(producto)} puntos con este producto</span>
+                      ) : null}
                     </div>
                     <div className="home-product-actions">
                       <Link to={`/tienda?producto=${producto.id}`} className="home-product-action home-product-action-secondary">Ver producto</Link>
-                      <Link to={user ? `/tienda?producto=${producto.id}` : "/login"} className="home-product-action home-product-action-primary">Comprar</Link>
+                      <Link to={user ? `/tienda?producto=${producto.id}` : "/login"} className="home-product-action home-product-action-primary">Agregar al carrito de compras</Link>
                     </div>
                   </div>
                 </article>
