@@ -4251,25 +4251,72 @@ body.catalogo-background .pagina-page {
   .store-page .product-card {
     display: flex;
     flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 12px;
   }
 
   .catalog-redemption-page .product-card-media-btn,
-  .store-page .product-card-media-btn,
-  .catalog-redemption-page .product-card-img,
-  .catalog-redemption-page .product-card-placeholder,
-  .store-page .product-card-img,
-  .store-page .product-card-placeholder,
-  .store-page .product-card > .product-card-img,
-  .store-page .product-card > .product-card-placeholder {
-    height: 220px;
-    min-height: 220px;
+  .store-page .product-card-media-btn {
+    aspect-ratio: 16 / 9;
+    border-radius: 0;
+    display: block;
+    height: auto;
+    line-height: 0;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  .store-page .product-card-img {
-    padding: 0;
-    object-fit: contain;
+  .catalog-redemption-page .product-card-img,
+  .store-page .product-card-img,
+  .store-page .product-card > .product-card-img {
+    aspect-ratio: auto;
+    display: block;
+    height: 100%;
+    min-height: 0;
+    object-fit: cover;
     object-position: center;
-    transform: scale(1.05);
+    transform: none;
+    width: 100%;
+  }
+
+  .catalog-redemption-page .product-card-placeholder,
+  .store-page .product-card-placeholder,
+  .store-page .product-card > .product-card-placeholder {
+    aspect-ratio: 16 / 9;
+    height: auto;
+    min-height: 0;
+  }
+
+  .catalog-redemption-page .product-card-body,
+  .store-page .product-card-body {
+    gap: 0.5rem;
+    padding: 1.05rem 0.95rem 1rem;
+  }
+
+  .catalog-redemption-page .product-card-name,
+  .store-page .product-card-name {
+    font-size: 1.02rem;
+    line-height: 1.22;
+    height: auto;
+    min-height: 2.48rem;
+    max-height: 2.48rem;
+  }
+
+  .catalog-redemption-page .product-card-desc,
+  .store-page .product-card-desc {
+    font-size: 0.84rem;
+    line-height: 1.38;
+    height: 2.32rem;
+    min-height: 2.32rem;
+    max-height: 2.32rem;
+  }
+
+  .catalog-redemption-page .product-card-desc-wrap,
+  .store-page .product-card-desc-wrap {
+    height: 3.5rem;
+    min-height: 3.5rem;
+    max-height: 3.5rem;
   }
 
   .catalog-redemption-page .catalog-products-shell,

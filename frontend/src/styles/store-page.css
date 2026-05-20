@@ -44,8 +44,8 @@
 
 @media (max-width: 640px) {
   .store-page-isolated .product-card-img {
-    object-fit: contain;
+    object-fit: cover;
     object-position: center;
-    transform: scale(1.05);
+    transform: none;
   }
 }
