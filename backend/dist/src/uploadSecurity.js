@@ -1,10 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyUploadedImageFile = verifyUploadedImageFile;
+exports.verifyUploadedCvFile = verifyUploadedCvFile;
 const fs_1 = require("fs");
 const MAGIC_BYTES_READ = 16;
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]); // %PDF
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+const DOC_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
 function hasPrefix(buffer, signature) {
     if (buffer.length < signature.length)
         return false;
@@ -54,5 +58,36 @@ async function verifyUploadedImageFile(file) {
     catch {
         await safeDelete(file.path);
         return { ok: false, detectedMime: null };
+    }
+}
+function detectCvTypeByMagic(buffer) {
+    if (hasPrefix(buffer, PDF_MAGIC))
+        return "pdf";
+    if (hasPrefix(buffer, DOC_MAGIC))
+        return "doc";
+    if (hasPrefix(buffer, ZIP_MAGIC))
+        return "docx";
+    return null;
+}
+async function verifyUploadedCvFile(file) {
+    try {
+        const ext = file.originalname.toLowerCase().match(/\.(pdf|doc|docx)$/)?.[1];
+        const fd = await fs_1.promises.open(file.path, "r");
+        try {
+            const probe = Buffer.alloc(MAGIC_BYTES_READ);
+            await fd.read(probe, 0, MAGIC_BYTES_READ, 0);
+            const detectedType = detectCvTypeByMagic(probe);
+            const ok = Boolean(ext && detectedType && ext === detectedType);
+            if (!ok)
+                await safeDelete(file.path);
+            return { ok, detectedType };
+        }
+        finally {
+            await fd.close();
+        }
+    }
+    catch {
+        await safeDelete(file.path);
+        return { ok: false, detectedType: null };
     }
 }

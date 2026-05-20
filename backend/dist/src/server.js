@@ -20,6 +20,7 @@ const diagnostico_1 = __importDefault(require("./routes/diagnostico"));
 const pagos_1 = __importDefault(require("./routes/pagos"));
 const soporte_1 = __importDefault(require("./routes/soporte"));
 const ubicaciones_1 = __importDefault(require("./routes/ubicaciones"));
+const postulaciones_1 = __importDefault(require("./routes/postulaciones"));
 const securityMonitor_1 = require("./securityMonitor");
 const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
@@ -212,6 +213,7 @@ app.use("/api/vendedor", vendedor_1.default);
 app.use("/api/admin", admin_1.default);
 app.use("/api/pagos", pagos_1.default);
 app.use("/api/soporte", soporte_1.default);
+app.use("/api/postulaciones", postulaciones_1.default);
 // Manejo global de errores
 app.use((err, req, res, _next) => {
     if (err instanceof Error && err.message === "CORS no permitido para este origen") {

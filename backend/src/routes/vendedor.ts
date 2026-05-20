@@ -22,11 +22,18 @@ import {
   registrarMovimientoPuntos,
 } from "../services/points";
 import { approvePaidOrder, cancelOrderUrgently } from "../services/orderLifecycle";
+import { sendOrderReceiptEmail } from "../services/email";
 import { registerLocalSale } from "../services/localSales";
 import { notifyOrderCancellation } from "../services/supportNotifications";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
+
+function queueOrderReceiptEmail(orderId: number) {
+  void sendOrderReceiptEmail(orderId).catch((err) => {
+    console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+  });
+}
 
 const dniManualSchema = z
   .string()
@@ -1332,6 +1339,8 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     }
 
     // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO (Efectivo)
+    let shouldSendReceipt = false;
+
     if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
       console.log(`[VENDEDOR/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
       await approvePaidOrder(conn, {
@@ -1339,10 +1348,12 @@ router.patch("/ordenes/:id", async (req, res, next) => {
         provider: "vendedor",
         creadoPor: req.user!.id,
       });
+      shouldSendReceipt = true;
       
       if (estado === "pagada") {
         await conn.commit();
         emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
+        queueOrderReceiptEmail(orderId);
         res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
         return;
       }
@@ -1353,6 +1364,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
     await conn.commit();
     emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
+    if (shouldSendReceipt) queueOrderReceiptEmail(orderId);
     res.json({ ok: true });
   } catch (err) {
     await conn.rollback();

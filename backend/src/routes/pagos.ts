@@ -5,6 +5,7 @@ import { emitRealtime } from "../realtime";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import { getMercadoPagoPayment, getMercadoPagoQrOrder } from "../services/paymentProviders";
 import { recordSecurityEvent } from "../securityMonitor";
+import { sendOrderReceiptEmail } from "../services/email";
 
 const router = Router();
 const MERCADOPAGO_WEBHOOK_SECRET = (process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
@@ -228,6 +229,11 @@ router.post("/webhook/:proveedor", async (req, res) => {
           });
     await conn.commit();
     emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
+    if (status === "approved") {
+      void sendOrderReceiptEmail(orderId).catch((error) => {
+        console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, error instanceof Error ? error.message : error);
+      });
+    }
     res.json(result);
   } catch (err) {
     await conn.rollback();

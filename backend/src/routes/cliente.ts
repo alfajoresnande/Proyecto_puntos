@@ -18,6 +18,7 @@ import {
 } from "../services/points";
 import { createPricingResolver, getActiveClientePricingProfile, type ResolvedMoneyPrice } from "../services/customerPricing";
 import { resolvePaymentFee } from "../services/paymentFees";
+import { sendOrderReceiptEmail } from "../services/email";
 import {
   createPaymentSession,
   getMercadoPagoPublicKey,
@@ -806,6 +807,12 @@ function buildOrderReceiptMeta(
     fecha_limite_efectivo: isCashOrder ? addDaysIso(order.created_at, config.cashOrderValidityDays) : null,
     retiro_en_sucursal: Boolean(order.sucursal_retiro_id),
   };
+}
+
+function queueOrderReceiptEmail(orderId: number) {
+  void sendOrderReceiptEmail(orderId).catch((err) => {
+    console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+  });
 }
 
 async function resolveSucursalSeleccionada(
@@ -2257,6 +2264,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     }
     if (orden.estado === "pagada") {
       await conn.commit();
+      queueOrderReceiptEmail(ordenId);
       res.json({ ok: true, orden_id: ordenId, estado: "pagada", already_paid: true });
       return;
     }
@@ -2315,6 +2323,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
       });
       await conn.commit();
       emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
+      queueOrderReceiptEmail(ordenId);
       res.json({
         ok: true,
         orden_id: ordenId,
@@ -2491,6 +2500,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
     );
 
     if (!pago || orden.estado !== "pendiente_pago") {
+      if (orden.estado === "pagada") queueOrderReceiptEmail(ordenId);
       res.json({
         ok: orden.estado === "pagada",
         orden_id: ordenId,
@@ -2534,6 +2544,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
       await conn.commit();
       emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
       transactionOpen = false;
+      queueOrderReceiptEmail(ordenId);
       res.json({
         ok: true,
         orden_id: ordenId,
@@ -2661,6 +2672,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
     if (orden.estado === "pagada") {
       await conn.commit();
       transactionOpen = false;
+      queueOrderReceiptEmail(resolvedOrderId);
       res.json({
         ok: true,
         orden_id: resolvedOrderId,
@@ -2700,6 +2712,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
       });
       await conn.commit();
       transactionOpen = false;
+      queueOrderReceiptEmail(resolvedOrderId);
       res.json({
         ok: true,
         orden_id: resolvedOrderId,

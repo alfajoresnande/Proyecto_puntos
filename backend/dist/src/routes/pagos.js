@@ -7,6 +7,7 @@ const realtime_1 = require("../realtime");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const paymentProviders_1 = require("../services/paymentProviders");
 const securityMonitor_1 = require("../securityMonitor");
+const email_1 = require("../services/email");
 const router = (0, express_1.Router)();
 const MERCADOPAGO_WEBHOOK_SECRET = (process.env.MERCADOPAGO_WEBHOOK_SECRET || "").trim();
 function asRecord(value) {
@@ -195,6 +196,11 @@ router.post("/webhook/:proveedor", async (req, res) => {
             });
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
+        if (status === "approved") {
+            void (0, email_1.sendOrderReceiptEmail)(orderId).catch((error) => {
+                console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, error instanceof Error ? error.message : error);
+            });
+        }
         res.json(result);
     }
     catch (err) {

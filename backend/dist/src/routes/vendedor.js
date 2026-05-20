@@ -9,10 +9,16 @@ const cashRegister_1 = require("../services/cashRegister");
 const customerPricing_1 = require("../services/customerPricing");
 const points_1 = require("../services/points");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const email_1 = require("../services/email");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
+function queueOrderReceiptEmail(orderId) {
+    void (0, email_1.sendOrderReceiptEmail)(orderId).catch((err) => {
+        console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+    });
+}
 const dniManualSchema = zod_1.z
     .string()
     .trim()
@@ -1059,6 +1065,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
             return;
         }
         // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO (Efectivo)
+        let shouldSendReceipt = false;
         if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
             console.log(`[VENDEDOR/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
             await (0, orderLifecycle_1.approvePaidOrder)(conn, {
@@ -1066,9 +1073,11 @@ router.patch("/ordenes/:id", async (req, res, next) => {
                 provider: "vendedor",
                 creadoPor: req.user.id,
             });
+            shouldSendReceipt = true;
             if (estado === "pagada") {
                 await conn.commit();
                 (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
+                queueOrderReceiptEmail(orderId);
                 res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
                 return;
             }
@@ -1078,6 +1087,8 @@ router.patch("/ordenes/:id", async (req, res, next) => {
         await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [estado, orderId]);
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
+        if (shouldSendReceipt)
+            queueOrderReceiptEmail(orderId);
         res.json({ ok: true });
     }
     catch (err) {

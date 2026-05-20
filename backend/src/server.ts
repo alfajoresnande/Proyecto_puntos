@@ -16,6 +16,7 @@ import diagnosticoRoutes from "./routes/diagnostico";
 import pagosRoutes from "./routes/pagos";
 import soporteRoutes from "./routes/soporte";
 import ubicacionesRoutes from "./routes/ubicaciones";
+import postulacionesRoutes from "./routes/postulaciones";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
@@ -241,6 +242,7 @@ app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/soporte", soporteRoutes);
+app.use("/api/postulaciones", postulacionesRoutes);
 
 // Manejo global de errores
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

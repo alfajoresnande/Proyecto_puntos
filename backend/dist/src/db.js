@@ -494,6 +494,7 @@ async function ensureOrderCoreSchema() {
       direccion_envio_json JSON NULL,
       sucursal_retiro_id INT NULL,
       notas TEXT NULL,
+      receipt_email_sent_at DATETIME NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       CONSTRAINT fk_orden_usuario
@@ -514,6 +515,7 @@ async function ensureOrderCoreSchema() {
     )`);
     await exports.pool.query(`ALTER TABLE ordenes
      MODIFY COLUMN usuario_id INT NULL`).catch(() => { });
+    await exports.pool.query(`ALTER TABLE ordenes ADD COLUMN IF NOT EXISTS receipt_email_sent_at DATETIME NULL AFTER notas`).catch(() => { });
     const [clienteLocalRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes' AND COLUMN_NAME = 'cliente_local_id'
      LIMIT 1`);
@@ -965,6 +967,24 @@ async function ensureEventosSeguridadSchema() {
       INDEX idx_eventos_seguridad_ip_created_at (ip, created_at)
     )`);
 }
+async function ensurePostulacionesCvSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS postulaciones_cv (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(160) NOT NULL,
+      email VARCHAR(160) NOT NULL,
+      telefono VARCHAR(40) NULL,
+      mensaje TEXT NOT NULL,
+      archivo_original VARCHAR(255) NOT NULL,
+      archivo_guardado VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(120) NULL,
+      size_bytes INT NOT NULL DEFAULT 0,
+      estado ENUM('nueva','vista','archivada') NOT NULL DEFAULT 'nueva',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_postulaciones_estado_created_at (estado, created_at),
+      INDEX idx_postulaciones_email_created_at (email, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+}
 async function ensureUbicacionesArgentinaSchema() {
     await exports.pool.query(`CREATE TABLE IF NOT EXISTS argentina_provincias (
       id CHAR(2) PRIMARY KEY,
@@ -1214,6 +1234,12 @@ exports.pool
     }
     catch (err) {
         console.error("⚠️  Migración eventos de seguridad:", err.message);
+    }
+    try {
+        await ensurePostulacionesCvSchema();
+    }
+    catch (err) {
+        console.error("Migracion postulaciones CV:", err.message);
     }
     try {
         await ensureAcreditacionPuntosSchema();

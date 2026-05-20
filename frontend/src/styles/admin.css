@@ -410,6 +410,13 @@
 .admin-table tr:last-child td { border-bottom: none; }
 .admin-table tr:hover td { background: #FFF5EC; } /* ← hover sobre fila */
 
+.adm-cell-muted {
+  color: #6B3E26;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  max-width: 360px;
+}
+
 .admin-pagination {
   display: flex;
   align-items: center;

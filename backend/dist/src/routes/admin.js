@@ -25,6 +25,7 @@ const cashRegister_1 = require("../services/cashRegister");
 const cashRegisterReports_1 = require("../services/cashRegisterReports");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
+const email_1 = require("../services/email");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -93,6 +94,11 @@ function requireSuperAdmin(req, res, next) {
         return;
     }
     next();
+}
+function queueOrderReceiptEmail(orderId) {
+    void (0, email_1.sendOrderReceiptEmail)(orderId).catch((err) => {
+        console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+    });
 }
 async function ensureCanManageUser(req, res, userId) {
     const target = await (0, db_1.qOne)(db_1.pool, "SELECT id, rol FROM usuarios WHERE id = ? LIMIT 1", [userId]);
@@ -1429,6 +1435,7 @@ router.patch("/ordenes/:id", async (req, res) => {
         }
         // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO
         // Si la orden está pendiente y se mueve a un estado que implica cobro (pagada, preparada, enviada, entregada)
+        let shouldSendReceipt = false;
         if (estado === "cancelada") {
             await (0, orderLifecycle_1.cancelOrderUrgently)(conn, {
                 orderId,
@@ -1448,11 +1455,13 @@ router.patch("/ordenes/:id", async (req, res) => {
                 provider: "admin",
                 creadoPor: req.user.id,
             });
+            shouldSendReceipt = true;
             // NO hacemos commit/return aquí todavía si el estado final deseado NO es 'pagada'
             // Si el estado es 'pagada', ya terminamos.
             if (estado === "pagada") {
                 await conn.commit();
                 (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
+                queueOrderReceiptEmail(orderId);
                 res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
                 return;
             }
@@ -1570,6 +1579,8 @@ router.patch("/ordenes/:id", async (req, res) => {
         }
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes", "inventario", "stats", "puntos"]);
+        if (shouldSendReceipt)
+            queueOrderReceiptEmail(orderId);
         res.json({ ok: true });
     }
     catch (err) {

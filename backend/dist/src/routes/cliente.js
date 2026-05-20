@@ -14,6 +14,7 @@ const orderLifecycle_1 = require("../services/orderLifecycle");
 const points_1 = require("../services/points");
 const customerPricing_1 = require("../services/customerPricing");
 const paymentFees_1 = require("../services/paymentFees");
+const email_1 = require("../services/email");
 const paymentProviders_1 = require("../services/paymentProviders");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("cliente"));
@@ -489,6 +490,11 @@ function buildOrderReceiptMeta(order, pago, config) {
         fecha_limite_efectivo: isCashOrder ? addDaysIso(order.created_at, config.cashOrderValidityDays) : null,
         retiro_en_sucursal: Boolean(order.sucursal_retiro_id),
     };
+}
+function queueOrderReceiptEmail(orderId) {
+    void (0, email_1.sendOrderReceiptEmail)(orderId).catch((err) => {
+        console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+    });
 }
 async function resolveSucursalSeleccionada(conn, sucursalId) {
     const sucursalesActivas = await (0, db_1.qAll)(conn, `SELECT id, nombre, direccion, piso, localidad, provincia
@@ -1632,6 +1638,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
         }
         if (orden.estado === "pagada") {
             await conn.commit();
+            queueOrderReceiptEmail(ordenId);
             res.json({ ok: true, orden_id: ordenId, estado: "pagada", already_paid: true });
             return;
         }
@@ -1676,6 +1683,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
             });
             await conn.commit();
             (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
+            queueOrderReceiptEmail(ordenId);
             res.json({
                 ok: true,
                 orden_id: ordenId,
@@ -1806,6 +1814,8 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
        ORDER BY updated_at DESC, id DESC
        LIMIT 1`, [ordenId]);
         if (!pago || orden.estado !== "pendiente_pago") {
+            if (orden.estado === "pagada")
+                queueOrderReceiptEmail(ordenId);
             res.json({
                 ok: orden.estado === "pagada",
                 orden_id: ordenId,
@@ -1845,6 +1855,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
             await conn.commit();
             (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
             transactionOpen = false;
+            queueOrderReceiptEmail(ordenId);
             res.json({
                 ok: true,
                 orden_id: ordenId,
@@ -1952,6 +1963,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
         if (orden.estado === "pagada") {
             await conn.commit();
             transactionOpen = false;
+            queueOrderReceiptEmail(resolvedOrderId);
             res.json({
                 ok: true,
                 orden_id: resolvedOrderId,
@@ -1989,6 +2001,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
             });
             await conn.commit();
             transactionOpen = false;
+            queueOrderReceiptEmail(resolvedOrderId);
             res.json({
                 ok: true,
                 orden_id: resolvedOrderId,

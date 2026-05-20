@@ -54,6 +54,7 @@ import {
   renderVentasPrintableHtml,
 } from "../services/localSales";
 import { notifyOrderCancellation } from "../services/supportNotifications";
+import { sendOrderReceiptEmail } from "../services/email";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -120,6 +121,12 @@ function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
     return;
   }
   next();
+}
+
+function queueOrderReceiptEmail(orderId: number) {
+  void sendOrderReceiptEmail(orderId).catch((err) => {
+    console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
+  });
 }
 
 async function ensureCanManageUser(req: Request, res: Response, userId: number): Promise<boolean> {
@@ -1723,6 +1730,8 @@ router.patch("/ordenes/:id", async (req, res) => {
 
     // FLUJO CENTRALIZADO PARA PAGO AUTOMÁTICO
     // Si la orden está pendiente y se mueve a un estado que implica cobro (pagada, preparada, enviada, entregada)
+    let shouldSendReceipt = false;
+
     if (estado === "cancelada") {
       await cancelOrderUrgently(conn, {
         orderId,
@@ -1743,11 +1752,13 @@ router.patch("/ordenes/:id", async (req, res) => {
         provider: "admin",
         creadoPor: req.user!.id,
       });
+      shouldSendReceipt = true;
       // NO hacemos commit/return aquí todavía si el estado final deseado NO es 'pagada'
       // Si el estado es 'pagada', ya terminamos.
       if (estado === "pagada") {
         await conn.commit();
         emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
+        queueOrderReceiptEmail(orderId);
         res.json({ ok: true, mensaje: "Orden marcada como pagada correctamente" });
         return;
       }
@@ -1884,6 +1895,7 @@ router.patch("/ordenes/:id", async (req, res) => {
 
     await conn.commit();
     emitRealtime(["ordenes", "inventario", "stats", "puntos"]);
+    if (shouldSendReceipt) queueOrderReceiptEmail(orderId);
     res.json({ ok: true });
   } catch (err: any) {
     await conn.rollback();

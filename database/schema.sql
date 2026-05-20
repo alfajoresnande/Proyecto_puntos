@@ -35,6 +35,30 @@ CREATE TABLE IF NOT EXISTS usuarios (
 );
 
 -- ============================================================
+-- TABLA: postulaciones_cv
+-- Postulaciones laborales recibidas desde el home.
+-- Los archivos se guardan fuera del directorio publico.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS postulaciones_cv (
+    id                  INT             PRIMARY KEY AUTO_INCREMENT,
+    nombre              VARCHAR(160)    NOT NULL,
+    email               VARCHAR(160)    NOT NULL,
+    telefono            VARCHAR(40)     NULL,
+    mensaje             TEXT            NOT NULL,
+    archivo_original    VARCHAR(255)    NOT NULL,
+    archivo_guardado    VARCHAR(255)    NOT NULL,
+    mime_type           VARCHAR(120)    NULL,
+    size_bytes          INT             NOT NULL DEFAULT 0,
+    estado              ENUM('nueva','vista','archivada') NOT NULL DEFAULT 'nueva',
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                    ON UPDATE CURRENT_TIMESTAMP,
+
+    INDEX idx_postulaciones_estado_created_at (estado, created_at),
+    INDEX idx_postulaciones_email_created_at (email, created_at)
+);
+
+-- ============================================================
 -- TABLA: email_verification_codes
 -- Codigos de un solo uso para verificar el email al registrarse.
 -- Se almacena hash del codigo (nunca el codigo en claro).
@@ -349,6 +373,7 @@ CREATE TABLE IF NOT EXISTS ordenes (
     direccion_envio_json JSON           NULL,
     sucursal_retiro_id  INT             NULL,
     notas               TEXT            NULL,
+    receipt_email_sent_at DATETIME      NULL,
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
                                         ON UPDATE CURRENT_TIMESTAMP,

@@ -20,6 +20,7 @@ type AdminTab =
   | "productos-edicion"
   | "productos-sabores"
   | "inventario"
+  | "postulaciones"
   | "ordenes"
   | "caja"
   | "gastos"
@@ -42,6 +43,7 @@ const ADMIN_TABS: AdminTab[] = [
   "productos-edicion",
   "productos-sabores",
   "inventario",
+  "postulaciones",
   "ordenes",
   "caja",
   "gastos",
@@ -92,6 +94,11 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se controla el stock disponible por sucursal y se revisan los movimientos de entrada, salida y reserva.",
     "El stock compartido se usa tanto para ventas web como para ventas locales, asi se evita vender mas unidades de las disponibles.",
     "El historial ayuda a entender por que cambio el stock: ventas, cancelaciones, ajustes manuales o movimientos internos.",
+  ],
+  postulaciones: [
+    "Aca se revisan los CV enviados desde el formulario publico del home.",
+    "La vista muestra datos de contacto, mensaje y el archivo adjunto para descargar cuando haga falta.",
+    "Los archivos quedan guardados fuera de la carpeta publica y solo se descargan desde el panel.",
   ],
   ordenes: [
     "Aca se gestionan pedidos web, ventas locales y reportes de ventas. Cada vista tiene su propia explicacion.",
@@ -273,6 +280,19 @@ type MovimientoStock = {
   cantidad: number;
   descripcion: string | null;
   creado_por_nombre: string | null;
+  created_at: string;
+};
+
+type PostulacionCv = {
+  id: number;
+  nombre: string;
+  email: string;
+  telefono: string | null;
+  mensaje: string;
+  archivo_original: string;
+  mime_type: string | null;
+  size_bytes: number;
+  estado: "nueva" | "vista" | "archivada";
   created_at: string;
 };
 
@@ -688,6 +708,7 @@ function adminTabFromPath(pathname: string): AdminTab | null {
   if (/\/proveedores(?:[/?#]|$)/.test(pathname)) return "proveedores";
   if (/\/cobros(?:[/?#]|$)/.test(pathname)) return "cobros";
   if (/\/descuentos(?:[/?#]|$)/.test(pathname)) return "descuentos";
+  if (/\/postulaciones(?:[/?#]|$)/.test(pathname)) return "postulaciones";
   return null;
 }
 
@@ -706,6 +727,7 @@ function adminPathSegment(tab: AdminTab): string | null {
   if (tab === "proveedores") return "proveedores";
   if (tab === "cobros") return "cobros";
   if (tab === "descuentos") return "descuentos";
+  if (tab === "postulaciones") return "postulaciones";
   return null;
 }
 
@@ -1293,6 +1315,7 @@ export function Admin() {
   const [usuariosPage, setUsuariosPage] = useState(1);
   const [productosPage, setProductosPage] = useState(1);
   const [inventarioPage, setInventarioPage] = useState(1);
+  const [postulacionesPage, setPostulacionesPage] = useState(1);
   const [ordenesPage, setOrdenesPage] = useState(1);
   const [categoriasPage, setCategoriasPage] = useState(1);
   const [transaccionesPage, setTransaccionesPage] = useState(1);
@@ -1301,6 +1324,7 @@ export function Admin() {
   const [sucursalesPage, setSucursalesPage] = useState(1);
   const [seguridadPage, setSeguridadPage] = useState(1);
   const [busquedaInventario, setBusquedaInventario] = useState("");
+  const [busquedaPostulaciones, setBusquedaPostulaciones] = useState("");
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
   const [ordenesFiltroEstado, setOrdenesFiltroEstado] = useState("");
   const [ordenesFiltroEntrega, setOrdenesFiltroEntrega] = useState("");
@@ -1474,6 +1498,13 @@ export function Admin() {
     queryKey: ["admin", "movimientos-stock"],
     queryFn: () => api.get<MovimientoStock[]>("/admin/movimientos-stock"),
     refetchInterval: 10000,
+    refetchIntervalInBackground: true,
+  });
+
+  const postulacionesQuery = useQuery({
+    queryKey: ["admin", "postulaciones"],
+    queryFn: () => api.get<PostulacionCv[]>("/postulaciones/admin"),
+    refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
 
@@ -1832,6 +1863,7 @@ export function Admin() {
   const sabores = saboresQuery.data ?? [];
   const inventario = inventarioQuery.data ?? [];
   const movimientosStock = movimientosStockQuery.data ?? [];
+  const postulaciones = postulacionesQuery.data ?? [];
   const ordenes = ordenesQuery.data ?? [];
   const usuarios = usuariosQuery.data ?? [];
   const movimientos = movimientosQuery.data ?? [];
@@ -2116,6 +2148,22 @@ export function Admin() {
     });
   }, [busquedaInventario, inventario, inventarioFiltroProducto, inventarioFiltroSucursal]);
 
+  const postulacionesFiltradas = useMemo(() => {
+    const q = busquedaPostulaciones.trim().toLowerCase();
+    if (!q) return postulaciones;
+    return postulaciones.filter((postulacion) => {
+      const haystack = [
+        postulacion.nombre,
+        postulacion.email,
+        postulacion.telefono || "",
+        postulacion.mensaje,
+        postulacion.archivo_original,
+        postulacion.estado,
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [busquedaPostulaciones, postulaciones]);
+
   const ordenesFiltradas = useMemo(() => {
     const q = busquedaOrdenes.trim().toLowerCase();
     return ordenes.filter((orden) => {
@@ -2144,6 +2192,7 @@ export function Admin() {
   const totalUsuariosPages = Math.max(1, Math.ceil(usuariosFiltrados.length / LISTA_POR_PAGINA));
   const totalProductosPages = Math.max(1, Math.ceil(productosFiltrados.length / LISTA_POR_PAGINA));
   const totalInventarioPages = Math.max(1, Math.ceil(inventarioFiltrado.length / LISTA_POR_PAGINA));
+  const totalPostulacionesPages = Math.max(1, Math.ceil(postulacionesFiltradas.length / LISTA_POR_PAGINA));
   const totalOrdenesPages = Math.max(1, Math.ceil(ordenesFiltradas.length / LISTA_POR_PAGINA));
   const totalCategoriasPages = Math.max(1, Math.ceil(categorias.length / LISTA_POR_PAGINA));
   const totalTransaccionesPages = Math.max(1, Math.ceil(movimientos.length / LISTA_POR_PAGINA));
@@ -2162,6 +2211,10 @@ export function Admin() {
   useEffect(() => {
     setInventarioPage((prev) => Math.min(prev, totalInventarioPages));
   }, [totalInventarioPages]);
+
+  useEffect(() => {
+    setPostulacionesPage((prev) => Math.min(prev, totalPostulacionesPages));
+  }, [totalPostulacionesPages]);
 
   useEffect(() => {
     setOrdenesPage((prev) => Math.min(prev, totalOrdenesPages));
@@ -2210,6 +2263,11 @@ export function Admin() {
     const start = (inventarioPage - 1) * LISTA_POR_PAGINA;
     return inventarioFiltrado.slice(start, start + LISTA_POR_PAGINA);
   }, [inventarioFiltrado, inventarioPage]);
+
+  const postulacionesPagina = useMemo(() => {
+    const start = (postulacionesPage - 1) * LISTA_POR_PAGINA;
+    return postulacionesFiltradas.slice(start, start + LISTA_POR_PAGINA);
+  }, [postulacionesFiltradas, postulacionesPage]);
 
   const ordenesPagina = useMemo(() => {
     const start = (ordenesPage - 1) * LISTA_POR_PAGINA;
@@ -2866,6 +2924,33 @@ export function Admin() {
       const saveResult = await saveBlobWithPicker(blob, filename, "application/pdf");
       if (saveResult === "cancelled") return;
       setOkMsg("PDF de caja generado correctamente.");
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function descargarCvPostulacion(postulacion: PostulacionCv) {
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      const headers = new Headers();
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetch(apiUrl(`/api/postulaciones/admin/${postulacion.id}/cv`), {
+        credentials: "include",
+        headers,
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error || "No se pudo descargar el CV.");
+      }
+      const blob = await response.blob();
+      const filename = getDownloadFilename(response.headers.get("Content-Disposition"), postulacion.archivo_original || `cv-${postulacion.id}.pdf`);
+      const saveResult = await saveBlobWithPicker(blob, filename, postulacion.mime_type || "application/octet-stream");
+      if (saveResult === "cancelled") return;
+      setOkMsg("CV descargado correctamente.");
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -3967,6 +4052,9 @@ export function Admin() {
           </div>
           <button className={`admin-nav-btn ${tab === "inventario" ? "active" : ""}`} onClick={() => seleccionarTab("inventario")}>
             {renderAdminNavLabel("Inventario")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "postulaciones" ? "active" : ""}`} onClick={() => seleccionarTab("postulaciones")}>
+            {renderAdminNavLabel("Postulaciones")}
           </button>
           <div className={`admin-nav-group${tab === "ordenes" ? " active" : ""}`}>
             <button className={`admin-nav-btn ${tab === "ordenes" ? "active" : ""}`} onClick={toggleVentasNav}>
@@ -5390,6 +5478,91 @@ export function Admin() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "postulaciones" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+              <SectionTitle title="Postulaciones recibidas" />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
+                <input
+                  className="adm-input"
+                  placeholder="Buscar por nombre, email, telefono, archivo o mensaje..."
+                  value={busquedaPostulaciones}
+                  onChange={(event) => setBusquedaPostulaciones(event.target.value)}
+                />
+                <p className="adm-inline-tip">Se muestran los ultimos CV enviados desde el home. La descarga requiere sesion de administrador.</p>
+              </div>
+
+              <div className="admin-card">
+                <div className="admin-table-wrap adm-desktop-table">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Postulante</th>
+                        <th>Contacto</th>
+                        <th>Mensaje</th>
+                        <th>Archivo</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {postulacionesPagina.length === 0 ? (
+                        <tr><td colSpan={6}><div className="adm-empty">No hay postulaciones para mostrar.</div></td></tr>
+                      ) : null}
+                      {postulacionesPagina.map((postulacion) => (
+                        <tr key={postulacion.id}>
+                          <td>{formatDate(postulacion.created_at)}</td>
+                          <td>
+                            <strong>{postulacion.nombre}</strong>
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{postulacion.estado}</span>
+                          </td>
+                          <td>
+                            {postulacion.email}
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{postulacion.telefono || "Sin telefono"}</span>
+                          </td>
+                          <td className="adm-cell-muted">{postulacion.mensaje}</td>
+                          <td>
+                            {postulacion.archivo_original}
+                            <br />
+                            <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{Math.max(1, Math.round(Number(postulacion.size_bytes || 0) / 1024))} KB</span>
+                          </td>
+                          <td>
+                            <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy}>
+                              Descargar CV
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="adm-mobile-list">
+                  {postulacionesPagina.length === 0 ? <div className="adm-empty">No hay postulaciones para mostrar.</div> : null}
+                  {postulacionesPagina.map((postulacion) => (
+                    <div className="adm-mobile-item" key={postulacion.id}>
+                      <p className="adm-mobile-item-title">{postulacion.nombre}</p>
+                      <p>{postulacion.email}</p>
+                      <p>{postulacion.telefono || "Sin telefono"} - {formatDate(postulacion.created_at)}</p>
+                      <p>{postulacion.mensaje}</p>
+                      <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy}>
+                        Descargar CV
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <PaginationControls
+                  page={postulacionesPage}
+                  totalPages={totalPostulacionesPages}
+                  onPrev={() => setPostulacionesPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setPostulacionesPage((prev) => Math.min(totalPostulacionesPages, prev + 1))}
+                />
               </div>
             </div>
           ) : null}

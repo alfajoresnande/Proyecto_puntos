@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
@@ -48,6 +48,15 @@ function rewardPoints(producto: Producto): number {
 
 export function Home() {
   const user = useAuthStore((state) => state.user);
+  const [cvForm, setCvForm] = useState({
+    nombre: "",
+    email: "",
+    telefono: "",
+    mensaje: "",
+  });
+  const [cvFile, setCvFile] = useState<File | null>(null);
+  const [cvStatus, setCvStatus] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [cvSending, setCvSending] = useState(false);
   const mapPoints: MapPoint[] = [
     {
       id: "la-unidad",
@@ -67,6 +76,43 @@ export function Home() {
       document.body.classList.remove("home-background");
     };
   }, []);
+
+  function handleCvFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setCvFile(file);
+    setCvStatus(null);
+  }
+
+  async function handleCvSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCvStatus(null);
+
+    if (!cvFile) {
+      setCvStatus({ type: "error", text: "Adjunta tu CV en PDF, DOC o DOCX." });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("nombre", cvForm.nombre);
+    formData.append("email", cvForm.email);
+    formData.append("telefono", cvForm.telefono);
+    formData.append("mensaje", cvForm.mensaje);
+    formData.append("cv", cvFile);
+
+    try {
+      setCvSending(true);
+      await api.post<{ ok: boolean; id: number }>("/postulaciones", formData);
+      setCvForm({ nombre: "", email: "", telefono: "", mensaje: "" });
+      setCvFile(null);
+      const input = event.currentTarget.querySelector<HTMLInputElement>('input[type="file"]');
+      if (input) input.value = "";
+      setCvStatus({ type: "ok", text: "Recibimos tu postulacion. Gracias por acercarte a Nande." });
+    } catch (err) {
+      setCvStatus({ type: "error", text: err instanceof Error ? err.message : "No pudimos enviar la postulacion." });
+    } finally {
+      setCvSending(false);
+    }
+  }
 
   const productosVentaQuery = useQuery({
     queryKey: ["home", "productos", "venta"],
@@ -293,6 +339,67 @@ export function Home() {
                 <span className="home-timeline-dot" aria-hidden="true" />
               </div>
             ))}
+          </div>
+        </section>
+
+        <section id="trabaja-con-nosotros" className="home-section home-section-cv">
+          <div className="home-cv-shell">
+            <div className="home-cv-copy">
+              <span className="home-kicker home-kicker-accent">Trabaja con nosotros</span>
+              <h2>Dejanos tu CV</h2>
+              <p>Si queres sumarte al equipo, podes enviar tus datos y un archivo en PDF, DOC o DOCX. Lo vamos a revisar desde el panel interno.</p>
+            </div>
+
+            <form className="home-cv-form" onSubmit={handleCvSubmit}>
+              <label className="home-cv-file">
+                <span>{cvFile ? cvFile.name : "Sin archivo seleccionado"}</span>
+                <strong>Seleccionar archivo</strong>
+                <input type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleCvFileChange} />
+              </label>
+
+              <div className="home-cv-grid">
+                <label>
+                  <span>Nombre y apellido*</span>
+                  <input
+                    required
+                    value={cvForm.nombre}
+                    onChange={(event) => setCvForm((prev) => ({ ...prev, nombre: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>E-mail*</span>
+                  <input
+                    required
+                    type="email"
+                    value={cvForm.email}
+                    onChange={(event) => setCvForm((prev) => ({ ...prev, email: event.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <label>
+                <span>Telefono</span>
+                <input
+                  value={cvForm.telefono}
+                  onChange={(event) => setCvForm((prev) => ({ ...prev, telefono: event.target.value }))}
+                />
+              </label>
+
+              <label>
+                <span>Mensaje o comentario*</span>
+                <textarea
+                  required
+                  rows={4}
+                  value={cvForm.mensaje}
+                  onChange={(event) => setCvForm((prev) => ({ ...prev, mensaje: event.target.value }))}
+                />
+              </label>
+
+              <div className="home-cv-actions">
+                <button type="submit" disabled={cvSending}>{cvSending ? "Enviando..." : "Enviar"}</button>
+                {cvStatus ? <p className={`home-cv-status ${cvStatus.type}`}>{cvStatus.text}</p> : null}
+              </div>
+            </form>
           </div>
         </section>
       </div>
