@@ -4107,7 +4107,7 @@ body.catalogo-background .pagina-page {
   .catalog-redemption-page .product-card-img,
   .store-page .product-card-img {
     object-fit: contain;
-    object-position: center;
+    object-position: center top;
     transform: scale(1.05);
   }
 
