@@ -4186,19 +4186,29 @@ body.catalogo-background .pagina-page {
 
   .catalog-redemption-page .product-card-media-btn,
   .store-page .product-card-media-btn {
-    aspect-ratio: 3 / 2;
+    aspect-ratio: auto;
+    display: block;
     height: auto;
+    line-height: 0;
     min-height: 0;
   }
 
   .catalog-redemption-page .product-card-img,
-  .catalog-redemption-page .product-card-placeholder,
   .store-page .product-card-img,
+  .store-page.store-page-isolated .product-card-img,
+  .store-page .product-card > .product-card-img {
+    aspect-ratio: auto;
+    display: block;
+    height: auto;
+    min-height: 0;
+    transform: none;
+  }
+
+  .catalog-redemption-page .product-card-placeholder,
   .store-page .product-card-placeholder,
-  .store-page .product-card > .product-card-img,
   .store-page .product-card > .product-card-placeholder {
-    aspect-ratio: 3 / 2;
-    height: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
     min-height: 0;
   }
 }
