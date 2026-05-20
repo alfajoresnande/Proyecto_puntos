@@ -115,19 +115,22 @@ export function Home() {
     }
   }
 
-  const productosVentaQuery = useQuery({
-    queryKey: ["home", "productos", "venta"],
-    queryFn: () => api.get<Producto[]>("/productos?modo=venta"),
-    refetchInterval: 15000,
-    refetchIntervalInBackground: true,
+  const productosDestacadosQuery = useQuery({
+    queryKey: ["home", "productos", "destacados"],
+    queryFn: () => api.get<Producto[]>("/productos/destacados?limit=12"),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const productosDestacados = useMemo(() => {
-    const productos = productosVentaQuery.data ?? [];
-    const conImagen = productos.filter(hasProductImage);
-    const destacados = conImagen.filter((producto) => producto.destacado_home);
-    return destacados.slice(0, 5);
-  }, [productosVentaQuery.data]);
+    const productos = productosDestacadosQuery.data ?? [];
+    return productos.filter(hasProductImage);
+  }, [productosDestacadosQuery.data]);
+
+  const productosDestacadosCarousel = useMemo(() => {
+    return productosDestacados.length > 1 ? [...productosDestacados, ...productosDestacados] : productosDestacados;
+  }, [productosDestacados]);
 
   const heroImage = "/hero.webp";
   const locationGallery: LocationImage[] = [
@@ -285,9 +288,14 @@ export function Home() {
               <span className="home-kicker">Productos destacados</span>
             </div>
 
-            <div className="home-products-grid">
-              {productosDestacados.map((producto) => (
-                <article key={producto.id} className="home-product-card">
+            <div className="home-products-carousel" aria-label="Productos destacados">
+              <div className={`home-products-grid${productosDestacados.length > 1 ? " is-animated" : ""}`}>
+                {productosDestacadosCarousel.map((producto, index) => {
+                  const isDuplicate = index >= productosDestacados.length;
+                  const duplicateTabIndex = isDuplicate ? -1 : undefined;
+
+                  return (
+                    <article key={`${producto.id}-${index}`} className="home-product-card" aria-hidden={isDuplicate || undefined}>
                   <div className="home-product-media">
                     <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
                     <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
@@ -305,12 +313,26 @@ export function Home() {
                       ) : null}
                     </div>
                     <div className="home-product-actions">
-                      <Link to={`/tienda?producto=${producto.id}`} className="home-product-action home-product-action-secondary">Ver producto</Link>
-                      <Link to={user ? `/tienda?producto=${producto.id}` : "/login"} className="home-product-action home-product-action-primary">Agregar al carrito de compras</Link>
+                      <Link
+                        to={`/tienda?producto=${producto.id}`}
+                        className="home-product-action home-product-action-secondary"
+                        tabIndex={duplicateTabIndex}
+                      >
+                        Ver producto
+                      </Link>
+                      <Link
+                        to={user ? `/tienda?producto=${producto.id}` : "/login"}
+                        className="home-product-action home-product-action-primary"
+                        tabIndex={duplicateTabIndex}
+                      >
+                        Agregar al carrito de compras
+                      </Link>
                     </div>
                   </div>
-                </article>
-              ))}
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           </section>
         ) : null}

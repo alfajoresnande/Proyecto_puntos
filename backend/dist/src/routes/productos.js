@@ -6,6 +6,87 @@ const auth_1 = require("../auth");
 const customerPricing_1 = require("../services/customerPricing");
 const urlSafety_1 = require("../urlSafety");
 const router = (0, express_1.Router)();
+function hasOwnProductImage(imagenUrl, imagenes) {
+    const image = imagenes.find(Boolean) || imagenUrl || "";
+    return Boolean(image && !image.endsWith("/logo.png") && image !== "logo.png");
+}
+router.get("/destacados", async (req, res) => {
+    try {
+        const rawLimit = Number(req.query.limit ?? 12);
+        const limit = Number.isFinite(rawLimit) ? Math.min(24, Math.max(1, Math.floor(rawLimit))) : 12;
+        const fetchLimit = Math.min(60, Math.max(limit * 3, limit));
+        res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+        const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria,
+            puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
+            precio_dinero, precio_puntos, puntos_para_canjear, destacado_home
+     FROM productos
+     WHERE activo = 1
+       AND destacado_home = 1
+       AND tipo_producto IN ('venta','mixto')
+       AND (track_stock = 0 OR stock_disponible > 0)
+     ORDER BY nombre ASC
+     LIMIT ?`, [fetchLimit]);
+        const rows = rowsRaw;
+        if (!rows.length) {
+            res.json([]);
+            return;
+        }
+        const auth = (0, auth_1.getAuthPayload)(req);
+        const pricingProfile = auth?.rol === "cliente"
+            ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
+            : null;
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "web", profile: pricingProfile });
+        const ids = rows.map((row) => row.id);
+        const placeholders = ids.map(() => "?").join(", ");
+        const [imgRowsRaw] = await db_1.pool.query(`SELECT producto_id, imagen_url, orden
+     FROM producto_imagenes
+     WHERE producto_id IN (${placeholders})
+     ORDER BY producto_id ASC, orden ASC`, ids);
+        const imgRows = imgRowsRaw;
+        const imageMap = new Map();
+        for (const image of imgRows) {
+            const current = imageMap.get(image.producto_id) ?? [];
+            current.push(image.imagen_url);
+            imageMap.set(image.producto_id, current);
+        }
+        const destacados = rows
+            .map((row) => {
+            const imagenesRaw = imageMap.get(row.id) ?? [];
+            const imagenes = (imagenesRaw.length > 0 ? imagenesRaw : (row.imagen_url ? [row.imagen_url] : []))
+                .map((url) => (0, urlSafety_1.normalizeSafeImageUrl)(url))
+                .filter((url) => Boolean(url))
+                .slice(0, 3);
+            const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+            return {
+                id: row.id,
+                nombre: row.nombre,
+                descripcion: row.descripcion,
+                imagen_url: imagenes[0] ?? null,
+                imagenes,
+                categoria: row.categoria,
+                puntos_requeridos: row.puntos_requeridos,
+                puntos_acumulables: row.puntos_acumulables,
+                puntaje_al_comprar: row.puntaje_al_comprar,
+                destacado_home: Boolean(row.destacado_home),
+                tipo_producto: row.tipo_producto,
+                precio_dinero: pricing.precioFinal,
+                precio_dinero_original: pricing.precioLista,
+                precio_dinero_lista: pricing.precioLista,
+                descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+                tipo_cliente_precio: pricing.tipoCliente,
+                precio_puntos: row.precio_puntos,
+                puntos_para_canjear: row.puntos_para_canjear,
+            };
+        })
+            .filter((producto) => hasOwnProductImage(producto.imagen_url, producto.imagenes))
+            .slice(0, limit);
+        res.json(destacados);
+    }
+    catch (error) {
+        console.error("Productos destacados:", error);
+        res.status(500).json({ error: "No se pudieron cargar los productos destacados." });
+    }
+});
 // Catálogo público — no requiere autenticación
 // Query params opcionales:
 //   ?categoria=alfajores   → filtra por categoría (exacto, case-insensitive)
