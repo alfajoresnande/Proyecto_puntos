@@ -325,6 +325,14 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/postulaciones"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/ventas/:ventasPage"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>
@@ -383,6 +391,14 @@ export default function App() {
             />
             <Route
               path="/superadmin/descuentos"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/postulaciones"
               element={
                 <ProtectedRoute rol="superAdmin">
                   <Admin />
