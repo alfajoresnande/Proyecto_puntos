@@ -1,0 +1,47 @@
+{
+  "siteOrigin": "https://alfajorescorrentinos.com",
+  "defaultTitle": "Ñandé Alfajores Correntinos",
+  "defaultDescription": "Comprá alfajores correntinos artesanales online. Tienda del NEA con retiro en sucursal, catálogo de productos y programa de puntos.",
+  "defaultRobots": "noindex, nofollow",
+  "publicRobots": "index, follow",
+  "routeAliases": {
+    "/inicio": "/"
+  },
+  "publicRoutes": {
+    "/": {
+      "title": "Ñandé Alfajores Correntinos",
+      "description": "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
+      "canonicalPath": "/",
+      "changefreq": "daily",
+      "priority": "1.0"
+    },
+    "/tienda": {
+      "title": "Comprar alfajores correntinos online | Ñandé Alfajores",
+      "description": "Comprá alfajores correntinos artesanales en la tienda online de Ñandé. Productos del Nordeste Argentino con retiro en sucursal.",
+      "canonicalPath": "/tienda",
+      "changefreq": "daily",
+      "priority": "1.0"
+    },
+    "/catalogo": {
+      "title": "Canjes y programa de puntos | Ñandé Alfajores Correntinos",
+      "description": "Canjeá tus puntos por alfajores y productos de Ñandé. Descubrí el catálogo de canjes y elegí tu sucursal de retiro.",
+      "canonicalPath": "/catalogo",
+      "changefreq": "daily",
+      "priority": "0.9"
+    },
+    "/sobre-nosotros": {
+      "title": "Quiénes Somos | Ñandé Alfajores Correntinos",
+      "description": "Conocé la historia de Ñandé Alfajores Correntinos, nuestra propuesta artesanal y el sabor regional del Nordeste Argentino.",
+      "canonicalPath": "/sobre-nosotros",
+      "changefreq": "monthly",
+      "priority": "0.7"
+    },
+    "/terminos": {
+      "title": "Términos y Condiciones | Ñandé Alfajores Correntinos",
+      "description": "Consultá los términos y condiciones de compras online, retiro en sucursal, canjes y programa de puntos de Ñandé Alfajores.",
+      "canonicalPath": "/terminos",
+      "changefreq": "monthly",
+      "priority": "0.5"
+    }
+  }
+}

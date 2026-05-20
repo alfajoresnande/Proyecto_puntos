@@ -1,5 +1,66 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.alfajorescorrentinos.com"
+        }
+      ],
+      "destination": "https://alfajorescorrentinos.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/inicio",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/index.html",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/tienda.html",
+      "destination": "/tienda",
+      "permanent": true
+    },
+    {
+      "source": "/catalogo.html",
+      "destination": "/catalogo",
+      "permanent": true
+    },
+    {
+      "source": "/sobre-nosotros.html",
+      "destination": "/sobre-nosotros",
+      "permanent": true
+    },
+    {
+      "source": "/terminos.html",
+      "destination": "/terminos",
+      "permanent": true
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/tienda",
+      "destination": "/tienda.html"
+    },
+    {
+      "source": "/catalogo",
+      "destination": "/catalogo.html"
+    },
+    {
+      "source": "/sobre-nosotros",
+      "destination": "/sobre-nosotros.html"
+    },
+    {
+      "source": "/terminos",
+      "destination": "/terminos.html"
+    },
     {
       "source": "/api/:path*",
       "destination": "https://nandengineer.shop/api/:path*"

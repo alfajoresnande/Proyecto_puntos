@@ -1,16 +1,17 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-
-const SITE_ORIGIN = "https://alfajorescorrentinos.com";
-const DEFAULT_TITLE = "Ñandé Alfajores Correntinos";
-const DEFAULT_DESCRIPTION =
-  "Comprá alfajores correntinos artesanales online. Tienda del NEA con retiro en sucursal, catálogo de productos y programa de puntos.";
+import seoConfig from "../lib/seoConfig.json";
 
 type MetaConfig = {
   title: string;
   description: string;
   canonicalPath: string;
   robots: string;
+};
+
+type PublicRouteConfig = Omit<MetaConfig, "robots"> & {
+  changefreq?: string;
+  priority?: string;
 };
 
 function setMeta(selector: string, attr: "content" | "href", value: string) {
@@ -20,55 +21,20 @@ function setMeta(selector: string, attr: "content" | "href", value: string) {
 }
 
 function getMetaForPath(pathname: string): MetaConfig {
-  const publicRoutes: Record<string, Omit<MetaConfig, "robots">> = {
-    "/": {
-      title: "Ñandé Alfajores Correntinos",
-      description:
-        "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
-      canonicalPath: "/",
-    },
-    "/inicio": {
-      title: "Ñandé Alfajores Correntinos",
-      description:
-        "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
-      canonicalPath: "/",
-    },
-    "/tienda": {
-      title: "Comprar alfajores correntinos online | Ñandé Alfajores",
-      description:
-        "Comprá alfajores correntinos artesanales en la tienda online de Ñandé. Productos del Nordeste Argentino con retiro en sucursal.",
-      canonicalPath: "/tienda",
-    },
-    "/catalogo": {
-      title: "Canjes y programa de puntos | Ñandé Alfajores Correntinos",
-      description:
-        "Canjeá tus puntos por alfajores y productos de Ñandé. Descubrí el catálogo de canjes y elegí tu sucursal de retiro.",
-      canonicalPath: "/catalogo",
-    },
-    "/sobre-nosotros": {
-      title: "Quiénes Somos | Ñandé Alfajores Correntinos",
-      description:
-        "Conocé la historia de Ñandé Alfajores Correntinos, nuestra propuesta artesanal y el sabor regional del Nordeste Argentino.",
-      canonicalPath: "/sobre-nosotros",
-    },
-    "/terminos": {
-      title: "Términos y Condiciones | Ñandé Alfajores Correntinos",
-      description:
-        "Consultá los términos y condiciones de compras online, retiro en sucursal, canjes y programa de puntos de Ñandé Alfajores.",
-      canonicalPath: "/terminos",
-    },
-  };
+  const publicRoutes = seoConfig.publicRoutes as Record<string, PublicRouteConfig>;
+  const routeAliases = seoConfig.routeAliases as Record<string, string>;
+  const normalizedPathname = routeAliases[pathname] ?? pathname;
+  const directMatch = publicRoutes[normalizedPathname];
 
-  const directMatch = publicRoutes[pathname];
   if (directMatch) {
-    return { ...directMatch, robots: "index, follow" };
+    return { ...directMatch, robots: seoConfig.publicRobots };
   }
 
   return {
-    title: DEFAULT_TITLE,
-    description: DEFAULT_DESCRIPTION,
+    title: seoConfig.defaultTitle,
+    description: seoConfig.defaultDescription,
     canonicalPath: pathname === "/" ? "/" : pathname,
-    robots: "noindex, nofollow",
+    robots: seoConfig.defaultRobots,
   };
 }
 
@@ -80,8 +46,8 @@ export function SeoRouteMeta() {
     document.title = meta.title;
     setMeta('meta[name="description"]', "content", meta.description);
     setMeta('meta[name="robots"]', "content", meta.robots);
-    setMeta('link[rel="canonical"]', "href", `${SITE_ORIGIN}${meta.canonicalPath}`);
-    setMeta('meta[property="og:url"]', "content", `${SITE_ORIGIN}${meta.canonicalPath}`);
+    setMeta('link[rel="canonical"]', "href", `${seoConfig.siteOrigin}${meta.canonicalPath}`);
+    setMeta('meta[property="og:url"]', "content", `${seoConfig.siteOrigin}${meta.canonicalPath}`);
     setMeta('meta[property="og:title"]', "content", meta.title);
     setMeta('meta[property="og:description"]', "content", meta.description);
     setMeta('meta[name="twitter:title"]', "content", meta.title);
