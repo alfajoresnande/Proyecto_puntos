@@ -3,9 +3,10 @@
 }
 
 .footer .footer-inner {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0 clamp(0.5rem, 2vw, 3rem);
   display: grid;
   grid-template-columns: minmax(220px, 0.85fr) minmax(440px, 1.25fr) minmax(220px, 0.9fr);
   align-items: center;
@@ -62,6 +63,40 @@
   border-radius: 14px;
 }
 
+/* PedidosYa badge */
+.footer-pedidosya-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: #EA044E;
+  color: #ffffff;
+  text-decoration: none;
+  padding: 0.45rem 0.9rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 4px 14px rgba(234, 4, 78, 0.28);
+}
+
+.footer-pedidosya-link:hover {
+  background: #D50345;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(234, 4, 78, 0.38);
+  color: #ffffff;
+}
+
+.footer-pedidosya-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.footer-pedidosya-text {
+  line-height: 1.2;
+}
+
 @media (max-width: 1180px) {
   .footer .footer-inner {
     grid-template-columns: minmax(180px, 0.75fr) minmax(360px, 1.1fr) minmax(190px, 0.8fr);
@@ -107,5 +142,11 @@
 
   .footer .footer-badges {
     justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .footer-pedidosya-link {
+    font-size: 0.78rem;
+    padding: 0.4rem 0.75rem;
   }
 }

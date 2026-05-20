@@ -653,10 +653,6 @@
     grid-template-columns: minmax(220px, 1fr) auto minmax(220px, 1fr);
     justify-content: stretch;
   }
-
-  .footer-col-right .footer-badges {
-    transform: translateX(-28px);
-  }
 }
 
 /* ---- FLOATING WHATSAPP ---- */
