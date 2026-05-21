@@ -2,9 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { CatalogPagination } from "../../components/CatalogPagination";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
+
+const PRODUCTS_PER_PAGE = 20;
 
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
@@ -117,6 +120,8 @@ export function TiendaOnline() {
   const filtrosTriggerRef = useRef<HTMLButtonElement>(null);
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
   const filtrosWasOpen = useRef(false);
+  const resultsColumnRef = useRef<HTMLDivElement>(null);
+  const [productosPage, setProductosPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
   const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
   const [saboresCajaDraft, setSaboresCajaDraft] = useState<Record<number, Record<number, number>>>({});
@@ -329,6 +334,28 @@ export function TiendaOnline() {
 
     return filtrados;
   }, [baseSearch, categoriaActiva, ordenProductos, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
+
+  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / PRODUCTS_PER_PAGE));
+  const productosPageSafe = Math.min(productosPage, productosTotalPages);
+  const productosPaginaActual = useMemo(() => {
+    const start = (productosPageSafe - 1) * PRODUCTS_PER_PAGE;
+    return productosFiltrados.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [productosFiltrados, productosPageSafe]);
+
+  useEffect(() => {
+    setProductosPage(1);
+  }, [busqueda, categoriaActiva, ordenProductos, precioFiltroMin, precioFiltroMax, sucursalId]);
+
+  useEffect(() => {
+    setProductosPage((prev) => Math.min(prev, productosTotalPages));
+  }, [productosTotalPages]);
+
+  function cambiarPaginaProductos(nextPage: number) {
+    setProductosPage(Math.min(Math.max(1, nextPage), productosTotalPages));
+    window.requestAnimationFrame(() => {
+      resultsColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   function getCantidadSeleccionada(productoId: number): number {
     const value = cantidadesSeleccionadas[productoId];
@@ -800,7 +827,7 @@ export function TiendaOnline() {
             </button>
           </aside>
 
-          <div className="catalog-results-column">
+          <div className="catalog-results-column" ref={resultsColumnRef}>
         {!productosQuery.isLoading ? (
           <div className="catalog-filters">
             <div className="catalog-filter-search">
@@ -995,7 +1022,7 @@ export function TiendaOnline() {
           </div>
         ) : (
           <div className="catalog-grid">
-            {productosFiltrados.map((producto) => {
+            {productosPaginaActual.map((producto) => {
               const img = productImage(producto);
               const descripcion = producto.descripcion || "Producto disponible para comprar online.";
               const descripcionLarga = descripcion.length > 86;
@@ -1129,6 +1156,15 @@ export function TiendaOnline() {
             })}
           </div>
         )}
+        {!productosQuery.isLoading && productosFiltrados.length > 0 ? (
+          <CatalogPagination
+            page={productosPageSafe}
+            totalPages={productosTotalPages}
+            totalItems={productosFiltrados.length}
+            pageSize={PRODUCTS_PER_PAGE}
+            onPageChange={cambiarPaginaProductos}
+          />
+        ) : null}
           </div>
         </div>
       </div>

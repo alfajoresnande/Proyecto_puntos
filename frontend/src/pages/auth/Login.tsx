@@ -1,11 +1,11 @@
 ﻿import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { defaultRouteForRole } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
 
 let initializedGoogleClientId: string | null = null;
 let googleCredentialHandler: ((credential: string) => void) | null = null;
+const LOGIN_SUCCESS_ROUTE = "/";
 
 export function Login() {
   const navigate = useNavigate();
@@ -24,15 +24,15 @@ export function Login() {
 
   const loginMutation = useMutation({
     mutationFn: () => login({ email, password }),
-    onSuccess: (session) => {
-      navigate(defaultRouteForRole(session.user.rol));
+    onSuccess: () => {
+      navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
     },
   });
 
   const googleMutation = useMutation({
     mutationFn: (credential: string) => loginWithGoogle(credential),
-    onSuccess: (session) => {
-      navigate(defaultRouteForRole(session.user.rol));
+    onSuccess: () => {
+      navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
     },
     onError: (error) => {
       setGoogleError(error.message);
@@ -124,7 +124,7 @@ export function Login() {
   }
 
   if (user) {
-    return <Navigate to={defaultRouteForRole(user.rol)} replace />;
+    return <Navigate to={LOGIN_SUCCESS_ROUTE} replace />;
   }
 
   return (

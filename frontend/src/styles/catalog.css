@@ -814,6 +814,63 @@ body.catalogo-background .pagina-page {
   gap: 1rem;
 }
 
+.catalog-pagination {
+  margin-top: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  border: 1px solid #E6D3B8;
+  border-radius: 12px;
+  background: #FFF8F0;
+  padding: 0.72rem 0.85rem;
+  box-shadow: 0 8px 22px rgba(67, 38, 20, 0.08);
+}
+
+.catalog-pagination-summary,
+.catalog-page-label {
+  margin: 0;
+  color: #6A3B20;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.catalog-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.catalog-page-btn {
+  border: 1px solid #7A3E22;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #7A3E22;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 0.48rem 0.8rem;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+}
+
+.catalog-page-btn:hover:not(:disabled),
+.catalog-page-btn:focus-visible {
+  background: #7A3E22;
+  color: #ffffff;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.catalog-page-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* Product card */
 .product-card {
   background: #ffffff;          /* ← fondo de las tarjetas de producto */

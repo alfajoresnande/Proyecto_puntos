@@ -2,10 +2,13 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
+import { CatalogPagination } from "../../components/CatalogPagination";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
+
+const PRODUCTS_PER_PAGE = 20;
 
 type CanjeCarritoResponse = {
   canje_id: number;
@@ -108,6 +111,8 @@ export function Catalogo() {
   const filtrosTriggerRef = useRef<HTMLButtonElement>(null);
   const filtrosPanelRef = useRef<HTMLDivElement>(null);
   const filtrosWasOpen = useRef(false);
+  const resultsColumnRef = useRef<HTMLDivElement>(null);
+  const [productosPage, setProductosPage] = useState(1);
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
   const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
@@ -374,6 +379,28 @@ export function Catalogo() {
 
     return filtrados;
   }, [productos, categoriaActiva, puntosCatalogo.length, puntosFiltroMax, puntosFiltroMin, busquedaProducto, ordenProductos]);
+
+  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / PRODUCTS_PER_PAGE));
+  const productosPageSafe = Math.min(productosPage, productosTotalPages);
+  const productosPaginaActual = useMemo(() => {
+    const start = (productosPageSafe - 1) * PRODUCTS_PER_PAGE;
+    return productosFiltrados.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [productosFiltrados, productosPageSafe]);
+
+  useEffect(() => {
+    setProductosPage(1);
+  }, [busquedaProducto, categoriaActiva, ordenProductos, puntosFiltroMin, puntosFiltroMax, sucursalRetiroId]);
+
+  useEffect(() => {
+    setProductosPage((prev) => Math.min(prev, productosTotalPages));
+  }, [productosTotalPages]);
+
+  function cambiarPaginaProductos(nextPage: number) {
+    setProductosPage(Math.min(Math.max(1, nextPage), productosTotalPages));
+    window.requestAnimationFrame(() => {
+      resultsColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   const canjeCartItems = useMemo(() => {
     return Object.values(canjeCart).map((item) => ({
@@ -839,7 +866,7 @@ export function Catalogo() {
             </button>
           </aside>
 
-          <div className="catalog-results-column">
+          <div className="catalog-results-column" ref={resultsColumnRef}>
         {!loading ? (
           <div className="catalog-filters">
             <div className="catalog-filter-search">
@@ -1069,7 +1096,7 @@ export function Catalogo() {
               </div>
             ) : null}
 
-            {productosFiltrados.map((producto) => {
+            {productosPaginaActual.map((producto) => {
               const descripcion = producto.descripcion || "Producto disponible para canje.";
               const descripcionLarga = descripcion.length > 82;
               const sinStock = !productHasStock(producto);
@@ -1187,6 +1214,15 @@ export function Catalogo() {
             })}
           </div>
         )}
+        {!loading && productosFiltrados.length > 0 ? (
+          <CatalogPagination
+            page={productosPageSafe}
+            totalPages={productosTotalPages}
+            totalItems={productosFiltrados.length}
+            pageSize={PRODUCTS_PER_PAGE}
+            onPageChange={cambiarPaginaProductos}
+          />
+        ) : null}
           </div>
         </div>
       </div>
