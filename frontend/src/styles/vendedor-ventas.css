@@ -131,16 +131,22 @@
   display: grid;
   gap: 0.65rem;
   max-height: calc(100dvh - 190px);
+  overscroll-behavior: contain;
   overflow: auto;
   padding: 0.85rem;
 }
 
 .orders-map-list-head {
+  background: #fff8f1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.8rem;
   color: #4a2c1a;
+  padding-bottom: 0.2rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .orders-map-list-head span {
@@ -298,7 +304,7 @@
   }
 
   .orders-map-list {
-    max-height: none;
+    max-height: min(46dvh, 430px);
   }
 }
 
