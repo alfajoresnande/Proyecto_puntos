@@ -17,6 +17,7 @@ import pagosRoutes from "./routes/pagos";
 import soporteRoutes from "./routes/soporte";
 import ubicacionesRoutes from "./routes/ubicaciones";
 import postulacionesRoutes from "./routes/postulaciones";
+import meAddressesRoutes from "./routes/meAddresses";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
@@ -237,6 +238,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes); // publico (catalogo)
 app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
 app.use("/api/ubicaciones", ubicacionesRoutes);
+app.use("/api/me/addresses", meAddressesRoutes);
 app.use("/api/cliente", clienteRoutes);
 app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);

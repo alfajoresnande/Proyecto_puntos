@@ -80,3 +80,97 @@ export type Producto = {
   permite_retiro_local?: boolean;
   activo?: boolean;
 };
+
+export type AddressProvider = "manual" | "geoapify" | "google";
+
+export type UserAddress = {
+  id: number;
+  usuario_id: number;
+  alias: string | null;
+  receptor_nombre: string | null;
+  receptor_telefono: string | null;
+  direccion_formateada: string;
+  calle: string | null;
+  numero: string | null;
+  piso_departamento: string | null;
+  barrio: string | null;
+  localidad: string | null;
+  provincia: string | null;
+  codigo_postal: string | null;
+  pais: string;
+  lat: number;
+  lng: number;
+  provider: AddressProvider;
+  provider_place_id: string | null;
+  provider_raw_json: unknown;
+  instrucciones_entrega: string | null;
+  es_predeterminada: boolean;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserAddressPayload = {
+  alias?: string | null;
+  receptor_nombre?: string | null;
+  receptor_telefono?: string | null;
+  direccion_formateada: string;
+  calle?: string | null;
+  numero?: string | null;
+  piso_departamento?: string | null;
+  barrio?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
+  codigo_postal?: string | null;
+  pais?: string | null;
+  lat: number;
+  lng: number;
+  provider?: AddressProvider | null;
+  provider_place_id?: string | null;
+  provider_raw_json?: unknown;
+  instrucciones_entrega?: string | null;
+  es_predeterminada?: boolean | null;
+};
+
+export type ShippingPolygonGeoJson = {
+  type: "Polygon";
+  coordinates: number[][][];
+};
+
+export type ShippingZone = {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  precio: number;
+  prioridad: number;
+  color: string;
+  polygon_geojson: ShippingPolygonGeoJson;
+  activo: boolean;
+  created_by: number | null;
+  updated_by: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ShippingZonePayload = {
+  nombre: string;
+  descripcion?: string | null;
+  precio: number;
+  prioridad?: number | null;
+  color?: string | null;
+  polygon_geojson: ShippingPolygonGeoJson;
+  activo?: boolean | null;
+};
+
+export type ShippingQuote = {
+  disponible: boolean;
+  costo_envio: number;
+  zona: null | {
+    id: number;
+    nombre: string;
+    precio: number;
+    prioridad: number;
+    color: string;
+  };
+  error?: string;
+};

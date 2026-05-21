@@ -31,6 +31,13 @@ import {
   resolvePaymentChoice,
   type PaymentChoice,
 } from "../services/paymentProviders";
+import { buildAddressSnapshot, getUserAddress } from "../services/userAddresses";
+import {
+  buildShippingQuoteSnapshot,
+  quoteShippingForCoordinates,
+  ShippingZoneError,
+  type ShippingQuote,
+} from "../services/shippingZones";
 
 const router = Router();
 router.use(requireAuth, requireRole("cliente"));
@@ -186,12 +193,27 @@ type PagoClienteRow = {
 };
 
 type ShippingAddress = {
-  nombre: string;
-  telefono: string;
-  direccion: string;
-  codigo_postal: string;
-  localidad: string;
-  provincia: string;
+  id?: number | null;
+  alias?: string | null;
+  receptor_nombre?: string | null;
+  receptor_telefono?: string | null;
+  direccion_formateada?: string | null;
+  calle?: string | null;
+  numero?: string | null;
+  piso_departamento?: string | null;
+  barrio?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
+  codigo_postal?: string | null;
+  pais?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  instrucciones_entrega?: string | null;
+  costo_envio?: number | null;
+  envio?: ReturnType<typeof buildShippingQuoteSnapshot>;
+  nombre?: string | null;
+  telefono?: string | null;
+  direccion?: string | null;
   referencias?: string | null;
 };
 
@@ -691,6 +713,44 @@ function normalizeShippingAddress(raw: z.infer<typeof shippingAddressSchema>): S
   };
 }
 
+async function resolveCheckoutShippingAddress(
+  conn: Queryable,
+  usuarioId: number,
+  addressId?: number | null,
+  rawAddress?: z.infer<typeof shippingAddressSchema> | null,
+): Promise<ShippingAddress | null> {
+  if (addressId) {
+    const address = await getUserAddress(conn, usuarioId, addressId);
+    if (!address) {
+      throw new HttpError(404, "Direccion de envio no encontrada.");
+    }
+    return buildAddressSnapshot(address);
+  }
+  return rawAddress ? normalizeShippingAddress(rawAddress) : null;
+}
+
+async function resolveCheckoutShippingQuote(conn: Queryable, address: ShippingAddress): Promise<ShippingQuote> {
+  const lat = Number(address.lat);
+  const lng = Number(address.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new HttpError(400, "La direccion de envio no tiene coordenadas validas.");
+  }
+  const quote = await quoteShippingForCoordinates(conn, lat, lng);
+  if (!quote.disponible || !quote.zona) {
+    throw new HttpError(400, quote.error || "La direccion seleccionada no esta dentro de una zona de envio activa.");
+  }
+  return quote;
+}
+
+function buildShippingAddressOrderSnapshot(address: ShippingAddress, quote: ShippingQuote): ShippingAddress {
+  const quoteSnapshot = buildShippingQuoteSnapshot(quote);
+  return {
+    ...address,
+    costo_envio: quote.costo_envio,
+    envio: quoteSnapshot,
+  };
+}
+
 function parseJsonField(value: unknown): unknown {
   if (!value) return null;
   if (typeof value === "object") return value;
@@ -794,18 +854,23 @@ function addDaysIso(value: string, days: number): string | null {
 }
 
 function buildOrderReceiptMeta(
-  order: { created_at: string; sucursal_retiro_id: number | null },
+  order: { created_at: string; sucursal_retiro_id: number | null; direccion_envio_json?: string | null },
   pago: Pick<PagoClienteRow, "metodo"> | null | undefined,
   config: OrderReceiptConfig,
 ) {
   const isCashOrder = pago?.metodo === "cash";
+  const direccionEnvio = parseJsonField(order.direccion_envio_json ?? null);
+  const isShippingOrder =
+    Boolean(direccionEnvio) &&
+    typeof direccionEnvio === "object" &&
+    (direccionEnvio as { metodo_entrega?: unknown }).metodo_entrega === "envio";
   return {
     leyenda_no_factura: config.disclaimer,
     dias_habiles: config.businessDays,
     horario_habil: config.businessHours,
     dias_vigencia_efectivo: isCashOrder ? config.cashOrderValidityDays : null,
     fecha_limite_efectivo: isCashOrder ? addDaysIso(order.created_at, config.cashOrderValidityDays) : null,
-    retiro_en_sucursal: Boolean(order.sucursal_retiro_id),
+    retiro_en_sucursal: Boolean(order.sucursal_retiro_id) && !isShippingOrder,
   };
 }
 
@@ -1747,10 +1812,35 @@ router.delete("/carrito/vaciar", async (req, res) => {
   }
 });
 
+router.get("/checkout/shipping-quote", async (req, res) => {
+  const direccionId = Number(req.query.direccion_id ?? 0);
+  if (!Number.isInteger(direccionId) || direccionId <= 0) {
+    res.status(400).json({ error: "Selecciona una direccion de envio." });
+    return;
+  }
+
+  try {
+    const address = await getUserAddress(pool, req.user!.id, direccionId);
+    if (!address) {
+      res.status(404).json({ error: "Direccion de envio no encontrada." });
+      return;
+    }
+    const quote = await quoteShippingForCoordinates(pool, address.lat, address.lng);
+    res.json(quote);
+  } catch (err) {
+    if (err instanceof ShippingZoneError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
+
 router.post("/checkout/preview", async (req, res) => {
   const schema = z.object({
     sucursal_id: z.number().int().positive().optional().nullable(),
     metodo_entrega: z.enum(["retiro", "envio"]).optional().default("retiro"),
+    direccion_id: z.number().int().positive().optional().nullable(),
     direccion_envio: shippingAddressSchema.optional().nullable(),
   });
   const parsed = schema.safeParse(req.body ?? {});
@@ -1782,18 +1872,28 @@ router.post("/checkout/preview", async (req, res) => {
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
     const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
+    const direccionEnvio = metodoEntrega === "envio"
+      ? await resolveCheckoutShippingAddress(
+          conn,
+          req.user!.id,
+          parsed.data.direccion_id ?? null,
+          parsed.data.direccion_envio ?? null,
+        )
+      : null;
+    let shippingQuote: ShippingQuote | null = null;
     const requiereStock = items.some((item) => Number(item.track_stock) === 1 || (item.sabores?.length ?? 0) > 0);
     if (requiereStock && !sucursalSeleccionada) {
       throw new HttpError(400, "Debes seleccionar una sucursal para validar stock.");
     }
     if (metodoEntrega === "envio") {
-      if (!parsed.data.direccion_envio) {
-        throw new HttpError(400, "Completa direccion, codigo postal y telefono para solicitar envio.");
+      if (!direccionEnvio) {
+        throw new HttpError(400, "Selecciona una direccion de envio para continuar.");
       }
       const noEnviables = items.filter((item) => Number(item.permite_envio ?? 0) !== 1);
       if (noEnviables.length) {
         throw new HttpError(400, `Hay productos que no permiten envio: ${noEnviables.map((item) => item.nombre).join(", ")}.`);
       }
+      shippingQuote = await resolveCheckoutShippingQuote(conn, direccionEnvio);
     }
 
     const stockIssues: string[] = [];
@@ -1848,9 +1948,14 @@ router.post("/checkout/preview", async (req, res) => {
       });
     }
 
-    const totalDinero = toMoney(itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
+    const subtotalDineroProductos = toMoney(itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
+    const costoEnvio = toMoney(shippingQuote?.costo_envio ?? 0);
+    const totalDinero = toMoney(subtotalDineroProductos + costoEnvio);
     const totalUnidades = itemsEvaluados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
     const stockOk = stockIssues.length === 0;
+    const direccionEnvioSnapshot = direccionEnvio && shippingQuote
+      ? buildShippingAddressOrderSnapshot(direccionEnvio, shippingQuote)
+      : direccionEnvio;
 
     res.json({
       carrito_id: carritoId,
@@ -1862,12 +1967,13 @@ router.post("/checkout/preview", async (req, res) => {
           }
         : null,
       metodo_entrega: metodoEntrega,
-      direccion_envio: metodoEntrega === "envio" && parsed.data.direccion_envio
-        ? normalizeShippingAddress(parsed.data.direccion_envio)
-        : null,
+      direccion_envio: direccionEnvioSnapshot,
+      envio: shippingQuote,
       resumen: {
         total_items: itemsEvaluados.length,
         total_unidades: totalUnidades,
+        subtotal_dinero: subtotalDineroProductos,
+        costo_envio: costoEnvio,
         total_dinero: totalDinero,
         total_puntos: 0,
       },
@@ -1898,6 +2004,7 @@ router.post("/checkout/confirm", async (req, res) => {
   const schema = z.object({
     sucursal_id: z.number().int().positive().optional().nullable(),
     metodo_entrega: z.enum(["retiro", "envio"]).optional().default("retiro"),
+    direccion_id: z.number().int().positive().optional().nullable(),
     direccion_envio: shippingAddressSchema.optional().nullable(),
     notas: z.string().max(500).optional().nullable(),
     pago: z.object({
@@ -1943,17 +2050,24 @@ router.post("/checkout/confirm", async (req, res) => {
     if (requiereStock && !sucursalSeleccionada) {
       throw new HttpError(400, "Debes seleccionar una sucursal para confirmar la orden.");
     }
-    const direccionEnvio = metodoEntrega === "envio" && parsed.data.direccion_envio
-      ? normalizeShippingAddress(parsed.data.direccion_envio)
+    const direccionEnvio = metodoEntrega === "envio"
+      ? await resolveCheckoutShippingAddress(
+          conn,
+          req.user!.id,
+          parsed.data.direccion_id ?? null,
+          parsed.data.direccion_envio ?? null,
+        )
       : null;
+    let shippingQuote: ShippingQuote | null = null;
     if (metodoEntrega === "envio") {
       if (!direccionEnvio) {
-        throw new HttpError(400, "Completa direccion, codigo postal y telefono para solicitar envio.");
+        throw new HttpError(400, "Selecciona una direccion de envio para continuar.");
       }
       const noEnviables = items.filter((item) => Number(item.permite_envio ?? 0) !== 1);
       if (noEnviables.length) {
         throw new HttpError(400, `Hay productos que no permiten envio: ${noEnviables.map((item) => item.nombre).join(", ")}.`);
       }
+      shippingQuote = await resolveCheckoutShippingQuote(conn, direccionEnvio);
     }
 
     const itemsNormalizados: Array<{
@@ -1994,7 +2108,9 @@ router.post("/checkout/confirm", async (req, res) => {
       });
     }
 
-    const totalDinero = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
+    const subtotalDineroProductos = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
+    const costoEnvio = toMoney(shippingQuote?.costo_envio ?? 0);
+    const totalDinero = toMoney(subtotalDineroProductos + costoEnvio);
     const totalPuntos = 0;
     const totalPuntosGanados = itemsNormalizados.reduce((acc, item) => acc + (item.cantidad * item.puntaje_al_comprar_unitario), 0);
     const paymentChoice: PaymentChoice | null = totalDinero > 0 ? resolvePaymentChoice(parsed.data.pago ?? null) : null;
@@ -2011,12 +2127,17 @@ router.post("/checkout/confirm", async (req, res) => {
 
     const tipoOrden = "venta";
     const estadoOrden = totalDinero > 0 ? "pendiente_pago" : "preparada";
+    const envioCotizacionSnapshot = shippingQuote ? buildShippingQuoteSnapshot(shippingQuote) : null;
+    const direccionEnvioSnapshot = direccionEnvio && shippingQuote
+      ? buildShippingAddressOrderSnapshot(direccionEnvio, shippingQuote)
+      : direccionEnvio;
 
     const { insertId: ordenId } = await qRun(
       conn,
       `INSERT INTO ordenes
-        (usuario_id, carrito_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, direccion_envio_json, sucursal_retiro_id, notas)
-       VALUES (?, ?, 'web', ?, ?, 'ARS', ?, ?, ?, ?, ?)`,
+        (usuario_id, carrito_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos,
+         direccion_envio_json, sucursal_retiro_id, envio_zona_id, envio_costo, envio_cotizacion_json, notas)
+       VALUES (?, ?, 'web', ?, ?, 'ARS', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.user!.id,
         carritoId,
@@ -2024,8 +2145,11 @@ router.post("/checkout/confirm", async (req, res) => {
         estadoOrden,
         totalDinero,
         totalPuntos,
-        direccionEnvio ? JSON.stringify({ metodo_entrega: "envio", ...direccionEnvio }) : null,
+        direccionEnvioSnapshot ? JSON.stringify({ metodo_entrega: "envio", ...direccionEnvioSnapshot }) : null,
         sucursalSeleccionada?.id ?? null,
+        shippingQuote?.zona?.id ?? null,
+        costoEnvio,
+        envioCotizacionSnapshot ? JSON.stringify(envioCotizacionSnapshot) : null,
         parsed.data.notas ?? null,
       ],
     );
@@ -2165,6 +2289,8 @@ router.post("/checkout/confirm", async (req, res) => {
       estado: estadoOrden,
       tipo_orden: tipoOrden,
       total_dinero: totalDinero,
+      total_dinero_productos: subtotalDineroProductos,
+      costo_envio: costoEnvio,
       total_puntos: totalPuntos,
       total_puntos_ganados: totalPuntosGanados,
       pago_pendiente: totalDinero > 0,
@@ -2190,7 +2316,8 @@ router.post("/checkout/confirm", async (req, res) => {
           }
         : null,
       metodo_entrega: metodoEntrega,
-      direccion_envio: direccionEnvio,
+      direccion_envio: direccionEnvioSnapshot,
+      envio: shippingQuote,
     });
   } catch (err: unknown) {
     await conn.rollback();

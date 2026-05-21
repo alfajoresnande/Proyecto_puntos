@@ -12,6 +12,7 @@ const orderLifecycle_1 = require("../services/orderLifecycle");
 const email_1 = require("../services/email");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
+const shippingZones_1 = require("../services/shippingZones");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
 function queueOrderReceiptEmail(orderId) {
@@ -60,6 +61,17 @@ const gastoSchema = zod_1.z.object({
     monto: zod_1.z.number().positive(),
     fecha_gasto: zod_1.z.string().datetime().optional().nullable(),
     notas: zod_1.z.string().max(2000).optional().nullable(),
+});
+const envioZonaSchema = zod_1.z.object({
+    nombre: zod_1.z.string().min(1).max(120),
+    descripcion: zod_1.z.string().max(1000).optional().nullable(),
+    precio: zod_1.z.coerce.number(),
+    prioridad: zod_1.z.coerce.number().int().optional().nullable(),
+    color: zod_1.z.string().max(16).optional().nullable(),
+    polygon_geojson: zod_1.z.unknown().refine((value) => value !== undefined && value !== null, {
+        message: "El poligono de la zona es obligatorio.",
+    }),
+    activo: zod_1.z.boolean().optional().nullable(),
 });
 const proveedorSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(2).max(160),
@@ -551,6 +563,81 @@ router.put("/proveedores/:id", async (req, res, next) => {
     catch (err) {
         if (err?.code === "ER_DUP_ENTRY") {
             res.status(409).json({ error: "Ya existe otro proveedor con ese nombre." });
+            return;
+        }
+        next(err);
+    }
+});
+router.get("/envio-zonas", async (_req, res, next) => {
+    try {
+        res.json(await (0, shippingZones_1.listShippingZones)(true));
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.post("/envio-zonas", async (req, res, next) => {
+    const parsed = envioZonaSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.createShippingZone)(req.user.id, parsed.data);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.status(201).json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        next(err);
+    }
+});
+router.put("/envio-zonas/:id", async (req, res, next) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "ID de zona invalido" });
+        return;
+    }
+    const parsed = envioZonaSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.updateShippingZone)(req.user.id, id, parsed.data);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        next(err);
+    }
+});
+router.patch("/envio-zonas/:id/activo", async (req, res, next) => {
+    const id = Number(req.params.id);
+    const { activo } = req.body ?? {};
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "ID de zona invalido" });
+        return;
+    }
+    if (typeof activo !== "boolean") {
+        res.status(400).json({ error: "activo debe ser boolean" });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.setShippingZoneActive)(req.user.id, id, activo);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
             return;
         }
         next(err);

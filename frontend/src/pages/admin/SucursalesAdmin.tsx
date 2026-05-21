@@ -232,6 +232,9 @@ export function SucursalesAdmin() {
           <button className="admin-nav-btn active" onClick={() => navigate(`${panelBasePath}/sucursales`)}>
             Sucursales
           </button>
+          <button className="admin-nav-btn" onClick={() => navigate(`${panelBasePath}/envios`)}>
+            Zonas de envio
+          </button>
         </nav>
       </aside>
 

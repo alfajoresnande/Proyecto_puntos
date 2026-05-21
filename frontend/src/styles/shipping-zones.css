@@ -1,0 +1,132 @@
+.shipping-zone-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.shipping-zone-form-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr) minmax(120px, 0.5fr);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.shipping-zone-color-field {
+  min-height: 44px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #E7D1B3;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #5a3820;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.shipping-zone-color-field input {
+  width: 42px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.shipping-zone-active-check {
+  width: fit-content;
+}
+
+.shipping-zone-map-editor {
+  position: relative;
+  border: 1px solid #E7D1B3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fffaf2;
+}
+
+.shipping-zone-map-canvas {
+  width: 100%;
+  min-height: 430px;
+}
+
+.shipping-zone-map-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.95rem;
+  border-top: 1px solid #E7D1B3;
+  background: #fffdf8;
+  color: #5a3820;
+  font-weight: 700;
+}
+
+.shipping-zone-map-footer small {
+  display: block;
+  margin-top: 0.2rem;
+  color: #8B5A30;
+  font-weight: 600;
+}
+
+.shipping-zone-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.shipping-zone-vertex {
+  display: grid;
+  place-items: center;
+}
+
+.shipping-zone-vertex-dot {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #2F6F73;
+  box-shadow: 0 3px 10px rgba(74, 44, 26, 0.26);
+}
+
+.shipping-zone-color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e6d2b8;
+}
+
+.shipping-zone-table-note {
+  display: block;
+  margin-top: 0.2rem;
+  color: #7b5b3c;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+  .shipping-zone-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .shipping-zone-map-footer {
+    flex-direction: column;
+  }
+
+  .shipping-zone-map-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 620px) {
+  .shipping-zone-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shipping-zone-map-canvas {
+    min-height: 360px;
+  }
+}

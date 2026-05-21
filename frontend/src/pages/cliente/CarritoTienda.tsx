@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { AddressSelector } from "../../components/addresses/AddressSelector";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
+import type { ShippingQuote, UserAddress } from "../../types";
 
 type CartItem = {
   id: number;
@@ -64,7 +66,10 @@ type CheckoutConfirmResponse = {
   orden_id: number;
   estado: string;
   total_dinero: number;
+  total_dinero_productos?: number;
+  costo_envio?: number;
   total_puntos_ganados?: number;
+  envio?: ShippingQuote | null;
   pago_pendiente: boolean;
   pago: null | {
     proveedor: string | null;
@@ -356,6 +361,9 @@ export function CarritoTienda() {
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
+  const [deliveryMethod, setDeliveryMethod] = useState<"retiro" | "envio">("retiro");
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<UserAddress | null>(null);
 
   const cartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
@@ -380,6 +388,13 @@ export function CarritoTienda() {
     refetchIntervalInBackground: true,
   });
 
+  const shippingQuoteQuery = useQuery({
+    queryKey: ["cliente", "shipping-quote", selectedAddressId],
+    queryFn: () => api.get<ShippingQuote>(`/cliente/checkout/shipping-quote?direccion_id=${selectedAddressId}`),
+    enabled: deliveryMethod === "envio" && Boolean(selectedAddressId),
+    retry: false,
+  });
+
   const resumePaymentQuery = useQuery({
     queryKey: ["cliente", "resume-payment", resumeOrderId],
     queryFn: () => api.get<CheckoutConfirmResponse>(`/cliente/checkout/ordenes/${resumeOrderId}/resume-payment`),
@@ -391,7 +406,15 @@ export function CarritoTienda() {
     () => (cartQuery.data?.items ?? []).filter((item) => item.modo_compra === "dinero"),
     [cartQuery.data?.items],
   );
+  const noEnviables = useMemo(
+    () => cartItems.filter((item) => !(item.permite_envio === true || Number(item.permite_envio ?? 0) === 1)),
+    [cartItems],
+  );
+  const canUseShipping = noEnviables.length === 0;
   const total = cartItems.reduce((acc, item) => acc + Number(item.subtotal_dinero ?? 0), 0);
+  const shippingQuote = deliveryMethod === "envio" ? shippingQuoteQuery.data : null;
+  const shippingCost = shippingQuote?.disponible ? Number(shippingQuote.costo_envio ?? 0) : 0;
+  const totalConEnvio = Math.round((total + shippingCost + Number.EPSILON) * 100) / 100;
   const totalUnidades = cartItems.reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0);
   const sucursales = sucursalesQuery.data ?? [];
   const sucursalSeleccionada =
@@ -401,6 +424,10 @@ export function CarritoTienda() {
   const selectedPayment =
     paymentOptions.find((option) => option.id === (paymentId || paymentOptionsQuery.data?.default_option)) ??
     paymentOptions[0];
+  const handleAddressChange = useCallback((addressId: number | null, address?: UserAddress | null) => {
+    setSelectedAddressId(addressId);
+    setSelectedAddress(address ?? null);
+  }, []);
   const shouldPollMercadoPagoOrder = Boolean(
     confirmed?.orden_id &&
     confirmed.pago_pendiente &&
@@ -453,6 +480,18 @@ export function CarritoTienda() {
       setSucursalId(String(sucursales[0].id));
     }
   }, [sucursalId, sucursales]);
+
+  useEffect(() => {
+    if (deliveryMethod === "envio" && !canUseShipping) {
+      setDeliveryMethod("retiro");
+    }
+  }, [canUseShipping, deliveryMethod]);
+
+  useEffect(() => {
+    if (deliveryMethod !== "envio" || selectedPayment?.provider !== "efectivo") return;
+    const nextPayment = paymentOptions.find((option) => option.enabled && option.provider !== "efectivo");
+    if (nextPayment) setPaymentId(nextPayment.id);
+  }, [deliveryMethod, paymentOptions, selectedPayment?.provider]);
 
   useEffect(() => {
     if (!confirmed?.orden_id || !confirmedOrderQuery.data) return;
@@ -530,7 +569,8 @@ export function CarritoTienda() {
     mutationFn: () =>
       api.post<CheckoutConfirmResponse>("/cliente/checkout/confirm", {
         sucursal_id: sucursalSeleccionada?.id,
-        metodo_entrega: "retiro",
+        metodo_entrega: deliveryMethod,
+        direccion_id: deliveryMethod === "envio" ? selectedAddressId : null,
         direccion_envio: null,
         pago: selectedPayment ? { provider: selectedPayment.provider, method: selectedPayment.method } : undefined,
       }),
@@ -567,7 +607,37 @@ export function CarritoTienda() {
       return;
     }
     if (sucursales.length > 1 && !sucursalSeleccionada) {
-      setMessage("Selecciona una sucursal para reservar stock.");
+      setMessage(deliveryMethod === "envio" ? "Selecciona una sucursal para preparar el pedido." : "Selecciona una sucursal para reservar stock.");
+      return;
+    }
+    if (deliveryMethod === "envio") {
+      if (!canUseShipping) {
+        setMessage(`Hay productos que no permiten envio: ${noEnviables.map((item) => item.nombre).join(", ")}.`);
+        return;
+      }
+      if (!selectedAddressId) {
+        setMessage("Selecciona una direccion de envio.");
+        return;
+      }
+      if (shippingQuoteQuery.isFetching) {
+        setMessage("Esperando la cotizacion de envio.");
+        return;
+      }
+      if (shippingQuoteQuery.error instanceof Error) {
+        setMessage(shippingQuoteQuery.error.message);
+        return;
+      }
+      if (!shippingQuote?.disponible) {
+        setMessage(shippingQuote?.error || "La direccion seleccionada no esta dentro de una zona de envio activa.");
+        return;
+      }
+      if (selectedPayment?.provider === "efectivo") {
+        setMessage("El pago en efectivo solo esta disponible para retiro en sucursal.");
+        return;
+      }
+    }
+    if (deliveryMethod === "retiro" && selectedPayment?.provider === "efectivo" && !sucursalSeleccionada) {
+      setMessage("Selecciona una sucursal para pagar al retirar.");
       return;
     }
     setMessage(null);
@@ -821,7 +891,31 @@ export function CarritoTienda() {
 
             <div className="catalog-confirm-branch-detail catalog-canje-block catalog-canje-summary">
               <p>Total de productos: <strong>{totalUnidades}</strong></p>
-              <p>Total a pagar: <strong>{money(total)}</strong></p>
+              <p>Subtotal: <strong>{money(total)}</strong></p>
+              {deliveryMethod === "envio" ? (
+                <>
+                  <p>
+                    Envio:{" "}
+                    <strong>
+                      {shippingQuoteQuery.isFetching
+                        ? "Cotizando..."
+                        : shippingQuote?.disponible
+                          ? money(shippingCost)
+                          : "-"}
+                    </strong>
+                  </p>
+                  {shippingQuote?.zona ? (
+                    <p className="catalog-confirm-hint">Zona: {shippingQuote.zona.nombre}</p>
+                  ) : shippingQuoteQuery.error instanceof Error ? (
+                    <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{shippingQuoteQuery.error.message}</p>
+                  ) : shippingQuote?.error ? (
+                    <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{shippingQuote.error}</p>
+                  ) : selectedAddressId ? null : (
+                    <p className="catalog-confirm-hint">Selecciona una direccion para cotizar el envio.</p>
+                  )}
+                </>
+              ) : null}
+              <p>Total a pagar: <strong>{money(totalConEnvio)}</strong></p>
               {(cartQuery.data?.resumen.total_puntos_ganados ?? 0) > 0 ? (
                 <p style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.2rem" }}>
                   Con esta compra ganás {cartQuery.data?.resumen.total_puntos_ganados} puntos cuando el pago sea aprobado.
@@ -830,7 +924,36 @@ export function CarritoTienda() {
             </div>
 
             <div className="catalog-confirm-field catalog-canje-pickup">
-              <label className="catalog-confirm-label" htmlFor="carrito-tienda-sucursal">Sucursal de retiro</label>
+              <label className="catalog-confirm-label">Forma de entrega</label>
+              <div className="checkout-delivery-segment" role="group" aria-label="Forma de entrega">
+                <button
+                  type="button"
+                  className={deliveryMethod === "retiro" ? "active" : ""}
+                  onClick={() => setDeliveryMethod("retiro")}
+                  disabled={confirmCheckout.isPending}
+                >
+                  Retiro
+                </button>
+                <button
+                  type="button"
+                  className={deliveryMethod === "envio" ? "active" : ""}
+                  onClick={() => setDeliveryMethod("envio")}
+                  disabled={confirmCheckout.isPending || !canUseShipping}
+                >
+                  Envio
+                </button>
+              </div>
+              {!canUseShipping ? (
+                <p className="catalog-confirm-hint">
+                  Hay productos que no permiten envio: {noEnviables.map((item) => item.nombre).join(", ")}.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="catalog-confirm-field catalog-canje-pickup">
+              <label className="catalog-confirm-label" htmlFor="carrito-tienda-sucursal">
+                {deliveryMethod === "envio" ? "Sucursal de preparacion" : "Sucursal de retiro"}
+              </label>
               <select
                 id="carrito-tienda-sucursal"
                 className="catalog-pickup-select"
@@ -842,6 +965,37 @@ export function CarritoTienda() {
                 {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
               </select>
             </div>
+
+            {deliveryMethod === "envio" ? (
+              <div className="catalog-confirm-field catalog-canje-pickup">
+                <label className="catalog-confirm-label">Direccion de envio</label>
+                <AddressSelector
+                  selectedId={selectedAddressId}
+                  onChange={handleAddressChange}
+                  disabled={confirmCheckout.isPending}
+                />
+                {selectedAddress ? (
+                  <p className="catalog-confirm-hint">
+                    Se guardara una copia de esta direccion en el pedido.
+                  </p>
+                ) : null}
+                {selectedAddress && shippingQuoteQuery.isFetching ? (
+                  <p className="catalog-confirm-hint">Cotizando envio...</p>
+                ) : null}
+                {selectedAddress && shippingQuote?.disponible ? (
+                  <p className="catalog-confirm-hint">
+                    Envio {money(shippingCost)} - {shippingQuote.zona?.nombre}
+                  </p>
+                ) : null}
+                {selectedAddress && shippingQuoteQuery.error instanceof Error ? (
+                  <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{shippingQuoteQuery.error.message}</p>
+                ) : null}
+                {selectedAddress && shippingQuote?.error ? (
+                  <p className="catalog-confirm-hint" style={{ color: "#9B2C2C" }}>{shippingQuote.error}</p>
+                ) : null}
+              </div>
+            ) : null}
+
             {paymentOptions.length ? (
               <div className="catalog-confirm-field catalog-canje-pickup">
                 <label className="catalog-confirm-label" htmlFor="carrito-tienda-pago">Medio de pago</label>
@@ -852,8 +1006,8 @@ export function CarritoTienda() {
                   onChange={(event) => setPaymentId(event.target.value)}
                 >
                   {paymentOptions.map((option) => (
-                    <option key={option.id} value={option.id} disabled={!option.enabled}>
-                      {option.label}{option.enabled ? "" : " (no disponible)"}
+                    <option key={option.id} value={option.id} disabled={!option.enabled || (deliveryMethod === "envio" && option.provider === "efectivo")}>
+                      {option.label}{option.enabled && !(deliveryMethod === "envio" && option.provider === "efectivo") ? "" : " (no disponible)"}
                     </option>
                   ))}
                 </select>
@@ -878,7 +1032,14 @@ export function CarritoTienda() {
             ) : null}
 
             <div className="catalog-float-toast-actions catalog-canje-actions">
-              <button className="catalog-float-toast-btn-primary" onClick={confirmar} disabled={confirmCheckout.isPending}>
+              <button
+                className="catalog-float-toast-btn-primary"
+                onClick={confirmar}
+                disabled={
+                  confirmCheckout.isPending ||
+                  (deliveryMethod === "envio" && (!selectedAddressId || shippingQuoteQuery.isFetching || Boolean(shippingQuoteQuery.error) || !shippingQuote?.disponible))
+                }
+              >
                 {confirmCheckout.isPending ? "Confirmando..." : "Confirmar compra"}
               </button>
               <Link className="catalog-float-toast-btn-secondary" to="/tienda">Seguir comprando</Link>

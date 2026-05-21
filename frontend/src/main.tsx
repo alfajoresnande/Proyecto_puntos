@@ -14,6 +14,8 @@ import "./styles/mobile-navbar.css";
 import "./styles/store-page.css";
 import "./styles/footer.css";
 import "./styles/home.css";
+import "./styles/addresses.css";
+import "./styles/shipping-zones.css";
 
 void useAuthStore.getState().restoreSession();
 

@@ -1788,6 +1788,10 @@ export function Admin() {
     navigate(`${panelBasePath}/sucursales`);
   }
 
+  function irAPanelEnvios() {
+    navigate(`${panelBasePath}/envios`);
+  }
+
   function syncAdminUrl(nextTab: AdminTab, nextVentasView?: AdminVentasViewKey) {
     if (nextTab === "ordenes") {
       navigate(`${panelBasePath}/ventas/${ventasPathSegment(nextVentasView ?? ventasView)}`);
@@ -4116,6 +4120,9 @@ export function Admin() {
           <button className="admin-nav-btn" onClick={irAPanelSucursales}>
             {renderAdminNavLabel("Sucursales")}
           </button>
+          <button className="admin-nav-btn" onClick={irAPanelEnvios}>
+            {renderAdminNavLabel("Zonas de envio")}
+          </button>
 
           <span className="admin-nav-section">Configuracion</span>
           <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => seleccionarTab("crear")}>
@@ -4498,6 +4505,20 @@ export function Admin() {
                 <div className="adm-config-actions">
                   <button className="adm-btn-primary adm-btn-inline" onClick={irAPanelSucursales}>
                     Abrir panel de sucursales
+                  </button>
+                </div>
+              </div>
+
+              <div className="admin-section-header adm-config-header">
+                <h2 className="admin-section-title">Zonas de envio</h2>
+              </div>
+              <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                <p className="adm-config-subtitle">
+                  Define los poligonos y precios que usa el checkout para cotizar envios a domicilio.
+                </p>
+                <div className="adm-config-actions">
+                  <button className="adm-btn-primary adm-btn-inline" onClick={irAPanelEnvios}>
+                    Abrir zonas de envio
                   </button>
                 </div>
               </div>

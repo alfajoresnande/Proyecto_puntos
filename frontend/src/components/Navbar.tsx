@@ -52,6 +52,7 @@ export function Navbar() {
   const canSeeSupport = canSeeCliente || canSeeVendedor;
   const adminPanelPath = user?.rol === "superAdmin" ? "/superadmin" : "/admin";
   const adminPanelLabel = user?.rol === "superAdmin" ? "Panel SuperAdmin" : "Panel Admin";
+  const shippingZonesPath = canSeeAdmin ? `${adminPanelPath}/envios` : "/vendedor/envios";
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
@@ -273,6 +274,7 @@ export function Navbar() {
                 {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
               </NavLink>
             ) : null}
+            {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)}>Zonas de envio</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
 
@@ -305,6 +307,13 @@ export function Navbar() {
                             onClick={() => setUserMenuOpen(false)}
                           >
                             Perfil
+                          </Link>
+                          <Link
+                            to="/mis-direcciones"
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Mis Direcciones
                           </Link>
                           <Link
                             to="/mis-canjes"
@@ -352,16 +361,34 @@ export function Navbar() {
                           >
                             Ventas y Pedidos
                           </Link>
+                          {user.rol === "vendedor" ? (
+                            <Link
+                              to={shippingZonesPath}
+                              className="navbar-user-dropdown-item"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              Zonas de envio
+                            </Link>
+                          ) : null}
                         </>
                       ) : null}
                       {user.rol === "admin" || user.rol === "superAdmin" ? (
-                        <Link
-                          to={adminPanelPath}
-                          className="navbar-user-dropdown-item"
-                          onClick={() => setUserMenuOpen(false)}
-                        >
-                          {adminPanelLabel}
-                        </Link>
+                        <>
+                          <Link
+                            to={adminPanelPath}
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            {adminPanelLabel}
+                          </Link>
+                          <Link
+                            to={`${adminPanelPath}/envios`}
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Zonas de envio
+                          </Link>
+                        </>
                       ) : null}
                       <button
                         className="navbar-user-dropdown-item navbar-user-dropdown-logout"
@@ -424,6 +451,7 @@ export function Navbar() {
               {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
             </NavLink>
           ) : null}
+          {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Zonas de envio</NavLink> : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
 
           <div className="navbar-mobile-divider" />
@@ -443,6 +471,7 @@ export function Navbar() {
                 {user.rol === "cliente" ? (
                   <div className="navbar-mobile-user-links">
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
+                    <Link to="/mis-direcciones" className="navbar-link" onClick={closeMenu}>Mis Direcciones</Link>
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
                     <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>Mis Pedidos</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
@@ -453,8 +482,14 @@ export function Navbar() {
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link>
                     <Link to="/vendedor/ventas/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
+                    {user.rol === "vendedor" ? (
+                      <Link to={shippingZonesPath} className="navbar-link" onClick={closeMenu}>Zonas de envio</Link>
+                    ) : null}
                     {(user.rol === "admin" || user.rol === "superAdmin") ? (
-                      <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
+                      <>
+                        <Link to={adminPanelPath} className="navbar-link" onClick={closeMenu}>{adminPanelLabel}</Link>
+                        <Link to={`${adminPanelPath}/envios`} className="navbar-link" onClick={closeMenu}>Zonas de envio</Link>
+                      </>
                     ) : null}
                   </div>
                 ) : null}

@@ -8,6 +8,7 @@ import { RealtimeBridge } from "./components/RealtimeBridge";
 import { SeoRouteMeta } from "./components/SeoRouteMeta";
 import { scrollPageToTop } from "./lib/scrollTop";
 import { Admin } from "./pages/admin/Admin";
+import { EnviosAdmin } from "./pages/admin/EnviosAdmin";
 import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
 import { ForgotPassword } from "./pages/auth/ForgotPassword";
 import { Login } from "./pages/auth/Login";
@@ -18,6 +19,7 @@ import { CarritoTienda } from "./pages/cliente/CarritoTienda";
 import { ConfirmarCanje } from "./pages/cliente/ConfirmarCanje";
 import { MisCanjes } from "./pages/cliente/MisCanjes";
 import { ComprobanteCanje } from "./pages/cliente/ComprobanteCanje";
+import { MisDirecciones } from "./pages/cliente/MisDirecciones";
 import { MisPedidos } from "./pages/cliente/MisPedidos";
 import { ComprobantePedido } from "./pages/cliente/ComprobantePedido";
 import { MiPerfil } from "./pages/cliente/MiPerfil";
@@ -174,6 +176,14 @@ export default function App() {
               }
             />
             <Route
+              path="/mis-direcciones"
+              element={
+                <ProtectedRoute rol="cliente">
+                  <MisDirecciones />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/carrito-canjes"
               element={
                 <ProtectedRoute rol="cliente">
@@ -244,6 +254,14 @@ export default function App() {
               }
             />
             <Route
+              path="/vendedor/envios"
+              element={
+                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
+                  <EnviosAdmin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/vendedor/pedidos/:id"
               element={
                 <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
@@ -264,6 +282,22 @@ export default function App() {
               element={
                 <ProtectedRoute rol="superAdmin">
                   <SucursalesAdmin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/envios"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <EnviosAdmin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/envios"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <EnviosAdmin />
                 </ProtectedRoute>
               }
             />

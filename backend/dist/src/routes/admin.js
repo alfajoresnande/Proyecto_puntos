@@ -26,6 +26,7 @@ const cashRegisterReports_1 = require("../services/cashRegisterReports");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
 const email_1 = require("../services/email");
+const shippingZones_1 = require("../services/shippingZones");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -124,6 +125,17 @@ const sucursalSchema = zod_1.z.object({
     piso: zod_1.z.string().max(30).optional().nullable(),
     localidad: zod_1.z.string().min(2).max(120),
     provincia: zod_1.z.string().min(2).max(120),
+});
+const envioZonaSchema = zod_1.z.object({
+    nombre: zod_1.z.string().min(1).max(120),
+    descripcion: zod_1.z.string().max(1000).optional().nullable(),
+    precio: zod_1.z.coerce.number(),
+    prioridad: zod_1.z.coerce.number().int().optional().nullable(),
+    color: zod_1.z.string().max(16).optional().nullable(),
+    polygon_geojson: zod_1.z.unknown().refine((value) => value !== undefined && value !== null, {
+        message: "El poligono de la zona es obligatorio.",
+    }),
+    activo: zod_1.z.boolean().optional().nullable(),
 });
 function makeInviteCode(length) {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -2256,6 +2268,77 @@ router.patch("/sucursales/:id/activo", async (req, res) => {
     }
     (0, realtime_1.emitRealtime)(["sucursales", "productos"]);
     res.json({ ok: true });
+});
+router.get("/envio-zonas", async (_req, res) => {
+    const zones = await (0, shippingZones_1.listShippingZones)(true);
+    res.json(zones);
+});
+router.post("/envio-zonas", async (req, res) => {
+    const parsed = envioZonaSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.createShippingZone)(req.user.id, parsed.data);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.status(201).json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        throw err;
+    }
+});
+router.put("/envio-zonas/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "ID de zona invalido" });
+        return;
+    }
+    const parsed = envioZonaSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.updateShippingZone)(req.user.id, id, parsed.data);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        throw err;
+    }
+});
+router.patch("/envio-zonas/:id/activo", async (req, res) => {
+    const id = Number(req.params.id);
+    const { activo } = req.body ?? {};
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "ID de zona invalido" });
+        return;
+    }
+    if (typeof activo !== "boolean") {
+        res.status(400).json({ error: "activo debe ser boolean" });
+        return;
+    }
+    try {
+        const zone = await (0, shippingZones_1.setShippingZoneActive)(req.user.id, id, activo);
+        (0, realtime_1.emitRealtime)(["envio-zonas", "admin-config"]);
+        res.json(zone);
+    }
+    catch (err) {
+        if (err instanceof shippingZones_1.ShippingZoneError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        throw err;
+    }
 });
 router.get("/inventario", async (req, res) => {
     const productoId = Number(req.query.producto_id ?? 0);

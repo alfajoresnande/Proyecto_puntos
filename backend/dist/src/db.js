@@ -118,6 +118,67 @@ async function ensureUsuarioDemographicsSchema() {
         await exports.pool.query("ALTER TABLE usuarios ADD COLUMN provincia VARCHAR(120) NULL AFTER localidad");
     }
 }
+async function ensureUsuarioDireccionesSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS usuario_direcciones (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      alias VARCHAR(80) NULL,
+      receptor_nombre VARCHAR(120) NULL,
+      receptor_telefono VARCHAR(40) NULL,
+      direccion_formateada VARCHAR(255) NOT NULL,
+      calle VARCHAR(140) NULL,
+      numero VARCHAR(30) NULL,
+      piso_departamento VARCHAR(80) NULL,
+      barrio VARCHAR(120) NULL,
+      localidad VARCHAR(120) NULL,
+      provincia VARCHAR(120) NULL,
+      codigo_postal VARCHAR(20) NULL,
+      pais VARCHAR(80) NOT NULL DEFAULT 'Argentina',
+      lat DECIMAL(10,7) NOT NULL,
+      lng DECIMAL(10,7) NOT NULL,
+      provider ENUM('manual','geoapify','google') NOT NULL DEFAULT 'manual',
+      provider_place_id VARCHAR(255) NULL,
+      provider_raw_json JSON NULL,
+      instrucciones_entrega TEXT NULL,
+      es_predeterminada TINYINT(1) NOT NULL DEFAULT 0,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_usuario_direcciones_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      CONSTRAINT chk_usuario_direcciones_lat
+        CHECK (lat >= -90 AND lat <= 90),
+      CONSTRAINT chk_usuario_direcciones_lng
+        CHECK (lng >= -180 AND lng <= 180),
+      INDEX idx_usuario_direcciones_usuario_activo (usuario_id, activo, updated_at),
+      INDEX idx_usuario_direcciones_usuario_predeterminada (usuario_id, es_predeterminada, activo),
+      INDEX idx_usuario_direcciones_lat_lng (lat, lng)
+    )`);
+}
+async function ensureEnvioZonasSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS envio_zonas (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(120) NOT NULL,
+      descripcion TEXT NULL,
+      precio DECIMAL(10,2) NOT NULL DEFAULT 0,
+      prioridad INT NOT NULL DEFAULT 0,
+      color VARCHAR(16) NOT NULL DEFAULT '#6B8F71',
+      polygon_geojson JSON NOT NULL,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_by INT NULL,
+      updated_by INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_envio_zonas_created_by
+        FOREIGN KEY (created_by) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_envio_zonas_updated_by
+        FOREIGN KEY (updated_by) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      INDEX idx_envio_zonas_activo_prioridad (activo, prioridad, id)
+    )`);
+}
 async function ensureEmailVerificationSchema() {
     const [verifiedRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'email_verificado'
@@ -493,6 +554,9 @@ async function ensureOrderCoreSchema() {
       total_puntos INT NOT NULL DEFAULT 0,
       direccion_envio_json JSON NULL,
       sucursal_retiro_id INT NULL,
+      envio_zona_id INT NULL,
+      envio_costo DECIMAL(10,2) NOT NULL DEFAULT 0,
+      envio_cotizacion_json JSON NULL,
       notas TEXT NULL,
       receipt_email_sent_at DATETIME NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -509,6 +573,9 @@ async function ensureOrderCoreSchema() {
       CONSTRAINT fk_orden_sucursal
         FOREIGN KEY (sucursal_retiro_id) REFERENCES sucursales(id)
         ON DELETE SET NULL,
+      CONSTRAINT fk_orden_envio_zona
+        FOREIGN KEY (envio_zona_id) REFERENCES envio_zonas(id)
+        ON DELETE SET NULL,
       INDEX idx_ordenes_usuario_created_at (usuario_id, created_at),
       INDEX idx_ordenes_cliente_local_created_at (cliente_local_id, created_at),
       INDEX idx_ordenes_estado_created_at (estado, created_at)
@@ -522,6 +589,17 @@ async function ensureOrderCoreSchema() {
     if (!clienteLocalRows.length) {
         await exports.pool.query("ALTER TABLE ordenes ADD COLUMN cliente_local_id INT NULL AFTER usuario_id");
     }
+    const ensureOrderColumn = async (columnName, definition) => {
+        const [rows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes' AND COLUMN_NAME = ?
+       LIMIT 1`, [columnName]);
+        if (!rows.length) {
+            await exports.pool.query(`ALTER TABLE ordenes ADD COLUMN ${definition}`);
+        }
+    };
+    await ensureOrderColumn("envio_zona_id", "envio_zona_id INT NULL AFTER sucursal_retiro_id");
+    await ensureOrderColumn("envio_costo", "envio_costo DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER envio_zona_id");
+    await ensureOrderColumn("envio_cotizacion_json", "envio_cotizacion_json JSON NULL AFTER envio_costo");
     try {
         const [idxRows] = await exports.pool.query(`SELECT 1 FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes'
@@ -543,6 +621,21 @@ async function ensureOrderCoreSchema() {
             await exports.pool.query(`ALTER TABLE ordenes
          ADD CONSTRAINT fk_orden_cliente_local
          FOREIGN KEY (cliente_local_id) REFERENCES clientes_locales(id)
+         ON DELETE SET NULL`);
+        }
+    }
+    catch {
+        // No-op
+    }
+    try {
+        const [fkRows] = await exports.pool.query(`SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ordenes'
+         AND CONSTRAINT_NAME = 'fk_orden_envio_zona'
+       LIMIT 1`);
+        if (!fkRows.length) {
+            await exports.pool.query(`ALTER TABLE ordenes
+         ADD CONSTRAINT fk_orden_envio_zona
+         FOREIGN KEY (envio_zona_id) REFERENCES envio_zonas(id)
          ON DELETE SET NULL`);
         }
     }
@@ -1138,6 +1231,18 @@ exports.pool
     }
     catch (err) {
         console.error("Migracion datos demograficos de usuarios:", err.message);
+    }
+    try {
+        await ensureUsuarioDireccionesSchema();
+    }
+    catch (err) {
+        console.error("Migracion direcciones de usuario:", err.message);
+    }
+    try {
+        await ensureEnvioZonasSchema();
+    }
+    catch (err) {
+        console.error("Migracion zonas de envio:", err.message);
     }
     try {
         await ensureEmailVerificationSchema();

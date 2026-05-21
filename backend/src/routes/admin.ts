@@ -55,6 +55,13 @@ import {
 } from "../services/localSales";
 import { notifyOrderCancellation } from "../services/supportNotifications";
 import { sendOrderReceiptEmail } from "../services/email";
+import {
+  createShippingZone,
+  listShippingZones,
+  setShippingZoneActive,
+  ShippingZoneError,
+  updateShippingZone,
+} from "../services/shippingZones";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -159,6 +166,18 @@ const sucursalSchema = z.object({
   piso: z.string().max(30).optional().nullable(),
   localidad: z.string().min(2).max(120),
   provincia: z.string().min(2).max(120),
+});
+
+const envioZonaSchema = z.object({
+  nombre: z.string().min(1).max(120),
+  descripcion: z.string().max(1000).optional().nullable(),
+  precio: z.coerce.number(),
+  prioridad: z.coerce.number().int().optional().nullable(),
+  color: z.string().max(16).optional().nullable(),
+  polygon_geojson: z.unknown().refine((value) => value !== undefined && value !== null, {
+    message: "El poligono de la zona es obligatorio.",
+  }),
+  activo: z.boolean().optional().nullable(),
 });
 
 function makeInviteCode(length: number): string {
@@ -2690,6 +2709,81 @@ router.patch("/sucursales/:id/activo", async (req, res) => {
   }
   emitRealtime(["sucursales", "productos"]);
   res.json({ ok: true });
+});
+
+router.get("/envio-zonas", async (_req, res) => {
+  const zones = await listShippingZones(true);
+  res.json(zones);
+});
+
+router.post("/envio-zonas", async (req, res) => {
+  const parsed = envioZonaSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  try {
+    const zone = await createShippingZone(req.user!.id, parsed.data);
+    emitRealtime(["envio-zonas", "admin-config"]);
+    res.status(201).json(zone);
+  } catch (err) {
+    if (err instanceof ShippingZoneError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.put("/envio-zonas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID de zona invalido" });
+    return;
+  }
+  const parsed = envioZonaSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  try {
+    const zone = await updateShippingZone(req.user!.id, id, parsed.data);
+    emitRealtime(["envio-zonas", "admin-config"]);
+    res.json(zone);
+  } catch (err) {
+    if (err instanceof ShippingZoneError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.patch("/envio-zonas/:id/activo", async (req, res) => {
+  const id = Number(req.params.id);
+  const { activo } = req.body ?? {};
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID de zona invalido" });
+    return;
+  }
+  if (typeof activo !== "boolean") {
+    res.status(400).json({ error: "activo debe ser boolean" });
+    return;
+  }
+
+  try {
+    const zone = await setShippingZoneActive(req.user!.id, id, activo);
+    emitRealtime(["envio-zonas", "admin-config"]);
+    res.json(zone);
+  } catch (err) {
+    if (err instanceof ShippingZoneError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 });
 
 router.get("/inventario", async (req, res) => {
