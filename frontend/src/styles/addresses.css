@@ -107,6 +107,27 @@
   gap: 0.45rem;
 }
 
+.address-map-block-first {
+  gap: 0.65rem;
+}
+
+.address-map-heading {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.address-map-heading p {
+  color: #5b3a23;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.address-map-heading .address-section-title {
+  color: #6f4b35;
+  font-size: 0.76rem;
+}
+
 .address-map-picker {
   border: 1px solid #d6c1a6;
   border-radius: 12px;
@@ -130,6 +151,29 @@
   font-weight: 800;
   min-height: 42px;
   padding: 0.55rem 0.75rem;
+}
+
+.address-map-helper {
+  background: #fff7ee;
+  border: 1px solid #e6d3b8;
+  border-radius: 10px;
+  color: #6f4b35;
+  font-size: 0.86rem;
+  font-weight: 800;
+  margin: 0;
+  padding: 0.58rem 0.72rem;
+}
+
+.address-map-helper.success {
+  background: #edf7ef;
+  border-color: #b7e4c7;
+  color: #1f7a3f;
+}
+
+.address-map-helper.warning {
+  background: #fff3cd;
+  border-color: #e3c878;
+  color: #856404;
 }
 
 .address-map-config-warning {
