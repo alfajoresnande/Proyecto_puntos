@@ -30,6 +30,11 @@
   padding: 0.95rem;
 }
 
+.address-selector-form,
+.address-form-panel {
+  scroll-margin-top: 78px;
+}
+
 .address-card {
   display: grid;
   gap: 0.8rem;

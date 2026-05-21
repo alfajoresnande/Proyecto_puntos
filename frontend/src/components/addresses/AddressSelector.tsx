@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
 import type { UserAddress, UserAddressPayload } from "../../types";
 import { AddressForm } from "./AddressForm";
@@ -26,6 +26,7 @@ export function AddressSelector({ selectedId, onChange, disabled = false }: Addr
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<FormMode>("none");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const addressesQuery = useQuery({
     queryKey: ["me", "addresses"],
@@ -58,6 +59,13 @@ export function AddressSelector({ selectedId, onChange, disabled = false }: Addr
     const fallback = addresses.find((address) => address.es_predeterminada) ?? addresses[0];
     onChange(fallback.id, fallback);
   }, [addresses, addressesQuery.data, onChange, selectedId]);
+
+  useEffect(() => {
+    if (mode === "none") return;
+    window.setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, [editingId, mode]);
 
   const createMutation = useMutation({
     mutationFn: (payload: UserAddressPayload) => api.post<UserAddress>("/me/addresses", payload),
@@ -149,7 +157,7 @@ export function AddressSelector({ selectedId, onChange, disabled = false }: Addr
       ) : null}
 
       {mode === "create" ? (
-        <div className="address-selector-form">
+        <div className="address-selector-form" ref={formRef}>
           <h3>Nueva direccion</h3>
           <AddressForm
             submitLabel="Guardar y usar"
@@ -162,7 +170,7 @@ export function AddressSelector({ selectedId, onChange, disabled = false }: Addr
       ) : null}
 
       {mode === "edit" && editingAddress ? (
-        <div className="address-selector-form">
+        <div className="address-selector-form" ref={formRef}>
           <h3>Editar direccion</h3>
           <AddressForm
             initialAddress={editingAddress}

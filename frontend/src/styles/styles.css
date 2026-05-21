@@ -8,6 +8,10 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  scroll-padding-top: 78px;
+}
+
 body {
   background: #F5E6D3;
   color: #111827;
