@@ -63,40 +63,6 @@
   border-radius: 14px;
 }
 
-/* PedidosYa badge */
-.footer-pedidosya-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  background: #EA044E;
-  color: #ffffff;
-  text-decoration: none;
-  padding: 0.45rem 0.9rem;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 0.82rem;
-  white-space: nowrap;
-  transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
-  box-shadow: 0 4px 14px rgba(234, 4, 78, 0.28);
-}
-
-.footer-pedidosya-link:hover {
-  background: #D50345;
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(234, 4, 78, 0.38);
-  color: #ffffff;
-}
-
-.footer-pedidosya-icon {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.footer-pedidosya-text {
-  line-height: 1.2;
-}
-
 @media (min-width: 901px) and (max-width: 1420px) {
   .footer {
     padding-left: clamp(1.4rem, 2.5vw, 2.25rem);
@@ -124,10 +90,6 @@
     border-radius: 12px;
   }
 
-  .footer-pedidosya-link {
-    font-size: 0.76rem;
-    padding: 0.42rem 0.72rem;
-  }
 }
 
 @media (max-width: 1180px) {
@@ -178,10 +140,6 @@
     flex-wrap: wrap;
   }
 
-  .footer-pedidosya-link {
-    font-size: 0.78rem;
-    padding: 0.4rem 0.75rem;
-  }
 }
 
 @media (min-width: 901px) and (max-width: 1180px) {
@@ -190,10 +148,6 @@
     max-width: 300px;
     padding-right: 4.75rem;
     row-gap: 0.45rem;
-  }
-
-  .footer-pedidosya-link {
-    justify-content: center;
   }
 
   .footer .footer-badge-orgullo {

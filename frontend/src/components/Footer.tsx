@@ -37,19 +37,6 @@ export function Footer() {
 
         <div className="footer-col footer-col-right">
           <div className="footer-badges">
-            <a
-              href="https://www.pedidosya.com.ar/restaurantes/corrientes/alfajores-correntinos-nande-a5ba66b1-7378-415c-a059-dcfd2b0d15d2-menu"
-              target="_blank"
-              rel="noreferrer"
-              className="footer-pedidosya-link"
-              aria-label="Pedí por PedidosYa"
-              title="Pedí por PedidosYa"
-            >
-              <svg className="footer-pedidosya-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
-              </svg>
-              <span className="footer-pedidosya-text">Pedí por PedidosYa</span>
-            </a>
             <img src="/orgullosamente_footer.png" alt="Orgullosamente Correntinos" className="footer-badge footer-badge-orgullo" />
             <img src="/hecho_en_corrientes.png" alt="Hecho en Corrientes" className="footer-badge footer-badge-hecho" />
           </div>
