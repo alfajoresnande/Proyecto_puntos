@@ -828,6 +828,13 @@ body.catalogo-background .pagina-page {
   box-shadow: 0 8px 22px rgba(67, 38, 20, 0.08);
 }
 
+.catalog-pagination-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .catalog-pagination-summary,
 .catalog-page-label {
   margin: 0;
@@ -836,11 +843,31 @@ body.catalogo-background .pagina-page {
   font-weight: 700;
 }
 
+.catalog-pagination-page-size {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #E6D3B8;
+  color: #8B5A30;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .catalog-pagination-controls {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.catalog-page-numbers {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   flex-wrap: wrap;
 }
 
@@ -856,6 +883,28 @@ body.catalogo-background .pagina-page {
   min-height: 38px;
   padding: 0.48rem 0.8rem;
   transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
+}
+
+.catalog-page-number {
+  min-width: 40px;
+  justify-content: center;
+}
+
+.catalog-page-number.is-active {
+  background: #7A3E22;
+  color: #ffffff;
+  border-color: #7A3E22;
+  box-shadow: 0 6px 14px rgba(122, 62, 34, 0.24);
+}
+
+.catalog-page-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  color: #8B5A30;
+  font-size: 0.92rem;
+  font-weight: 800;
 }
 
 .catalog-page-btn:hover:not(:disabled),

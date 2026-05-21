@@ -3,12 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
+import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
-
-const PRODUCTS_PER_PAGE = 20;
 
 type CanjeCarritoResponse = {
   canje_id: number;
@@ -380,11 +379,11 @@ export function Catalogo() {
     return filtrados;
   }, [productos, categoriaActiva, puntosCatalogo.length, puntosFiltroMax, puntosFiltroMin, busquedaProducto, ordenProductos]);
 
-  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / PRODUCTS_PER_PAGE));
+  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / CATALOG_PRODUCTS_PER_PAGE));
   const productosPageSafe = Math.min(productosPage, productosTotalPages);
   const productosPaginaActual = useMemo(() => {
-    const start = (productosPageSafe - 1) * PRODUCTS_PER_PAGE;
-    return productosFiltrados.slice(start, start + PRODUCTS_PER_PAGE);
+    const start = (productosPageSafe - 1) * CATALOG_PRODUCTS_PER_PAGE;
+    return productosFiltrados.slice(start, start + CATALOG_PRODUCTS_PER_PAGE);
   }, [productosFiltrados, productosPageSafe]);
 
   useEffect(() => {
@@ -1219,7 +1218,7 @@ export function Catalogo() {
             page={productosPageSafe}
             totalPages={productosTotalPages}
             totalItems={productosFiltrados.length}
-            pageSize={PRODUCTS_PER_PAGE}
+            pageSize={CATALOG_PRODUCTS_PER_PAGE}
             onPageChange={cambiarPaginaProductos}
           />
         ) : null}

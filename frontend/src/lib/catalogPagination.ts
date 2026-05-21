@@ -1,0 +1,2 @@
+export const CATALOG_PRODUCTS_PER_PAGE = 20;
+
