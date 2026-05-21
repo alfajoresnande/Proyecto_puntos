@@ -21,6 +21,11 @@ type OrdenVendedorDetalle = {
     localidad?: string;
     provincia?: string;
     referencias?: string | null;
+    costo_envio?: number | null;
+    envio?: {
+      zona_nombre?: string | null;
+      costo_envio?: number | null;
+    } | null;
   } | null;
   sucursal?: {
     nombre: string | null;
@@ -146,6 +151,10 @@ export function ComprobantePedidoVendedor() {
   const clienteEmail = orden.usuario?.email || "-";
   const clienteDni = orden.usuario?.dni || "-";
   const clienteTelefono = orden.direccion_envio?.telefono || orden.usuario?.telefono || "-";
+  const costoEnvio = Number(orden.direccion_envio?.costo_envio ?? orden.direccion_envio?.envio?.costo_envio ?? 0);
+  const subtotalProductosDinero = orden.items?.length
+    ? orden.items.reduce((acc, item) => acc + (item.modo_compra === "dinero" ? Number(item.subtotal_dinero || 0) : 0), 0)
+    : Math.max(0, Number(orden.total_dinero || 0) - costoEnvio);
   const puntosGanados =
     orden.items?.reduce((acc, item) => acc + Number(item.puntaje_al_comprar_unitario || 0) * Number(item.cantidad || 0), 0) || 0;
 
@@ -194,6 +203,7 @@ export function ComprobantePedidoVendedor() {
                 <p><strong>Direccion:</strong> {orden.direccion_envio.direccion}</p>
                 <p><strong>Localidad:</strong> {orden.direccion_envio.localidad}, {orden.direccion_envio.provincia} ({orden.direccion_envio.codigo_postal})</p>
                 {orden.direccion_envio.referencias ? <p><strong>Referencias:</strong> {orden.direccion_envio.referencias}</p> : null}
+                {orden.direccion_envio.envio?.zona_nombre ? <p><strong>Zona:</strong> {orden.direccion_envio.envio.zona_nombre}</p> : null}
               </>
             ) : orden.sucursal?.nombre ? (
               <>
@@ -245,9 +255,15 @@ export function ComprobantePedidoVendedor() {
 
         <div className="comprobante-totals">
           <div className="comprobante-total-row">
-            <span>Subtotal:</span>
-            <span>{money(orden.total_dinero)}</span>
+            <span>Subtotal productos:</span>
+            <span>{money(subtotalProductosDinero)}</span>
           </div>
+          {costoEnvio > 0 ? (
+            <div className="comprobante-total-row">
+              <span>Envio:</span>
+              <span>{money(costoEnvio)}</span>
+            </div>
+          ) : null}
           {orden.total_puntos > 0 ? (
             <div className="comprobante-total-row">
               <span>Puntos usados:</span>

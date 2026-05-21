@@ -131,6 +131,18 @@ function parseJsonField(value) {
         return null;
     }
 }
+function asRecord(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+function numberField(source, field) {
+    const value = source?.[field];
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+function stringField(source, field) {
+    const value = source?.[field];
+    return typeof value === "string" ? value : "";
+}
 function paymentMethodLabel(metodo) {
     const normalized = (metodo || "").trim().toLowerCase();
     if (normalized === "cash" || normalized === "efectivo")
@@ -181,6 +193,10 @@ async function sendOrderReceiptEmail(orderId) {
      ORDER BY updated_at DESC, id DESC
      LIMIT 1`, [orderId]);
     const direccionEnvio = parseJsonField(order.direccion_envio_json);
+    const envioSnapshot = asRecord(direccionEnvio?.envio);
+    const costoEnvio = numberField(direccionEnvio, "costo_envio") || numberField(envioSnapshot, "costo_envio");
+    const zonaEnvio = stringField(envioSnapshot, "zona_nombre");
+    const subtotalProductos = items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0);
     const puntosGanados = items.reduce((acc, item) => acc + Number(item.cantidad) * Number(item.puntaje_al_comprar_unitario ?? 0), 0);
     const safeName = escapeHtml(order.cliente_nombre || "Cliente");
     const itemRows = items
@@ -196,14 +212,17 @@ async function sendOrderReceiptEmail(orderId) {
         .join("");
     const entrega = direccionEnvio
         ? `Envio a domicilio: ${[
-            direccionEnvio.direccion,
-            direccionEnvio.localidad,
-            direccionEnvio.provincia,
-            direccionEnvio.codigo_postal,
+            stringField(direccionEnvio, "direccion"),
+            stringField(direccionEnvio, "localidad"),
+            stringField(direccionEnvio, "provincia"),
+            stringField(direccionEnvio, "codigo_postal"),
         ].filter(Boolean).join(", ")}`
         : order.sucursal_nombre
             ? `Retiro en sucursal: ${order.sucursal_nombre} - ${[order.sucursal_direccion, order.sucursal_localidad, order.sucursal_provincia].filter(Boolean).join(", ")}`
             : "Entrega a coordinar";
+    const entregaExtra = direccionEnvio && (zonaEnvio || costoEnvio > 0)
+        ? `${zonaEnvio ? `Zona: ${zonaEnvio}. ` : ""}${costoEnvio > 0 ? `Envio: ${money(costoEnvio)}.` : ""}`
+        : "";
     const html = `
     <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; color: #2D1200;">
       <div style="border-bottom:3px solid #D4621A;padding:18px 0;margin-bottom:20px;">
@@ -214,7 +233,8 @@ async function sendOrderReceiptEmail(orderId) {
       <div style="background:#FFF8F0;border:1px solid #F1D8BF;border-radius:10px;padding:14px;margin:18px 0;">
         <p style="margin:0 0 8px;"><strong>Estado:</strong> Pago aprobado</p>
         <p style="margin:0 0 8px;"><strong>Metodo de pago:</strong> ${escapeHtml(paymentMethodLabel(pago?.metodo))}</p>
-        <p style="margin:0;"><strong>Entrega:</strong> ${escapeHtml(entrega)}</p>
+        <p style="margin:0 0 ${entregaExtra ? "8px" : "0"};"><strong>Entrega:</strong> ${escapeHtml(entrega)}</p>
+        ${entregaExtra ? `<p style="margin:0;"><strong>Detalle envio:</strong> ${escapeHtml(entregaExtra)}</p>` : ""}
       </div>
       <table style="width:100%;border-collapse:collapse;margin:18px 0;">
         <thead>
@@ -228,6 +248,8 @@ async function sendOrderReceiptEmail(orderId) {
         <tbody>${itemRows}</tbody>
       </table>
       <div style="text-align:right;font-size:16px;">
+        <p style="margin:4px 0;">Subtotal productos: ${money(subtotalProductos)}</p>
+        ${costoEnvio > 0 ? `<p style="margin:4px 0;">Envio: ${money(costoEnvio)}</p>` : ""}
         ${Number(order.total_puntos ?? 0) > 0 ? `<p style="margin:4px 0;">Puntos usados: ${Number(order.total_puntos)} pts</p>` : ""}
         ${puntosGanados > 0 ? `<p style="margin:4px 0;color:#D4621A;">Puntos ganados: +${puntosGanados} pts</p>` : ""}
         <p style="font-size:20px;margin:8px 0 0;"><strong>Total: ${money(order.total_dinero)}</strong></p>
@@ -242,8 +264,11 @@ async function sendOrderReceiptEmail(orderId) {
         `Cliente: ${order.cliente_nombre || "Cliente"}`,
         `Metodo de pago: ${paymentMethodLabel(pago?.metodo)}`,
         `Entrega: ${entrega}`,
+        entregaExtra ? `Detalle envio: ${entregaExtra}` : "",
         "Productos:",
         ...items.map((item) => `- ${item.nombre} x${Number(item.cantidad)}: ${money(item.subtotal_dinero)}`),
+        `Subtotal productos: ${money(subtotalProductos)}`,
+        costoEnvio > 0 ? `Envio: ${money(costoEnvio)}` : "",
         puntosGanados > 0 ? `Puntos ganados: +${puntosGanados} pts` : "",
         `Total: ${money(order.total_dinero)}`,
         "Este documento no es valido como factura.",
