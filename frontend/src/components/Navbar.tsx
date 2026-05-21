@@ -53,6 +53,7 @@ export function Navbar() {
   const adminPanelPath = user?.rol === "superAdmin" ? "/superadmin" : "/admin";
   const adminPanelLabel = user?.rol === "superAdmin" ? "Panel SuperAdmin" : "Panel Admin";
   const shippingZonesPath = canSeeAdmin ? `${adminPanelPath}/envios` : "/vendedor/envios";
+  const ordersMapPath = canSeeAdmin ? `${adminPanelPath}/mapa-pedidos` : "/vendedor/mapa-pedidos";
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
@@ -268,12 +269,13 @@ export function Navbar() {
                 {renderNavLabel("Mensajes", supportUnreadCount)}
               </NavLink>
             ) : null}
-            {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
+            {canSeeVendedor ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
             {canSeeVendedor ? (
               <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)}>
                 {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
               </NavLink>
             ) : null}
+            {canSeeVendedor ? <NavLink to={ordersMapPath} className={({ isActive }) => navClass(isActive)}>Mapa pedidos</NavLink> : null}
             {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)}>Zonas de envio</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
           </div>
@@ -361,6 +363,13 @@ export function Navbar() {
                           >
                             Ventas y Pedidos
                           </Link>
+                          <Link
+                            to={ordersMapPath}
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Mapa pedidos
+                          </Link>
                           {user.rol === "vendedor" ? (
                             <Link
                               to={shippingZonesPath}
@@ -445,12 +454,13 @@ export function Navbar() {
             </NavLink>
           ) : null}
           {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
-          {canSeeVendedor ? <NavLink to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
+          {canSeeVendedor ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
           {canSeeVendedor ? (
             <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
               {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
             </NavLink>
           ) : null}
+          {canSeeVendedor ? <NavLink to={ordersMapPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mapa pedidos</NavLink> : null}
           {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Zonas de envio</NavLink> : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
 
@@ -482,6 +492,7 @@ export function Navbar() {
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link>
                     <Link to="/vendedor/ventas/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
+                    <Link to={ordersMapPath} className="navbar-link" onClick={closeMenu}>Mapa pedidos</Link>
                     {user.rol === "vendedor" ? (
                       <Link to={shippingZonesPath} className="navbar-link" onClick={closeMenu}>Zonas de envio</Link>
                     ) : null}

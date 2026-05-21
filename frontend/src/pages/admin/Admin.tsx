@@ -977,20 +977,11 @@ function formatPagoOrden(orden: OrdenAdmin): string {
   return `${proveedor} / ${estado}`;
 }
 
-function orderMapUrl(address: OrdenAdmin["direccion_envio"]): string | null {
-  if (!address) return null;
+function hasOrderMapPoint(address: OrdenAdmin["direccion_envio"]): boolean {
+  if (!address) return false;
   const lat = Number(address.lat);
   const lng = Number(address.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  }
-  const query = [
-    address.direccion_formateada || address.direccion,
-    address.localidad,
-    address.provincia,
-    address.codigo_postal,
-  ].filter(Boolean).join(", ");
-  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null;
+  return Number.isFinite(lat) && Number.isFinite(lng);
 }
 
 function normalizeImageList(urls: string[]): string[] {
@@ -5870,15 +5861,14 @@ export function Admin() {
                                     <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
                                       {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
                                     </button>
-                                    {orderMapUrl(orden.direccion_envio) ? (
-                                      <a
+                                    {hasOrderMapPoint(orden.direccion_envio) ? (
+                                      <button
+                                        type="button"
                                         className="adm-btn-link"
-                                        href={orderMapUrl(orden.direccion_envio) ?? "#"}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                        onClick={() => navigate(`${panelBasePath}/mapa-pedidos?pedido=${orden.id}`)}
                                       >
                                         Ver en mapa
-                                      </a>
+                                      </button>
                                     ) : null}
                                     {orden.estado === "pendiente_pago" ? (
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>

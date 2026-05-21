@@ -31,6 +31,7 @@ import { TiendaOnline } from "./pages/public/TiendaOnline";
 import { Terminos } from "./pages/public/Terminos";
 import { SoporteStaff } from "./pages/staff/SoporteStaff";
 import { ComprobantePedidoVendedor } from "./pages/vendedor/ComprobantePedidoVendedor";
+import { PedidosMapa } from "./pages/vendedor/PedidosMapa";
 import { Vendedor } from "./pages/vendedor/Vendedor";
 import { VendedorPedidos } from "./pages/vendedor/VendedorPedidos";
 
@@ -254,6 +255,14 @@ export default function App() {
               }
             />
             <Route
+              path="/vendedor/mapa-pedidos"
+              element={
+                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
+                  <PedidosMapa />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/vendedor/envios"
               element={
                 <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
@@ -294,10 +303,26 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/mapa-pedidos"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <PedidosMapa />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/superadmin/envios"
               element={
                 <ProtectedRoute rol="superAdmin">
                   <EnviosAdmin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/mapa-pedidos"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <PedidosMapa />
                 </ProtectedRoute>
               }
             />

@@ -139,6 +139,8 @@
   overflow: hidden;
   background: #eef3ef;
   position: relative;
+  isolation: isolate;
+  z-index: 0;
 }
 
 .address-map-canvas {

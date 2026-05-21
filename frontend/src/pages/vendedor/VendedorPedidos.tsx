@@ -185,20 +185,11 @@ function pagoLabel(pago: OrdenVendedor["pago"]): string {
   return `${metodo} / ${estado}`;
 }
 
-function orderMapUrl(address: OrdenVendedor["direccion_envio"]): string | null {
-  if (!address) return null;
+function hasOrderMapPoint(address: OrdenVendedor["direccion_envio"]): boolean {
+  if (!address) return false;
   const lat = Number(address.lat);
   const lng = Number(address.lng);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-  }
-  const query = [
-    address.direccion_formateada || address.direccion,
-    address.localidad,
-    address.provincia,
-    address.codigo_postal,
-  ].filter(Boolean).join(", ");
-  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : null;
+  return Number.isFinite(lat) && Number.isFinite(lng);
 }
 
 function sanitizeManualDni(value: string): string {
@@ -1380,16 +1371,14 @@ export function VendedorPedidos() {
                 >
                   Ver comprobante
                 </Link>
-                {orderMapUrl(orden.direccion_envio) ? (
-                  <a
-                    href={orderMapUrl(orden.direccion_envio) ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
+                {hasOrderMapPoint(orden.direccion_envio) ? (
+                  <Link
+                    to={`/vendedor/mapa-pedidos?pedido=${orden.id}`}
                     className="ios-btn-secondary"
                     style={{ width: "auto", padding: "0.55rem 0.85rem", textDecoration: "none" }}
                   >
                     Ver en mapa
-                  </a>
+                  </Link>
                 ) : null}
                 {puedeMarcarPagada(orden) ? (
                   <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "pagada")}>

@@ -26,7 +26,7 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 40;
+  z-index: 1100;
   background: #F5E6D3;
   border-bottom: 1px solid #E6D3B8;
   box-shadow: 0 6px 18px rgba(74, 44, 26, 0.14);
@@ -152,7 +152,7 @@
   display: flex;
   flex-direction: column;
   padding: 0.35rem;
-  z-index: 60;
+  z-index: 1110;
 }
 
 .navbar-user-dropdown-item {
@@ -282,7 +282,7 @@
 .navbar-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 38;
+  z-index: 1080;
   background: rgba(40, 24, 12, 0.12);
 }
 
@@ -292,7 +292,7 @@
   top: 64px;
   left: 0;
   right: 0;
-  z-index: 39;
+  z-index: 1090;
   background: #FFF8F0;
   border-bottom: 1px solid #E6D3B8;
   box-shadow: 0 10px 24px rgba(74, 44, 26, 0.14);

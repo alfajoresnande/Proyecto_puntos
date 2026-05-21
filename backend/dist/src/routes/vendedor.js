@@ -122,6 +122,45 @@ function parseJsonField(value) {
         return null;
     }
 }
+function isJsonRecord(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function recordString(record, key) {
+    const value = record[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+function recordNumber(record, key) {
+    const value = Number(record[key]);
+    return Number.isFinite(value) ? value : null;
+}
+function normalizeOrderMapAddress(value) {
+    if (!isJsonRecord(value))
+        return null;
+    const lat = recordNumber(value, "lat");
+    const lng = recordNumber(value, "lng");
+    if (lat === null || lng === null)
+        return null;
+    const direccionFormateada = recordString(value, "direccion_formateada") ?? recordString(value, "direccion");
+    return {
+        id: recordNumber(value, "id"),
+        alias: recordString(value, "alias"),
+        nombre: recordString(value, "nombre") ?? recordString(value, "receptor_nombre"),
+        telefono: recordString(value, "telefono") ?? recordString(value, "receptor_telefono"),
+        direccion: recordString(value, "direccion") ?? direccionFormateada,
+        direccion_formateada: direccionFormateada,
+        calle: recordString(value, "calle"),
+        numero: recordString(value, "numero"),
+        piso_departamento: recordString(value, "piso_departamento"),
+        barrio: recordString(value, "barrio"),
+        localidad: recordString(value, "localidad"),
+        provincia: recordString(value, "provincia"),
+        codigo_postal: recordString(value, "codigo_postal"),
+        pais: recordString(value, "pais"),
+        referencias: recordString(value, "referencias") ?? recordString(value, "instrucciones_entrega"),
+        lat,
+        lng,
+    };
+}
 async function getCanjeItemsByCanjeIds(canjeIds) {
     const map = new Map();
     if (!canjeIds.length)
@@ -978,6 +1017,42 @@ router.get("/ordenes", async (_req, res, next) => {
                 pago: payMap.get(Number(row.id)) ?? null,
             };
         }));
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/ordenes/mapa", async (req, res, next) => {
+    try {
+        const selectedOrderId = Number(req.query.pedido_id ?? 0);
+        const includeSelectedOrder = Number.isInteger(selectedOrderId) && selectedOrderId > 0;
+        const rows = await (0, db_1.qAll)(db_1.pool, `SELECT o.id, o.usuario_id,
+              COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
+              COALESCE(u.email, '') AS cliente_email,
+              o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
+              o.direccion_envio_json, o.notas, o.created_at, o.updated_at
+       FROM ordenes o
+       LEFT JOIN usuarios u ON u.id = o.usuario_id
+       LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
+       WHERE o.tipo_orden IN ('venta', 'mixta')
+         AND o.direccion_envio_json IS NOT NULL
+         AND o.estado NOT IN ('cancelada', 'expirada')
+         AND (o.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)${includeSelectedOrder ? " OR o.id = ?" : ""})
+       ORDER BY o.created_at DESC, o.id DESC
+       LIMIT 300`, includeSelectedOrder ? [selectedOrderId] : []);
+        res.json(rows
+            .map((row) => {
+            const direccionEnvio = normalizeOrderMapAddress(parseJsonField(row.direccion_envio_json));
+            if (!direccionEnvio)
+                return null;
+            return {
+                ...row,
+                total_dinero: Number(row.total_dinero ?? 0),
+                total_puntos: Number(row.total_puntos ?? 0),
+                direccion_envio: direccionEnvio,
+            };
+        })
+            .filter((row) => Boolean(row)));
     }
     catch (err) {
         next(err);

@@ -38,6 +38,8 @@
 
 .shipping-zone-map-editor {
   position: relative;
+  isolation: isolate;
+  z-index: 0;
   border: 1px solid #E7D1B3;
   border-radius: 8px;
   overflow: hidden;

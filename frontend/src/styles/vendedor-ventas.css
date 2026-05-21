@@ -42,6 +42,205 @@
   gap: 0.75rem;
 }
 
+.orders-map-shell {
+  display: grid;
+  gap: 1rem;
+}
+
+.orders-map-header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.orders-map-header .catalog-title,
+.orders-map-header .catalog-subtitle {
+  text-align: left;
+}
+
+.orders-map-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+
+.orders-map-header-actions .ios-btn-secondary {
+  width: auto;
+  padding: 0.6rem 0.9rem;
+  text-decoration: none;
+}
+
+.orders-map-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.orders-map-list,
+.orders-map-panel,
+.orders-map-detail {
+  background: #fff8f1;
+  border: 1px solid #e6d3b8;
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(67, 38, 20, 0.1);
+}
+
+.orders-map-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 650px;
+  overflow: auto;
+  padding: 0.85rem;
+}
+
+.orders-map-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: #4a2c1a;
+}
+
+.orders-map-list-head span {
+  color: #8b5a30;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.orders-map-empty {
+  border: 1px dashed #d8b999;
+  border-radius: 10px;
+  color: #7a4a2a;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.8rem;
+}
+
+.orders-map-order {
+  background: #fffdf8;
+  border: 1px solid #ead5ba;
+  border-radius: 12px;
+  color: #4a2c1a;
+  cursor: pointer;
+  display: grid;
+  gap: 0.22rem;
+  font-family: inherit;
+  padding: 0.72rem;
+  text-align: left;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.orders-map-order:hover,
+.orders-map-order:focus-visible,
+.orders-map-order.active {
+  background: #fff1e5;
+  border-color: #d4621a;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.orders-map-order span {
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.orders-map-order small,
+.orders-map-order em {
+  color: #795335;
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.orders-map-order em {
+  color: #9a4d16;
+  font-weight: 900;
+}
+
+.orders-map-main {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.orders-map-panel {
+  isolation: isolate;
+  overflow: hidden;
+  position: relative;
+  z-index: 0;
+}
+
+.orders-map-canvas {
+  min-height: 560px;
+  width: 100%;
+}
+
+.orders-map-detail {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.95rem;
+}
+
+.orders-map-detail p {
+  color: #5b3a23;
+  font-size: 0.9rem;
+  margin: 0.15rem 0;
+}
+
+.orders-map-detail-title,
+.orders-map-detail-total {
+  color: #3d1a02 !important;
+  font-size: 1rem !important;
+  font-weight: 900;
+}
+
+.orders-map-detail .ios-btn-primary {
+  display: inline-flex;
+  margin-top: 0.45rem;
+  padding: 0.58rem 0.85rem;
+  text-decoration: none;
+  width: auto;
+}
+
+.orders-map-marker {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.orders-map-marker-dot {
+  background: #d4621a;
+  border: 3px solid #ffffff;
+  border-radius: 999px 999px 999px 0;
+  box-shadow: 0 6px 18px rgba(45, 18, 0, 0.32);
+  display: block;
+  height: 22px;
+  transform: rotate(-45deg);
+  width: 22px;
+}
+
+.orders-map-marker-selected .orders-map-marker-dot {
+  background: #16a34a;
+  height: 28px;
+  width: 28px;
+}
+
+.orders-map-marker-dot::after {
+  background: #ffffff;
+  border-radius: 999px;
+  content: "";
+  display: block;
+  height: 6px;
+  margin: 5px;
+  width: 6px;
+}
+
 @media (max-width: 640px) {
   .vendedor-ventas-nav {
     display: grid;
@@ -52,5 +251,30 @@
     width: 100%;
     justify-self: stretch;
     text-align: center;
+  }
+}
+
+@media (max-width: 960px) {
+  .orders-map-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .orders-map-list {
+    max-height: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .orders-map-header-actions,
+  .orders-map-header-actions .ios-btn-secondary {
+    width: 100%;
+  }
+
+  .orders-map-canvas {
+    min-height: 420px;
+  }
+
+  .orders-map-detail {
+    display: grid;
   }
 }
