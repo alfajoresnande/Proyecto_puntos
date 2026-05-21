@@ -650,9 +650,6 @@ router.post("/ventas-locales", async (req, res, next) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    if (!parsed.data.usuario_id && !parsed.data.cliente_local) {
-      throw new Error("Selecciona un cliente web o completa un cliente manual.");
-    }
     const result = await registerLocalSale(conn, {
       canal: "vendedor",
       usuarioId: parsed.data.usuario_id ?? null,

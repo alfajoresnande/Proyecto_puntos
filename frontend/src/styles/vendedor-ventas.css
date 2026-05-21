@@ -42,9 +42,22 @@
   gap: 0.75rem;
 }
 
+.orders-map-page {
+  max-width: none;
+  width: 100%;
+  padding: 1.25rem clamp(0.8rem, 1.7vw, 2rem) 2rem;
+}
+
 .orders-map-shell {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   display: grid;
   gap: 1rem;
+  margin: 0;
+  padding: 0;
+  width: 100%;
 }
 
 .orders-map-header {
@@ -61,6 +74,7 @@
 }
 
 .orders-map-header-actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
@@ -73,9 +87,33 @@
   text-decoration: none;
 }
 
+.orders-map-live-status {
+  align-items: center;
+  background: #e7f6ec;
+  border: 1px solid #b7e4c7;
+  border-radius: 999px;
+  color: #1f7a3f;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 900;
+  min-height: 38px;
+  padding: 0 0.9rem;
+  white-space: nowrap;
+}
+
+.orders-map-live-status::before {
+  background: #16a34a;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.16);
+  content: "";
+  height: 8px;
+  margin-right: 0.5rem;
+  width: 8px;
+}
+
 .orders-map-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -92,7 +130,7 @@
 .orders-map-list {
   display: grid;
   gap: 0.65rem;
-  max-height: 650px;
+  max-height: calc(100dvh - 190px);
   overflow: auto;
   padding: 0.85rem;
 }
@@ -175,7 +213,7 @@
 }
 
 .orders-map-canvas {
-  min-height: 560px;
+  min-height: calc(100dvh - 285px);
   width: 100%;
 }
 
@@ -267,6 +305,11 @@
 @media (max-width: 640px) {
   .orders-map-header-actions,
   .orders-map-header-actions .ios-btn-secondary {
+    width: 100%;
+  }
+
+  .orders-map-live-status {
+    justify-content: center;
     width: 100%;
   }
 

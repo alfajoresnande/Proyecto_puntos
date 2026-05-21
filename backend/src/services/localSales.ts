@@ -101,6 +101,11 @@ export type VentaReporteRow = {
 
 const VALID_PAYMENT_METHODS = new Set(["cash", "transferencia", "tarjeta", "qr", "otro"]);
 const BUENOS_AIRES_TIME_ZONE = "America/Argentina/Buenos_Aires";
+const GENERIC_LOCAL_CUSTOMER = {
+  nombre: "Cliente",
+  dni: "00000000",
+  telefono: null,
+};
 
 function toMoney(value: number): number {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -394,6 +399,10 @@ async function findOrCreateLocalCustomer(
   return created.insertId;
 }
 
+async function findOrCreateGenericLocalCustomer(conn: Queryable): Promise<number> {
+  return findOrCreateLocalCustomer(conn, GENERIC_LOCAL_CUSTOMER);
+}
+
 export async function registerLocalSale(
   conn: Queryable,
   input: RegisterLocalSaleInput,
@@ -416,7 +425,7 @@ export async function registerLocalSale(
   } else if (input.clienteLocal) {
     clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
   } else {
-    throw new Error("Selecciona un cliente web o completa un cliente manual.");
+    clienteLocalId = await findOrCreateGenericLocalCustomer(conn);
   }
 
   const sucursal = await qOne<{ id: number }>(

@@ -2811,14 +2811,21 @@ export function Admin() {
     try {
       if (!ventaLocalSucursalId) throw new Error("Selecciona una sucursal para la venta local.");
       if (!ventaLocalItems.length) throw new Error("Agrega al menos un producto a la venta local.");
-      if (!ventaLocalClienteId && (!ventaLocalClienteManualNombre.trim() || !ventaLocalClienteManualDni.trim())) {
-        throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
-      }
-      if (!ventaLocalClienteId && !validateManualDni(ventaLocalClienteManualDni)) {
-        throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
-      }
-      if (!ventaLocalClienteId && !validateManualPhone(ventaLocalClienteManualTelefono)) {
-        throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+      const hasManualCustomer = Boolean(
+        ventaLocalClienteManualNombre.trim() ||
+        ventaLocalClienteManualDni.trim() ||
+        ventaLocalClienteManualTelefono.trim(),
+      );
+      if (!ventaLocalClienteId && hasManualCustomer) {
+        if (!ventaLocalClienteManualNombre.trim() || !ventaLocalClienteManualDni.trim()) {
+          throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
+        }
+        if (!validateManualDni(ventaLocalClienteManualDni)) {
+          throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+        }
+        if (!validateManualPhone(ventaLocalClienteManualTelefono)) {
+          throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+        }
       }
 
       const result = await commandMutation.mutateAsync({
@@ -2826,7 +2833,7 @@ export function Admin() {
         path: "/admin/ventas-locales",
         body: {
           usuario_id: ventaLocalClienteId ? Number(ventaLocalClienteId) : undefined,
-          cliente_local: ventaLocalClienteId
+          cliente_local: ventaLocalClienteId || !hasManualCustomer
             ? undefined
             : {
                 nombre: ventaLocalClienteManualNombre.trim(),
@@ -5620,19 +5627,19 @@ export function Admin() {
                         ))}
                       </select>
                     </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Cliente manual" tip="Si no existe como usuario web, puedes registrar nombre y DNI para dejar asentada la venta presencial.">
+                    <FieldWithFloatingTip label="Cliente manual" tip="Opcional. Si lo dejas vacio, la venta se registra como Cliente generico. Si lo completas, usa nombre y DNI.">
                       <input
                         className="adm-input"
-                        placeholder="Nombre cliente manual"
+                        placeholder="Nombre cliente manual (opcional)"
                         value={ventaLocalClienteId ? "" : ventaLocalClienteManualNombre}
                         disabled={Boolean(ventaLocalClienteId)}
                         onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
                       />
                     </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="DNI manual" tip="Documento del cliente manual. Se usa para reconocerlo en futuras ventas locales.">
+                    <FieldWithFloatingTip label="DNI manual" tip="Opcional si usas Cliente generico. Si completas cliente manual, nombre y DNI van juntos.">
                       <input
                         className="adm-input"
-                        placeholder="DNI cliente manual"
+                        placeholder="DNI cliente manual (opcional)"
                         inputMode="numeric"
                         maxLength={10}
                         value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
@@ -5681,7 +5688,7 @@ export function Admin() {
                   <p className="adm-inline-tip" style={{ margin: 0 }}>
                     {clienteVentaLocalSeleccionado
                       ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. Los precios se ajustan por categoria segun ese perfil.`
-                      : "Si completas un cliente manual, la venta queda asociada a DNI/nombre y usa el perfil cliente comun para precios. No acredita puntos de usuario web."}
+                      : "Si dejas los datos del cliente vacios, la venta queda como Cliente generico y usa el perfil cliente comun. Si completas cliente manual, queda asociada a DNI/nombre. No acredita puntos de usuario web."}
                   </p>
                   <div className="adm-form-grid">
                     <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">

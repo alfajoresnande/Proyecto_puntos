@@ -21,6 +21,11 @@ const points_1 = require("./points");
 const stock_1 = require("./stock");
 const VALID_PAYMENT_METHODS = new Set(["cash", "transferencia", "tarjeta", "qr", "otro"]);
 const BUENOS_AIRES_TIME_ZONE = "America/Argentina/Buenos_Aires";
+const GENERIC_LOCAL_CUSTOMER = {
+    nombre: "Cliente",
+    dni: "00000000",
+    telefono: null,
+};
 function toMoney(value) {
     return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
@@ -251,6 +256,9 @@ async function findOrCreateLocalCustomer(conn, clienteLocal) {
      VALUES (?, ?, ?)`, [nombre, dni, telefono]);
     return created.insertId;
 }
+async function findOrCreateGenericLocalCustomer(conn) {
+    return findOrCreateLocalCustomer(conn, GENERIC_LOCAL_CUSTOMER);
+}
 async function registerLocalSale(conn, input) {
     let usuarioId = null;
     let clienteLocalId = null;
@@ -267,7 +275,7 @@ async function registerLocalSale(conn, input) {
         clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
     }
     else {
-        throw new Error("Selecciona un cliente web o completa un cliente manual.");
+        clienteLocalId = await findOrCreateGenericLocalCustomer(conn);
     }
     const sucursal = await (0, db_1.qOne)(conn, "SELECT id FROM sucursales WHERE id = ? AND activo = 1 LIMIT 1", [input.sucursalId]);
     if (!sucursal) {

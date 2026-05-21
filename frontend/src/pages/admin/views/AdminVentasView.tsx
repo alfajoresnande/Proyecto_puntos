@@ -28,7 +28,7 @@ const SALES_VIEWS: Array<{
     key: "venta-local",
     label: "Venta local",
     explanation: [
-      "Aca se cargan ventas presenciales del local, ya sea a un cliente web o a una persona manual con nombre, DNI y telefono opcional.",
+      "Aca se cargan ventas presenciales del local, ya sea a un cliente web, a una persona manual o como Cliente generico para registrar rapido.",
       "La venta local descuenta stock compartido de la sucursal y suma en la caja diaria segun el medio de pago elegido.",
       "Si se elige un cliente web, se pueden aplicar sus descuentos y acreditar puntos cuando corresponda.",
     ],

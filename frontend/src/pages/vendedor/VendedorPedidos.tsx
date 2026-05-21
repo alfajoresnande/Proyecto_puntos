@@ -457,19 +457,26 @@ export function VendedorPedidos() {
     mutationFn: () => {
       if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
       if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
-      if (!ventaCliente && (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim())) {
-        throw new Error("Selecciona un cliente web o completa nombre y DNI del cliente manual.");
-      }
-      if (!ventaCliente && !validateManualDni(ventaClienteManualDni)) {
-        throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
-      }
-      if (!ventaCliente && !validateManualPhone(ventaClienteManualTelefono)) {
-        throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+      const hasManualCustomer = Boolean(
+        ventaClienteManualNombre.trim() ||
+        ventaClienteManualDni.trim() ||
+        ventaClienteManualTelefono.trim(),
+      );
+      if (!ventaCliente && hasManualCustomer) {
+        if (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim()) {
+          throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
+        }
+        if (!validateManualDni(ventaClienteManualDni)) {
+          throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+        }
+        if (!validateManualPhone(ventaClienteManualTelefono)) {
+          throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+        }
       }
 
       return api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", {
         usuario_id: ventaCliente?.id,
-        cliente_local: ventaCliente
+        cliente_local: ventaCliente || !hasManualCustomer
           ? undefined
           : {
               nombre: ventaClienteManualNombre.trim(),
@@ -1167,14 +1174,14 @@ export function VendedorPedidos() {
               </div>
               <input
                 className="ios-input"
-                placeholder="Cliente manual: nombre"
+                placeholder="Cliente manual: nombre (opcional)"
                 value={ventaCliente ? "" : ventaClienteManualNombre}
                 disabled={Boolean(ventaCliente)}
                 onChange={(event) => setVentaClienteManualNombre(event.target.value)}
               />
               <input
                 className="ios-input"
-                placeholder="Cliente manual: DNI"
+                placeholder="Cliente manual: DNI (opcional)"
                 inputMode="numeric"
                 maxLength={10}
                 value={ventaCliente ? "" : ventaClienteManualDni}
@@ -1218,7 +1225,7 @@ export function VendedorPedidos() {
               </p>
             ) : (
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                Si no elegis un cliente web, la venta se registra como cliente manual y usa el perfil cliente comun. No acredita puntos de usuario web.
+                Si dejas los datos del cliente vacios, la venta se registra como Cliente generico. Si completas cliente manual, usa nombre y DNI. No acredita puntos de usuario web.
               </p>
             )}
 

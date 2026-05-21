@@ -133,7 +133,7 @@ export function PedidosMapa() {
       const qs = selectedOrderId ? `?pedido_id=${selectedOrderId}` : "";
       return api.get<PedidoMapa[]>(`/vendedor/ordenes/mapa${qs}`);
     },
-    refetchInterval: 15000,
+    refetchInterval: 5000,
     refetchIntervalInBackground: true,
   });
 
@@ -222,7 +222,7 @@ export function PedidosMapa() {
   }, [pedidos, selectOrder, selectedOrder]);
 
   return (
-    <section className="catalog-page catalog-canje-page orders-map-page">
+    <section className="catalog-page orders-map-page">
       <div className="catalog-products-shell orders-map-shell">
         <div className="orders-map-header">
           <div>
@@ -230,9 +230,9 @@ export function PedidosMapa() {
             <p className="catalog-subtitle">Pedidos con envio creados en las ultimas 24 horas</p>
           </div>
           <div className="orders-map-header-actions">
-            <button className="ios-btn-secondary" type="button" onClick={() => void pedidosQuery.refetch()}>
-              Actualizar
-            </button>
+            <span className="orders-map-live-status" role="status">
+              Actualizacion automatica
+            </span>
             <Link className="ios-btn-secondary" to={pedidosPath}>
               Ver pedidos
             </Link>
