@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { mediaUrl } from "../../lib/apiBase";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
@@ -28,7 +29,8 @@ type MapPoint = {
 };
 
 function productImage(producto: Producto): string {
-  return producto.imagenes?.find(Boolean) || producto.imagen_url || "/logo.png";
+  const image = producto.imagenes?.find(Boolean) || producto.imagen_url;
+  return image ? mediaUrl(image) : "/logo.png";
 }
 
 function hasProductImage(producto: Producto): boolean {

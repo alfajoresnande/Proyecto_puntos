@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { mediaUrl } from "../../lib/apiBase";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 
 type Canje = {
@@ -174,7 +175,7 @@ export function MisCanjes() {
             <div key={canje.id} className="px-4 py-3 border-b border-ios-gray6 last:border-0">
               <div className="flex items-start gap-3">
                 <img
-                  src={canje.producto_imagen || "https://via.placeholder.com/48"}
+                  src={canje.producto_imagen ? mediaUrl(canje.producto_imagen) : "https://via.placeholder.com/48"}
                   className="w-12 h-12 rounded-lg object-cover bg-ios-gray6 flex-shrink-0"
                 />
                 <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

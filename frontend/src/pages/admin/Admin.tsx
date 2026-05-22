@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
-import { apiUrl } from "../../lib/apiBase";
+import { apiUrl, mediaUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
@@ -5140,7 +5140,7 @@ export function Admin() {
                   <div className="adm-product-images-grid">
                     {nuevoProducto.imagenes.map((url, index) => (
                       <div key={`${url}-${index}`} className="adm-product-image-card">
-                        <img src={url} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
+                        <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
                         <div className="adm-product-image-row">
                           <span>Imagen {index + 1}</span>
                           <button type="button" className="adm-btn-danger" onClick={() => quitarImagenProducto("nuevo", index)}>
@@ -5406,7 +5406,7 @@ export function Admin() {
                           <div className="adm-product-images-grid">
                             {editDraft.imagenes.map((url, index) => (
                               <div key={`${url}-${index}`} className="adm-product-image-card">
-                                <img src={url} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
+                                <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
                                 <div className="adm-product-image-row">
                                   <span>Imagen {index + 1}</span>
                                   <button type="button" className="adm-btn-danger" onClick={() => quitarImagenProducto("edit", index)}>
@@ -7198,7 +7198,7 @@ export function Admin() {
                           <div className="adm-page-images-grid">
                             {sobreImagenes.map((url, index) => (
                               <div className="adm-page-image-card" key={`${url}-${index}`}>
-                                <img src={url} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
+                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
                                 <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("sobre-nosotros", index)}>
                                   Quitar
                                 </button>
@@ -7272,7 +7272,7 @@ export function Admin() {
                           <div className="adm-page-images-grid">
                             {terminosImagenes.map((url, index) => (
                               <div className="adm-page-image-card" key={`${url}-${index}`}>
-                                <img src={url} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
+                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
                                 <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("terminos", index)}>
                                   Quitar
                                 </button>

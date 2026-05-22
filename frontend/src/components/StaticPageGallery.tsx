@@ -1,4 +1,5 @@
 import { MAX_STATIC_PAGE_IMAGES, normalizeSafeImageUrl } from "../lib/pageContent";
+import { mediaUrl } from "../lib/apiBase";
 
 type StaticPageGalleryProps = {
   images: string[];
@@ -20,7 +21,7 @@ export function StaticPageGallery({ images, className }: StaticPageGalleryProps)
     <div className={classes.join(" ")}>
       {safeImages.map((url, index) => (
         <div className="pagina-gallery-item" key={`${url}-${index}`}>
-          <img src={url} alt={`Foto ${index + 1}`} className="pagina-gallery-img" loading="lazy" />
+          <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="pagina-gallery-img" loading="lazy" />
         </div>
       ))}
     </div>

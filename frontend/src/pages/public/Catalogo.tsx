@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
+import { mediaUrl } from "../../lib/apiBase";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import { usePickupStore } from "../../store/pickupStore";
@@ -71,14 +72,14 @@ function formatSucursalLabel(sucursal: SucursalRetiro): string {
 }
 
 function getProductoImagen(producto: Producto): string | null {
-  if (producto.imagenes?.length) return producto.imagenes[0];
-  return producto.imagen_url ?? null;
+  if (producto.imagenes?.length) return mediaUrl(producto.imagenes[0]);
+  return producto.imagen_url ? mediaUrl(producto.imagen_url) : null;
 }
 
 function getProductoImagenes(producto: Producto): string[] {
   const imagenes = producto.imagenes?.filter(Boolean) ?? [];
-  if (imagenes.length) return imagenes;
-  return producto.imagen_url ? [producto.imagen_url] : [];
+  if (imagenes.length) return imagenes.map(mediaUrl);
+  return producto.imagen_url ? [mediaUrl(producto.imagen_url)] : [];
 }
 
 function productHasStock(producto: Producto): boolean {
