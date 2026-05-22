@@ -57,9 +57,11 @@ async function getActiveClientePricingProfile(conn, usuarioId) {
     return profile;
 }
 async function loadCategoryDiscounts(conn) {
-    const rows = await (0, db_1.qAll)(conn, `SELECT tipo_cliente, categoria, descuento_porcentaje, activo
-     FROM descuentos_tipo_categoria
-     WHERE activo = 1`).catch(() => []);
+    const rows = await (0, db_1.qAll)(conn, `SELECT d.tipo_cliente, d.categoria, d.descuento_porcentaje, d.activo
+     FROM descuentos_tipo_categoria d
+     LEFT JOIN categorias c ON LOWER(c.nombre) = LOWER(d.categoria)
+     WHERE d.activo = 1
+       AND (c.id IS NULL OR c.activo = 1)`).catch(() => []);
     const map = new Map();
     for (const row of rows) {
         const categoria = normalizeCategoryKey(row.categoria);

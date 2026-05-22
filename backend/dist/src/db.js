@@ -388,6 +388,31 @@ async function ensureGlobalConfigurationSchema() {
         "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
     ]);
 }
+async function ensureCategoriasSchema() {
+    const categoriaColumnExists = async (columnName) => {
+        const [rows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categorias' AND COLUMN_NAME = ?
+       LIMIT 1`, [columnName]);
+        return rows.length > 0;
+    };
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS categorias (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      nombre VARCHAR(100) NOT NULL UNIQUE,
+      descripcion TEXT NULL,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    if (!(await categoriaColumnExists("descripcion"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN descripcion TEXT NULL AFTER nombre");
+    }
+    if (!(await categoriaColumnExists("activo"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1 AFTER descripcion");
+    }
+    if (!(await categoriaColumnExists("updated_at"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
+    }
+}
 async function ensureProductosEcommerceSchema() {
     const [tipoColRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'tipo_producto'
@@ -1331,6 +1356,12 @@ exports.pool
     }
     catch (err) {
         console.error("Migracion configuracion global:", err.message);
+    }
+    try {
+        await ensureCategoriasSchema();
+    }
+    catch (err) {
+        console.error("Migracion categorias:", err.message);
     }
     try {
         await ensureProductosEcommerceSchema();

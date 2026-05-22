@@ -271,7 +271,13 @@ router.get("/sucursales", async (_req, res) => {
     res.json(rows);
 });
 router.get("/categorias", async (_req, res) => {
-    const [rows] = await db_1.pool.query("SELECT DISTINCT categoria FROM productos WHERE activo = 1 AND categoria IS NOT NULL ORDER BY categoria ASC");
+    const [rows] = await db_1.pool.query(`SELECT DISTINCT p.categoria
+     FROM productos p
+     LEFT JOIN categorias c ON LOWER(c.nombre) = LOWER(p.categoria)
+     WHERE p.activo = 1
+       AND p.categoria IS NOT NULL
+       AND (c.id IS NULL OR c.activo = 1)
+     ORDER BY p.categoria ASC`);
     const categorias = rows.map(r => r.categoria);
     res.json(categorias);
 });

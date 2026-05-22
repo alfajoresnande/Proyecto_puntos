@@ -2675,9 +2675,15 @@ router.patch("/productos/:id/activo", async (req, res) => {
 //  CATEGORÍAS (ABM)
 // ════════════════════════════════════════════════════════
 
+const categoriaSchema = z.object({
+  nombre: z.string().trim().min(1).max(100),
+  descripcion: z.string().max(1000).optional().nullable(),
+  activo: z.boolean().optional(),
+});
+
 router.get("/categorias", async (_req, res) => {
-  const rows = await qAll(pool, "SELECT id, nombre, created_at FROM categorias ORDER BY nombre ASC");
-  res.json(rows);
+  const rows = await qAll(pool, "SELECT id, nombre, descripcion, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, nombre ASC, id ASC");
+  res.json(rows.map((row: any) => ({ ...row, activo: Boolean(row.activo) })));
 });
 
 router.get("/descuentos-categorias", async (_req, res) => {
@@ -2714,12 +2720,19 @@ router.put("/descuentos-categorias", async (req, res) => {
 });
 
 router.post("/categorias", async (req, res) => {
-  const schema = z.object({ nombre: z.string().min(1).max(100) });
-  const parsed = schema.safeParse(req.body);
+  const parsed = categoriaSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
 
   try {
-    const { insertId } = await qRun(pool, "INSERT INTO categorias (nombre) VALUES (?)", [parsed.data.nombre]);
+    const { insertId } = await qRun(
+      pool,
+      "INSERT INTO categorias (nombre, descripcion, activo) VALUES (?, ?, ?)",
+      [
+        parsed.data.nombre.trim(),
+        parsed.data.descripcion?.trim() || null,
+        parsed.data.activo === false ? 0 : 1,
+      ],
+    );
     emitRealtime(["categorias", "productos"]);
     res.status(201).json({ id: insertId });
   } catch (err: any) {
@@ -2730,17 +2743,51 @@ router.post("/categorias", async (req, res) => {
 
 router.put("/categorias/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const schema = z.object({ nombre: z.string().min(1).max(100) });
-  const parsed = schema.safeParse(req.body);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Categoria invalida." });
+    return;
+  }
+  const parsed = categoriaSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
 
+  const nombre = parsed.data.nombre.trim();
+  const descripcion = parsed.data.descripcion?.trim() || null;
+  const activo = parsed.data.activo === false ? 0 : 1;
+  const conn = await pool.getConnection();
   try {
-    const { affectedRows } = await qRun(pool, "UPDATE categorias SET nombre=? WHERE id=?", [parsed.data.nombre, id]);
-    if (affectedRows === 0) { res.status(404).json({ error: "Categoría no encontrada" }); return; }
+    await conn.beginTransaction();
+    const current = await qOne<{ nombre: string }>(
+      conn,
+      "SELECT nombre FROM categorias WHERE id = ? LIMIT 1",
+      [id],
+    );
+    if (!current) {
+      await conn.rollback();
+      res.status(404).json({ error: "Categoria no encontrada" });
+      return;
+    }
+    await qRun(
+      conn,
+      "UPDATE categorias SET nombre = ?, descripcion = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [nombre, descripcion, activo, id],
+    );
+    if (current.nombre !== nombre) {
+      await qRun(conn, "UPDATE productos SET categoria = ? WHERE categoria = ?", [nombre, current.nombre]);
+      await qRun(
+        conn,
+        "UPDATE descuentos_tipo_categoria SET categoria = ?, updated_at = CURRENT_TIMESTAMP WHERE categoria = ?",
+        [nombre, current.nombre],
+      );
+    }
+    await conn.commit();
+    emitRealtime(["categorias", "productos", "admin-config"]);
     res.json({ ok: true });
   } catch (err: any) {
+    await conn.rollback();
     if (err.code === "ER_DUP_ENTRY") { res.status(409).json({ error: "Ya existe otra categoría con ese nombre" }); return; }
     throw err;
+  } finally {
+    conn.release();
   }
 });
 
@@ -2748,6 +2795,26 @@ router.put("/categorias/:id", async (req, res) => {
 // ════════════════════════════════════════════════════════
 //  CONFIGURACIÓN
 // ════════════════════════════════════════════════════════
+
+router.patch("/categorias/:id/activo", async (req, res) => {
+  const id = Number(req.params.id);
+  const { activo } = req.body ?? {};
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Categoria invalida." });
+    return;
+  }
+  if (typeof activo !== "boolean") {
+    res.status(400).json({ error: "activo debe ser boolean" });
+    return;
+  }
+  const result = await qRun(pool, "UPDATE categorias SET activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [activo ? 1 : 0, id]);
+  if (!result.affectedRows) {
+    res.status(404).json({ error: "Categoria no encontrada." });
+    return;
+  }
+  emitRealtime(["categorias", "productos", "admin-config"]);
+  res.json({ ok: true });
+});
 
 router.get("/sucursales", async (_req, res) => {
   const rows = await qAll(

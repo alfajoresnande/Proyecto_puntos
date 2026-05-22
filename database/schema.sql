@@ -662,7 +662,10 @@ CREATE TABLE IF NOT EXISTS categorias (
     id                  INT             PRIMARY KEY AUTO_INCREMENT,
     nombre              VARCHAR(100)    NOT NULL UNIQUE,
     descripcion         TEXT            NULL,
-    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+    activo              TINYINT(1)      NOT NULL DEFAULT 1,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                        ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- ============================================================

@@ -2241,9 +2241,14 @@ router.patch("/productos/:id/activo", async (req, res) => {
 // ════════════════════════════════════════════════════════
 //  CATEGORÍAS (ABM)
 // ════════════════════════════════════════════════════════
+const categoriaSchema = zod_1.z.object({
+    nombre: zod_1.z.string().trim().min(1).max(100),
+    descripcion: zod_1.z.string().max(1000).optional().nullable(),
+    activo: zod_1.z.boolean().optional(),
+});
 router.get("/categorias", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT id, nombre, created_at FROM categorias ORDER BY nombre ASC");
-    res.json(rows);
+    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT id, nombre, descripcion, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, nombre ASC, id ASC");
+    res.json(rows.map((row) => ({ ...row, activo: Boolean(row.activo) })));
 });
 router.get("/descuentos-categorias", async (_req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, tipo_cliente, categoria, descuento_porcentaje, activo, created_at, updated_at
@@ -2269,14 +2274,17 @@ router.put("/descuentos-categorias", async (req, res) => {
     res.json({ ok: true });
 });
 router.post("/categorias", async (req, res) => {
-    const schema = zod_1.z.object({ nombre: zod_1.z.string().min(1).max(100) });
-    const parsed = schema.safeParse(req.body);
+    const parsed = categoriaSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
     try {
-        const { insertId } = await (0, db_1.qRun)(db_1.pool, "INSERT INTO categorias (nombre) VALUES (?)", [parsed.data.nombre]);
+        const { insertId } = await (0, db_1.qRun)(db_1.pool, "INSERT INTO categorias (nombre, descripcion, activo) VALUES (?, ?, ?)", [
+            parsed.data.nombre.trim(),
+            parsed.data.descripcion?.trim() || null,
+            parsed.data.activo === false ? 0 : 1,
+        ]);
         (0, realtime_1.emitRealtime)(["categorias", "productos"]);
         res.status(201).json({ id: insertId });
     }
@@ -2290,31 +2298,70 @@ router.post("/categorias", async (req, res) => {
 });
 router.put("/categorias/:id", async (req, res) => {
     const id = Number(req.params.id);
-    const schema = zod_1.z.object({ nombre: zod_1.z.string().min(1).max(100) });
-    const parsed = schema.safeParse(req.body);
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "Categoria invalida." });
+        return;
+    }
+    const parsed = categoriaSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
+    const nombre = parsed.data.nombre.trim();
+    const descripcion = parsed.data.descripcion?.trim() || null;
+    const activo = parsed.data.activo === false ? 0 : 1;
+    const conn = await db_1.pool.getConnection();
     try {
-        const { affectedRows } = await (0, db_1.qRun)(db_1.pool, "UPDATE categorias SET nombre=? WHERE id=?", [parsed.data.nombre, id]);
-        if (affectedRows === 0) {
-            res.status(404).json({ error: "Categoría no encontrada" });
+        await conn.beginTransaction();
+        const current = await (0, db_1.qOne)(conn, "SELECT nombre FROM categorias WHERE id = ? LIMIT 1", [id]);
+        if (!current) {
+            await conn.rollback();
+            res.status(404).json({ error: "Categoria no encontrada" });
             return;
         }
+        await (0, db_1.qRun)(conn, "UPDATE categorias SET nombre = ?, descripcion = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nombre, descripcion, activo, id]);
+        if (current.nombre !== nombre) {
+            await (0, db_1.qRun)(conn, "UPDATE productos SET categoria = ? WHERE categoria = ?", [nombre, current.nombre]);
+            await (0, db_1.qRun)(conn, "UPDATE descuentos_tipo_categoria SET categoria = ?, updated_at = CURRENT_TIMESTAMP WHERE categoria = ?", [nombre, current.nombre]);
+        }
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["categorias", "productos", "admin-config"]);
         res.json({ ok: true });
     }
     catch (err) {
+        await conn.rollback();
         if (err.code === "ER_DUP_ENTRY") {
             res.status(409).json({ error: "Ya existe otra categoría con ese nombre" });
             return;
         }
         throw err;
     }
+    finally {
+        conn.release();
+    }
 });
 // ════════════════════════════════════════════════════════
 //  CONFIGURACIÓN
 // ════════════════════════════════════════════════════════
+router.patch("/categorias/:id/activo", async (req, res) => {
+    const id = Number(req.params.id);
+    const { activo } = req.body ?? {};
+    if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: "Categoria invalida." });
+        return;
+    }
+    if (typeof activo !== "boolean") {
+        res.status(400).json({ error: "activo debe ser boolean" });
+        return;
+    }
+    const result = await (0, db_1.qRun)(db_1.pool, "UPDATE categorias SET activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [activo ? 1 : 0, id]);
+    if (!result.affectedRows) {
+        res.status(404).json({ error: "Categoria no encontrada." });
+        return;
+    }
+    (0, realtime_1.emitRealtime)(["categorias", "productos", "admin-config"]);
+    res.json({ ok: true });
+});
 router.get("/sucursales", async (_req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, direccion, piso, localidad, provincia, activo, created_at, updated_at
      FROM sucursales

@@ -113,9 +113,11 @@ export async function getActiveClientePricingProfile(
 async function loadCategoryDiscounts(conn: Queryable): Promise<Map<string, number>> {
   const rows = await qAll<DiscountRow>(
     conn,
-    `SELECT tipo_cliente, categoria, descuento_porcentaje, activo
-     FROM descuentos_tipo_categoria
-     WHERE activo = 1`,
+    `SELECT d.tipo_cliente, d.categoria, d.descuento_porcentaje, d.activo
+     FROM descuentos_tipo_categoria d
+     LEFT JOIN categorias c ON LOWER(c.nombre) = LOWER(d.categoria)
+     WHERE d.activo = 1
+       AND (c.id IS NULL OR c.activo = 1)`,
   ).catch(() => []);
 
   const map = new Map<string, number>();

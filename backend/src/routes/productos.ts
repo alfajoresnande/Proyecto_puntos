@@ -385,7 +385,13 @@ router.get("/sucursales", async (_req, res) => {
 
 router.get("/categorias", async (_req, res) => {
   const [rows] = await pool.query(
-    "SELECT DISTINCT categoria FROM productos WHERE activo = 1 AND categoria IS NOT NULL ORDER BY categoria ASC"
+    `SELECT DISTINCT p.categoria
+     FROM productos p
+     LEFT JOIN categorias c ON LOWER(c.nombre) = LOWER(p.categoria)
+     WHERE p.activo = 1
+       AND p.categoria IS NOT NULL
+       AND (c.id IS NULL OR c.activo = 1)
+     ORDER BY p.categoria ASC`
   );
   const categorias = (rows as { categoria: string }[]).map(r => r.categoria);
   res.json(categorias);

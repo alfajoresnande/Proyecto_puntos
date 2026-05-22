@@ -365,7 +365,16 @@ type OrdenAdmin = {
 type Categoria = {
   id: number;
   nombre: string;
+  descripcion: string | null;
+  activo: boolean;
   created_at: string;
+  updated_at?: string;
+};
+
+type CategoriaDraft = {
+  nombre: string;
+  descripcion: string;
+  activo: boolean;
 };
 
 type DescuentoCategoriaAdmin = {
@@ -1333,7 +1342,9 @@ export function Admin() {
   });
   const [adminHint, setAdminHint] = useState("");
 
-  const [nuevaCategoria, setNuevaCategoria] = useState({ nombre: "" });
+  const [nuevaCategoria, setNuevaCategoria] = useState<CategoriaDraft>({ nombre: "", descripcion: "", activo: true });
+  const [categoriaEditId, setCategoriaEditId] = useState<number | null>(null);
+  const [categoriaEditDraft, setCategoriaEditDraft] = useState<CategoriaDraft>({ nombre: "", descripcion: "", activo: true });
   const [nuevoCodigo, setNuevoCodigo] = useState<{
     codigo: string;
     puntos_valor: number | null;
@@ -1813,7 +1824,7 @@ export function Admin() {
       ]),
     );
     const nextDraft: Record<string, string> = {};
-    for (const categoria of categoriasQuery.data) {
+    for (const categoria of categoriasQuery.data.filter((item) => item.activo !== false)) {
       for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
         const key = discountDraftKey(tipoCliente, categoria.nombre);
         nextDraft[key] = currentRows.get(key) ?? "0";
@@ -1940,6 +1951,13 @@ export function Admin() {
   const usuarios = usuariosQuery.data ?? [];
   const movimientos = movimientosQuery.data ?? [];
   const categorias = categoriasQuery.data ?? [];
+  const categoriasActivas = useMemo(() => categorias.filter((categoria) => categoria.activo !== false), [categorias]);
+  const categoriasProductoEdit = useMemo(() => {
+    if (!editDraft.categoria) return categoriasActivas;
+    const current = categorias.find((categoria) => categoria.nombre === editDraft.categoria);
+    if (!current || current.activo !== false) return categoriasActivas;
+    return [...categoriasActivas, current];
+  }, [categorias, categoriasActivas, editDraft.categoria]);
   const descuentosCategorias = descuentosCategoriasQuery.data ?? [];
   const codigos = codigosQuery.data ?? [];
   const canjes = canjesQuery.data ?? [];
@@ -3484,12 +3502,84 @@ export function Admin() {
         path: "/admin/categorias",
         body: {
           nombre: nuevaCategoria.nombre.trim(),
+          descripcion: nuevaCategoria.descripcion.trim() || null,
+          activo: nuevaCategoria.activo,
         },
       });
-      setNuevaCategoria({ nombre: "" });
+      setNuevaCategoria({ nombre: "", descripcion: "", activo: true });
+      setCategoriasPage(1);
       setDescuentosCategoriasLoaded(false);
       setOkMsg("Categoria creada.");
-      await refreshQueries([["admin", "categorias"], ["admin", "descuentos-categorias"]]);
+      await refreshQueries([["admin", "categorias"], ["admin", "descuentos-categorias"], ["admin", "productos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function empezarEditarCategoria(categoria: Categoria) {
+    setCategoriaEditId(categoria.id);
+    setCategoriaEditDraft({
+      nombre: categoria.nombre,
+      descripcion: categoria.descripcion ?? "",
+      activo: categoria.activo !== false,
+    });
+  }
+
+  function cancelarEditarCategoria() {
+    setCategoriaEditId(null);
+    setCategoriaEditDraft({ nombre: "", descripcion: "", activo: true });
+  }
+
+  async function guardarCategoriaEditada() {
+    setErrMsg("");
+    setOkMsg("");
+    if (!categoriaEditId) return;
+    if (!categoriaEditDraft.nombre.trim()) {
+      setErrMsg("El nombre de categoria es obligatorio.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: `/admin/categorias/${categoriaEditId}`,
+        body: {
+          nombre: categoriaEditDraft.nombre.trim(),
+          descripcion: categoriaEditDraft.descripcion.trim() || null,
+          activo: categoriaEditDraft.activo,
+        },
+      });
+      cancelarEditarCategoria();
+      setCategoriasPage(1);
+      setDescuentosCategoriasLoaded(false);
+      setOkMsg("Categoria actualizada.");
+      await refreshQueries([["admin", "categorias"], ["admin", "descuentos-categorias"], ["admin", "productos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleCategoriaActiva(categoria: Categoria) {
+    setErrMsg("");
+    setOkMsg("");
+    setBusy(true);
+    try {
+      const nextActivo = categoria.activo === false;
+      await commandMutation.mutateAsync({
+        method: "patch",
+        path: `/admin/categorias/${categoria.id}/activo`,
+        body: { activo: nextActivo },
+      });
+      if (categoriaEditId === categoria.id) cancelarEditarCategoria();
+      setCategoriasPage(1);
+      setDescuentosCategoriasLoaded(false);
+      setOkMsg(nextActivo ? "Categoria activada." : "Categoria desactivada.");
+      await refreshQueries([["admin", "categorias"], ["admin", "descuentos-categorias"], ["admin", "productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -3510,7 +3600,7 @@ export function Admin() {
     setOkMsg("");
     setBusy(true);
     try {
-      for (const categoria of categorias) {
+      for (const categoria of categoriasActivas) {
         for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
           const rawValue = descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "0";
           const descuento = Math.max(0, Math.min(100, Number(rawValue || 0)));
@@ -5155,7 +5245,7 @@ export function Admin() {
                     <label className="adm-label">Categoria</label>
                     <select className="adm-input" value={nuevoProducto.categoria} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, categoria: event.target.value }))}>
                       <option value="">Sin categoria</option>
-                      {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                      {categoriasActivas.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                     </select>
                   </div>
                   <div className="adm-field">
@@ -5394,7 +5484,11 @@ export function Admin() {
                               onChange={(event) => setEditDraft((prev) => ({ ...prev, categoria: event.target.value }))}
                             >
                               <option value="">Sin categoria</option>
-                              {categorias.map((c) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
+                              {categoriasProductoEdit.map((c) => (
+                                <option key={c.id} value={c.nombre}>
+                                  {c.activo === false ? `${c.nombre} (inactiva)` : c.nombre}
+                                </option>
+                              ))}
                             </select>
                           </div>
                           <div className="adm-field">
@@ -6825,14 +6919,14 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {categorias.length === 0 ? (
+                      {categoriasActivas.length === 0 ? (
                         <tr>
                           <td colSpan={4}>
-                            <div className="adm-empty">Primero crea categorias para poder asignar descuentos.</div>
+                            <div className="adm-empty">Primero crea o activa categorias para poder asignar descuentos.</div>
                           </td>
                         </tr>
                       ) : null}
-                      {categorias.map((categoria) => (
+                      {categoriasActivas.map((categoria) => (
                         <tr key={`discount-${categoria.id}`}>
                           <td>{categoria.nombre}</td>
                           {DISCOUNT_CLIENT_TYPES.map((tipoCliente) => (
@@ -6853,7 +6947,7 @@ export function Admin() {
                     </tbody>
                   </table>
                 </div>
-                <button className="adm-btn-primary" disabled={busy || categorias.length === 0} onClick={guardarDescuentosCategorias}>
+                <button className="adm-btn-primary" disabled={busy || categoriasActivas.length === 0} onClick={guardarDescuentosCategorias}>
                   {busy ? "Guardando..." : "Guardar descuentos por categoria"}
                 </button>
               </div>
@@ -6920,8 +7014,31 @@ export function Admin() {
           {tab === "categorias" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Nueva categoria" />
-              <div className="admin-card admin-card-padded" style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-                <input className="adm-input" placeholder="Nombre" value={nuevaCategoria.nombre} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, nombre: event.target.value }))} />
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <div className="adm-form-grid">
+                  <div className="adm-field">
+                    <label className="adm-label">Nombre</label>
+                    <input className="adm-input" placeholder="Ej: Alfajores" value={nuevaCategoria.nombre} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, nombre: event.target.value }))} />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={nuevaCategoria.activo}
+                      onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, activo: event.target.checked }))}
+                    />
+                    Activa
+                  </label>
+                </div>
+                <div className="adm-field">
+                  <label className="adm-label">Descripcion</label>
+                  <textarea
+                    className="adm-input"
+                    rows={2}
+                    placeholder="Detalle interno opcional"
+                    value={nuevaCategoria.descripcion}
+                    onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, descripcion: event.target.value }))}
+                  />
+                </div>
                 <button className="adm-btn-primary" disabled={busy} onClick={crearCategoria}>
                   {busy ? "Creando..." : "Crear categoria"}
                 </button>
@@ -6934,22 +7051,88 @@ export function Admin() {
                     <thead>
                       <tr>
                         <th>Nombre</th>
+                        <th>Descripcion</th>
+                        <th>Estado</th>
                         <th>Creada</th>
+                        <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {categoriasPagina.length === 0 ? (
                         <tr>
-                          <td colSpan={2}>
+                          <td colSpan={5}>
                             <div className="adm-empty">No hay categorias para mostrar.</div>
                           </td>
                         </tr>
                       ) : null}
                       {categoriasPagina.map((categoria) => (
-                        <tr key={categoria.id}>
-                          <td>{categoria.nombre}</td>
-                          <td>{formatDate(categoria.created_at)}</td>
-                        </tr>
+                        <Fragment key={categoria.id}>
+                          <tr>
+                            <td>{categoria.nombre}</td>
+                            <td>{categoria.descripcion || "-"}</td>
+                            <td>
+                              <span className={`adm-badge ${categoria.activo !== false ? "adm-badge-active" : "adm-badge-inactive"}`}>
+                                {categoria.activo !== false ? "Activa" : "Inactiva"}
+                              </span>
+                            </td>
+                            <td>{formatDate(categoria.created_at)}</td>
+                            <td>
+                              <div className="adm-user-actions">
+                                <button className="adm-btn-link" onClick={() => empezarEditarCategoria(categoria)} disabled={busy}>
+                                  Editar
+                                </button>
+                                <button
+                                  className={categoria.activo !== false ? "adm-btn-danger" : "adm-btn-success"}
+                                  onClick={() => void toggleCategoriaActiva(categoria)}
+                                  disabled={busy}
+                                >
+                                  {categoria.activo !== false ? "Desactivar" : "Activar"}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {categoriaEditId === categoria.id ? (
+                            <tr>
+                              <td colSpan={5}>
+                                <div className="adm-inline-points-box">
+                                  <p className="adm-inline-points-title">Editar categoria: {categoria.nombre}</p>
+                                  <div className="adm-form-grid">
+                                    <input
+                                      className="adm-input"
+                                      placeholder="Nombre"
+                                      value={categoriaEditDraft.nombre}
+                                      onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, nombre: event.target.value }))}
+                                    />
+                                    <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={categoriaEditDraft.activo}
+                                        onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, activo: event.target.checked }))}
+                                      />
+                                      Activa
+                                    </label>
+                                  </div>
+                                  <textarea
+                                    className="adm-input"
+                                    rows={2}
+                                    placeholder="Descripcion"
+                                    value={categoriaEditDraft.descripcion}
+                                    onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, descripcion: event.target.value }))}
+                                    style={{ marginTop: "0.6rem" }}
+                                  />
+                                  <div className="adm-inline-points-actions">
+                                    <button className="adm-btn-primary adm-btn-inline" disabled={busy} onClick={() => void guardarCategoriaEditada()}>
+                                      {busy ? "Guardando..." : "Guardar cambios"}
+                                    </button>
+                                    <button className="adm-btn-secondary adm-btn-inline" onClick={cancelarEditarCategoria} disabled={busy}>
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       ))}
                     </tbody>
                   </table>

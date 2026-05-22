@@ -359,6 +359,30 @@ BEGIN
   )
   ON DUPLICATE KEY UPDATE
     descripcion = VALUES(descripcion);
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categorias' AND COLUMN_NAME = 'descripcion'
+  ) THEN
+    ALTER TABLE categorias
+      ADD COLUMN descripcion TEXT NULL AFTER nombre;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categorias' AND COLUMN_NAME = 'activo'
+  ) THEN
+    ALTER TABLE categorias
+      ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1 AFTER descripcion;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'categorias' AND COLUMN_NAME = 'updated_at'
+  ) THEN
+    ALTER TABLE categorias
+      ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
+  END IF;
 END $$
 
 DELIMITER ;
