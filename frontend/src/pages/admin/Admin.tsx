@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
+import { useToast } from "../../components/ToastProvider";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
@@ -1255,6 +1256,7 @@ export function Admin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
   const adminContentRef = useRef<HTMLDivElement | null>(null);
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
@@ -2022,7 +2024,21 @@ export function Admin() {
     new window.Notification(title, { body });
   }
 
+  function openOrderFromToast(orderId: number) {
+    setBusquedaOrdenes("");
+    setOrdenesFiltroEstado("");
+    setOrdenesFiltroEntrega("");
+    setOrdenesPage(1);
+    setOrdenExpandidaId(orderId);
+    abrirVistaVentas("pedidos");
+  }
+
+  function openRedeemsFromToast() {
+    seleccionarTab("canjes");
+  }
+
   useEffect(() => {
+    if (!ordenesQuery.data) return;
     const currentIds = ordenes.map((orden) => Number(orden.id));
     const knownIds = readStoredIds(ADMIN_ALERT_ORDER_IDS_KEY);
     if (!hasStoredIds(ADMIN_ALERT_ORDER_IDS_KEY)) {
@@ -2040,20 +2056,27 @@ export function Admin() {
     }
 
     const latest = nuevas[0];
-    setAdminHint(
-      nuevas.length === 1
-        ? `Nueva compra #${latest.id} de ${latest.cliente_nombre}.`
-        : `Entraron ${nuevas.length} compras nuevas.`,
-    );
+    showToast({
+      tone: "info",
+      title: nuevas.length === 1 ? `Nuevo pedido #${latest.id}` : `${nuevas.length} pedidos nuevos`,
+      message: nuevas.length === 1
+        ? `${latest.cliente_nombre} hizo una compra. Toca para verla.`
+        : "Toca para revisar las ventas.",
+      actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver ventas",
+      onClick: () => openOrderFromToast(Number(latest.id)),
+      onAction: () => openOrderFromToast(Number(latest.id)),
+      duration: 8500,
+    });
     showBrowserAlert(
       nuevas.length === 1 ? "Nueva compra" : "Nuevas compras",
       nuevas.length === 1
         ? `${latest.cliente_nombre} hizo la compra #${latest.id}.`
         : `Tienes ${nuevas.length} compras nuevas en el panel.`,
     );
-  }, [ordenes, tab]);
+  }, [ordenes, ordenesQuery.data, tab, showToast]);
 
   useEffect(() => {
+    if (!canjesQuery.data) return;
     const currentIds = canjes.map((canje) => Number(canje.id));
     const knownIds = readStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY);
     if (!hasStoredIds(ADMIN_ALERT_REDEEM_IDS_KEY)) {
@@ -2071,18 +2094,24 @@ export function Admin() {
     }
 
     const latest = nuevos[0];
-    setAdminHint(
-      nuevos.length === 1
-        ? `Nuevo canje #${latest.id} de ${latest.cliente_nombre}.`
-        : `Entraron ${nuevos.length} canjes nuevos.`,
-    );
+    showToast({
+      tone: "success",
+      title: nuevos.length === 1 ? `Nuevo canje #${latest.id}` : `${nuevos.length} canjes nuevos`,
+      message: nuevos.length === 1
+        ? `${latest.cliente_nombre} hizo un canje. Toca para verlo.`
+        : "Toca para revisar los canjes.",
+      actionLabel: "Ver canjes",
+      onClick: openRedeemsFromToast,
+      onAction: openRedeemsFromToast,
+      duration: 8500,
+    });
     showBrowserAlert(
       nuevos.length === 1 ? "Nuevo canje" : "Nuevos canjes",
       nuevos.length === 1
         ? `${latest.cliente_nombre} hizo el canje #${latest.id}.`
         : `Tienes ${nuevos.length} canjes nuevos en el panel.`,
     );
-  }, [canjes, tab]);
+  }, [canjes, canjesQuery.data, tab, showToast]);
 
   useEffect(() => {
     if (tab === "ordenes" && adminAlerts.ordenes > 0) {

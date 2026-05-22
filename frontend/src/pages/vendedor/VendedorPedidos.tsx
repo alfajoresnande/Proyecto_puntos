@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
+import { useToast } from "../../components/ToastProvider";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
@@ -213,14 +214,40 @@ function validateManualPhone(value: string): boolean {
 }
 
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
+const VENDEDOR_ALERT_ORDER_IDS_KEY = "vendedor_alert_known_ordenes_v1";
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
 }
 
+function readStoredOrderIds(key: string): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
+  } catch {
+    return [];
+  }
+}
+
+function hasStoredOrderIds(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(key) !== null;
+}
+
+function writeStoredOrderIds(key: string, ids: number[]) {
+  if (typeof window === "undefined") return;
+  const uniqueIds = Array.from(new Set(ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
+  window.localStorage.setItem(key, JSON.stringify(uniqueIds.slice(0, 250)));
+}
+
 export function VendedorPedidos() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const params = useParams<{ ventasPage?: string }>();
   const currentPage: VendedorVentasPage = isVendedorVentasPage(params.ventasPage) ? params.ventasPage : "pedidos";
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
@@ -341,6 +368,14 @@ export function VendedorPedidos() {
   const cajaActual = cajaActualQuery.data ?? null;
   const gastos = gastosQuery.data ?? [];
   const selectedSucursalValue = ventaSucursalId || (sucursales[0]?.id ? String(sucursales[0].id) : "");
+
+  function openOrderFromToast(orderId: number) {
+    setFiltroEstadoOrden("");
+    setBusquedaOrdenes("");
+    setOrdenExpandidaId(orderId);
+    navigate("/vendedor/ventas/pedidos");
+  }
+
   const productoVentaSeleccionado = useMemo(
     () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
     [productosLocales, ventaProductoId],
@@ -370,6 +405,34 @@ export function VendedorPedidos() {
     if (!params.ventasPage || isVendedorVentasPage(params.ventasPage)) return;
     navigate("/vendedor/ventas/pedidos", { replace: true });
   }, [navigate, params.ventasPage]);
+
+  useEffect(() => {
+    if (!ordenesQuery.data) return;
+    const currentIds = ordenes.map((orden) => Number(orden.id));
+    const knownIds = readStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY);
+    if (!hasStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY)) {
+      writeStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY, currentIds);
+      return;
+    }
+
+    const knownSet = new Set(knownIds);
+    const nuevas = ordenes.filter((orden) => !knownSet.has(Number(orden.id)));
+    if (!nuevas.length) return;
+
+    writeStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY, [...currentIds, ...knownIds]);
+    const latest = nuevas[0];
+    showToast({
+      tone: "info",
+      title: nuevas.length === 1 ? `Nuevo pedido #${latest.id}` : `${nuevas.length} pedidos nuevos`,
+      message: nuevas.length === 1
+        ? `${latest.cliente_nombre} hizo una compra. Toca para verla.`
+        : "Toca para revisar los pedidos.",
+      actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver pedidos",
+      onClick: () => openOrderFromToast(Number(latest.id)),
+      onAction: () => openOrderFromToast(Number(latest.id)),
+      duration: 8500,
+    });
+  }, [ordenes, ordenesQuery.data, showToast]);
 
   useEffect(() => {
     if (ventaSucursalId) return;

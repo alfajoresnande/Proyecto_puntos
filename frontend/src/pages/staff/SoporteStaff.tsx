@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { api } from "../../api";
+import { useToast } from "../../components/ToastProvider";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 
 type ConversationState = "abierta" | "respondida" | "cerrada" | "archivada";
@@ -75,6 +76,7 @@ function previewText(conversation: SupportConversation): string {
 
 export function SoporteStaff() {
   const queryClient = useQueryClient();
+  const { confirmToast, showToast } = useToast();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [viewFilter, setViewFilter] = useState<ViewFilter>("todos");
   const [busqueda, setBusqueda] = useState("");
@@ -192,6 +194,30 @@ export function SoporteStaff() {
       ]);
     },
     onError: (error: Error) => setErrorMsg(error.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (conversationId: number) => api.delete<{ ok: true }>(`/soporte/conversaciones/${conversationId}`),
+    onSuccess: async (_result, conversationId) => {
+      setErrorMsg("");
+      setSelectedId((current) => (current === conversationId ? null : current));
+      queryClient.removeQueries({ queryKey: ["soporte", "staff", "detalle", conversationId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
+      ]);
+      showToast({
+        tone: "success",
+        title: "Chat eliminado",
+        message: "La conversacion se borro correctamente.",
+      });
+    },
+    onError: (error: Error) => {
+      const message = error.message || "No se pudo eliminar el chat.";
+      setErrorMsg(message);
+      showToast({ tone: "danger", title: "No se pudo eliminar", message });
+    },
   });
 
   useEffect(() => {
@@ -362,6 +388,23 @@ export function SoporteStaff() {
                       onClick={() => priorityMutation.mutate(activeConversation.prioridad === "alta" ? "normal" : "alta")}
                     >
                       {activeConversation.prioridad === "alta" ? "Quitar prioridad" : "Prioritario"}
+                    </button>
+                    <button
+                      className="adm-btn-danger adm-btn-inline"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => {
+                        const conversation = activeConversation;
+                        confirmToast({
+                          tone: "danger",
+                          title: `Eliminar chat de ${conversation.usuario.nombre}`,
+                          message: "Esta accion borra toda la conversacion. Los mensajes eliminados no se pueden recuperar.",
+                          confirmLabel: "Eliminar chat",
+                          cancelLabel: "Conservar",
+                          onConfirm: () => deleteMutation.mutate(conversation.id),
+                        });
+                      }}
+                    >
+                      {deleteMutation.isPending ? "Eliminando..." : "Eliminar chat"}
                     </button>
                   </div>
                 </div>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { AddressSelector } from "../../components/addresses/AddressSelector";
+import { useToast } from "../../components/ToastProvider";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { ShippingQuote, UserAddress } from "../../types";
@@ -350,6 +351,7 @@ function MercadoPagoBrick({
 
 export function CarritoTienda() {
   const queryClient = useQueryClient();
+  const { confirmToast, showToast } = useToast();
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeOrderId = searchParams.get("pagar_orden");
@@ -561,8 +563,15 @@ export function CarritoTienda() {
   
   const clearCart = useMutation({
     mutationFn: () => api.delete<{ ok: true }>("/cliente/carrito/vaciar"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
-    onError: (error: Error) => setMessage(error.message || "No se pudo vaciar el carrito."),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+      showToast({ tone: "success", title: "Carrito vaciado", message: "Se quitaron todos los productos." });
+    },
+    onError: (error: Error) => {
+      const msg = error.message || "No se pudo vaciar el carrito.";
+      setMessage(msg);
+      showToast({ tone: "danger", title: "No se pudo vaciar", message: msg });
+    },
   });
 
   const confirmCheckout = useMutation({
@@ -835,11 +844,16 @@ export function CarritoTienda() {
                   className="adm-btn-danger" 
                   style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem" }}
                   disabled={clearCart.isPending || cartItems.length === 0}
-                  onClick={() => {
-                    if (window.confirm("¿Estás seguro de que quieres vaciar el carrito?")) {
-                      clearCart.mutate();
-                    }
-                  }}
+                  onClick={() =>
+                    confirmToast({
+                      tone: "danger",
+                      title: "Vaciar carrito",
+                      message: "Se van a quitar todos los productos de tu carrito. Esta accion no se puede deshacer.",
+                      confirmLabel: "Vaciar",
+                      cancelLabel: "Conservar",
+                      onConfirm: () => clearCart.mutate(),
+                    })
+                  }
                 >
                   Vaciar carrito
                 </button>

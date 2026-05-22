@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api";
+import { useToast } from "../../components/ToastProvider";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import { useAuthStore } from "../../store/authStore";
 
@@ -32,6 +33,7 @@ function formatDate(value: string | null): string {
 }
 
 export function Cliente() {
+  const { showToast } = useToast();
   const [codigoInput, setCodigoInput] = useState("");
   const [codigoOk, setCodigoOk] = useState("");
   const [codigoError, setCodigoError] = useState("");
@@ -75,7 +77,7 @@ export function Cliente() {
       setCodigoOk("");
       setCodigoError(error.message);
       if (error.message.toLowerCase().includes("completa tus datos obligatorios")) {
-        alert(error.message);
+        showToast({ tone: "warning", title: "Completa tu perfil", message: error.message });
       }
     },
   });

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { AddressForm } from "../../components/addresses/AddressForm";
+import { useToast } from "../../components/ToastProvider";
 import type { UserAddress, UserAddressPayload } from "../../types";
 
 type FormMode = "none" | "create" | "edit";
@@ -25,6 +26,7 @@ function addressDetails(address: UserAddress): string {
 
 export function MisDirecciones() {
   const queryClient = useQueryClient();
+  const { confirmToast, showToast } = useToast();
   const [mode, setMode] = useState<FormMode>("none");
   const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -74,6 +76,14 @@ export function MisDirecciones() {
       await queryClient.invalidateQueries({ queryKey: ["me", "addresses"] });
       setEditingId(null);
       setMode("none");
+      showToast({ tone: "success", title: "Direccion desactivada", message: "Ya no aparecera como opcion de envio." });
+    },
+    onError: (error: Error) => {
+      showToast({
+        tone: "danger",
+        title: "No se pudo desactivar",
+        message: error.message || "Intenta nuevamente en unos segundos.",
+      });
     },
   });
 
@@ -157,11 +167,16 @@ export function MisDirecciones() {
                     type="button"
                     className="adm-btn-danger"
                     disabled={deactivateMutation.isPending}
-                    onClick={() => {
-                      if (window.confirm("Desactivar esta direccion?")) {
-                        deactivateMutation.mutate(address.id);
-                      }
-                    }}
+                    onClick={() =>
+                      confirmToast({
+                        tone: "warning",
+                        title: "Desactivar direccion",
+                        message: "La direccion se oculta de tus opciones de envio, pero se conserva el historial de pedidos.",
+                        confirmLabel: "Desactivar",
+                        cancelLabel: "Conservar",
+                        onConfirm: () => deactivateMutation.mutate(address.id),
+                      })
+                    }
                   >
                     Desactivar
                   </button>

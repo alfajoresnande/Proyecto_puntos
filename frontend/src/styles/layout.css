@@ -21,6 +21,155 @@
   text-transform: uppercase;
 }
 
+.app-toast-viewport {
+  display: grid;
+  gap: 0.75rem;
+  max-width: min(390px, calc(100vw - 24px));
+  position: fixed;
+  right: 1rem;
+  top: 80px;
+  width: 390px;
+  z-index: 12000;
+}
+
+.app-toast {
+  align-items: flex-start;
+  animation: app-toast-in 0.18s ease-out;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow: 0 16px 34px rgba(17, 24, 39, 0.2);
+  color: #ffffff;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: 34px minmax(0, 1fr) 28px;
+  min-height: 74px;
+  padding: 0.82rem;
+}
+
+.app-toast-clickable {
+  cursor: pointer;
+}
+
+.app-toast-info {
+  background: linear-gradient(135deg, #0f4f8a 0%, #113b72 100%);
+}
+
+.app-toast-success {
+  background: linear-gradient(135deg, #087a5a 0%, #05634b 100%);
+}
+
+.app-toast-warning {
+  background: linear-gradient(135deg, #9a6507 0%, #765008 100%);
+}
+
+.app-toast-danger {
+  background: linear-gradient(135deg, #8f1d1d 0%, #6f1717 100%);
+}
+
+.app-toast-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  display: flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  width: 34px;
+}
+
+.app-toast-body {
+  min-width: 0;
+}
+
+.app-toast-title {
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 850;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.app-toast-message {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-top: 0.18rem;
+}
+
+.app-toast-message p {
+  margin: 0;
+}
+
+.app-toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.app-toast-action {
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 850;
+  min-height: 28px;
+  padding: 0.34rem 0.72rem;
+}
+
+.app-toast-action-primary {
+  background: #ffffff;
+  border: 1px solid #ffffff;
+  color: #1f2937;
+}
+
+.app-toast-action-secondary {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+}
+
+.app-toast-close {
+  align-items: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 0.8rem;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+}
+
+.app-toast-close:hover,
+.app-toast-action-secondary:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes app-toast-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 760px) {
+  .app-toast-viewport {
+    bottom: 0.85rem;
+    left: 0.75rem;
+    max-width: none;
+    right: 0.75rem;
+    top: auto;
+    width: auto;
+  }
+}
+
 .navbar {
   position: fixed;
   top: 0;
@@ -1636,7 +1785,8 @@
 }
 
 .support-thread-head-chat .support-wa-button,
-.support-thread-head-chat .adm-btn-secondary {
+.support-thread-head-chat .adm-btn-secondary,
+.support-thread-head-chat .adm-btn-danger {
   min-height: 38px;
 }
 
@@ -1648,6 +1798,18 @@
 
 .support-thread-head-chat .adm-btn-secondary:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.support-thread-head-chat .adm-btn-danger {
+  background: rgba(220, 38, 38, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  color: #ffffff;
+  padding: 0.62rem 0.95rem;
+}
+
+.support-thread-head-chat .adm-btn-danger:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.28);
 }
 
 .support-messages-chat {
