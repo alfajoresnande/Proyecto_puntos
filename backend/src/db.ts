@@ -459,6 +459,28 @@ async function ensureSucursalesSchema() {
   }
 }
 
+async function ensureGlobalConfigurationSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS configuracion (
+      clave VARCHAR(100) PRIMARY KEY,
+      valor VARCHAR(255) NOT NULL,
+      descripcion TEXT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `INSERT INTO configuracion (clave, valor, descripcion)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`,
+    [
+      "envio_gratis_monto_minimo",
+      "0",
+      "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
+    ],
+  );
+}
+
 async function ensureProductosEcommerceSchema() {
   const [tipoColRows] = await pool.query(
     `SELECT 1 FROM information_schema.COLUMNS
@@ -1630,6 +1652,11 @@ pool
       await ensureSucursalesSchema();
     } catch (err: any) {
       console.error("⚠️  Migración sucursales:", err.message);
+    }
+    try {
+      await ensureGlobalConfigurationSchema();
+    } catch (err: any) {
+      console.error("Migracion configuracion global:", err.message);
     }
     try {
       await ensureProductosEcommerceSchema();
