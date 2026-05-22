@@ -39,15 +39,21 @@ type VentaLocalItemDraft = {
 
 type OrdenVendedor = {
   id: number;
+  usuario_id?: number | null;
+  cliente_local_id?: number | null;
   canal: "web" | "admin" | "vendedor";
   cliente_nombre: string;
   cliente_email: string;
+  cliente_dni?: string | null;
+  cliente_telefono?: string | null;
   estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
   tipo_orden: "venta" | "mixta" | string;
   total_dinero: number;
   total_puntos: number;
   total_unidades: number;
   created_at: string;
+  notas?: string | null;
+  puntos_acreditados?: boolean;
   direccion_envio?: {
     nombre?: string;
     telefono?: string;
@@ -61,6 +67,7 @@ type OrdenVendedor = {
     lng?: number | null;
   } | null;
   sucursal?: {
+    id?: number | null;
     nombre: string | null;
     direccion: string | null;
     piso?: string | null;
@@ -212,6 +219,16 @@ function validateManualPhone(value: string): boolean {
   return digits.length >= 6 && digits.length <= 15;
 }
 
+function extractEditableSaleNotes(value?: string | null): string {
+  return String(value ?? "")
+    .replace(/^Venta local (registrada|actualizada) desde panel (admin|vendedor)\.\s*/i, "")
+    .trim();
+}
+
+function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
+  return !orden.usuario_id && orden.cliente_nombre.trim().toLowerCase() === "cliente" && String(orden.cliente_dni ?? "").trim() === "00000000";
+}
+
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
@@ -283,6 +300,7 @@ export function VendedorPedidos() {
   const [ventaSabores, setVentaSabores] = useState<Record<string, number>>({});
   const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaNotas, setVentaNotas] = useState("");
+  const [ventaEditId, setVentaEditId] = useState<number | null>(null);
 
   const ordenesQuery = useQuery({
     queryKey: ["vendedor", "ordenes"],
@@ -340,6 +358,7 @@ export function VendedorPedidos() {
   const proveedores = proveedoresQuery.data ?? [];
   const cajaActual = cajaActualQuery.data ?? null;
   const gastos = gastosQuery.data ?? [];
+  const ventaEnEdicion = ventaEditId !== null;
   const selectedSucursalValue = ventaSucursalId || (sucursales[0]?.id ? String(sucursales[0].id) : "");
   const productoVentaSeleccionado = useMemo(
     () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
@@ -453,66 +472,91 @@ export function VendedorPedidos() {
     },
   });
 
-  const registrarVentaLocalMutation = useMutation({
-    mutationFn: () => {
-      if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
-      if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
-      const hasManualCustomer = Boolean(
-        ventaClienteManualNombre.trim() ||
-        ventaClienteManualDni.trim() ||
-        ventaClienteManualTelefono.trim(),
-      );
-      if (!ventaCliente && hasManualCustomer) {
-        if (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim()) {
-          throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
-        }
-        if (!validateManualDni(ventaClienteManualDni)) {
-          throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
-        }
-        if (!validateManualPhone(ventaClienteManualTelefono)) {
-          throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
-        }
-      }
+  function resetVentaLocalDraft() {
+    setVentaEditId(null);
+    setVentaItems([]);
+    setVentaNotas("");
+    setVentaCliente(null);
+    setVentaClienteQuery("");
+    setVentaClienteManualNombre("");
+    setVentaClienteManualDni("");
+    setVentaClienteManualTelefono("");
+    setVentaMetodoPago("cash");
+    setVentaAcreditarPuntos(false);
+    setVentaProductoId("");
+    setVentaCantidad("1");
+    setVentaSabores({});
+  }
 
-      return api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", {
-        usuario_id: ventaCliente?.id,
-        cliente_local: ventaCliente || !hasManualCustomer
-          ? undefined
-          : {
-              nombre: ventaClienteManualNombre.trim(),
-              dni: ventaClienteManualDni.trim(),
-              telefono: ventaClienteManualTelefono.trim() || undefined,
-            },
-        sucursal_id: Number(ventaSucursalId),
-        metodo_pago: ventaMetodoPago,
-        acreditar_puntos: ventaAcreditarPuntos,
-        notas: ventaNotas.trim() || undefined,
-        items: ventaItems.map((item) => ({
-          producto_id: item.producto_id,
-          cantidad: item.cantidad,
-          sabores: item.sabores?.map((sabor) => ({
-            sabor_id: sabor.sabor_id,
-            cantidad: sabor.cantidad,
-          })),
+  function buildVentaLocalPayload() {
+    if (!ventaSucursalId) throw new Error("Selecciona una sucursal.");
+    if (!ventaItems.length) throw new Error("Agrega al menos un producto.");
+    const hasManualCustomer = Boolean(
+      ventaClienteManualNombre.trim() ||
+      ventaClienteManualDni.trim() ||
+      ventaClienteManualTelefono.trim(),
+    );
+    if (!ventaCliente && hasManualCustomer) {
+      if (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim()) {
+        throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
+      }
+      if (!validateManualDni(ventaClienteManualDni)) {
+        throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
+      }
+      if (!validateManualPhone(ventaClienteManualTelefono)) {
+        throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
+      }
+    }
+
+    return {
+      usuario_id: ventaCliente?.id,
+      cliente_local: ventaCliente || !hasManualCustomer
+        ? undefined
+        : {
+            nombre: ventaClienteManualNombre.trim(),
+            dni: ventaClienteManualDni.trim(),
+            telefono: ventaClienteManualTelefono.trim() || undefined,
+          },
+      sucursal_id: Number(ventaSucursalId),
+      metodo_pago: ventaMetodoPago,
+      acreditar_puntos: ventaAcreditarPuntos,
+      notas: ventaNotas.trim() || undefined,
+      items: ventaItems.map((item) => ({
+        producto_id: item.producto_id,
+        cantidad: item.cantidad,
+        sabores: item.sabores?.map((sabor) => ({
+          sabor_id: sabor.sabor_id,
+          cantidad: sabor.cantidad,
         })),
-      });
-    },
+      })),
+    };
+  }
+
+  const registrarVentaLocalMutation = useMutation({
+    mutationFn: () =>
+      ventaEditId
+        ? api.put<{ ok: true; ordenId: number }>(`/vendedor/ventas-locales/${ventaEditId}`, buildVentaLocalPayload())
+        : api.post<{ ok: true; ordenId: number }>("/vendedor/ventas-locales", buildVentaLocalPayload()),
     onSuccess: async (data) => {
       setOrdenErr("");
-      setOrdenMsg(`Venta local registrada como orden #${data.ordenId}. El stock compartido de la sucursal se actualizo.`);
-      setVentaItems([]);
-      setVentaNotas("");
-      setVentaCliente(null);
-      setVentaClienteQuery("");
-      setVentaClienteManualNombre("");
-      setVentaClienteManualDni("");
-      setVentaClienteManualTelefono("");
+      const editedOrderId = ventaEditId;
+      setOrdenMsg(
+        editedOrderId
+          ? `Venta local #${data.ordenId} actualizada correctamente.`
+          : `Venta local registrada como orden #${data.ordenId}. El stock compartido de la sucursal se actualizo.`,
+      );
+      resetVentaLocalDraft();
+      setOrdenExpandidaId(data.ordenId);
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] });
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "productos-locales"] });
+      if (editedOrderId) {
+        navigate("/vendedor/ventas/pedidos");
+      }
     },
     onError: (err: Error) => {
       setOrdenMsg("");
-      setOrdenErr(err.message || "No se pudo registrar la venta local.");
+      setOrdenErr(err.message || (ventaEditId ? "No se pudo actualizar la venta local." : "No se pudo registrar la venta local."));
     },
   });
 
@@ -708,6 +752,65 @@ export function VendedorPedidos() {
       email: proveedor.email ?? "",
       notas: proveedor.notas ?? "",
     });
+  }
+
+  function puedeEditarVentaLocal(orden: OrdenVendedor): boolean {
+    return orden.canal === "vendedor" && orden.tipo_orden === "venta" && orden.estado !== "cancelada" && orden.estado !== "expirada";
+  }
+
+  function empezarEditarVentaLocal(orden: OrdenVendedor) {
+    setOrdenErr("");
+    setOrdenMsg("");
+    setVentaEditId(orden.id);
+    setVentaProductoId("");
+    setVentaCantidad("1");
+    setVentaSabores({});
+    setVentaSucursalId(String(orden.sucursal?.id ?? selectedSucursalValue));
+    setVentaMetodoPago(orden.pago?.metodo ?? "cash");
+    setVentaAcreditarPuntos(Boolean(orden.puntos_acreditados));
+    setVentaNotas(extractEditableSaleNotes(orden.notas));
+    setVentaItems(
+      (orden.items ?? []).map((item) => ({
+        producto_id: item.producto_id,
+        nombre: item.nombre,
+        cantidad: item.cantidad,
+        precio_dinero: item.cantidad > 0 ? Number(item.subtotal_dinero ?? 0) / item.cantidad : 0,
+        sabores: item.sabores?.map((sabor) => ({
+          sabor_id: sabor.sabor_id,
+          nombre: sabor.nombre,
+          cantidad: sabor.cantidad,
+        })),
+      })),
+    );
+
+    if (orden.usuario_id) {
+      setVentaCliente({
+        id: Number(orden.usuario_id),
+        nombre: orden.cliente_nombre,
+        dni: orden.cliente_dni ?? "",
+        email: orden.cliente_email ?? "",
+        puntos: 0,
+      });
+      setVentaClienteQuery("");
+      setVentaClienteManualNombre("");
+      setVentaClienteManualDni("");
+      setVentaClienteManualTelefono("");
+    } else {
+      setVentaCliente(null);
+      setVentaClienteQuery("");
+      if (isGenericLocalOrderCustomer(orden)) {
+        setVentaClienteManualNombre("");
+        setVentaClienteManualDni("");
+        setVentaClienteManualTelefono("");
+      } else {
+        setVentaClienteManualNombre(orden.cliente_nombre ?? "");
+        setVentaClienteManualDni(orden.cliente_dni ?? "");
+        setVentaClienteManualTelefono(orden.cliente_telefono ?? "");
+      }
+    }
+
+    navigate("/vendedor/ventas/local");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function puedeMarcarPagada(orden: OrdenVendedor): boolean {
@@ -1136,11 +1239,26 @@ export function VendedorPedidos() {
         <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
           <div style={{ display: "grid", gap: "0.75rem" }}>
             <div>
-              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>Registrar venta local</h2>
+              <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>{ventaEnEdicion ? `Editar venta local #${ventaEditId}` : "Registrar venta local"}</h2>
               <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
                 Queda unida a las ventas web para reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia.
               </p>
             </div>
+            {ventaEnEdicion ? (
+              <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8", display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                <p className="text-sm" style={{ margin: 0, color: "#7C2D12", fontWeight: 700 }}>
+                  Estas editando una venta ya guardada. La sucursal queda fija para no mover caja ni stock historico.
+                </p>
+                <button
+                  type="button"
+                  className="ios-btn-secondary"
+                  style={{ width: "auto", padding: "0.55rem 0.85rem" }}
+                  onClick={resetVentaLocalDraft}
+                >
+                  Cancelar edicion
+                </button>
+              </div>
+            ) : null}
 
             <div className="adm-form-grid">
               <div style={{ position: "relative" }}>
@@ -1197,7 +1315,7 @@ export function VendedorPedidos() {
                 disabled={Boolean(ventaCliente)}
                 onChange={(event) => setVentaClienteManualTelefono(sanitizeManualPhone(event.target.value))}
               />
-              <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length}>
+              <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length || ventaEnEdicion}>
                 {sucursales.length ? (
                   sucursales.map((sucursal) => (
                     <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
@@ -1302,7 +1420,7 @@ export function VendedorPedidos() {
                 disabled={registrarVentaLocalMutation.isPending || ventaItems.length === 0}
                 onClick={() => registrarVentaLocalMutation.mutate()}
               >
-                {registrarVentaLocalMutation.isPending ? "Registrando..." : "Registrar venta local"}
+                {registrarVentaLocalMutation.isPending ? (ventaEnEdicion ? "Guardando..." : "Registrando...") : (ventaEnEdicion ? "Guardar cambios" : "Registrar venta local")}
               </button>
             </div>
           </div>
@@ -1378,6 +1496,16 @@ export function VendedorPedidos() {
                 >
                   Ver comprobante
                 </Link>
+                {puedeEditarVentaLocal(orden) ? (
+                  <button
+                    type="button"
+                    className="ios-btn-secondary"
+                    style={{ width: "auto", padding: "0.55rem 0.85rem" }}
+                    onClick={() => empezarEditarVentaLocal(orden)}
+                  >
+                    Editar venta
+                  </button>
+                ) : null}
                 {hasOrderMapPoint(orden.direccion_envio) ? (
                   <Link
                     to={`/vendedor/mapa-pedidos?pedido=${orden.id}`}

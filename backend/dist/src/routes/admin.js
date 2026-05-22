@@ -1093,6 +1093,11 @@ router.get("/caja/sesiones", async (req, res) => {
     const sucursalId = Number(req.query.sucursal_id ?? 0);
     const desde = typeof req.query.desde === "string" ? req.query.desde : null;
     const hasta = typeof req.query.hasta === "string" ? req.query.hasta : null;
+    const rawPage = Number(req.query.page ?? 1);
+    const rawLimit = Number(req.query.limit ?? 12);
+    const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 50) : 12;
+    const offset = (page - 1) * limit;
     const where = ["1 = 1"];
     const params = [];
     if (Number.isInteger(sucursalId) && sucursalId > 0) {
@@ -1108,18 +1113,29 @@ router.get("/caja/sesiones", async (req, res) => {
         params.push(hasta);
     }
     await (0, cashRegister_1.closeStaleCajaSesiones)(db_1.pool);
+    const totalRow = await (0, db_1.qOne)(db_1.pool, `SELECT COUNT(*) AS total
+     FROM caja_sesiones cs
+     WHERE ${where.join(" AND ")}`, params);
+    const total = Number(totalRow?.total ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT cs.id
      FROM caja_sesiones cs
      WHERE ${where.join(" AND ")}
      ORDER BY cs.apertura_at DESC, cs.id DESC
-     LIMIT 120`, params);
+     LIMIT ? OFFSET ?`, [...params, limit, offset]);
     const payload = [];
     for (const row of rows) {
         const session = await getCajaSesionPayload(db_1.pool, Number(row.id));
         if (session)
             payload.push(session);
     }
-    res.json(payload);
+    res.json({
+        items: payload,
+        total,
+        page,
+        pageSize: limit,
+        totalPages,
+    });
 });
 router.get("/caja/export", async (req, res) => {
     const sucursalId = Number(req.query.sucursal_id ?? 0);

@@ -5,8 +5,13 @@ import { Queryable, qAll, qOne, qRun } from "../db";
 import { ensureDailyCajaSesion, normalizeCashPaymentMethod, registerCajaMovimiento } from "./cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
 import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
-import { acreditarPuntosPorCompra } from "./points";
-import { finalizeFlavorStockForCheckoutItems, finalizeStockForCheckoutItems } from "./stock";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "./points";
+import {
+  finalizeFlavorStockForCheckoutItems,
+  finalizeStockForCheckoutItems,
+  restoreFlavorStockForCheckoutItems,
+  restoreStockForCheckoutItems,
+} from "./stock";
 
 export type LocalSaleChannel = "admin" | "vendedor";
 
@@ -66,11 +71,30 @@ export type RegisterLocalSaleInput = {
   items: LocalSaleItemInput[];
 };
 
+export type UpdateLocalSaleInput = RegisterLocalSaleInput & {
+  orderId: number;
+};
+
 export type RegisterLocalSaleResult = {
   ordenId: number;
   totalDinero: number;
   totalUnidades: number;
   totalPuntosGanados: number;
+};
+
+type LocalSaleCustomerResolution = {
+  usuarioId: number | null;
+  clienteLocalId: number | null;
+  pricingProfile: CustomerPricingProfile | null;
+};
+
+type ExistingLocalSaleOrder = {
+  id: number;
+  usuario_id: number | null;
+  canal: string;
+  estado: string;
+  tipo_orden: string;
+  sucursal_retiro_id: number | null;
 };
 
 export type VentaReporteFilter = {
@@ -403,14 +427,13 @@ async function findOrCreateGenericLocalCustomer(conn: Queryable): Promise<number
   return findOrCreateLocalCustomer(conn, GENERIC_LOCAL_CUSTOMER);
 }
 
-export async function registerLocalSale(
+async function resolveLocalSaleCustomer(
   conn: Queryable,
-  input: RegisterLocalSaleInput,
-): Promise<RegisterLocalSaleResult> {
+  input: Pick<RegisterLocalSaleInput, "usuarioId" | "clienteLocal">,
+): Promise<LocalSaleCustomerResolution> {
   let usuarioId: number | null = null;
   let clienteLocalId: number | null = null;
   let pricingProfile: CustomerPricingProfile | null = null;
-
   if (input.usuarioId) {
     const cliente = await qOne<{ id: number }>(
       conn,
@@ -428,49 +451,34 @@ export async function registerLocalSale(
     clienteLocalId = await findOrCreateGenericLocalCustomer(conn);
   }
 
-  const sucursal = await qOne<{ id: number }>(
-    conn,
-    "SELECT id FROM sucursales WHERE id = ? AND activo = 1 LIMIT 1",
-    [input.sucursalId],
-  );
-  if (!sucursal) {
-    throw new Error("Selecciona una sucursal activa para registrar la venta local.");
-  }
+  return {
+    usuarioId,
+    clienteLocalId,
+    pricingProfile,
+  };
+}
 
-  const resolvePrice = await createPricingResolver(conn, {
-    source: "local",
-    profile: pricingProfile,
-  });
-  const preparedItems = await prepareLocalSaleItems(conn, input.items, resolvePrice);
-  if (!preparedItems.length) {
-    throw new Error("Agrega al menos un producto a la venta local.");
-  }
-
-  const totalDinero = toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0));
-  const totalUnidades = preparedItems.reduce((acc, item) => acc + item.cantidad, 0);
-  const totalPuntosGanados = preparedItems.reduce(
-    (acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario,
-    0,
-  );
-  const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
-  const cajaSesion = await ensureDailyCajaSesion(conn, {
-    usuarioId: input.creadoPor,
-    sucursalId: Number(sucursal.id),
-  });
-  const notas = [
-    `Venta local registrada desde panel ${input.canal}.`,
-    input.notas?.trim() ? input.notas.trim() : null,
+function buildLocalSaleNotes(action: "registrada" | "actualizada", channel: LocalSaleChannel, notes?: string | null): string | null {
+  const value = [
+    `Venta local ${action} desde panel ${channel}.`,
+    notes?.trim() ? notes.trim() : null,
   ].filter(Boolean).join(" ");
+  return value || null;
+}
 
-  const insertedOrder = await qRun(
-    conn,
-    `INSERT INTO ordenes
-      (usuario_id, cliente_local_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
-     VALUES (?, ?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`,
-    [usuarioId, clienteLocalId, input.canal, totalDinero, Number(sucursal.id), notas || null],
-  );
-  const ordenId = insertedOrder.insertId;
+function buildLocalSaleResult(orderId: number, preparedItems: PreparedItem[]): RegisterLocalSaleResult {
+  return {
+    ordenId: orderId,
+    totalDinero: toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0)),
+    totalUnidades: preparedItems.reduce((acc, item) => acc + item.cantidad, 0),
+    totalPuntosGanados: preparedItems.reduce(
+      (acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario,
+      0,
+    ),
+  };
+}
 
+async function persistPreparedLocalSaleItems(conn: Queryable, orderId: number, preparedItems: PreparedItem[]) {
   for (const item of preparedItems) {
     const insertedItem = await qRun(
       conn,
@@ -479,7 +487,7 @@ export async function registerLocalSale(
          precio_puntos_unit, subtotal_dinero, subtotal_puntos, puntaje_al_comprar_unitario)
        VALUES (?, ?, ?, 'dinero', ?, ?, NULL, ?, 0, ?)`,
       [
-        ordenId,
+        orderId,
         item.producto_id,
         item.cantidad,
         item.config_hash,
@@ -498,35 +506,24 @@ export async function registerLocalSale(
       );
     }
   }
+}
 
-  await finalizeStockForCheckoutItems(conn, {
-    sucursalId: Number(sucursal.id),
-    items: preparedItems.map((item) => ({
-      producto_id: item.producto_id,
-      cantidad: item.cantidad,
-      origen: "compra" as const,
-      descripcion: `Venta local #${ordenId}`,
-    })),
-    referencia: `venta local #${ordenId}`,
-    creadoPor: input.creadoPor,
-    ordenId: Number(ordenId),
-  });
-
-  await finalizeFlavorStockForCheckoutItems(conn, {
-    sucursalId: Number(sucursal.id),
-    items: preparedItems.flatMap((item) =>
-      item.sabores.map((sabor) => ({
-        sabor_id: sabor.sabor_id,
-        cantidad: sabor.cantidad,
-        origen: "compra" as const,
-        descripcion: `Venta local #${ordenId}`,
-      })),
-    ),
-    referencia: `venta local #${ordenId}`,
-    creadoPor: input.creadoPor,
-    ordenId: Number(ordenId),
-  });
-
+async function persistLocalSalePayment(
+  conn: Queryable,
+  {
+    orderId,
+    channel,
+    metodoPago,
+    totalDinero,
+    creadoPor,
+  }: {
+    orderId: number;
+    channel: LocalSaleChannel;
+    metodoPago: string;
+    totalDinero: number;
+    creadoPor: number;
+  },
+) {
   const paymentFee = await resolvePaymentFee(conn, {
     proveedor: "local",
     metodo: metodoPago,
@@ -541,44 +538,385 @@ export async function registerLocalSale(
      )
      VALUES (?, 'local', ?, 'aprobado', ?, ?, ?, ?, 'ARS', ?, ?)`,
     [
-      ordenId,
+      orderId,
       metodoPago,
       totalDinero,
       paymentFee.porcentaje,
       paymentFee.montoComision,
       paymentFee.montoNeto,
-      `local-${input.canal}-${ordenId}`,
+      `local-${channel}-${orderId}`,
       JSON.stringify({
-        canal: input.canal,
+        canal: channel,
         metodo_pago: metodoPago,
-        creado_por: input.creadoPor,
+        creado_por: creadoPor,
         comparte_stock_web: true,
         comision: paymentFee,
       }),
     ],
   );
+}
 
+async function updateLocalSaleCajaMovimiento(
+  conn: Queryable,
+  {
+    orderId,
+    metodoPago,
+    totalDinero,
+    creadoPor,
+  }: {
+    orderId: number;
+    metodoPago: string;
+    totalDinero: number;
+    creadoPor: number;
+  },
+) {
+  const currentMovement = await qOne<{ id: number }>(
+    conn,
+    `SELECT id
+     FROM caja_movimientos
+     WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'venta'
+     ORDER BY id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [orderId],
+  );
+  if (!currentMovement) {
+    throw new Error("No se encontro el movimiento de caja original de esta venta local.");
+  }
+
+  await qRun(
+    conn,
+    `UPDATE caja_movimientos
+     SET medio_pago = ?, monto = ?, descripcion = ?, creado_por = ?
+     WHERE id = ?`,
+    [normalizeCashPaymentMethod(metodoPago), totalDinero, `Venta local #${orderId}`, creadoPor, Number(currentMovement.id)],
+  );
+}
+
+async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId: number | null) {
+  await qRun(
+    conn,
+    "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
+    [orderId],
+  );
+  if (usuarioId) {
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
+  }
+}
+
+async function getExistingLocalSaleOrder(conn: Queryable, orderId: number): Promise<ExistingLocalSaleOrder> {
+  const order = await qOne<ExistingLocalSaleOrder>(
+    conn,
+    `SELECT id, usuario_id, canal, estado, tipo_orden, sucursal_retiro_id
+     FROM ordenes
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [orderId],
+  );
+  if (!order) {
+    throw new Error("La venta local que intentas editar no existe.");
+  }
+  return {
+    ...order,
+    id: Number(order.id),
+    usuario_id: order.usuario_id === null ? null : Number(order.usuario_id),
+    sucursal_retiro_id: order.sucursal_retiro_id === null ? null : Number(order.sucursal_retiro_id),
+  };
+}
+
+async function getExistingLocalSaleStockSnapshot(conn: Queryable, orderId: number) {
+  const itemRows = await qAll<{ id: number; producto_id: number; cantidad: number }>(
+    conn,
+    `SELECT id, producto_id, cantidad
+     FROM orden_items
+     WHERE orden_id = ?`,
+    [orderId],
+  );
+  const itemIds = itemRows.map((row) => Number(row.id));
+  const flavorRows = itemIds.length
+    ? await qAll<{ sabor_id: number; cantidad: number }>(
+        conn,
+        `SELECT sabor_id, cantidad
+         FROM orden_item_sabores
+         WHERE orden_item_id IN (${itemIds.map(() => "?").join(", ")})`,
+        itemIds,
+      )
+    : [];
+
+  return {
+    productItems: itemRows.map((row) => ({
+      producto_id: Number(row.producto_id),
+      cantidad: Number(row.cantidad),
+      origen: "compra" as const,
+      descripcion: `Edicion venta local #${orderId}`,
+    })),
+    flavorItems: flavorRows.map((row) => ({
+      sabor_id: Number(row.sabor_id),
+      cantidad: Number(row.cantidad),
+      origen: "compra" as const,
+      descripcion: `Edicion venta local #${orderId}`,
+    })),
+  };
+}
+
+async function replaceLocalSaleItems(
+  conn: Queryable,
+  {
+    orderId,
+    sucursalId,
+    preparedItems,
+    creadoPor,
+  }: {
+    orderId: number;
+    sucursalId: number;
+    preparedItems: PreparedItem[];
+    creadoPor: number;
+  },
+) {
+  const previous = await getExistingLocalSaleStockSnapshot(conn, orderId);
+
+  await restoreStockForCheckoutItems(conn, {
+    sucursalId,
+    items: previous.productItems,
+    referencia: `venta local #${orderId}`,
+    creadoPor,
+    ordenId: orderId,
+  });
+  await restoreFlavorStockForCheckoutItems(conn, {
+    sucursalId,
+    items: previous.flavorItems,
+    referencia: `venta local #${orderId}`,
+    creadoPor,
+    ordenId: orderId,
+  });
+
+  await qRun(
+    conn,
+    `DELETE ois
+     FROM orden_item_sabores ois
+     JOIN orden_items oi ON oi.id = ois.orden_item_id
+     WHERE oi.orden_id = ?`,
+    [orderId],
+  );
+  await qRun(conn, "DELETE FROM orden_items WHERE orden_id = ?", [orderId]);
+
+  await persistPreparedLocalSaleItems(conn, orderId, preparedItems);
+
+  await finalizeStockForCheckoutItems(conn, {
+    sucursalId,
+    items: preparedItems.map((item) => ({
+      producto_id: item.producto_id,
+      cantidad: item.cantidad,
+      origen: "compra" as const,
+      descripcion: `Venta local #${orderId}`,
+    })),
+    referencia: `venta local #${orderId}`,
+    creadoPor,
+    ordenId: orderId,
+  });
+
+  await finalizeFlavorStockForCheckoutItems(conn, {
+    sucursalId,
+    items: preparedItems.flatMap((item) =>
+      item.sabores.map((sabor) => ({
+        sabor_id: sabor.sabor_id,
+        cantidad: sabor.cantidad,
+        origen: "compra" as const,
+        descripcion: `Venta local #${orderId}`,
+      })),
+    ),
+    referencia: `venta local #${orderId}`,
+    creadoPor,
+    ordenId: orderId,
+  });
+}
+
+export async function registerLocalSale(
+  conn: Queryable,
+  input: RegisterLocalSaleInput,
+): Promise<RegisterLocalSaleResult> {
+  const customer = await resolveLocalSaleCustomer(conn, input);
+  const sucursal = await qOne<{ id: number }>(
+    conn,
+    "SELECT id FROM sucursales WHERE id = ? AND activo = 1 LIMIT 1",
+    [input.sucursalId],
+  );
+  if (!sucursal) {
+    throw new Error("Selecciona una sucursal activa para registrar la venta local.");
+  }
+
+  const resolvePrice = await createPricingResolver(conn, {
+    source: "local",
+    profile: customer.pricingProfile,
+  });
+  const preparedItems = await prepareLocalSaleItems(conn, input.items, resolvePrice);
+  if (!preparedItems.length) {
+    throw new Error("Agrega al menos un producto a la venta local.");
+  }
+
+  const result = buildLocalSaleResult(0, preparedItems);
+  const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
+  const cajaSesion = await ensureDailyCajaSesion(conn, {
+    usuarioId: input.creadoPor,
+    sucursalId: Number(sucursal.id),
+  });
+
+  const insertedOrder = await qRun(
+    conn,
+    `INSERT INTO ordenes
+      (usuario_id, cliente_local_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos, sucursal_retiro_id, notas)
+     VALUES (?, ?, ?, 'venta', 'pagada', 'ARS', ?, 0, ?, ?)`,
+    [
+      customer.usuarioId,
+      customer.clienteLocalId,
+      input.canal,
+      result.totalDinero,
+      Number(sucursal.id),
+      buildLocalSaleNotes("registrada", input.canal, input.notas),
+    ],
+  );
+  const ordenId = insertedOrder.insertId;
+
+  await persistPreparedLocalSaleItems(conn, ordenId, preparedItems);
+  await finalizeStockForCheckoutItems(conn, {
+    sucursalId: Number(sucursal.id),
+    items: preparedItems.map((item) => ({
+      producto_id: item.producto_id,
+      cantidad: item.cantidad,
+      origen: "compra" as const,
+      descripcion: `Venta local #${ordenId}`,
+    })),
+    referencia: `venta local #${ordenId}`,
+    creadoPor: input.creadoPor,
+    ordenId: Number(ordenId),
+  });
+  await finalizeFlavorStockForCheckoutItems(conn, {
+    sucursalId: Number(sucursal.id),
+    items: preparedItems.flatMap((item) =>
+      item.sabores.map((sabor) => ({
+        sabor_id: sabor.sabor_id,
+        cantidad: sabor.cantidad,
+        origen: "compra" as const,
+        descripcion: `Venta local #${ordenId}`,
+      })),
+    ),
+    referencia: `venta local #${ordenId}`,
+    creadoPor: input.creadoPor,
+    ordenId: Number(ordenId),
+  });
+  await persistLocalSalePayment(conn, {
+    orderId: ordenId,
+    channel: input.canal,
+    metodoPago,
+    totalDinero: result.totalDinero,
+    creadoPor: input.creadoPor,
+  });
   await registerCajaMovimiento(conn, {
     cajaSesionId: Number(cajaSesion.id),
     tipo: "venta",
     medioPago: normalizeCashPaymentMethod(metodoPago),
-    monto: totalDinero,
+    monto: result.totalDinero,
     descripcion: `Venta local #${ordenId}`,
     referenciaTipo: "ordenes",
     referenciaId: Number(ordenId),
     creadoPor: input.creadoPor,
   });
 
-  if (input.acreditarPuntos && usuarioId) {
+  if (input.acreditarPuntos && customer.usuarioId) {
     await acreditarPuntosPorCompra(conn, ordenId);
   }
 
   return {
+    ...result,
     ordenId,
-    totalDinero,
-    totalUnidades,
-    totalPuntosGanados,
   };
+}
+
+export async function updateLocalSale(
+  conn: Queryable,
+  input: UpdateLocalSaleInput,
+): Promise<RegisterLocalSaleResult> {
+  const existing = await getExistingLocalSaleOrder(conn, input.orderId);
+  if (existing.canal !== input.canal) {
+    throw new Error("Solo puedes editar ventas locales creadas desde este panel.");
+  }
+  if (existing.tipo_orden !== "venta") {
+    throw new Error("Solo se pueden editar ventas locales simples.");
+  }
+  if (existing.estado === "cancelada" || existing.estado === "expirada") {
+    throw new Error("No se puede editar una venta cancelada o expirada.");
+  }
+  if (!existing.sucursal_retiro_id) {
+    throw new Error("La venta no tiene sucursal de retiro asociada.");
+  }
+  if (Number(input.sucursalId) !== Number(existing.sucursal_retiro_id)) {
+    throw new Error("Por ahora la edicion no permite cambiar la sucursal de una venta ya guardada.");
+  }
+
+  const customer = await resolveLocalSaleCustomer(conn, input);
+  const resolvePrice = await createPricingResolver(conn, {
+    source: "local",
+    profile: customer.pricingProfile,
+  });
+  const preparedItems = await prepareLocalSaleItems(conn, input.items, resolvePrice);
+  if (!preparedItems.length) {
+    throw new Error("Agrega al menos un producto a la venta local.");
+  }
+
+  const result = buildLocalSaleResult(input.orderId, preparedItems);
+  const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
+
+  await replaceLocalSaleItems(conn, {
+    orderId: input.orderId,
+    sucursalId: Number(existing.sucursal_retiro_id),
+    preparedItems,
+    creadoPor: input.creadoPor,
+  });
+
+  await qRun(conn, "DELETE FROM pagos WHERE orden_id = ?", [input.orderId]);
+  await removeLocalSalePoints(conn, input.orderId, existing.usuario_id);
+
+  await qRun(
+    conn,
+    `UPDATE ordenes
+     SET usuario_id = ?,
+         cliente_local_id = ?,
+         total_dinero = ?,
+         total_puntos = 0,
+         sucursal_retiro_id = ?,
+         notas = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [
+      customer.usuarioId,
+      customer.clienteLocalId,
+      result.totalDinero,
+      Number(existing.sucursal_retiro_id),
+      buildLocalSaleNotes("actualizada", input.canal, input.notas),
+      input.orderId,
+    ],
+  );
+
+  await persistLocalSalePayment(conn, {
+    orderId: input.orderId,
+    channel: input.canal,
+    metodoPago,
+    totalDinero: result.totalDinero,
+    creadoPor: input.creadoPor,
+  });
+  await updateLocalSaleCajaMovimiento(conn, {
+    orderId: input.orderId,
+    metodoPago,
+    totalDinero: result.totalDinero,
+    creadoPor: input.creadoPor,
+  });
+
+  if (input.acreditarPuntos && customer.usuarioId) {
+    await acreditarPuntosPorCompra(conn, input.orderId);
+  }
+
+  return result;
 }
 
 function normalizeDateStart(value?: string | null): string | null {

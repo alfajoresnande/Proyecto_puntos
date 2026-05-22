@@ -452,6 +452,14 @@ type Pagina = {
   contenido: string;
 };
 
+type PaginatedResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 type ConfiguracionItem = {
   clave: string;
   valor: string;
@@ -1365,6 +1373,7 @@ export function Admin() {
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
   const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
   const [cajaReporteFecha, setCajaReporteFecha] = useState(() => getBuenosAiresDateStamp());
+  const [cajaSesionesPage, setCajaSesionesPage] = useState(1);
   const [gastoProveedorId, setGastoProveedorId] = useState("");
   const [gastoTerceroNombre, setGastoTerceroNombre] = useState("");
   const [gastoCategoria, setGastoCategoria] = useState("");
@@ -1583,8 +1592,15 @@ export function Admin() {
   });
 
   const cajaSesionesQuery = useQuery({
-    queryKey: ["admin", "caja-sesiones", cajaSucursalId],
-    queryFn: () => api.get<CajaSesionAdmin[]>(`/admin/caja/sesiones${Number(cajaSucursalId) > 0 ? `?sucursal_id=${Number(cajaSucursalId)}` : ""}`),
+    queryKey: ["admin", "caja-sesiones", cajaSucursalId, cajaSesionesPage],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(cajaSesionesPage),
+        limit: "12",
+      });
+      if (Number(cajaSucursalId) > 0) params.set("sucursal_id", String(Number(cajaSucursalId)));
+      return api.get<PaginatedResponse<CajaSesionAdmin>>(`/admin/caja/sesiones?${params.toString()}`);
+    },
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
@@ -1664,6 +1680,17 @@ export function Admin() {
       setCajaSucursalId(String(firstActiveSucursal.id));
     }
   }, [cajaSucursalId, sucursalesQuery.data]);
+
+  useEffect(() => {
+    setCajaSesionesPage(1);
+  }, [cajaSucursalId]);
+
+  useEffect(() => {
+    const totalPages = cajaSesionesQuery.data?.totalPages ?? 1;
+    if (totalPages < cajaSesionesPage) {
+      setCajaSesionesPage(totalPages);
+    }
+  }, [cajaSesionesPage, cajaSesionesQuery.data?.totalPages]);
 
   useEffect(() => {
     const requestedVentasPathView = ventasViewFromPath(location.pathname);
@@ -1889,7 +1916,9 @@ export function Admin() {
   const proveedores = proveedoresQuery.data ?? [];
   const costosCobro = costosCobroQuery.data ?? [];
   const cajaActual = cajaActualQuery.data ?? null;
-  const cajaSesiones = cajaSesionesQuery.data ?? [];
+  const cajaSesionesData = cajaSesionesQuery.data ?? null;
+  const cajaSesiones = cajaSesionesData?.items ?? [];
+  const cajaSesionesTotalPages = cajaSesionesData?.totalPages ?? 1;
   const gastos = gastosQuery.data ?? [];
   const browserAlertsSupported = browserNotificationPermission !== "unsupported";
   const securityEvents = securityMonitorQuery.data?.persistidos ?? [];
@@ -6134,7 +6163,7 @@ export function Admin() {
                         </tr>
                       </thead>
                       <tbody>
-                        {cajaSesiones.slice(0, 12).map((sesion) => (
+                        {cajaSesiones.map((sesion) => (
                           <tr key={sesion.id}>
                             <td>{sesion.fecha_operativa}</td>
                             <td>{sesion.sucursal_nombre}</td>
@@ -6155,6 +6184,12 @@ export function Admin() {
                     </table>
                   </div>
                 )}
+                <PaginationControls
+                  page={cajaSesionesPage}
+                  totalPages={cajaSesionesTotalPages}
+                  onPrev={() => setCajaSesionesPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setCajaSesionesPage((prev) => Math.min(cajaSesionesTotalPages, prev + 1))}
+                />
               </div>
             </div>
           ) : null}

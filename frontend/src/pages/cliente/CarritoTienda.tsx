@@ -110,6 +110,11 @@ type PaymentNotice = {
   msg: string;
 };
 
+type CartToast = {
+  variant: "success" | "error";
+  msg: string;
+};
+
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
@@ -361,6 +366,7 @@ export function CarritoTienda() {
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
+  const [cartToast, setCartToast] = useState<CartToast | null>(null);
   const [deliveryMethod, setDeliveryMethod] = useState<"retiro" | "envio">("retiro");
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<UserAddress | null>(null);
@@ -542,6 +548,12 @@ export function CarritoTienda() {
     queryClient,
   ]);
 
+  useEffect(() => {
+    if (!cartToast) return;
+    const timer = window.setTimeout(() => setCartToast(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [cartToast]);
+
   const updateQuantity = useMutation({
     mutationFn: ({ itemId, cantidad }: { itemId: number; cantidad: number }) =>
       api.patch<{ ok: true }>(`/cliente/carrito/items/${itemId}`, {
@@ -561,8 +573,16 @@ export function CarritoTienda() {
   
   const clearCart = useMutation({
     mutationFn: () => api.delete<{ ok: true }>("/cliente/carrito/vaciar"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
-    onError: (error: Error) => setMessage(error.message || "No se pudo vaciar el carrito."),
+    onSuccess: async () => {
+      setMessage(null);
+      setCartToast({ variant: "success", msg: "Carrito vaciado." });
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+    },
+    onError: (error: Error) => {
+      const msg = error.message || "No se pudo vaciar el carrito.";
+      setMessage(msg);
+      setCartToast({ variant: "error", msg });
+    },
   });
 
   const confirmCheckout = useMutation({
@@ -833,15 +853,16 @@ export function CarritoTienda() {
                 <h2 style={{ fontSize: "1.1rem", color: "#4A2C1A", margin: 0 }}>Tus productos</h2>
                 <button 
                   className="adm-btn-danger" 
-                  style={{ padding: "0.4rem 0.8rem", fontSize: "0.8rem" }}
-                  disabled={clearCart.isPending || cartItems.length === 0}
-                  onClick={() => {
-                    if (window.confirm("¿Estás seguro de que quieres vaciar el carrito?")) {
-                      clearCart.mutate();
-                    }
+                  style={{
+                    padding: "0.55rem 0.95rem",
+                    fontSize: "0.82rem",
+                    borderRadius: "999px",
+                    boxShadow: "0 8px 18px rgba(155, 44, 44, 0.14)",
                   }}
+                  disabled={clearCart.isPending || cartItems.length === 0}
+                  onClick={() => clearCart.mutate()}
                 >
-                  Vaciar carrito
+                  {clearCart.isPending ? "Vaciando..." : "Vaciar carrito"}
                 </button>
               </div>
               {cartItems.map((item) => (
@@ -1047,6 +1068,11 @@ export function CarritoTienda() {
           </>
         )}
       </div>
+      {cartToast ? (
+        <div className={`catalog-float-toast catalog-float-toast-${cartToast.variant}`}>
+          <p className="catalog-float-toast-msg">{cartToast.msg}</p>
+        </div>
+      ) : null}
     </section>
   );
 }
