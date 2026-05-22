@@ -659,6 +659,8 @@ const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
+const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
 const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"];
@@ -706,6 +708,12 @@ function ventasViewFromPath(pathname: string): AdminVentasViewKey | null {
 
 function isProductosTab(tab: AdminTab): boolean {
   return tab === "productos" || tab === "productos-crear" || tab === "productos-edicion" || tab === "productos-sabores";
+}
+
+function isAllowedImageFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const name = file.name.toLowerCase();
+  return IMAGE_FILE_EXTENSIONS.some((extension) => name.endsWith(extension));
 }
 
 function adminTabFromPath(pathname: string): AdminTab | null {
@@ -2385,8 +2393,8 @@ export function Admin() {
 
   async function subirImagenProducto(file: File, target: "nuevo" | "edit") {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setErrMsg("Solo puedes subir archivos de imagen.");
+    if (!isAllowedImageFile(file)) {
+      setErrMsg("Solo puedes subir imagenes JPG, PNG o WEBP.");
       return;
     }
 
@@ -2429,9 +2437,9 @@ export function Admin() {
 
     const current = target === "nuevo" ? nuevoProducto.imagenes.length : editDraft.imagenes.length;
     const slotsAvailable = Math.max(0, MAX_PRODUCT_IMAGES - current);
-    const accepted = files.filter((file) => file.type.startsWith("image/")).slice(0, slotsAvailable);
+    const accepted = files.filter(isAllowedImageFile).slice(0, slotsAvailable);
     if (!accepted.length) {
-      setErrMsg(`Arrastra imágenes válidas. Máximo ${MAX_PRODUCT_IMAGES} por producto.`);
+      setErrMsg(`Arrastra imagenes JPG, PNG o WEBP. Maximo ${MAX_PRODUCT_IMAGES} por producto.`);
       return;
     }
 
@@ -3996,6 +4004,15 @@ export function Admin() {
     const setDraft = slug === "sobre-nosotros" ? setSobreDraft : setTerminosDraft;
     const imagenesActuales = extractPageImageUrls(draft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
 
+    if (!isAllowedImageFile(file)) {
+      setDraft((prev) => ({
+        ...prev,
+        okMsg: "",
+        errMsg: "Solo puedes subir imagenes JPG, PNG o WEBP.",
+      }));
+      return;
+    }
+
     if (imagenesActuales.length >= MAX_STATIC_PAGE_IMAGES) {
       setDraft((prev) => ({
         ...prev,
@@ -5107,7 +5124,7 @@ export function Admin() {
                     Cargar imagen
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={IMAGE_FILE_ACCEPT}
                       style={{ display: "none" }}
                       onChange={(event) => {
                         const file = event.target.files?.[0];
@@ -5373,7 +5390,7 @@ export function Admin() {
                             Agregar imagen
                             <input
                               type="file"
-                              accept="image/*"
+                              accept={IMAGE_FILE_ACCEPT}
                               style={{ display: "none" }}
                               onChange={(event) => {
                                 const file = event.target.files?.[0];
@@ -7166,7 +7183,7 @@ export function Admin() {
                             Agregar foto
                             <input
                               type="file"
-                              accept="image/*"
+                              accept={IMAGE_FILE_ACCEPT}
                               style={{ display: "none" }}
                               disabled={sobreImagenes.length >= MAX_STATIC_PAGE_IMAGES}
                               onChange={(event) => {
@@ -7240,7 +7257,7 @@ export function Admin() {
                             Agregar foto
                             <input
                               type="file"
-                              accept="image/*"
+                              accept={IMAGE_FILE_ACCEPT}
                               style={{ display: "none" }}
                               disabled={terminosImagenes.length >= MAX_STATIC_PAGE_IMAGES}
                               onChange={(event) => {

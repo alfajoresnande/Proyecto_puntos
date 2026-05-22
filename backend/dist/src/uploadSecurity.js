@@ -9,6 +9,12 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PDF_MAGIC = Buffer.from([0x25, 0x50, 0x44, 0x46]); // %PDF
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const DOC_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+const IMAGE_EXT_TO_MIME = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+};
 function hasPrefix(buffer, signature) {
     if (buffer.length < signature.length)
         return false;
@@ -46,7 +52,11 @@ async function verifyUploadedImageFile(file) {
             const probe = Buffer.alloc(MAGIC_BYTES_READ);
             await fd.read(probe, 0, MAGIC_BYTES_READ, 0);
             const detectedMime = detectMimeByMagic(probe);
-            const ok = Boolean(detectedMime && detectedMime === file.mimetype);
+            const originalExt = file.originalname.toLowerCase().match(/\.(jpe?g|png|webp)$/)?.[0] ?? "";
+            const expectedMime = IMAGE_EXT_TO_MIME[originalExt] ?? null;
+            const declaredMimeMatches = Boolean(detectedMime && detectedMime === file.mimetype);
+            const extensionMatches = Boolean(detectedMime && expectedMime && detectedMime === expectedMime);
+            const ok = declaredMimeMatches || extensionMatches;
             if (!ok)
                 await safeDelete(file.path);
             return { ok, detectedMime };

@@ -198,14 +198,21 @@ export function SoporteStaff() {
 
   const deleteMutation = useMutation({
     mutationFn: (conversationId: number) => api.delete<{ ok: true }>(`/soporte/conversaciones/${conversationId}`),
-<<<<<<< HEAD
     onSuccess: async (_result, conversationId) => {
       setErrorMsg("");
       setSelectedId((current) => (current === conversationId ? null : current));
+      setRespuesta("");
+      queryClient.setQueryData<SupportConversation[]>(["soporte", "staff", "conversaciones"], (current) =>
+        (current ?? []).filter((item) => item.id !== conversationId),
+      );
+      queryClient.setQueryData<SupportConversation[]>(["soporte", "cliente", "conversaciones"], (current) =>
+        (current ?? []).filter((item) => item.id !== conversationId),
+      );
       queryClient.removeQueries({ queryKey: ["soporte", "staff", "detalle", conversationId] });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
         queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "detalle", conversationId] }),
         queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
       ]);
       showToast({
@@ -219,28 +226,6 @@ export function SoporteStaff() {
       setErrorMsg(message);
       showToast({ tone: "danger", title: "No se pudo eliminar", message });
     },
-=======
-    onSuccess: async (_data, conversationId) => {
-      setErrorMsg("");
-      queryClient.setQueryData<SupportConversation[]>(["soporte", "staff", "conversaciones"], (current) =>
-        (current ?? []).filter((item) => item.id !== conversationId),
-      );
-      queryClient.setQueryData<SupportConversation[]>(["soporte", "cliente", "conversaciones"], (current) =>
-        (current ?? []).filter((item) => item.id !== conversationId),
-      );
-      if (selectedId === conversationId) {
-        setSelectedId(null);
-        setRespuesta("");
-      }
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
-        queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
-        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "detalle", conversationId] }),
-        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
-      ]);
-    },
-    onError: (error: Error) => setErrorMsg(error.message),
->>>>>>> 96e720aea6ff345874bc2d4a5783ddbfd91bc3e4
   });
 
   useEffect(() => {
@@ -280,14 +265,6 @@ export function SoporteStaff() {
     event.preventDefault();
     if (sendMutation.isPending || !respuesta.trim()) return;
     sendMutation.mutate();
-  }
-
-  function eliminarConversacionActiva() {
-    if (!activeConversation || deleteMutation.isPending) return;
-    if (!window.confirm(`¿Eliminar el chat de ${activeConversation.usuario.nombre}? Esta accion borra toda la conversacion.`)) {
-      return;
-    }
-    deleteMutation.mutate(activeConversation.id);
   }
 
   const activeConversation = detailQuery.data?.conversacion ?? null;
@@ -422,9 +399,8 @@ export function SoporteStaff() {
                       {activeConversation.prioridad === "alta" ? "Quitar prioridad" : "Prioritario"}
                     </button>
                     <button
-<<<<<<< HEAD
                       className="adm-btn-danger adm-btn-inline"
-                      disabled={deleteMutation.isPending}
+                      disabled={deleteMutation.isPending || priorityMutation.isPending}
                       onClick={() => {
                         const conversation = activeConversation;
                         confirmToast({
@@ -436,13 +412,6 @@ export function SoporteStaff() {
                           onConfirm: () => deleteMutation.mutate(conversation.id),
                         });
                       }}
-=======
-                      type="button"
-                      className="adm-btn-danger"
-                      style={{ padding: "0.55rem 0.85rem", fontSize: "0.82rem" }}
-                      onClick={eliminarConversacionActiva}
-                      disabled={deleteMutation.isPending || priorityMutation.isPending}
->>>>>>> 96e720aea6ff345874bc2d4a5783ddbfd91bc3e4
                     >
                       {deleteMutation.isPending ? "Eliminando..." : "Eliminar chat"}
                     </button>

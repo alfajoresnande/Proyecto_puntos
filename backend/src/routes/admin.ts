@@ -100,11 +100,24 @@ const MIME_TO_EXT: Record<string, string> = {
   "image/png":  ".png",
   "image/webp": ".webp",
 };
+const IMAGE_EXT_TO_MIME: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+};
+
+function getAllowedImageExtension(file: Express.Multer.File): string | null {
+  const mimeExt = MIME_TO_EXT[file.mimetype];
+  if (mimeExt) return mimeExt;
+  const originalExt = path.extname(file.originalname || "").toLowerCase();
+  return IMAGE_EXT_TO_MIME[originalExt] ? originalExt : null;
+}
 
 const storage = multer.diskStorage({
   destination: path.join(__dirname, "../../uploads"),
   filename: (_req, file, cb) => {
-    const ext = MIME_TO_EXT[file.mimetype];
+    const ext = getAllowedImageExtension(file);
     if (!ext) return cb(new Error("Tipo de archivo no permitido"), "");
     cb(null, `${uuidv4()}-${Date.now()}${ext}`);
   },
@@ -114,7 +127,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB máx
   fileFilter: (_req, file, cb) => {
-    if (MIME_TO_EXT[file.mimetype]) cb(null, true);
+    if (getAllowedImageExtension(file)) cb(null, true);
     else cb(new Error("Solo se permiten imágenes JPG, PNG o WEBP"));
   },
 });
