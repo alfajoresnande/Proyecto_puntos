@@ -9,6 +9,7 @@ import {
   restoreStockForCheckoutItems,
 } from "./stock";
 import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
+import { reverseCajaMovimientoForOrder } from "./cashRegister";
 
 export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
 export type OrderLifecycleResult = {
@@ -488,6 +489,11 @@ export async function cancelOrderUrgently(
   if (latestPayment?.estado === "iniciado") {
     await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
   }
+  await reverseCajaMovimientoForOrder(conn, {
+    orderId,
+    creadoPor,
+    descripcion: `Anulacion por cancelacion orden #${orderId}`,
+  });
 
   const cleanReason = reason.trim();
   const cleanRefundMessage = refundMessage?.trim() || "";

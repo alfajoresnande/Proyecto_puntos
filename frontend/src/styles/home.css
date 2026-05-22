@@ -678,6 +678,16 @@
   text-align: left;
 }
 
+.home-product-free-shipping {
+  color: #16633D;
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: left;
+  text-transform: uppercase;
+}
+
 .home-product-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

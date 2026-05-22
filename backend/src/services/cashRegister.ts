@@ -304,6 +304,90 @@ export async function registerCajaMovimiento(
   );
 }
 
+export async function reverseCajaMovimientoForOrder(
+  conn: Queryable,
+  input: {
+    orderId: number;
+    creadoPor?: number | null;
+    descripcion?: string | null;
+  },
+): Promise<{ reversed: boolean; movimientoId: number | null }> {
+  const original = await qOne<{
+    id: number;
+    caja_sesion_id: number;
+    medio_pago: CashPaymentMethod;
+    monto: number;
+    creado_por: number;
+    session_estado: "abierta" | "cerrada";
+    monto_cierre_declarado: number | null;
+  }>(
+    conn,
+    `SELECT cm.id, cm.caja_sesion_id, cm.medio_pago, cm.monto, cm.creado_por,
+            cs.estado AS session_estado, cs.monto_cierre_declarado
+     FROM caja_movimientos cm
+     JOIN caja_sesiones cs ON cs.id = cm.caja_sesion_id
+     WHERE cm.referencia_tipo = 'ordenes'
+       AND cm.referencia_id = ?
+       AND cm.tipo = 'venta'
+     ORDER BY cm.id DESC
+     LIMIT 1
+     FOR UPDATE`,
+    [input.orderId],
+  );
+  if (!original) return { reversed: false, movimientoId: null };
+
+  const existing = await qOne<{ id: number }>(
+    conn,
+    `SELECT id
+     FROM caja_movimientos
+     WHERE referencia_tipo = 'ordenes_cancelacion'
+       AND referencia_id = ?
+       AND tipo = 'gasto'
+     LIMIT 1
+     FOR UPDATE`,
+    [input.orderId],
+  );
+  if (existing) return { reversed: false, movimientoId: Number(existing.id) };
+
+  const created = await qRun(
+    conn,
+    `INSERT INTO caja_movimientos
+      (caja_sesion_id, tipo, referencia_tipo, referencia_id, medio_pago, monto, descripcion, creado_por)
+     VALUES (?, 'gasto', 'ordenes_cancelacion', ?, ?, ?, ?, ?)`,
+    [
+      Number(original.caja_sesion_id),
+      input.orderId,
+      normalizeCashPaymentMethod(original.medio_pago),
+      Number(original.monto),
+      input.descripcion?.trim() || `Anulacion venta local #${input.orderId}`,
+      input.creadoPor ?? Number(original.creado_por),
+    ],
+  );
+
+  if (original.session_estado === "cerrada") {
+    const summary = await getCajaSesionSummary(conn, Number(original.caja_sesion_id));
+    const montoDeclarado =
+      original.monto_cierre_declarado === null || original.monto_cierre_declarado === undefined
+        ? summary.efectivoSistema
+        : Number(original.monto_cierre_declarado);
+    await qRun(
+      conn,
+      `UPDATE caja_sesiones
+       SET monto_cierre_sistema = ?,
+           diferencia_cierre = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND estado = 'cerrada'`,
+      [
+        summary.efectivoSistema,
+        toMoney(montoDeclarado - summary.efectivoSistema),
+        Number(original.caja_sesion_id),
+      ],
+    );
+  }
+
+  return { reversed: true, movimientoId: Number(created.insertId) };
+}
+
 export async function getCajaSesionSummary(conn: Queryable, cajaSesionId: number): Promise<CajaSesionSummary> {
   const session = await qOne<{ monto_apertura: number }>(
     conn,

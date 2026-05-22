@@ -8,6 +8,7 @@ exports.closeStaleCajaSesiones = closeStaleCajaSesiones;
 exports.ensureDailyCajaSesion = ensureDailyCajaSesion;
 exports.openCajaSesion = openCajaSesion;
 exports.registerCajaMovimiento = registerCajaMovimiento;
+exports.reverseCajaMovimientoForOrder = reverseCajaMovimientoForOrder;
 exports.getCajaSesionSummary = getCajaSesionSummary;
 exports.closeCajaSesion = closeCajaSesion;
 const db_1 = require("../db");
@@ -172,6 +173,55 @@ async function registerCajaMovimiento(conn, input) {
         input.descripcion?.trim() || null,
         input.creadoPor,
     ]);
+}
+async function reverseCajaMovimientoForOrder(conn, input) {
+    const original = await (0, db_1.qOne)(conn, `SELECT cm.id, cm.caja_sesion_id, cm.medio_pago, cm.monto, cm.creado_por,
+            cs.estado AS session_estado, cs.monto_cierre_declarado
+     FROM caja_movimientos cm
+     JOIN caja_sesiones cs ON cs.id = cm.caja_sesion_id
+     WHERE cm.referencia_tipo = 'ordenes'
+       AND cm.referencia_id = ?
+       AND cm.tipo = 'venta'
+     ORDER BY cm.id DESC
+     LIMIT 1
+     FOR UPDATE`, [input.orderId]);
+    if (!original)
+        return { reversed: false, movimientoId: null };
+    const existing = await (0, db_1.qOne)(conn, `SELECT id
+     FROM caja_movimientos
+     WHERE referencia_tipo = 'ordenes_cancelacion'
+       AND referencia_id = ?
+       AND tipo = 'gasto'
+     LIMIT 1
+     FOR UPDATE`, [input.orderId]);
+    if (existing)
+        return { reversed: false, movimientoId: Number(existing.id) };
+    const created = await (0, db_1.qRun)(conn, `INSERT INTO caja_movimientos
+      (caja_sesion_id, tipo, referencia_tipo, referencia_id, medio_pago, monto, descripcion, creado_por)
+     VALUES (?, 'gasto', 'ordenes_cancelacion', ?, ?, ?, ?, ?)`, [
+        Number(original.caja_sesion_id),
+        input.orderId,
+        normalizeCashPaymentMethod(original.medio_pago),
+        Number(original.monto),
+        input.descripcion?.trim() || `Anulacion venta local #${input.orderId}`,
+        input.creadoPor ?? Number(original.creado_por),
+    ]);
+    if (original.session_estado === "cerrada") {
+        const summary = await getCajaSesionSummary(conn, Number(original.caja_sesion_id));
+        const montoDeclarado = original.monto_cierre_declarado === null || original.monto_cierre_declarado === undefined
+            ? summary.efectivoSistema
+            : Number(original.monto_cierre_declarado);
+        await (0, db_1.qRun)(conn, `UPDATE caja_sesiones
+       SET monto_cierre_sistema = ?,
+           diferencia_cierre = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND estado = 'cerrada'`, [
+            summary.efectivoSistema,
+            toMoney(montoDeclarado - summary.efectivoSistema),
+            Number(original.caja_sesion_id),
+        ]);
+    }
+    return { reversed: true, movimientoId: Number(created.insertId) };
 }
 async function getCajaSesionSummary(conn, cajaSesionId) {
     const session = await (0, db_1.qOne)(conn, "SELECT monto_apertura FROM caja_sesiones WHERE id = ? LIMIT 1", [cajaSesionId]);

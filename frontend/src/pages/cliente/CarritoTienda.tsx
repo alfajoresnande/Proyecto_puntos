@@ -19,6 +19,7 @@ type CartItem = {
   nombre: string;
   imagen_url: string | null;
   permite_envio?: number | boolean;
+  envio_gratis?: number | boolean;
   configuracion_tipo?: "simple" | "caja_sabores";
   capacidad_sabores?: number | null;
   sabores?: Array<{
@@ -36,6 +37,7 @@ type CartResponse = {
     total_dinero: number;
     total_puntos: number;
     total_puntos_ganados?: number;
+    envio_gratis_monto_minimo?: number;
   };
 };
 
@@ -419,9 +421,14 @@ export function CarritoTienda() {
     [cartItems],
   );
   const canUseShipping = noEnviables.length === 0;
+  const hasFreeShippingByProducts = canUseShipping && cartItems.length > 0 && cartItems.every((item) => item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1);
   const total = cartItems.reduce((acc, item) => acc + Number(item.subtotal_dinero ?? 0), 0);
+  const freeShippingMinimum = Number(cartQuery.data?.resumen.envio_gratis_monto_minimo ?? 0);
+  const hasFreeShippingByAmount = canUseShipping && freeShippingMinimum > 0 && total >= freeShippingMinimum;
+  const hasFreeShippingCart = hasFreeShippingByProducts || hasFreeShippingByAmount || Boolean(shippingQuoteQuery.data?.envio_gratis);
+  const freeShippingRemaining = freeShippingMinimum > 0 ? Math.max(0, freeShippingMinimum - total) : 0;
   const shippingQuote = deliveryMethod === "envio" ? shippingQuoteQuery.data : null;
-  const shippingCost = shippingQuote?.disponible ? Number(shippingQuote.costo_envio ?? 0) : 0;
+  const shippingCost = shippingQuote?.disponible ? (hasFreeShippingCart ? 0 : Number(shippingQuote.costo_envio ?? 0)) : 0;
   const totalConEnvio = Math.round((total + shippingCost + Number.EPSILON) * 100) / 100;
   const totalUnidades = cartItems.reduce((acc, item) => acc + Number(item.cantidad ?? 0), 0);
   const sucursales = sucursalesQuery.data ?? [];
@@ -886,6 +893,9 @@ export function CarritoTienda() {
                       </p>
                     ) : null}
                     <p style={{ margin: "0.1rem 0 0", color: "#8B5A30" }}>{money(item.subtotal_dinero)}</p>
+                    {item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1 ? (
+                      <p style={{ margin: "0.1rem 0 0", color: "#16633D", fontSize: "0.82rem", fontWeight: 800 }}>Envio gratis</p>
+                    ) : null}
                   </div>
                   {item.sabores?.length ? (
                     <div className="catalog-canje-item-qty">
@@ -932,7 +942,9 @@ export function CarritoTienda() {
                       {shippingQuoteQuery.isFetching
                         ? "Cotizando..."
                         : shippingQuote?.disponible
-                          ? money(shippingCost)
+                          ? hasFreeShippingCart
+                            ? "Gratis"
+                            : money(shippingCost)
                           : "-"}
                     </strong>
                   </p>
@@ -945,6 +957,13 @@ export function CarritoTienda() {
                   ) : selectedAddressId ? null : (
                     <p className="catalog-confirm-hint">Selecciona una direccion para cotizar el envio.</p>
                   )}
+                  {freeShippingMinimum > 0 && canUseShipping && !hasFreeShippingByProducts ? (
+                    hasFreeShippingByAmount ? (
+                      <p className="catalog-confirm-hint">Envio gratis aplicado por superar {money(freeShippingMinimum)} en productos.</p>
+                    ) : (
+                      <p className="catalog-confirm-hint">Te faltan {money(freeShippingRemaining)} para envio gratis.</p>
+                    )
+                  ) : null}
                 </>
               ) : null}
               <p>Total a pagar: <strong>{money(totalConEnvio)}</strong></p>
@@ -1016,7 +1035,7 @@ export function CarritoTienda() {
                 ) : null}
                 {selectedAddress && shippingQuote?.disponible ? (
                   <p className="catalog-confirm-hint">
-                    Envio {money(shippingCost)} - {shippingQuote.zona?.nombre}
+                    Envio {hasFreeShippingCart ? "gratis" : money(shippingCost)} - {shippingQuote.zona?.nombre}
                   </p>
                 ) : null}
                 {selectedAddress && shippingQuoteQuery.error instanceof Error ? (

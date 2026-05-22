@@ -80,6 +80,10 @@ function productDiscount(producto: Producto): number {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
+function hasFreeShipping(producto: Producto): boolean {
+  return Boolean(producto.permite_envio && producto.envio_gratis);
+}
+
 function productHasStock(producto: Producto): boolean {
   if (isCajaSabores(producto)) {
     const capacity = Number(producto.capacidad_sabores ?? 0);
@@ -1077,6 +1081,15 @@ export function TiendaOnline() {
                         <span>Precio</span>
                         <span className="cost">{money(producto.precio_dinero)}</span>
                       </div>
+                      {hasFreeShipping(producto) ? (
+                        <>
+                          <div className="product-card-divider" />
+                          <div className="product-card-row product-card-free-shipping-row">
+                            <span>Envio</span>
+                            <strong>Gratis</strong>
+                          </div>
+                        </>
+                      ) : null}
                       {productDiscount(producto) > 0 ? (
                         <>
                           <div className="product-card-divider" />
@@ -1300,6 +1313,15 @@ export function TiendaOnline() {
                   <span>Precio</span>
                   <span className="cost">{money(productoModal.precio_dinero)}</span>
                 </div>
+                {hasFreeShipping(productoModal) ? (
+                  <>
+                    <div className="product-card-divider" />
+                    <div className="product-card-row product-card-free-shipping-row">
+                      <span>Envio</span>
+                      <strong>Gratis</strong>
+                    </div>
+                  </>
+                ) : null}
                 {productDiscount(productoModal) > 0 ? (
                   <>
                     <div className="product-card-divider" />

@@ -18,7 +18,7 @@ router.get("/destacados", async (req, res) => {
         res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
         const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
-            precio_dinero, precio_puntos, puntos_para_canjear, destacado_home
+            precio_dinero, precio_puntos, puntos_para_canjear, destacado_home, permite_envio, envio_gratis
      FROM productos
      WHERE activo = 1
        AND destacado_home = 1
@@ -76,6 +76,8 @@ router.get("/destacados", async (req, res) => {
                 tipo_cliente_precio: pricing.tipoCliente,
                 precio_puntos: row.precio_puntos,
                 puntos_para_canjear: row.puntos_para_canjear,
+                permite_envio: Boolean(row.permite_envio),
+                envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
             };
         })
             .filter((producto) => hasOwnProductImage(producto.imagen_url, producto.imagenes))
@@ -130,7 +132,7 @@ router.get("/", async (req, res) => {
             ${hasSucursalFilter
         ? "COALESCE((SELECT i.stock_reservado FROM inventario_sucursal i WHERE i.producto_id = productos.id AND i.sucursal_id = ? LIMIT 1), 0)"
         : "stock_reservado"} AS stock_reservado_sucursal,
-            track_stock, permite_envio, permite_retiro_local
+            track_stock, permite_envio, envio_gratis, permite_retiro_local
      FROM productos
      WHERE ${where}
      ORDER BY nombre ASC`, hasSucursalFilter ? [sucursalId, sucursalId, ...params] : params);
@@ -255,6 +257,7 @@ router.get("/", async (req, res) => {
             imagenes,
             track_stock: Boolean(row.track_stock),
             permite_envio: Boolean(row.permite_envio),
+            envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
             permite_retiro_local: Boolean(row.permite_retiro_local),
         };
     }));

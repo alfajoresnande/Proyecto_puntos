@@ -296,6 +296,10 @@ function buildShippingQuoteSnapshot(quote) {
         zona_id: quote.zona.id,
         zona_nombre: quote.zona.nombre,
         costo_envio: quote.costo_envio,
+        costo_envio_original: quote.costo_envio_original ?? quote.costo_envio,
+        envio_gratis: Boolean(quote.envio_gratis),
+        envio_gratis_motivo: quote.envio_gratis_motivo ?? null,
+        envio_gratis_monto_minimo: quote.envio_gratis_monto_minimo ?? null,
         prioridad: quote.zona.prioridad,
     };
 }

@@ -89,10 +89,18 @@ BEGIN
 
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'envio_gratis'
+  ) THEN
+    ALTER TABLE productos
+      ADD COLUMN envio_gratis TINYINT(1) NOT NULL DEFAULT 0 AFTER permite_envio;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'permite_retiro_local'
   ) THEN
     ALTER TABLE productos
-      ADD COLUMN permite_retiro_local TINYINT(1) NOT NULL DEFAULT 1 AFTER permite_envio;
+      ADD COLUMN permite_retiro_local TINYINT(1) NOT NULL DEFAULT 1 AFTER envio_gratis;
   END IF;
 
   IF NOT EXISTS (
@@ -110,6 +118,10 @@ BEGIN
   UPDATE productos
   SET puntos_para_canjear = COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos),
       puntaje_al_comprar = COALESCE(puntaje_al_comprar, puntos_acumulables);
+
+  UPDATE productos
+  SET envio_gratis = 0
+  WHERE permite_envio = 0;
 
   CREATE TABLE IF NOT EXISTS sucursales (
     id INT PRIMARY KEY AUTO_INCREMENT,
@@ -338,6 +350,15 @@ BEGIN
 
   ALTER TABLE soporte_conversaciones
     MODIFY estado ENUM('abierta','respondida','cerrada','archivada') NOT NULL DEFAULT 'abierta';
+
+  INSERT INTO configuracion (clave, valor, descripcion)
+  VALUES (
+    'envio_gratis_monto_minimo',
+    '0',
+    'Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla'
+  )
+  ON DUPLICATE KEY UPDATE
+    descripcion = VALUES(descripcion);
 END $$
 
 DELIMITER ;

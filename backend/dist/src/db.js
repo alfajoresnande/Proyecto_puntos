@@ -416,11 +416,17 @@ async function ensureProductosEcommerceSchema() {
     if (!permiteEnvioRows.length) {
         await exports.pool.query("ALTER TABLE productos ADD COLUMN permite_envio TINYINT(1) NOT NULL DEFAULT 0 AFTER track_stock");
     }
+    const [envioGratisRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'envio_gratis'
+     LIMIT 1`);
+    if (!envioGratisRows.length) {
+        await exports.pool.query("ALTER TABLE productos ADD COLUMN envio_gratis TINYINT(1) NOT NULL DEFAULT 0 AFTER permite_envio");
+    }
     const [permiteRetiroRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'permite_retiro_local'
      LIMIT 1`);
     if (!permiteRetiroRows.length) {
-        await exports.pool.query("ALTER TABLE productos ADD COLUMN permite_retiro_local TINYINT(1) NOT NULL DEFAULT 1 AFTER permite_envio");
+        await exports.pool.query("ALTER TABLE productos ADD COLUMN permite_retiro_local TINYINT(1) NOT NULL DEFAULT 1 AFTER envio_gratis");
     }
     const [skuRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'sku'
@@ -1171,6 +1177,31 @@ async function ensureCashOperationsSchema() {
       INDEX idx_caja_movimientos_referencia (referencia_tipo, referencia_id),
       INDEX idx_caja_movimientos_medio (caja_sesion_id, medio_pago)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    const [cancelledLocalSaleCashRows] = await exports.pool.query(`SELECT cm.caja_sesion_id, cm.referencia_id, cm.medio_pago, cm.monto, cm.creado_por
+     FROM caja_movimientos cm
+     JOIN ordenes o ON o.id = cm.referencia_id
+     LEFT JOIN caja_movimientos rev
+       ON rev.referencia_tipo = 'ordenes_cancelacion'
+      AND rev.referencia_id = cm.referencia_id
+      AND rev.tipo = 'gasto'
+     WHERE cm.referencia_tipo = 'ordenes'
+       AND cm.tipo = 'venta'
+       AND o.estado = 'cancelada'
+       AND o.canal IN ('admin', 'vendedor')
+       AND o.tipo_orden = 'venta'
+       AND rev.id IS NULL`);
+    for (const row of cancelledLocalSaleCashRows) {
+        await exports.pool.query(`INSERT INTO caja_movimientos
+        (caja_sesion_id, tipo, referencia_tipo, referencia_id, medio_pago, monto, descripcion, creado_por)
+       VALUES (?, 'gasto', 'ordenes_cancelacion', ?, ?, ?, ?, ?)`, [
+            row.caja_sesion_id,
+            row.referencia_id,
+            row.medio_pago,
+            row.monto,
+            `Anulacion venta local #${row.referencia_id}`,
+            row.creado_por,
+        ]);
+    }
     await exports.pool.query(`CREATE TABLE IF NOT EXISTS gastos (
       id INT PRIMARY KEY AUTO_INCREMENT,
       sucursal_id INT NOT NULL,

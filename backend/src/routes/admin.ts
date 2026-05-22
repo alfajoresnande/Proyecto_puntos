@@ -2189,6 +2189,7 @@ router.get("/productos", async (_req, res) => {
     stock_reservado: number;
     track_stock: number;
     permite_envio: number;
+    envio_gratis: number;
     permite_retiro_local: number;
     puntos_requeridos: number;
     puntos_acumulables: number | null;
@@ -2199,7 +2200,7 @@ router.get("/productos", async (_req, res) => {
   }>(pool,
     `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
-            track_stock, permite_envio, permite_retiro_local,
+            track_stock, permite_envio, envio_gratis, permite_retiro_local,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at
      FROM productos
      ORDER BY created_at DESC`
@@ -2254,6 +2255,7 @@ router.get("/productos", async (_req, res) => {
         activo: Boolean(row.activo),
         track_stock: Boolean(row.track_stock),
         permite_envio: Boolean(row.permite_envio),
+        envio_gratis: Boolean(row.envio_gratis),
         permite_retiro_local: Boolean(row.permite_retiro_local),
         destacado_home: Boolean(row.destacado_home),
         sabor_ids: sabores.map((sabor) => sabor.id),
@@ -2311,6 +2313,7 @@ router.post("/productos", async (req, res) => {
     stock_disponible:   z.number().int().min(0).optional(),
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
+    envio_gratis:       z.boolean().optional(),
     permite_retiro_local: z.boolean().optional(),
     inventario_sucursales: z.array(inventarioSucursalSchema).optional(),
   });
@@ -2320,7 +2323,7 @@ router.post("/productos", async (req, res) => {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
     tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids,
     precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
-    stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
+    stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
   const configuracionTipo = configuracion_tipo ?? "simple";
   const isCajaSabores = configuracionTipo === "caja_sabores";
@@ -2336,6 +2339,8 @@ router.post("/productos", async (req, res) => {
   const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
   const precioDineroFinal = precio_dinero ?? null;
   const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+  const permiteEnvioFinal = Boolean(permite_envio);
+  const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
 
   if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
     res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
@@ -2366,8 +2371,8 @@ router.post("/productos", async (req, res) => {
       `INSERT INTO productos
         (nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
          precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
-         stock_disponible, stock_reservado, track_stock, permite_envio, permite_retiro_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+         stock_disponible, stock_reservado, track_stock, permite_envio, envio_gratis, permite_retiro_local)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         nombre,
         sku?.trim() || null,
@@ -2386,7 +2391,8 @@ router.post("/productos", async (req, res) => {
         destacado_home ? 1 : 0,
         productStockDisponible,
         trackStockFinal ? 1 : 0,
-        permite_envio ? 1 : 0,
+        permiteEnvioFinal ? 1 : 0,
+        envioGratisFinal ? 1 : 0,
         permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
       ]
     );
@@ -2446,6 +2452,7 @@ router.put("/productos/:id", async (req, res) => {
     stock_disponible:   z.number().int().min(0).optional(),
     track_stock:        z.boolean().optional(),
     permite_envio:      z.boolean().optional(),
+    envio_gratis:       z.boolean().optional(),
     permite_retiro_local: z.boolean().optional(),
     inventario_sucursales: z.array(inventarioSucursalSchema).optional(),
   });
@@ -2455,7 +2462,7 @@ router.put("/productos/:id", async (req, res) => {
     nombre, sku, descripcion, imagen_url, imagenes, categoria,
     tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids,
     precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
-    stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales,
+    stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales,
   } = parsed.data;
   const configuracionTipo = configuracion_tipo ?? "simple";
   const isCajaSabores = configuracionTipo === "caja_sabores";
@@ -2468,6 +2475,8 @@ router.put("/productos/:id", async (req, res) => {
   const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
   const precioDineroFinal = precio_dinero ?? null;
   const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+  const permiteEnvioFinal = Boolean(permite_envio);
+  const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
 
   if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
     res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
@@ -2512,7 +2521,7 @@ router.put("/productos/:id", async (req, res) => {
       `UPDATE productos
        SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?, configuracion_tipo=?, capacidad_sabores=?,
            precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?, destacado_home=?,
-           stock_disponible=?, track_stock=?, permite_envio=?, permite_retiro_local=?
+           stock_disponible=?, track_stock=?, permite_envio=?, envio_gratis=?, permite_retiro_local=?
        WHERE id=?`,
       [
         nombre,
@@ -2532,7 +2541,8 @@ router.put("/productos/:id", async (req, res) => {
         destacado_home ? 1 : 0,
         productStockDisponible,
         trackStockFinal ? 1 : 0,
-        permite_envio ? 1 : 0,
+        permiteEnvioFinal ? 1 : 0,
+        envioGratisFinal ? 1 : 0,
         permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
         id,
       ]

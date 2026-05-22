@@ -203,6 +203,7 @@ CREATE TABLE IF NOT EXISTS productos (
     stock_reservado     INT             NOT NULL DEFAULT 0,
     track_stock         TINYINT(1)      NOT NULL DEFAULT 1,
     permite_envio       TINYINT(1)      NOT NULL DEFAULT 0,
+    envio_gratis        TINYINT(1)      NOT NULL DEFAULT 0,
     permite_retiro_local TINYINT(1)     NOT NULL DEFAULT 1,
     activo              TINYINT(1)      NOT NULL DEFAULT 1,
     created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -711,7 +712,9 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('lugar_retiro_canje', 'Corrientes, Argentina',
         'Lugar físico donde el cliente debe retirar productos canjeados'),
     ('longitud_codigo_invitacion', '9',
-        'Longitud del código de invitación generado automáticamente')
+        'Longitud del código de invitación generado automáticamente'),
+    ('envio_gratis_monto_minimo', '0',
+        'Monto mínimo de productos para que el envío sea gratis. 0 desactiva la regla')
 ON DUPLICATE KEY UPDATE valor = VALUES(valor);
 
 

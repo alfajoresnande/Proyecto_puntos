@@ -156,6 +156,7 @@ type CarritoItemDB = {
   imagen_url: string | null;
   track_stock: number;
   permite_envio: number;
+  envio_gratis: number;
   sabores?: ItemFlavorDetalle[];
 };
 
@@ -266,6 +267,7 @@ const MAX_INVITE_CODE_LENGTH = 20;
 const REDEEM_CODE_LENGTH = 9;
 const REDEEM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MINIMUM_ALLOWED_AGE_YEARS = 13;
+const FREE_SHIPPING_MINIMUM_CONFIG_KEY = "envio_gratis_monto_minimo";
 
 function makeRedeemCode(length = REDEEM_CODE_LENGTH): string {
   return Array.from({ length }, () => REDEEM_CODE_CHARS[crypto.randomInt(REDEEM_CODE_CHARS.length)]).join("");
@@ -363,6 +365,59 @@ function buildLugarRetiro(sucursal: SucursalRetiro): string {
 
 function toMoney(n: number): number {
   return Number((Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2));
+}
+
+type FreeShippingDecision = {
+  aplica: boolean;
+  motivo: "productos" | "monto_minimo" | null;
+  montoMinimo: number;
+};
+
+function allShippedItemsHaveFreeShipping(items: Array<{ envio_gratis?: number | boolean }>): boolean {
+  return items.length > 0 && items.every((item) => item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1);
+}
+
+async function getFreeShippingMinimum(conn: Queryable = pool): Promise<number> {
+  const row = await qOne<{ valor: string }>(
+    conn,
+    "SELECT valor FROM configuracion WHERE clave = ? LIMIT 1",
+    [FREE_SHIPPING_MINIMUM_CONFIG_KEY],
+  );
+  const parsed = Number(row?.valor ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? toMoney(parsed) : 0;
+}
+
+function buildFreeShippingDecision(
+  items: Array<{ envio_gratis?: number | boolean }>,
+  subtotalDineroProductos: number,
+  montoMinimo: number,
+): FreeShippingDecision {
+  if (allShippedItemsHaveFreeShipping(items)) {
+    return { aplica: true, motivo: "productos", montoMinimo };
+  }
+  if (montoMinimo > 0 && subtotalDineroProductos >= montoMinimo) {
+    return { aplica: true, motivo: "monto_minimo", montoMinimo };
+  }
+  return { aplica: false, motivo: null, montoMinimo };
+}
+
+function applyFreeShippingToQuote(quote: ShippingQuote, decision: FreeShippingDecision): ShippingQuote {
+  if (!decision.aplica) {
+    return {
+      ...quote,
+      envio_gratis: false,
+      envio_gratis_monto_minimo: decision.montoMinimo > 0 ? decision.montoMinimo : null,
+    };
+  }
+
+  return {
+    ...quote,
+    costo_envio: 0,
+    costo_envio_original: quote.costo_envio,
+    envio_gratis: true,
+    envio_gratis_motivo: decision.motivo,
+    envio_gratis_monto_minimo: decision.montoMinimo > 0 ? decision.montoMinimo : null,
+  };
 }
 
 function toDateOnly(value: unknown): string | null {
@@ -635,7 +690,7 @@ async function getCarritoItems(conn: Queryable, usuarioId: number): Promise<Carr
     conn,
     `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra, ci.config_hash,
             ci.precio_dinero_unit, ci.precio_puntos_unit, ci.puntaje_al_comprar_unitario, ci.subtotal_dinero, ci.subtotal_puntos,
-            p.nombre, p.tipo_producto, p.configuracion_tipo, p.capacidad_sabores, p.imagen_url, p.track_stock, p.permite_envio
+            p.nombre, p.tipo_producto, p.configuracion_tipo, p.capacidad_sabores, p.imagen_url, p.track_stock, p.permite_envio, p.envio_gratis
      FROM carrito_items ci
      JOIN carritos c ON c.id = ci.carrito_id
      JOIN productos p ON p.id = ci.producto_id
@@ -687,6 +742,7 @@ async function getCarritoItems(conn: Queryable, usuarioId: number): Promise<Carr
     capacidad_sabores: row.capacidad_sabores === null ? null : Number(row.capacidad_sabores),
     track_stock: Number(row.track_stock ?? 0),
     permite_envio: Number(row.permite_envio ?? 0),
+    envio_gratis: Number(row.permite_envio ?? 0) === 1 ? Number(row.envio_gratis ?? 0) : 0,
     sabores: flavorMap.get(Number(row.id)) ?? [],
   }));
 }
@@ -1534,6 +1590,7 @@ router.get("/carrito", async (req, res) => {
   const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
   const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
   const totalPuntosGanados = items.reduce((acc, item) => acc + (Number(item.cantidad || 0) * Number(item.puntaje_al_comprar_unitario || 0)), 0);
+  const envioGratisMontoMinimo = await getFreeShippingMinimum(pool);
 
   res.json({
     items,
@@ -1543,6 +1600,7 @@ router.get("/carrito", async (req, res) => {
       total_dinero: totalDinero,
       total_puntos: 0,
       total_puntos_ganados: totalPuntosGanados,
+      envio_gratis_monto_minimo: envioGratisMontoMinimo,
     },
   });
 });
@@ -1826,7 +1884,10 @@ router.get("/checkout/shipping-quote", async (req, res) => {
       return;
     }
     const quote = await quoteShippingForCoordinates(pool, address.lat, address.lng);
-    res.json(quote);
+    const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
+    const subtotalDineroProductos = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
+    const envioGratisMontoMinimo = await getFreeShippingMinimum(pool);
+    res.json(applyFreeShippingToQuote(quote, buildFreeShippingDecision(items, subtotalDineroProductos, envioGratisMontoMinimo)));
   } catch (err) {
     if (err instanceof ShippingZoneError) {
       res.status(err.status).json({ error: err.message });
@@ -1949,6 +2010,13 @@ router.post("/checkout/preview", async (req, res) => {
     }
 
     const subtotalDineroProductos = toMoney(itemsEvaluados.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
+    if (shippingQuote) {
+      const envioGratisMontoMinimo = await getFreeShippingMinimum(conn);
+      shippingQuote = applyFreeShippingToQuote(
+        shippingQuote,
+        buildFreeShippingDecision(itemsEvaluados, subtotalDineroProductos, envioGratisMontoMinimo),
+      );
+    }
     const costoEnvio = toMoney(shippingQuote?.costo_envio ?? 0);
     const totalDinero = toMoney(subtotalDineroProductos + costoEnvio);
     const totalUnidades = itemsEvaluados.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
@@ -2109,6 +2177,13 @@ router.post("/checkout/confirm", async (req, res) => {
     }
 
     const subtotalDineroProductos = toMoney(itemsNormalizados.reduce((acc, item) => acc + item.subtotal_dinero, 0));
+    if (shippingQuote) {
+      const envioGratisMontoMinimo = await getFreeShippingMinimum(conn);
+      shippingQuote = applyFreeShippingToQuote(
+        shippingQuote,
+        buildFreeShippingDecision(items, subtotalDineroProductos, envioGratisMontoMinimo),
+      );
+    }
     const costoEnvio = toMoney(shippingQuote?.costo_envio ?? 0);
     const totalDinero = toMoney(subtotalDineroProductos + costoEnvio);
     const totalPuntos = 0;

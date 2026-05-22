@@ -1066,6 +1066,17 @@ body.catalogo-background .pagina-page {
   color: #3D1A02;               /* ← color del número de puntos requeridos */
 }
 
+.product-card-free-shipping-row {
+  color: #1F7A4D;
+  font-weight: 800;
+}
+
+.product-card-free-shipping-row strong {
+  color: #16633D;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
 .product-card-row .earn { color: #6B3E26; }
 
 .product-card-points-tile {

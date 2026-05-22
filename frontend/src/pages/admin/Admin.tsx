@@ -472,6 +472,7 @@ type ConfiguracionDraft = {
   puntos_referido_invitador: string;
   puntos_referido_invitado: string;
   longitud_codigo_invitacion: string;
+  envio_gratis_monto_minimo: string;
   pedido_efectivo_dias_vigencia: string;
   empresa_dias_habiles_retiro: string;
   empresa_horario_retiro: string;
@@ -598,6 +599,7 @@ type ProductoForm = {
   destacado_home: boolean;
   track_stock: boolean;
   permite_envio: boolean;
+  envio_gratis: boolean;
   permite_retiro_local: boolean;
   inventario_sucursales: Record<string, number | null>;
   imagenes: string[];
@@ -900,6 +902,7 @@ function emptyProductoForm(): ProductoForm {
     destacado_home: false,
     track_stock: true,
     permite_envio: false,
+    envio_gratis: false,
     permite_retiro_local: true,
     inventario_sucursales: {},
     imagenes: [],
@@ -1447,6 +1450,7 @@ export function Admin() {
     puntos_referido_invitador: "50",
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
+    envio_gratis_monto_minimo: "0",
     pedido_efectivo_dias_vigencia: "3",
     empresa_dias_habiles_retiro: "Lunes a viernes",
     empresa_horario_retiro: "08:00 a 18:00",
@@ -1748,6 +1752,7 @@ export function Admin() {
       puntos_referido_invitador: getConfig("puntos_referido_invitador", "50"),
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
+      envio_gratis_monto_minimo: getConfig("envio_gratis_monto_minimo", "0"),
       pedido_efectivo_dias_vigencia: getConfig("pedido_efectivo_dias_vigencia", "3"),
       empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
@@ -2586,6 +2591,7 @@ export function Admin() {
           destacado_home: nuevoProducto.destacado_home,
           track_stock: nuevoProducto.configuracion_tipo === "caja_sabores" ? false : nuevoProducto.track_stock,
           permite_envio: nuevoProducto.permite_envio,
+          envio_gratis: nuevoProducto.permite_envio && nuevoProducto.envio_gratis,
           permite_retiro_local: nuevoProducto.permite_retiro_local,
           inventario_sucursales: productoInventoryPayload(nuevoProducto, sucursales),
           imagenes,
@@ -2627,6 +2633,7 @@ export function Admin() {
       destacado_home: producto.destacado_home ?? false,
       track_stock: producto.track_stock ?? true,
       permite_envio: producto.permite_envio ?? false,
+      envio_gratis: Boolean(producto.permite_envio && producto.envio_gratis),
       permite_retiro_local: producto.permite_retiro_local ?? true,
       inventario_sucursales: inventoryDraftFromRows(inventarioPorProducto.get(producto.id), sucursales),
       imagenes: normalizeImageList(producto.imagenes ?? (producto.imagen_url ? [producto.imagen_url] : [])),
@@ -2679,6 +2686,7 @@ export function Admin() {
           destacado_home: editDraft.destacado_home,
           track_stock: editDraft.configuracion_tipo === "caja_sabores" ? false : editDraft.track_stock,
           permite_envio: editDraft.permite_envio,
+          envio_gratis: editDraft.permite_envio && editDraft.envio_gratis,
           permite_retiro_local: editDraft.permite_retiro_local,
           inventario_sucursales: productoInventoryPayload(editDraft, sucursales),
           imagenes,
@@ -2812,7 +2820,14 @@ export function Admin() {
           : `Orden #${cancelacionOrden.orden.id} cancelada y cliente notificado.`,
       );
       setCancelacionOrden(null);
-      await refreshQueries([["admin", "ordenes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+      await refreshQueries([
+        ["admin", "ordenes"],
+        ["admin", "inventario"],
+        ["admin", "movimientos-stock"],
+        ["admin", "movimientos"],
+        ["admin", "caja-actual"],
+        ["admin", "caja-sesiones"],
+      ]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -3769,6 +3784,7 @@ export function Admin() {
     const puntosInvitador = Number(configDraft.puntos_referido_invitador);
     const puntosInvitado = Number(configDraft.puntos_referido_invitado);
     const longitudCodigoInvitacion = Number(configDraft.longitud_codigo_invitacion);
+    const envioGratisMontoMinimo = Number(configDraft.envio_gratis_monto_minimo);
     const pedidoEfectivoDiasVigencia = Number(configDraft.pedido_efectivo_dias_vigencia);
     const empresaDiasHabilesRetiro = configDraft.empresa_dias_habiles_retiro.trim();
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
@@ -3788,6 +3804,10 @@ export function Admin() {
     }
     if (!Number.isInteger(longitudCodigoInvitacion) || longitudCodigoInvitacion < 6 || longitudCodigoInvitacion > 20) {
       setConfigErr("La longitud del codigo de invitacion debe ser un entero entre 6 y 20.");
+      return;
+    }
+    if (!Number.isFinite(envioGratisMontoMinimo) || envioGratisMontoMinimo < 0 || envioGratisMontoMinimo > 999999999) {
+      setConfigErr("El monto minimo para envio gratis debe ser un numero mayor o igual a 0.");
       return;
     }
     if (!Number.isInteger(pedidoEfectivoDiasVigencia) || pedidoEfectivoDiasVigencia < 1 || pedidoEfectivoDiasVigencia > 30) {
@@ -3829,6 +3849,11 @@ export function Admin() {
           clave: "longitud_codigo_invitacion",
           valor: String(longitudCodigoInvitacion),
           descripcion: "Longitud del codigo de invitacion generado automaticamente.",
+        },
+        {
+          clave: "envio_gratis_monto_minimo",
+          valor: String(Math.round((envioGratisMontoMinimo + Number.EPSILON) * 100) / 100),
+          descripcion: "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
         },
         {
           clave: "pedido_efectivo_dias_vigencia",
@@ -4411,6 +4436,19 @@ export function Admin() {
                       placeholder="Ej: 3"
                     />
                     <p className="adm-field-help">Cantidad de dias que se reserva un pedido en efectivo antes de expirar si el cliente no se presenta.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Envio gratis desde</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="adm-input"
+                      value={configDraft.envio_gratis_monto_minimo}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, envio_gratis_monto_minimo: event.target.value }))}
+                      placeholder="Ej: 50000"
+                    />
+                    <p className="adm-field-help">Subtotal minimo de productos para bonificar el envio. Usa 0 para desactivar esta regla.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Dias habiles de retiro</label>
@@ -5045,8 +5083,20 @@ export function Admin() {
                     Retiro en sucursal
                   </label>
                   <label className="adm-check-row">
-                    <input type="checkbox" checked={nuevoProducto.permite_envio} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, permite_envio: event.target.checked }))} />
+                    <input
+                      type="checkbox"
+                      checked={nuevoProducto.permite_envio}
+                      onChange={(event) => setNuevoProducto((prev) => ({ ...prev, permite_envio: event.target.checked, envio_gratis: event.target.checked ? prev.envio_gratis : false }))}
+                    />
                     Permite envio
+                  </label>
+                  <label className="adm-check-row">
+                    <input
+                      type="checkbox"
+                      checked={nuevoProducto.envio_gratis}
+                      onChange={(event) => setNuevoProducto((prev) => ({ ...prev, envio_gratis: event.target.checked, permite_envio: event.target.checked ? true : prev.permite_envio }))}
+                    />
+                    Envio gratis
                   </label>
                 </div>
 
@@ -5310,8 +5360,20 @@ export function Admin() {
                             Retiro en sucursal
                           </label>
                           <label className="adm-check-row">
-                            <input type="checkbox" checked={editDraft.permite_envio} onChange={(event) => setEditDraft((prev) => ({ ...prev, permite_envio: event.target.checked }))} />
+                            <input
+                              type="checkbox"
+                              checked={editDraft.permite_envio}
+                              onChange={(event) => setEditDraft((prev) => ({ ...prev, permite_envio: event.target.checked, envio_gratis: event.target.checked ? prev.envio_gratis : false }))}
+                            />
                             Permite envio
+                          </label>
+                          <label className="adm-check-row">
+                            <input
+                              type="checkbox"
+                              checked={editDraft.envio_gratis}
+                              onChange={(event) => setEditDraft((prev) => ({ ...prev, envio_gratis: event.target.checked, permite_envio: event.target.checked ? true : prev.permite_envio }))}
+                            />
+                            Envio gratis
                           </label>
                         </div>
 

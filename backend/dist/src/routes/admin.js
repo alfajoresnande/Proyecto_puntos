@@ -1809,7 +1809,7 @@ router.patch("/sabores/:id/activo", async (req, res) => {
 router.get("/productos", async (_req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
-            track_stock, permite_envio, permite_retiro_local,
+            track_stock, permite_envio, envio_gratis, permite_retiro_local,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at
      FROM productos
      ORDER BY created_at DESC`);
@@ -1849,6 +1849,7 @@ router.get("/productos", async (_req, res) => {
             activo: Boolean(row.activo),
             track_stock: Boolean(row.track_stock),
             permite_envio: Boolean(row.permite_envio),
+            envio_gratis: Boolean(row.envio_gratis),
             permite_retiro_local: Boolean(row.permite_retiro_local),
             destacado_home: Boolean(row.destacado_home),
             sabor_ids: sabores.map((sabor) => sabor.id),
@@ -1907,6 +1908,7 @@ router.post("/productos", async (req, res) => {
         stock_disponible: zod_1.z.number().int().min(0).optional(),
         track_stock: zod_1.z.boolean().optional(),
         permite_envio: zod_1.z.boolean().optional(),
+        envio_gratis: zod_1.z.boolean().optional(),
         permite_retiro_local: zod_1.z.boolean().optional(),
         inventario_sucursales: zod_1.z.array(inventarioSucursalSchema).optional(),
     });
@@ -1915,7 +1917,7 @@ router.post("/productos", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
     const configuracionTipo = configuracion_tipo ?? "simple";
     const isCajaSabores = configuracionTipo === "caja_sabores";
     const flavorIds = normalizeFlavorIds(sabor_ids);
@@ -1930,6 +1932,8 @@ router.post("/productos", async (req, res) => {
     const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
     const precioDineroFinal = precio_dinero ?? null;
     const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+    const permiteEnvioFinal = Boolean(permite_envio);
+    const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
     if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
         res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
         return;
@@ -1956,8 +1960,8 @@ router.post("/productos", async (req, res) => {
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO productos
         (nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
          precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
-         stock_disponible, stock_reservado, track_stock, permite_envio, permite_retiro_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`, [
+         stock_disponible, stock_reservado, track_stock, permite_envio, envio_gratis, permite_retiro_local)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`, [
             nombre,
             sku?.trim() || null,
             descripcion ?? null,
@@ -1975,7 +1979,8 @@ router.post("/productos", async (req, res) => {
             destacado_home ? 1 : 0,
             productStockDisponible,
             trackStockFinal ? 1 : 0,
-            permite_envio ? 1 : 0,
+            permiteEnvioFinal ? 1 : 0,
+            envioGratisFinal ? 1 : 0,
             permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
         ]);
         await replaceProductImages(conn, insertId, imageUrls);
@@ -2034,6 +2039,7 @@ router.put("/productos/:id", async (req, res) => {
         stock_disponible: zod_1.z.number().int().min(0).optional(),
         track_stock: zod_1.z.boolean().optional(),
         permite_envio: zod_1.z.boolean().optional(),
+        envio_gratis: zod_1.z.boolean().optional(),
         permite_retiro_local: zod_1.z.boolean().optional(),
         inventario_sucursales: zod_1.z.array(inventarioSucursalSchema).optional(),
     });
@@ -2042,7 +2048,7 @@ router.put("/productos/:id", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
     const configuracionTipo = configuracion_tipo ?? "simple";
     const isCajaSabores = configuracionTipo === "caja_sabores";
     const flavorIds = normalizeFlavorIds(sabor_ids);
@@ -2054,6 +2060,8 @@ router.put("/productos/:id", async (req, res) => {
     const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
     const precioDineroFinal = precio_dinero ?? null;
     const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+    const permiteEnvioFinal = Boolean(permite_envio);
+    const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
     if ((tipoProducto === "canje" || tipoProducto === "mixto") && (!precioPuntosFinal || precioPuntosFinal <= 0)) {
         res.status(400).json({ error: "Debes indicar un precio de puntos valido para canje/mixto." });
         return;
@@ -2089,7 +2097,7 @@ router.put("/productos/:id", async (req, res) => {
         const { affectedRows } = await (0, db_1.qRun)(conn, `UPDATE productos
        SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?, configuracion_tipo=?, capacidad_sabores=?,
            precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?, destacado_home=?,
-           stock_disponible=?, track_stock=?, permite_envio=?, permite_retiro_local=?
+           stock_disponible=?, track_stock=?, permite_envio=?, envio_gratis=?, permite_retiro_local=?
        WHERE id=?`, [
             nombre,
             sku?.trim() || null,
@@ -2108,7 +2116,8 @@ router.put("/productos/:id", async (req, res) => {
             destacado_home ? 1 : 0,
             productStockDisponible,
             trackStockFinal ? 1 : 0,
-            permite_envio ? 1 : 0,
+            permiteEnvioFinal ? 1 : 0,
+            envioGratisFinal ? 1 : 0,
             permite_retiro_local === undefined ? 1 : (permite_retiro_local ? 1 : 0),
             id,
         ]);

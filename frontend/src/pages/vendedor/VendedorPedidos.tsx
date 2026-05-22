@@ -528,6 +528,7 @@ export function VendedorPedidos() {
       setCancelacionOrden(null);
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] });
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "productos-locales"] });
+      await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual"] });
     },
     onError: (err: Error) => {
       setOrdenMsg("");

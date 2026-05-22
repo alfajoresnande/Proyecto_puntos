@@ -48,6 +48,10 @@ function rewardPoints(producto: Producto): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+function hasFreeShipping(producto: Producto): boolean {
+  return Boolean(producto.permite_envio && producto.envio_gratis);
+}
+
 export function Home() {
   const user = useAuthStore((state) => state.user);
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -310,6 +314,9 @@ export function Home() {
                         <span>Precio</span>
                         <strong>{money(producto.precio_dinero)}</strong>
                       </div>
+                      {hasFreeShipping(producto) ? (
+                        <span className="home-product-free-shipping">Envio gratis</span>
+                      ) : null}
                       {rewardPoints(producto) > 0 ? (
                         <span className="home-product-earned-points">Sumás {rewardPoints(producto)} puntos con este producto</span>
                       ) : null}

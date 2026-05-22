@@ -8,6 +8,7 @@ const db_1 = require("../db");
 const paymentFees_1 = require("./paymentFees");
 const stock_1 = require("./stock");
 const points_1 = require("./points");
+const cashRegister_1 = require("./cashRegister");
 function checkoutStockItems(items, descripcion) {
     return items
         .filter((item) => Number(item.track_stock ?? 0) === 1)
@@ -316,6 +317,11 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
     if (latestPayment?.estado === "iniciado") {
         await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [orderId]);
     }
+    await (0, cashRegister_1.reverseCajaMovimientoForOrder)(conn, {
+        orderId,
+        creadoPor,
+        descripcion: `Anulacion por cancelacion orden #${orderId}`,
+    });
     const cleanReason = reason.trim();
     const cleanRefundMessage = refundMessage?.trim() || "";
     const cancellationNote = [

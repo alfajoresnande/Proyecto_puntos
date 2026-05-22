@@ -77,6 +77,7 @@ export type Producto = {
   }>;
   track_stock?: boolean;
   permite_envio?: boolean;
+  envio_gratis?: boolean;
   permite_retiro_local?: boolean;
   activo?: boolean;
 };
@@ -165,6 +166,10 @@ export type ShippingZonePayload = {
 export type ShippingQuote = {
   disponible: boolean;
   costo_envio: number;
+  costo_envio_original?: number;
+  envio_gratis?: boolean;
+  envio_gratis_motivo?: "productos" | "monto_minimo" | null;
+  envio_gratis_monto_minimo?: number | null;
   zona: null | {
     id: number;
     nombre: string;

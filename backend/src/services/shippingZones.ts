@@ -35,6 +35,10 @@ export type ShippingZone = {
 export type ShippingQuote = {
   disponible: boolean;
   costo_envio: number;
+  costo_envio_original?: number;
+  envio_gratis?: boolean;
+  envio_gratis_motivo?: "productos" | "monto_minimo" | null;
+  envio_gratis_monto_minimo?: number | null;
   zona: Pick<ShippingZone, "id" | "nombre" | "precio" | "prioridad" | "color"> | null;
   error?: string;
 };
@@ -385,6 +389,10 @@ export function buildShippingQuoteSnapshot(quote: ShippingQuote) {
     zona_id: quote.zona.id,
     zona_nombre: quote.zona.nombre,
     costo_envio: quote.costo_envio,
+    costo_envio_original: quote.costo_envio_original ?? quote.costo_envio,
+    envio_gratis: Boolean(quote.envio_gratis),
+    envio_gratis_motivo: quote.envio_gratis_motivo ?? null,
+    envio_gratis_monto_minimo: quote.envio_gratis_monto_minimo ?? null,
     prioridad: quote.zona.prioridad,
   };
 }
