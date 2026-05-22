@@ -3,11 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
+import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
-
-const PRODUCTS_PER_PAGE = 20;
 
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
@@ -335,11 +334,11 @@ export function TiendaOnline() {
     return filtrados;
   }, [baseSearch, categoriaActiva, ordenProductos, precioFiltroMax, precioFiltroMin, preciosCatalogo.length]);
 
-  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / PRODUCTS_PER_PAGE));
+  const productosTotalPages = Math.max(1, Math.ceil(productosFiltrados.length / CATALOG_PRODUCTS_PER_PAGE));
   const productosPageSafe = Math.min(productosPage, productosTotalPages);
   const productosPaginaActual = useMemo(() => {
-    const start = (productosPageSafe - 1) * PRODUCTS_PER_PAGE;
-    return productosFiltrados.slice(start, start + PRODUCTS_PER_PAGE);
+    const start = (productosPageSafe - 1) * CATALOG_PRODUCTS_PER_PAGE;
+    return productosFiltrados.slice(start, start + CATALOG_PRODUCTS_PER_PAGE);
   }, [productosFiltrados, productosPageSafe]);
 
   useEffect(() => {
@@ -1161,7 +1160,7 @@ export function TiendaOnline() {
             page={productosPageSafe}
             totalPages={productosTotalPages}
             totalItems={productosFiltrados.length}
-            pageSize={PRODUCTS_PER_PAGE}
+            pageSize={CATALOG_PRODUCTS_PER_PAGE}
             onPageChange={cambiarPaginaProductos}
           />
         ) : null}

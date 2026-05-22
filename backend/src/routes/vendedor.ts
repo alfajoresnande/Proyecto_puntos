@@ -23,7 +23,7 @@ import {
 } from "../services/points";
 import { approvePaidOrder, cancelOrderUrgently } from "../services/orderLifecycle";
 import { sendOrderReceiptEmail } from "../services/email";
-import { registerLocalSale } from "../services/localSales";
+import { registerLocalSale, updateLocalSale } from "../services/localSales";
 import { notifyOrderCancellation } from "../services/supportNotifications";
 import {
   createShippingZone,
@@ -672,6 +672,44 @@ router.post("/ventas-locales", async (req, res, next) => {
   }
 });
 
+router.put("/ventas-locales/:id", async (req, res, next) => {
+  const orderId = Number(req.params.id);
+  const parsed = ventaLocalSchema.safeParse(req.body);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "Venta local invalida." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await updateLocalSale(conn, {
+      orderId,
+      canal: "vendedor",
+      usuarioId: parsed.data.usuario_id ?? null,
+      clienteLocal: parsed.data.cliente_local ?? null,
+      sucursalId: parsed.data.sucursal_id,
+      metodoPago: parsed.data.metodo_pago,
+      acreditarPuntos: parsed.data.acreditar_puntos,
+      notas: parsed.data.notas,
+      items: parsed.data.items,
+      creadoPor: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes", "stats", "puntos", "inventario"]);
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo actualizar la venta local." });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/proveedores", async (_req, res, next) => {
   try {
     const rows = await qAll(
@@ -1150,9 +1188,12 @@ router.get("/ordenes", async (_req, res, next) => {
   try {
     const rows = await qAll<{
       id: number;
-      usuario_id: number;
+      usuario_id: number | null;
+      cliente_local_id: number | null;
       cliente_nombre: string;
       cliente_email: string;
+      cliente_dni: string | null;
+      cliente_telefono: string | null;
       canal: string;
       estado: string;
       tipo_orden: string;
@@ -1166,18 +1207,28 @@ router.get("/ordenes", async (_req, res, next) => {
       sucursal_piso: string | null;
       sucursal_localidad: string | null;
       sucursal_provincia: string | null;
+      puntos_acreditados: number;
       notas: string | null;
       created_at: string;
       updated_at: string;
     }>(
       pool,
-      `SELECT o.id, o.usuario_id,
+      `SELECT o.id, o.usuario_id, o.cliente_local_id,
               COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
               COALESCE(u.email, '') AS cliente_email,
+              COALESCE(u.dni, cl.dni) AS cliente_dni,
+              COALESCE(u.telefono, cl.telefono) AS cliente_telefono,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              EXISTS(
+                SELECT 1
+                FROM movimientos_puntos mp
+                WHERE mp.referencia_tipo = 'ordenes'
+                  AND mp.referencia_id = o.id
+                  AND mp.tipo = 'acreditacion_compra'
+              ) AS puntos_acreditados,
               o.notas, o.created_at, o.updated_at
        FROM ordenes o
        LEFT JOIN usuarios u ON u.id = o.usuario_id
@@ -1220,11 +1271,14 @@ router.get("/ordenes", async (_req, res, next) => {
         const items = itemMap.get(Number(row.id)) ?? [];
         return {
           ...row,
+          usuario_id: row.usuario_id === null ? null : Number(row.usuario_id),
+          cliente_local_id: row.cliente_local_id === null ? null : Number(row.cliente_local_id),
           total_dinero: Number(row.total_dinero ?? 0),
           total_puntos: Number(row.total_puntos ?? 0),
           total_items: items.length,
           total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
           items,
+          puntos_acreditados: Boolean(row.puntos_acreditados),
           direccion_envio: parseJsonField(row.direccion_envio_json),
           sucursal: row.sucursal_retiro_id
             ? {
