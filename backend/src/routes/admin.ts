@@ -48,11 +48,13 @@ import { getCajaReportData, renderCajaPdfBuffer } from "../services/cashRegister
 import {
   getBuenosAiresDateStamp,
   getVentasReporteRows,
+  cancelLocalSale,
   registerLocalSale,
   renderVentasExcelBuffer,
   renderVentasExcelHtml,
   renderVentasPdfBuffer,
   renderVentasPrintableHtml,
+  updateLocalSale,
 } from "../services/localSales";
 import { notifyOrderCancellation } from "../services/supportNotifications";
 import { sendOrderReceiptEmail } from "../services/email";
@@ -1053,6 +1055,85 @@ router.post("/ventas-locales", async (req, res) => {
   }
 });
 
+router.put("/ventas-locales/:id", async (req, res) => {
+  const orderId = Number(req.params.id);
+  const parsed = ventaLocalSchema.safeParse(req.body);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "Venta local invalida." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const order = await qOne<{ canal: "admin" | "vendedor" | "web" }>(
+      conn,
+      "SELECT canal FROM ordenes WHERE id = ? AND tipo_orden = 'venta' LIMIT 1 FOR UPDATE",
+      [orderId],
+    );
+    if (!order || (order.canal !== "admin" && order.canal !== "vendedor")) {
+      throw new Error("Solo se pueden editar ventas locales.");
+    }
+    const result = await updateLocalSale(conn, {
+      orderId,
+      canal: order.canal,
+      usuarioId: parsed.data.usuario_id ?? null,
+      clienteLocal: parsed.data.cliente_local ?? null,
+      sucursalId: parsed.data.sucursal_id,
+      metodoPago: parsed.data.metodo_pago,
+      acreditarPuntos: parsed.data.acreditar_puntos,
+      notas: parsed.data.notas,
+      items: parsed.data.items,
+      creadoPor: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes", "stats", "puntos", "inventario"]);
+    res.json({ ok: true, ...result });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo actualizar la venta local." });
+  } finally {
+    conn.release();
+  }
+});
+
+router.post(["/ventas-locales/:id/cancelar", "/ventas-locales/:id/anular"], async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!Number.isFinite(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "Venta local invalida." });
+    return;
+  }
+  const parsed = z.object({
+    motivo: z.string().trim().max(1000).optional().nullable(),
+  }).safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await cancelLocalSale(conn, {
+      orderId,
+      motivo: parsed.data.motivo,
+      creadoPor: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes", "stats", "puntos", "inventario"]);
+    res.json(result);
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo cancelar la venta local." });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/ventas/export", async (req, res, next) => {
   try {
     const rows = await getVentasReporteRows(pool, {
@@ -1594,6 +1675,9 @@ router.get("/ordenes", async (_req, res) => {
   const rows = await qAll<{
     id: number;
     usuario_id: number;
+    cliente_local_id: number | null;
+    cliente_local_dni: string | null;
+    cliente_local_telefono: string | null;
     cliente_nombre: string;
     cliente_email: string;
     canal: string;
@@ -1614,7 +1698,8 @@ router.get("/ordenes", async (_req, res) => {
     updated_at: string;
   }>(
     pool,
-      `SELECT o.id, o.usuario_id,
+      `SELECT o.id, o.usuario_id, o.cliente_local_id,
+              cl.dni AS cliente_local_dni, cl.telefono AS cliente_local_telefono,
               COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
               COALESCE(u.email, '') AS cliente_email,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,

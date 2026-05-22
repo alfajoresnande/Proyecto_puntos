@@ -300,6 +300,9 @@ type PostulacionCv = {
 type OrdenAdmin = {
   id: number;
   usuario_id: number | null;
+  cliente_local_id?: number | null;
+  cliente_local_dni?: string | null;
+  cliente_local_telefono?: string | null;
   cliente_nombre: string;
   cliente_email: string | null;
   canal: "web" | "admin" | "vendedor";
@@ -655,6 +658,14 @@ type VentaLocalItemDraft = {
   }>;
 };
 
+type VentaLocalSubmitResult = {
+  ordenId?: number;
+  orderId?: number;
+  totalDinero?: number;
+  totalUnidades?: number;
+  totalPuntosGanados?: number;
+};
+
 type StaticPageSlug = "sobre-nosotros" | "terminos";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
@@ -995,6 +1006,10 @@ function formatPagoOrden(orden: OrdenAdmin): string {
   const proveedor = orden.pago.proveedor === "local" ? formatMetodoPago(orden.pago.metodo) : orden.pago.proveedor === "efectivo" ? "Efectivo" : orden.pago.proveedor;
   const estado = orden.pago.estado === "iniciado" ? "pendiente" : orden.pago.estado;
   return `${proveedor} / ${estado}`;
+}
+
+function isOrdenVentaLocal(orden: OrdenAdmin): boolean {
+  return orden.tipo_orden === "venta" && (orden.canal === "admin" || orden.canal === "vendedor");
 }
 
 function hasOrderMapPoint(address: OrdenAdmin["direccion_envio"]): boolean {
@@ -1377,6 +1392,7 @@ export function Admin() {
   const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, number>>({});
   const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaLocalNotas, setVentaLocalNotas] = useState("");
+  const [ventaLocalEditOrdenId, setVentaLocalEditOrdenId] = useState<number | null>(null);
   const [ventasExportCanal, setVentasExportCanal] = useState("");
   const [ventasExportDesde, setVentasExportDesde] = useState("");
   const [ventasExportHasta, setVentasExportHasta] = useState("");
@@ -2841,6 +2857,104 @@ export function Admin() {
     setVentaLocalSabores({});
   }
 
+  function resetVentaLocalForm() {
+    setVentaLocalEditOrdenId(null);
+    setVentaLocalItems([]);
+    setVentaLocalNotas("");
+    setVentaLocalClienteId("");
+    setVentaLocalClienteManualNombre("");
+    setVentaLocalClienteManualDni("");
+    setVentaLocalClienteManualTelefono("");
+    setVentaLocalMetodoPago("cash");
+    setVentaLocalAcreditarPuntos(false);
+    resetVentaLocalProductoDraft();
+  }
+
+  function cancelarEdicionVentaLocal() {
+    resetVentaLocalForm();
+    setOkMsg("");
+    setErrMsg("");
+  }
+
+  function editarVentaLocalDesdeOrden(orden: OrdenAdmin) {
+    if (!isOrdenVentaLocal(orden)) {
+      setErrMsg("Solo se pueden editar ventas locales.");
+      return;
+    }
+    setErrMsg("");
+    setOkMsg("");
+    setVentaLocalEditOrdenId(orden.id);
+    setVentaLocalSucursalId(String(orden.sucursal_retiro_id ?? ""));
+    setVentaLocalMetodoPago(orden.pago?.metodo || "cash");
+    setVentaLocalNotas(orden.notas || "");
+    setVentaLocalAcreditarPuntos(false);
+    if (orden.usuario_id) {
+      setVentaLocalClienteId(String(orden.usuario_id));
+      setVentaLocalClienteManualNombre("");
+      setVentaLocalClienteManualDni("");
+      setVentaLocalClienteManualTelefono("");
+    } else if (orden.cliente_local_id) {
+      setVentaLocalClienteId("");
+      setVentaLocalClienteManualNombre(orden.cliente_nombre || "");
+      setVentaLocalClienteManualDni(orden.cliente_local_dni || "");
+      setVentaLocalClienteManualTelefono(orden.cliente_local_telefono || "");
+    } else {
+      setVentaLocalClienteId("");
+      setVentaLocalClienteManualNombre("");
+      setVentaLocalClienteManualDni("");
+      setVentaLocalClienteManualTelefono("");
+    }
+    setVentaLocalItems((orden.items ?? []).map((item) => ({
+      producto_id: Number(item.producto_id),
+      nombre: item.nombre,
+      cantidad: Number(item.cantidad),
+      precio_dinero: Number(item.cantidad) > 0 ? Number(item.subtotal_dinero ?? 0) / Number(item.cantidad) : 0,
+      sabores: item.sabores?.map((sabor) => ({
+        sabor_id: Number(sabor.sabor_id),
+        nombre: sabor.nombre,
+        cantidad: Number(sabor.cantidad),
+      })) ?? [],
+    })));
+    resetVentaLocalProductoDraft();
+    abrirVistaVentas("venta-local");
+    setOkMsg(`Editando venta local #${orden.id}. Al guardar se ajustan stock, caja y puntos.`);
+  }
+
+  async function cancelarVentaLocal(orden: OrdenAdmin) {
+    if (!isOrdenVentaLocal(orden)) {
+      setErrMsg("Solo se pueden cancelar ventas locales desde esta accion.");
+      return;
+    }
+    const confirmed = window.confirm(`Cancelar la venta local #${orden.id}? Se devuelve stock y se descuenta de caja.`);
+    if (!confirmed) return;
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      await commandMutation.mutateAsync({
+        method: "post",
+        path: `/admin/ventas-locales/${orden.id}/cancelar`,
+        body: { motivo: "Cancelacion desde listado de pedidos" },
+      });
+      if (ventaLocalEditOrdenId === orden.id) resetVentaLocalForm();
+      setOkMsg(`Venta local #${orden.id} cancelada. Se ajustaron stock y caja.`);
+      await refreshQueries([
+        ["admin", "ordenes"],
+        ["admin", "inventario"],
+        ["admin", "movimientos-stock"],
+        ["admin", "movimientos"],
+        ["admin", "usuarios"],
+        ["admin", "stats"],
+        ["admin", "caja-actual", cajaSucursalId],
+        ["admin", "caja-sesiones", cajaSucursalId],
+      ]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function agregarItemVentaLocal() {
     setErrMsg("");
     const producto = productoVentaLocalSeleccionado;
@@ -2910,8 +3024,8 @@ export function Admin() {
       }
 
       const result = await commandMutation.mutateAsync({
-        method: "post",
-        path: "/admin/ventas-locales",
+        method: ventaLocalEditOrdenId ? "put" : "post",
+        path: ventaLocalEditOrdenId ? `/admin/ventas-locales/${ventaLocalEditOrdenId}` : "/admin/ventas-locales",
         body: {
           usuario_id: ventaLocalClienteId ? Number(ventaLocalClienteId) : undefined,
           cliente_local: ventaLocalClienteId || !hasManualCustomer
@@ -2934,15 +3048,24 @@ export function Admin() {
             })),
           })),
         },
-      }) as { ordenId?: number };
-      setVentaLocalItems([]);
-      setVentaLocalNotas("");
-      setVentaLocalClienteId("");
-      setVentaLocalClienteManualNombre("");
-      setVentaLocalClienteManualDni("");
-      setVentaLocalClienteManualTelefono("");
-      setOkMsg(`Venta local registrada${result.ordenId ? ` como orden #${result.ordenId}` : ""}. El stock compartido de la sucursal se actualizo.`);
-      await refreshQueries([["admin", "ordenes"], ["admin", "movimientos"], ["admin", "usuarios"], ["admin", "stats"], ["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
+      }) as VentaLocalSubmitResult;
+      const editedOrderId = ventaLocalEditOrdenId;
+      resetVentaLocalForm();
+      setOkMsg(
+        editedOrderId
+          ? `Venta local #${editedOrderId} actualizada. Se ajustaron stock, caja y puntos.`
+          : `Venta local registrada${result.ordenId ? ` como orden #${result.ordenId}` : ""}. El stock compartido de la sucursal se actualizo.`,
+      );
+      await refreshQueries([
+        ["admin", "ordenes"],
+        ["admin", "inventario"],
+        ["admin", "movimientos-stock"],
+        ["admin", "movimientos"],
+        ["admin", "usuarios"],
+        ["admin", "stats"],
+        ["admin", "caja-actual", cajaSucursalId],
+        ["admin", "caja-sesiones", cajaSucursalId],
+      ]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -5748,9 +5871,13 @@ export function Admin() {
               ventaLocalContent={
                 <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                   <div>
-                    <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>Registrar venta local</h3>
+                    <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>
+                      {ventaLocalEditOrdenId ? `Editar venta local #${ventaLocalEditOrdenId}` : "Registrar venta local"}
+                    </h3>
                     <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia.
+                      {ventaLocalEditOrdenId
+                        ? "Al guardar se reemplaza el detalle de productos y se ajustan stock, caja y puntos de forma automatica."
+                        : "Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia."}
                     </p>
                   </div>
                   <div className="adm-form-grid">
@@ -5796,7 +5923,7 @@ export function Admin() {
                       />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Sucursal" tip="Lugar donde se realizo la venta presencial. Ayuda a ordenar reportes por punto de venta.">
-                      <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)}>
+                      <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)} disabled={Boolean(ventaLocalEditOrdenId)}>
                         <option value="">Sucursal</option>
                         {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
                           <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
@@ -5915,9 +6042,16 @@ export function Admin() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
                     <strong>Total venta local: {formatMoney(totalVentaLocal)}</strong>
-                    <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
-                      {busy ? "Registrando..." : "Registrar venta local"}
-                    </button>
+                    <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
+                      {ventaLocalEditOrdenId ? (
+                        <button type="button" className="adm-btn-secondary" onClick={cancelarEdicionVentaLocal} disabled={busy}>
+                          Cancelar edicion
+                        </button>
+                      ) : null}
+                      <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
+                        {busy ? "Guardando..." : ventaLocalEditOrdenId ? "Guardar cambios" : "Registrar venta local"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               }
@@ -6005,6 +6139,16 @@ export function Admin() {
                                     <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
                                       {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
                                     </button>
+                                    {isOrdenVentaLocal(orden) && orden.estado !== "cancelada" && orden.estado !== "expirada" ? (
+                                      <>
+                                        <button className="adm-btn-link" onClick={() => editarVentaLocalDesdeOrden(orden)} disabled={busy}>
+                                          Editar venta
+                                        </button>
+                                        <button className="adm-btn-danger" onClick={() => void cancelarVentaLocal(orden)} disabled={busy}>
+                                          Cancelar
+                                        </button>
+                                      </>
+                                    ) : null}
                                     {hasOrderMapPoint(orden.direccion_envio) ? (
                                       <button
                                         type="button"

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getBuenosAiresDateStamp = getBuenosAiresDateStamp;
 exports.registerLocalSale = registerLocalSale;
 exports.updateLocalSale = updateLocalSale;
+exports.cancelLocalSale = cancelLocalSale;
 exports.getVentasReporteRows = getVentasReporteRows;
 exports.renderVentasPdfBuffer = renderVentasPdfBuffer;
 exports.renderVentasExcelBuffer = renderVentasExcelBuffer;
@@ -604,6 +605,53 @@ async function updateLocalSale(conn, input) {
         await (0, points_1.acreditarPuntosPorCompra)(conn, input.orderId);
     }
     return result;
+}
+async function cancelLocalSale(conn, input) {
+    const existing = await getExistingLocalSaleOrder(conn, input.orderId);
+    if (existing.canal !== "admin" && existing.canal !== "vendedor") {
+        throw new Error("Solo puedes cancelar ventas locales.");
+    }
+    if (existing.tipo_orden !== "venta") {
+        throw new Error("Solo se pueden cancelar ventas locales simples.");
+    }
+    if (existing.estado === "cancelada") {
+        return { ok: true, orderId: input.orderId, changed: false };
+    }
+    if (existing.estado === "expirada") {
+        throw new Error("No se puede cancelar una venta expirada.");
+    }
+    if (!existing.sucursal_retiro_id) {
+        throw new Error("La venta no tiene sucursal asociada.");
+    }
+    const previous = await getExistingLocalSaleStockSnapshot(conn, input.orderId);
+    await (0, stock_1.restoreStockForCheckoutItems)(conn, {
+        sucursalId: Number(existing.sucursal_retiro_id),
+        items: previous.productItems,
+        referencia: `cancelacion venta local #${input.orderId}`,
+        creadoPor: input.creadoPor,
+        ordenId: input.orderId,
+    });
+    await (0, stock_1.restoreFlavorStockForCheckoutItems)(conn, {
+        sucursalId: Number(existing.sucursal_retiro_id),
+        items: previous.flavorItems,
+        referencia: `cancelacion venta local #${input.orderId}`,
+        creadoPor: input.creadoPor,
+        ordenId: input.orderId,
+    });
+    await removeLocalSalePoints(conn, input.orderId, existing.usuario_id);
+    await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'reembolsado' WHERE orden_id = ? AND estado IN ('iniciado', 'aprobado')", [input.orderId]);
+    await (0, cashRegister_1.reverseCajaMovimientoForOrder)(conn, {
+        orderId: input.orderId,
+        creadoPor: input.creadoPor,
+        descripcion: `Cancelacion venta local #${input.orderId}`,
+    });
+    const reason = input.motivo?.trim() || "Cancelacion desde panel administrativo.";
+    await (0, db_1.qRun)(conn, `UPDATE ordenes
+     SET estado = 'cancelada',
+         notas = TRIM(CONCAT(COALESCE(notas, ''), CASE WHEN COALESCE(notas, '') = '' THEN '' ELSE '\n' END, ?)),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`, [`Cancelacion venta local: ${reason}`, input.orderId]);
+    return { ok: true, orderId: input.orderId, changed: true };
 }
 function normalizeDateStart(value) {
     if (!value)
