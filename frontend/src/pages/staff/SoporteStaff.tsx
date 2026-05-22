@@ -194,6 +194,30 @@ export function SoporteStaff() {
     onError: (error: Error) => setErrorMsg(error.message),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (conversationId: number) => api.delete<{ ok: true }>(`/soporte/conversaciones/${conversationId}`),
+    onSuccess: async (_data, conversationId) => {
+      setErrorMsg("");
+      queryClient.setQueryData<SupportConversation[]>(["soporte", "staff", "conversaciones"], (current) =>
+        (current ?? []).filter((item) => item.id !== conversationId),
+      );
+      queryClient.setQueryData<SupportConversation[]>(["soporte", "cliente", "conversaciones"], (current) =>
+        (current ?? []).filter((item) => item.id !== conversationId),
+      );
+      if (selectedId === conversationId) {
+        setSelectedId(null);
+        setRespuesta("");
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["soporte", "cliente", "conversaciones"] }),
+        queryClient.invalidateQueries({ queryKey: ["soporte", "staff", "detalle", conversationId] }),
+        queryClient.invalidateQueries({ queryKey: ["navbar", "support-unread"] }),
+      ]);
+    },
+    onError: (error: Error) => setErrorMsg(error.message),
+  });
+
   useEffect(() => {
     if (!conversacionesFiltradas.length) {
       if (selectedId !== null) setSelectedId(null);
@@ -231,6 +255,14 @@ export function SoporteStaff() {
     event.preventDefault();
     if (sendMutation.isPending || !respuesta.trim()) return;
     sendMutation.mutate();
+  }
+
+  function eliminarConversacionActiva() {
+    if (!activeConversation || deleteMutation.isPending) return;
+    if (!window.confirm(`¿Eliminar el chat de ${activeConversation.usuario.nombre}? Esta accion borra toda la conversacion.`)) {
+      return;
+    }
+    deleteMutation.mutate(activeConversation.id);
   }
 
   const activeConversation = detailQuery.data?.conversacion ?? null;
@@ -360,8 +392,18 @@ export function SoporteStaff() {
                     <button
                       className="adm-btn-secondary adm-btn-inline"
                       onClick={() => priorityMutation.mutate(activeConversation.prioridad === "alta" ? "normal" : "alta")}
+                      disabled={priorityMutation.isPending || deleteMutation.isPending}
                     >
                       {activeConversation.prioridad === "alta" ? "Quitar prioridad" : "Prioritario"}
+                    </button>
+                    <button
+                      type="button"
+                      className="adm-btn-danger"
+                      style={{ padding: "0.55rem 0.85rem", fontSize: "0.82rem" }}
+                      onClick={eliminarConversacionActiva}
+                      disabled={deleteMutation.isPending || priorityMutation.isPending}
+                    >
+                      {deleteMutation.isPending ? "Eliminando..." : "Eliminar chat"}
                     </button>
                   </div>
                 </div>

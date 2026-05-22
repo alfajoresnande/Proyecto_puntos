@@ -444,4 +444,32 @@ router.patch("/conversaciones/:id", async (req, res) => {
         conn.release();
     }
 });
+router.delete("/conversaciones/:id", async (req, res) => {
+    if (!isStaff(req)) {
+        res.status(403).json({ error: "Solo staff puede eliminar conversaciones." });
+        return;
+    }
+    const conversationId = Number(req.params.id);
+    if (!Number.isInteger(conversationId) || conversationId <= 0) {
+        res.status(400).json({ error: "ID invalido." });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        await ensureConversationAccess(conn, conversationId, req.user.id, true);
+        await (0, db_1.qRun)(conn, "DELETE FROM soporte_conversaciones WHERE id = ?", [conversationId]);
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["support"]);
+        res.json({ ok: true });
+    }
+    catch (err) {
+        await conn.rollback();
+        const message = err instanceof Error ? err.message : "No se pudo eliminar la conversacion.";
+        res.status(400).json({ error: message });
+    }
+    finally {
+        conn.release();
+    }
+});
 exports.default = router;
