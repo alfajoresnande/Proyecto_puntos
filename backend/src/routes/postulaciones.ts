@@ -7,9 +7,10 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth";
 import { pool, qAll, qOne, qRun } from "../db";
 import { verifyUploadedCvFile } from "../uploadSecurity";
+import { BACKEND_ROOT } from "../paths";
 
 const router = Router();
-const CV_UPLOAD_DIR = path.join(__dirname, "../../private_uploads/postulaciones");
+const CV_UPLOAD_DIR = path.join(BACKEND_ROOT, "private_uploads/postulaciones");
 const CV_MAX_BYTES = 5 * 1024 * 1024;
 const CV_EXTENSIONS = new Set([".pdf", ".doc", ".docx"]);
 const CV_MIME_TYPES = new Set([

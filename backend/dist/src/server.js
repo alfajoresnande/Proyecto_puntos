@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const http_1 = __importDefault(require("http"));
-const path_1 = __importDefault(require("path"));
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
@@ -25,6 +24,7 @@ const meAddresses_1 = __importDefault(require("./routes/meAddresses"));
 const securityMonitor_1 = require("./securityMonitor");
 const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
+const paths_1 = require("./paths");
 const app = (0, express_1.default)();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DEFAULT_FRONTEND_ORIGINS = [
@@ -184,7 +184,9 @@ app.use((0, cors_1.default)((req, cb) => {
 }));
 app.use(express_1.default.json({ limit: "1mb" }));
 // Servir imagenes subidas estaticamente
-const uploadsPath = path_1.default.join(__dirname, "../uploads");
+// Usa UPLOADS_DIR de paths.ts para que funcione tanto en dev (src/) como en prod (dist/src/)
+const uploadsPath = paths_1.UPLOADS_DIR;
+console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
 const uploadsStatic = express_1.default.static(uploadsPath, {
     setHeaders: (res) => {
         res.setHeader("X-Content-Type-Options", "nosniff");

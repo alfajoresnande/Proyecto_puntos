@@ -21,6 +21,7 @@ import meAddressesRoutes from "./routes/meAddresses";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
+import { UPLOADS_DIR } from "./paths";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -208,7 +209,9 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 // Servir imagenes subidas estaticamente
-const uploadsPath = path.join(__dirname, "../uploads");
+// Usa UPLOADS_DIR de paths.ts para que funcione tanto en dev (src/) como en prod (dist/src/)
+const uploadsPath = UPLOADS_DIR;
+console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
 const uploadsStatic = express.static(uploadsPath, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

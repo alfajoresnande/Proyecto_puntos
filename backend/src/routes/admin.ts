@@ -12,6 +12,7 @@ import { normalizeSafeImageUrl } from "../urlSafety";
 import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
 import { verifyUploadedImageFile } from "../uploadSecurity";
 import { createFullBackupArchive } from "../services/backup";
+import { UPLOADS_DIR } from "../paths";
 import {
   adjustFlavorStockBySucursal,
   adjustStockBySucursal,
@@ -115,7 +116,7 @@ function getAllowedImageExtension(file: Express.Multer.File): string | null {
 }
 
 const storage = multer.diskStorage({
-  destination: path.join(__dirname, "../../uploads"),
+  destination: UPLOADS_DIR,
   filename: (_req, file, cb) => {
     const ext = getAllowedImageExtension(file);
     if (!ext) return cb(new Error("Tipo de archivo no permitido"), "");

@@ -17,6 +17,7 @@ const urlSafety_1 = require("../urlSafety");
 const securityMonitor_1 = require("../securityMonitor");
 const uploadSecurity_1 = require("../uploadSecurity");
 const backup_1 = require("../services/backup");
+const paths_1 = require("../paths");
 const stock_1 = require("../services/stock");
 const points_1 = require("../services/points");
 const expirations_1 = require("../services/expirations");
@@ -82,7 +83,7 @@ function getAllowedImageExtension(file) {
     return IMAGE_EXT_TO_MIME[originalExt] ? originalExt : null;
 }
 const storage = multer_1.default.diskStorage({
-    destination: path_1.default.join(__dirname, "../../uploads"),
+    destination: paths_1.UPLOADS_DIR,
     filename: (_req, file, cb) => {
         const ext = getAllowedImageExtension(file);
         if (!ext)
