@@ -191,6 +191,8 @@ const uploadsStatic = express_1.default.static(uploadsPath, {
     setHeaders: (res) => {
         res.setHeader("X-Content-Type-Options", "nosniff");
         res.setHeader("Cache-Control", "public, max-age=3600");
+        // Permitir que el frontend (otro dominio) cargue las imágenes en <img> tags
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     },
 });
 app.use("/uploads", uploadsStatic);
