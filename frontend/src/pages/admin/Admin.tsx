@@ -3247,8 +3247,7 @@ export function Admin() {
     setCajaEditSesion(sesion);
     cargarFormularioCaja(sesion);
     setErrMsg("");
-    setOkMsg(`Editando caja del ${sesion.fecha_operativa} en ${sesion.sucursal_nombre}.`);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setOkMsg("");
   }
 
   function cancelarEdicionCaja() {
@@ -6466,7 +6465,7 @@ export function Admin() {
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
                     <FieldLabel text="Sucursal" tip="Sucursal que queres revisar. La caja diaria y el historial cambian segun este punto de venta." />
-                    <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)} disabled={Boolean(cajaEditSesion)}>
+                    <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
                       <option value="">Sucursal</option>
                       {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
                         <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
@@ -6474,21 +6473,11 @@ export function Admin() {
                     </select>
                   </label>
                 </div>
-                {cajaEditSesion ? (
-                  <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.4rem", background: "#FFF8F0", border: "1px solid rgba(180,84,20,0.22)" }}>
-                    <strong>Editando caja historica</strong>
-                    <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      Caja del {cajaEditSesion.fecha_operativa} en {cajaEditSesion.sucursal_nombre}. Puedes corregir apertura, observaciones y, si ya fue cerrada, el cierre declarado.
-                    </p>
-                  </div>
-                ) : null}
                 <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.75rem" }}>
                   <div>
-                    <strong>{cajaEditSesion ? "Editar apertura de caja" : "Apertura / efectivo inicial"}</strong>
+                    <strong>Apertura / efectivo inicial</strong>
                     <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
-                      {cajaEditSesion
-                        ? "Corrige el efectivo inicial y la nota de la sesion seleccionada. El sistema vuelve a calcular el efectivo resultante de esa caja."
-                        : "Es la plata en efectivo con la que arranca la caja del dia. Se suma solo al calculo de efectivo: apertura + ventas en efectivo - gastos en efectivo."}
+                      Es la plata en efectivo con la que arranca la caja del dia. Se suma solo al calculo de efectivo: apertura + ventas en efectivo - gastos en efectivo.
                     </p>
                   </div>
                   <div className="adm-form-grid">
@@ -6512,30 +6501,17 @@ export function Admin() {
                         placeholder="Ej: fondo fijo contado al iniciar el dia"
                       />
                     </label>
-                    {cajaEditSesion ? (
-                      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap", alignItems: "end" }}>
-                        <button type="button" className="adm-btn-secondary" disabled={busy} onClick={cancelarEdicionCaja}>
-                          Cancelar edicion
-                        </button>
-                        <button type="button" className="adm-btn-primary" disabled={busy || !cajaSucursalId} onClick={() => void guardarCajaEditada()}>
-                          Guardar cambios
-                        </button>
-                      </div>
-                    ) : (
-                      <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId} onClick={() => void abrirCaja()}>
-                        Guardar apertura
-                      </button>
-                    )}
+                    <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId} onClick={() => void abrirCaja()}>
+                      Guardar apertura
+                    </button>
                   </div>
                 </div>
-                {cajaEditSesion?.estado === "cerrada" || (!cajaEditSesion && cajaActual) ? (
+                {cajaActual ? (
                   <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.75rem" }}>
                     <div>
-                      <strong>{cajaEditSesion ? "Editar cierre declarado" : "Cierre de caja"}</strong>
+                      <strong>Cierre de caja</strong>
                       <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
-                        {cajaEditSesion
-                          ? "Ajusta el efectivo contado al cierre para recalcular la diferencia de esa caja historica."
-                          : "Cuando termine la jornada, registra cuanto efectivo habia realmente en caja para comparar contra el calculo del sistema."}
+                        Cuando termine la jornada, registra cuanto efectivo habia realmente en caja para comparar contra el calculo del sistema.
                       </p>
                     </div>
                     <div className="adm-form-grid">
@@ -6559,11 +6535,9 @@ export function Admin() {
                           placeholder="Ej: diferencia detectada al arqueo"
                         />
                       </label>
-                      {!cajaEditSesion ? (
-                        <button type="button" className="adm-btn-primary" disabled={busy || !cajaActual?.id} onClick={() => void cerrarCaja()}>
-                          Guardar cierre
-                        </button>
-                      ) : null}
+                      <button type="button" className="adm-btn-primary" disabled={busy || !cajaActual?.id} onClick={() => void cerrarCaja()}>
+                        Guardar cierre
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -7842,6 +7816,130 @@ export function Admin() {
           ) : null}
         </div>
       </main>
+
+      {cajaEditSesion ? (
+        <div className="adm-modal-overlay" onClick={cancelarEdicionCaja}>
+          <div
+            className="adm-modal"
+            style={{ maxWidth: 760, textAlign: "left", padding: "1.6rem" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
+              <div style={{ display: "grid", gap: "0.35rem" }}>
+                <h3 className="adm-modal-title" style={{ margin: 0 }}>Editar caja historica</h3>
+                <p className="adm-modal-desc" style={{ margin: 0 }}>
+                  Caja del {cajaEditSesion.fecha_operativa} en {cajaEditSesion.sucursal_nombre}. Aqui puedes corregir apertura, observaciones y, si ya fue cerrada, el cierre declarado.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="adm-btn-secondary"
+                onClick={cancelarEdicionCaja}
+                disabled={busy}
+                style={{ minWidth: 0, paddingInline: "0.8rem" }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+              <div className="admin-card" style={{ padding: "0.8rem" }}>
+                <strong>Estado</strong>
+                <p style={{ margin: "0.25rem 0 0" }}>{cajaEditSesion.estado === "cerrada" ? "Cerrada" : "Abierta"}</p>
+              </div>
+              <div className="admin-card" style={{ padding: "0.8rem" }}>
+                <strong>Apertura</strong>
+                <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaEditSesion.monto_apertura)}</p>
+              </div>
+              <div className="admin-card" style={{ padding: "0.8rem" }}>
+                <strong>Efectivo sistema</strong>
+                <p style={{ margin: "0.25rem 0 0" }}>{formatMoney(cajaEditSesion.summary.efectivoSistema)}</p>
+              </div>
+              <div className="admin-card" style={{ padding: "0.8rem" }}>
+                <strong>Diferencia</strong>
+                <p style={{ margin: "0.25rem 0 0" }}>
+                  {cajaEditSesion.diferencia_cierre === null ? "-" : formatMoney(cajaEditSesion.diferencia_cierre)}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: "0.85rem" }}>
+              <div className="admin-card" style={{ padding: "0.95rem", display: "grid", gap: "0.75rem" }}>
+                <div>
+                  <strong>Editar apertura</strong>
+                  <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
+                    Corrige el efectivo inicial y la nota de apertura. El sistema recalculara el efectivo resultante de esta caja.
+                  </p>
+                </div>
+                <div className="adm-form-grid">
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Monto inicial" tip="Carga el efectivo fisico con el que arranco esta caja." />
+                    <input
+                      className="adm-input"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={cajaMontoApertura}
+                      onChange={(event) => setCajaMontoApertura(event.target.value)}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: "0.35rem" }}>
+                    <FieldLabel text="Nota de apertura" tip="Opcional. Sirve para dejar aclaraciones sobre el inicio de caja." />
+                    <input
+                      className="adm-input"
+                      value={cajaObservacionesApertura}
+                      onChange={(event) => setCajaObservacionesApertura(event.target.value)}
+                      placeholder="Ej: fondo fijo contado al iniciar el dia"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {cajaEditSesion.estado === "cerrada" ? (
+                <div className="admin-card" style={{ padding: "0.95rem", display: "grid", gap: "0.75rem" }}>
+                  <div>
+                    <strong>Editar cierre declarado</strong>
+                    <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
+                      Ajusta el efectivo contado al cierre y la nota final para recalcular la diferencia de esta caja.
+                    </p>
+                  </div>
+                  <div className="adm-form-grid">
+                    <label style={{ display: "grid", gap: "0.35rem" }}>
+                      <FieldLabel text="Monto contado al cierre" tip="Importe real contado en efectivo al cerrar esta caja." />
+                      <input
+                        className="adm-input"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={cajaMontoCierre}
+                        onChange={(event) => setCajaMontoCierre(event.target.value)}
+                      />
+                    </label>
+                    <label style={{ display: "grid", gap: "0.35rem" }}>
+                      <FieldLabel text="Nota de cierre" tip="Observacion opcional para explicar diferencias o el arqueo." />
+                      <input
+                        className="adm-input"
+                        value={cajaObservacionesCierre}
+                        onChange={(event) => setCajaObservacionesCierre(event.target.value)}
+                        placeholder="Ej: diferencia detectada al arqueo"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="adm-modal-actions" style={{ marginTop: "1.2rem" }}>
+              <button className="adm-btn-secondary" onClick={cancelarEdicionCaja} disabled={busy}>
+                Cancelar
+              </button>
+              <button className="adm-btn-primary" onClick={() => void guardarCajaEditada()} disabled={busy || !cajaSucursalId}>
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* MODAL DE CONFIRMACION */}
       {cancelacionOrden && (
