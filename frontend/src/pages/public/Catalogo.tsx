@@ -1167,6 +1167,20 @@ export function Catalogo() {
                       <>
                         <div className="product-card-action-slot">
                           <div className="product-card-qty">
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
+                              onClick={() =>
+                                actualizarCantidadSeleccionada(
+                                  producto.id,
+                                  cantidadSeleccionada - 1,
+                                  Math.max(1, cantidadDisponibleParaCargar),
+                                )
+                              }
+                            >
+                              -
+                            </button>
                             <input
                               className="product-card-qty-input"
                               type="number"
@@ -1182,6 +1196,20 @@ export function Catalogo() {
                                 )
                               }
                             />
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= Math.max(1, cantidadDisponibleParaCargar)}
+                              onClick={() =>
+                                actualizarCantidadSeleccionada(
+                                  producto.id,
+                                  cantidadSeleccionada + 1,
+                                  Math.max(1, cantidadDisponibleParaCargar),
+                                )
+                              }
+                            >
+                              +
+                            </button>
                           </div>
                         </div>
                         <button
@@ -1479,6 +1507,19 @@ export function Catalogo() {
               {user ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.55rem", marginBottom: "0.65rem" }}>
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={canjearCarritoMutation.isPending || cantidadModalCanje <= 1}
+                      onClick={() =>
+                        actualizarCantidadModalCanje(
+                          cantidadModalCanje - 1,
+                          Math.max(1, productoModalCantidadDisponible),
+                        )
+                      }
+                    >
+                      -
+                    </button>
                     <input
                       className="product-card-qty-input"
                       type="number"
@@ -1493,6 +1534,19 @@ export function Catalogo() {
                         )
                       }
                     />
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={canjearCarritoMutation.isPending || cantidadModalCanje >= Math.max(1, productoModalCantidadDisponible)}
+                      onClick={() =>
+                        actualizarCantidadModalCanje(
+                          cantidadModalCanje + 1,
+                          Math.max(1, productoModalCantidadDisponible),
+                        )
+                      }
+                    >
+                      +
+                    </button>
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"

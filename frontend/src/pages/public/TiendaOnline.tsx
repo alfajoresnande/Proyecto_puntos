@@ -1125,6 +1125,14 @@ export function TiendaOnline() {
                       <div className="product-card-action-slot">
                         {user && !esCaja ? (
                           <div className="product-card-qty">
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={addMutation.isPending || cantidadSeleccionada <= 1}
+                              onClick={() => actualizarCantidadSeleccionada(producto, cantidadSeleccionada - 1)}
+                            >
+                              -
+                            </button>
                             <input
                               className="product-card-qty-input"
                               type="number"
@@ -1134,6 +1142,14 @@ export function TiendaOnline() {
                               disabled={addMutation.isPending || maxCantidad <= 0}
                               onChange={(event) => actualizarCantidadSeleccionada(producto, event.target.value)}
                             />
+                            <button
+                              type="button"
+                              className="vendedor-round-btn"
+                              disabled={addMutation.isPending || cantidadSeleccionada >= maxCantidad}
+                              onClick={() => actualizarCantidadSeleccionada(producto, cantidadSeleccionada + 1)}
+                            >
+                              +
+                            </button>
                           </div>
                         ) : (
                           <div className="product-card-action-spacer" aria-hidden="true" />
@@ -1382,6 +1398,14 @@ export function TiendaOnline() {
 
                   {!isCajaSabores(productoModal) ? (
                   <div className="product-card-qty">
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) <= 1}
+                      onClick={() => actualizarCantidadSeleccionada(productoModal, getCantidadSeleccionada(productoModal.id) - 1)}
+                    >
+                      -
+                    </button>
                     <input
                       className="product-card-qty-input"
                       type="number"
@@ -1391,6 +1415,14 @@ export function TiendaOnline() {
                       disabled={addMutation.isPending || maxSelectableQuantity(productoModal) <= 0}
                       onChange={(event) => actualizarCantidadSeleccionada(productoModal, event.target.value)}
                     />
+                    <button
+                      type="button"
+                      className="vendedor-round-btn"
+                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) >= maxSelectableQuantity(productoModal)}
+                      onClick={() => actualizarCantidadSeleccionada(productoModal, getCantidadSeleccionada(productoModal.id) + 1)}
+                    >
+                      +
+                    </button>
                   </div>
                   ) : null}
 

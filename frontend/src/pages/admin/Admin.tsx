@@ -7836,7 +7836,7 @@ export function Admin() {
                 className="adm-btn-secondary"
                 onClick={cancelarEdicionCaja}
                 disabled={busy}
-                style={{ minWidth: 0, paddingInline: "0.8rem" }}
+                style={{ minWidth: "auto", flexShrink: 0, whiteSpace: "nowrap", padding: "0.7rem 1rem", alignSelf: "flex-start" }}
               >
                 Cerrar
               </button>
