@@ -118,6 +118,15 @@ function maxSelectableQuantity(producto: Producto): number {
   return Math.max(1, Math.min(limit, productAvailableStock(producto)));
 }
 
+function stockLimitMessage(producto: Producto, maxCantidad: number): string | null {
+  const stock = productAvailableStock(producto);
+  const profileLimit = productPurchaseLimit(producto);
+  if (producto.track_stock !== false && stock <= profileLimit) {
+    return `El stock maximo disponible para este producto en este momento es de ${maxCantidad} unidades.`;
+  }
+  return null;
+}
+
 function isCajaSabores(producto: Producto): boolean {
   return producto.configuracion_tipo === "caja_sabores";
 }
@@ -422,15 +431,23 @@ export function TiendaOnline() {
   }
 
   function actualizarCantidadSeleccionada(producto: Producto, rawValue: string | number) {
+    const raw = String(rawValue);
+    if (raw.trim() === "") {
+      setCantidadesSeleccionadas((prev) => ({ ...prev, [producto.id]: "" }));
+      return;
+    }
+
+    const parsed = Math.floor(Number(raw));
+    if (!Number.isFinite(parsed)) return;
+
+    const max = maxSelectableQuantity(producto);
+    const next = Math.max(0, Math.min(max, parsed));
+    if (parsed > max) {
+      const message = stockLimitMessage(producto, max);
+      if (message) setToast(message);
+    }
+
     setCantidadesSeleccionadas((prev) => {
-      const raw = String(rawValue);
-      if (raw.trim() === "") return { ...prev, [producto.id]: "" };
-
-      const parsed = Math.floor(Number(raw));
-      if (!Number.isFinite(parsed)) return prev;
-
-      const max = maxSelectableQuantity(producto);
-      const next = Math.max(0, Math.min(max, parsed));
       return { ...prev, [producto.id]: String(next) };
     });
   }
@@ -589,7 +606,8 @@ export function TiendaOnline() {
     }
     const maxCantidad = maxSelectableQuantity(producto);
     if (cantidad > maxCantidad) {
-      setToast(`El maximo para este producto es ${maxCantidad}.`);
+      const message = stockLimitMessage(producto, maxCantidad);
+      if (message) setToast(message);
       return;
     }
     if (isCajaSabores(producto)) {

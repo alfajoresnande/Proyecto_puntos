@@ -107,6 +107,19 @@ function maxSelectableCanjeQuantity(producto: Producto): number {
   return Math.max(1, Math.min(limit, productAvailableStock(producto)));
 }
 
+function stockLimitMessage(producto: Producto, maxCantidad: number): string | null {
+  const stock = productAvailableStock(producto);
+  const profileLimit = productPurchaseLimit(producto);
+  const totalMax = maxSelectableCanjeQuantity(producto);
+  if (maxCantidad < totalMax) {
+    return null;
+  }
+  if (producto.track_stock !== false && stock <= profileLimit) {
+    return `El stock maximo disponible para este producto en este momento es de ${maxCantidad} unidades.`;
+  }
+  return null;
+}
+
 export function Catalogo() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -658,19 +671,34 @@ export function Catalogo() {
   }
 
   function actualizarCantidadSeleccionada(
-    productoId: number,
+    producto: Producto,
     rawValue: string | number,
     maxCantidad = DEFAULT_SELECTABLE_QUANTITY_LIMIT,
   ) {
+    const raw = String(rawValue);
+    if (raw.trim() === "") {
+      setCantidadesSeleccionadas((prev) => ({ ...prev, [producto.id]: "" }));
+      return;
+    }
+
+    const parsed = Math.floor(Number(raw));
+    if (!Number.isFinite(parsed)) return;
+
+    const next = Math.max(0, Math.min(maxCantidad, parsed));
+    if (parsed > maxCantidad) {
+      const message = stockLimitMessage(producto, maxCantidad);
+      if (message) {
+        setToast({
+          msg: message,
+          variant: "info",
+          dismissLabel: "Cerrar",
+          autoHideMs: 6000,
+        });
+      }
+    }
+
     setCantidadesSeleccionadas((prev) => {
-      const raw = String(rawValue);
-      if (raw.trim() === "") return { ...prev, [productoId]: "" };
-
-      const parsed = Math.floor(Number(raw));
-      if (!Number.isFinite(parsed)) return prev;
-
-      const next = Math.max(0, Math.min(maxCantidad, parsed));
-      return { ...prev, [productoId]: String(next) };
+      return { ...prev, [producto.id]: String(next) };
     });
   }
 
@@ -679,7 +707,7 @@ export function Catalogo() {
     return Number.isInteger(value) && value >= 1 ? value : 0;
   }
 
-  function actualizarCantidadModalCanje(rawValue: string | number, maxCantidad: number) {
+  function actualizarCantidadModalCanje(rawValue: string | number, maxCantidad: number, producto?: Producto) {
     const raw = String(rawValue);
     if (raw.trim() === "") {
       setCantidadModalCanje("");
@@ -688,6 +716,17 @@ export function Catalogo() {
 
     const parsed = Math.floor(Number(raw));
     if (!Number.isFinite(parsed)) return;
+    if (producto && parsed > maxCantidad) {
+      const message = stockLimitMessage(producto, maxCantidad);
+      if (message) {
+        setToast({
+          msg: message,
+          variant: "info",
+          dismissLabel: "Cerrar",
+          autoHideMs: 6000,
+        });
+      }
+    }
 
     setCantidadModalCanje(String(Math.max(0, Math.min(maxCantidad, parsed))));
   }
@@ -1223,7 +1262,7 @@ export function Catalogo() {
                               disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
                               onClick={() =>
                                 actualizarCantidadSeleccionada(
-                                  producto.id,
+                                  producto,
                                   cantidadSeleccionada - 1,
                                   Math.max(1, cantidadDisponibleParaCargar),
                                 )
@@ -1242,7 +1281,7 @@ export function Catalogo() {
                               disabled={canjearCarritoMutation.isPending || cantidadDisponibleParaCargar <= 0}
                               onChange={(event) =>
                                 actualizarCantidadSeleccionada(
-                                  producto.id,
+                                  producto,
                                   event.target.value,
                                   Math.max(1, cantidadDisponibleParaCargar),
                                 )
@@ -1254,7 +1293,7 @@ export function Catalogo() {
                               disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= Math.max(1, cantidadDisponibleParaCargar)}
                               onClick={() =>
                                 actualizarCantidadSeleccionada(
-                                  producto.id,
+                                  producto,
                                   cantidadSeleccionada + 1,
                                   Math.max(1, cantidadDisponibleParaCargar),
                                 )
@@ -1567,6 +1606,7 @@ export function Catalogo() {
                         actualizarCantidadModalCanje(
                           cantidadModalCanjeSeleccionada - 1,
                           Math.max(1, productoModalCantidadDisponible),
+                          productoModal,
                         )
                       }
                     >
@@ -1585,6 +1625,7 @@ export function Catalogo() {
                         actualizarCantidadModalCanje(
                           event.target.value,
                           Math.max(1, productoModalCantidadDisponible),
+                          productoModal,
                         )
                       }
                     />
@@ -1596,6 +1637,7 @@ export function Catalogo() {
                         actualizarCantidadModalCanje(
                           cantidadModalCanjeSeleccionada + 1,
                           Math.max(1, productoModalCantidadDisponible),
+                          productoModal,
                         )
                       }
                     >
