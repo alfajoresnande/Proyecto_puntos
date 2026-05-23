@@ -379,14 +379,34 @@ async function ensureGlobalConfigurationSchema() {
       valor VARCHAR(255) NOT NULL,
       descripcion TEXT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
-    await exports.pool.query(`INSERT INTO configuracion (clave, valor, descripcion)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`, [
-        "envio_gratis_monto_minimo",
-        "0",
-        "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
-    ]);
+    const defaultConfigs = [
+        {
+            clave: "envio_gratis_monto_minimo",
+            valor: "0",
+            descripcion: "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
+        },
+        {
+            clave: "limite_compra_cliente",
+            valor: "100",
+            descripcion: "Cantidad maxima por producto para clientes comunes. 0 significa sin tope comercial.",
+        },
+        {
+            clave: "limite_compra_mayorista",
+            valor: "100",
+            descripcion: "Cantidad maxima por producto para clientes mayoristas. 0 significa sin tope comercial.",
+        },
+        {
+            clave: "limite_compra_empleado",
+            valor: "100",
+            descripcion: "Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.",
+        },
+    ];
+    for (const item of defaultConfigs) {
+        await exports.pool.query(`INSERT INTO configuracion (clave, valor, descripcion)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`, [item.clave, item.valor, item.descripcion]);
+    }
 }
 async function ensureCategoriasSchema() {
     const categoriaColumnExists = async (columnName) => {

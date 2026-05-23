@@ -1,13 +1,26 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { api } from "../api";
 import { API_BASE_URL } from "../lib/apiBase";
 import { useAuthStore } from "../store/authStore";
+import { useToast } from "./ToastProvider";
 
 type RealtimeEvent = {
   type: "event";
   topics: string[];
   ts: string;
 };
+
+type StaffRole = "vendedor" | "admin" | "superAdmin";
+
+type StaffOrderAlert = {
+  id: number;
+  cliente_nombre?: string | null;
+};
+
+const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
+const VENDEDOR_ALERT_ORDER_IDS_KEY = "vendedor_alert_known_ordenes_v1";
 
 function getRealtimeUrl(token: string | null): string {
   const base = API_BASE_URL || window.location.origin;
@@ -21,15 +34,108 @@ function getRealtimeUrl(token: string | null): string {
   return url.toString();
 }
 
+function isStaffRole(role: string | undefined): role is StaffRole {
+  return role === "vendedor" || role === "admin" || role === "superAdmin";
+}
+
+function getStaffOrdersEndpoint(role: StaffRole): string {
+  return role === "vendedor" ? "/vendedor/ordenes" : "/admin/ordenes";
+}
+
+function getStaffOrdersPath(role: StaffRole): string {
+  if (role === "vendedor") return "/vendedor/ventas/pedidos";
+  if (role === "superAdmin") return "/superadmin/ventas/pedidos";
+  return "/admin/ventas/pedidos";
+}
+
+function getStaffOrderIdsKey(role: StaffRole): string {
+  return role === "vendedor" ? VENDEDOR_ALERT_ORDER_IDS_KEY : ADMIN_ALERT_ORDER_IDS_KEY;
+}
+
+function readStoredOrderIds(key: string): number[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
+  } catch {
+    return [];
+  }
+}
+
+function hasStoredOrderIds(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(key) !== null;
+}
+
+function writeStoredOrderIds(key: string, ids: number[]) {
+  if (typeof window === "undefined") return;
+  const uniqueIds = Array.from(new Set(ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
+  window.localStorage.setItem(key, JSON.stringify(uniqueIds.slice(0, 250)));
+}
+
 export function RealtimeBridge() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { showToast } = useToast();
   const token = useAuthStore((state) => state.token);
+  const userRole = useAuthStore((state) => state.user?.rol);
   const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
   const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
   const reconnectTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
   const topicsBufferRef = useRef<Set<string>>(new Set());
   const flushTimerRef = useRef<number | null>(null);
+  const staffOrdersCheckPendingRef = useRef(false);
+
+  const syncStaffOrderAlerts = useCallback(
+    async (notify: boolean) => {
+      if (!isStaffRole(userRole)) return;
+      if (staffOrdersCheckPendingRef.current) return;
+
+      staffOrdersCheckPendingRef.current = true;
+      try {
+        const orders = await api.get<StaffOrderAlert[]>(getStaffOrdersEndpoint(userRole));
+        const storageKey = getStaffOrderIdsKey(userRole);
+        const currentIds = orders.map((order) => Number(order.id)).filter((id) => Number.isInteger(id) && id > 0);
+        const hadStoredIds = hasStoredOrderIds(storageKey);
+        const knownIds = readStoredOrderIds(storageKey);
+        const knownSet = new Set(knownIds);
+        const nuevas = hadStoredIds ? orders.filter((order) => !knownSet.has(Number(order.id))) : [];
+
+        writeStoredOrderIds(storageKey, [...currentIds, ...knownIds]);
+        if (!notify || !hadStoredIds || nuevas.length === 0) return;
+
+        const latest = nuevas[0];
+        const targetPath = getStaffOrdersPath(userRole);
+        const clienteNombre = latest.cliente_nombre?.trim() || "Un cliente";
+
+        showToast({
+          tone: "info",
+          title: nuevas.length === 1 ? `Nueva compra #${latest.id}` : `${nuevas.length} compras nuevas`,
+          message: nuevas.length === 1
+            ? `${clienteNombre} hizo una compra. Toca para verla.`
+            : "Toca para revisar los pedidos.",
+          actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver pedidos",
+          onClick: () => navigate(targetPath),
+          onAction: () => navigate(targetPath),
+          persistent: true,
+        });
+      } catch {
+        // Las alertas no deben romper la sincronizacion en tiempo real.
+      } finally {
+        staffOrdersCheckPendingRef.current = false;
+      }
+    },
+    [navigate, showToast, userRole],
+  );
+
+  useEffect(() => {
+    if (!hasRestoredSession || isRestoringSession || !isStaffRole(userRole)) return;
+    void syncStaffOrderAlerts(false);
+  }, [hasRestoredSession, isRestoringSession, syncStaffOrderAlerts, userRole]);
 
   useEffect(() => {
     if (!hasRestoredSession || isRestoringSession) return;
@@ -95,6 +201,7 @@ export function RealtimeBridge() {
           queryClient.invalidateQueries({ queryKey: ["admin", "stats"] }),
           queryClient.invalidateQueries({ queryKey: ["navbar", "staff-orders-alert"] }),
         ]);
+        void syncStaffOrderAlerts(true);
         return;
       }
 
@@ -194,7 +301,7 @@ export function RealtimeBridge() {
       topicsBufferRef.current.clear();
       socket?.close();
     };
-  }, [hasRestoredSession, isRestoringSession, queryClient, token]);
+  }, [hasRestoredSession, isRestoringSession, queryClient, syncStaffOrderAlerts, token]);
 
   return null;
 }

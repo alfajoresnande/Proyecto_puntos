@@ -2,6 +2,7 @@ import { Router } from "express";
 import { pool } from "../db";
 import { getAuthPayload } from "../auth";
 import { createPricingResolver, getActiveClientePricingProfile } from "../services/customerPricing";
+import { getPurchaseQuantityLimit } from "../services/purchaseLimits";
 import { normalizeSafeImageUrl } from "../urlSafety";
 
 const router = Router();
@@ -60,6 +61,7 @@ router.get("/destacados", async (req, res) => {
       ? await getActiveClientePricingProfile(pool, auth.id)
       : null;
     const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
+    const purchaseLimit = await getPurchaseQuantityLimit(pool, pricingProfile?.tipoCliente ?? "cliente");
 
     const ids = rows.map((row) => row.id);
     const placeholders = ids.map(() => "?").join(", ");
@@ -109,6 +111,7 @@ router.get("/destacados", async (req, res) => {
           puntos_para_canjear: row.puntos_para_canjear,
           permite_envio: Boolean(row.permite_envio),
           envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
+          limite_compra: purchaseLimit,
         };
       })
       .filter((producto) => hasOwnProductImage(producto.imagen_url, producto.imagenes))
@@ -214,6 +217,7 @@ router.get("/", async (req, res) => {
     ? await getActiveClientePricingProfile(pool, auth.id)
     : null;
   const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
+  const purchaseLimit = await getPurchaseQuantityLimit(pool, pricingProfile?.tipoCliente ?? "cliente");
 
   const allIds = rows.map((row) => row.id);
   const allPlaceholders = allIds.map(() => "?").join(", ");
@@ -367,6 +371,7 @@ router.get("/", async (req, res) => {
         permite_envio: Boolean(row.permite_envio),
         envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
         permite_retiro_local: Boolean(row.permite_retiro_local),
+        limite_compra: purchaseLimit,
       };
     })
   );

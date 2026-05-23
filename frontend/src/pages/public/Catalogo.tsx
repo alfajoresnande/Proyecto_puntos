@@ -56,6 +56,9 @@ type CatalogToast = {
   diasLimiteRetiro?: number | null;
 };
 
+const DEFAULT_SELECTABLE_QUANTITY_LIMIT = 100;
+const MAX_SELECTABLE_QUANTITY_LIMIT = 100000;
+
 function isLegacyCanjeCode(code?: string | null): boolean {
   return Boolean(code && /^C0{2,}[A-Z0-9]*$/.test(code));
 }
@@ -91,9 +94,17 @@ function productAvailableStock(producto: Producto): number {
   return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
 }
 
+function productPurchaseLimit(producto: Producto): number {
+  if (producto.limite_compra === null) return MAX_SELECTABLE_QUANTITY_LIMIT;
+  const limit = Number(producto.limite_compra ?? DEFAULT_SELECTABLE_QUANTITY_LIMIT);
+  if (!Number.isFinite(limit) || limit <= 0) return DEFAULT_SELECTABLE_QUANTITY_LIMIT;
+  return Math.min(MAX_SELECTABLE_QUANTITY_LIMIT, Math.floor(limit));
+}
+
 function maxSelectableCanjeQuantity(producto: Producto): number {
-  if (producto.track_stock === false) return 100;
-  return Math.max(1, Math.min(100, productAvailableStock(producto)));
+  const limit = productPurchaseLimit(producto);
+  if (producto.track_stock === false) return limit;
+  return Math.max(1, Math.min(limit, productAvailableStock(producto)));
 }
 
 export function Catalogo() {
@@ -646,7 +657,11 @@ export function Catalogo() {
     return Number.isInteger(value) && value >= 1 ? value : 0;
   }
 
-  function actualizarCantidadSeleccionada(productoId: number, rawValue: string | number, maxCantidad = 100) {
+  function actualizarCantidadSeleccionada(
+    productoId: number,
+    rawValue: string | number,
+    maxCantidad = DEFAULT_SELECTABLE_QUANTITY_LIMIT,
+  ) {
     setCantidadesSeleccionadas((prev) => {
       const raw = String(rawValue);
       if (raw.trim() === "") return { ...prev, [productoId]: "" };

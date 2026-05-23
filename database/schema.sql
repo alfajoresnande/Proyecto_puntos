@@ -717,7 +717,13 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('longitud_codigo_invitacion', '9',
         'Longitud del código de invitación generado automáticamente'),
     ('envio_gratis_monto_minimo', '0',
-        'Monto mínimo de productos para que el envío sea gratis. 0 desactiva la regla')
+        'Monto mínimo de productos para que el envío sea gratis. 0 desactiva la regla'),
+    ('limite_compra_cliente', '100',
+        'Cantidad maxima por producto para clientes comunes. 0 significa sin tope comercial.'),
+    ('limite_compra_mayorista', '100',
+        'Cantidad maxima por producto para clientes mayoristas. 0 significa sin tope comercial.'),
+    ('limite_compra_empleado', '100',
+        'Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.')
 ON DUPLICATE KEY UPDATE valor = VALUES(valor);
 
 

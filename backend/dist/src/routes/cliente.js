@@ -16,6 +16,7 @@ const customerPricing_1 = require("../services/customerPricing");
 const paymentFees_1 = require("../services/paymentFees");
 const email_1 = require("../services/email");
 const paymentProviders_1 = require("../services/paymentProviders");
+const purchaseLimits_1 = require("../services/purchaseLimits");
 const userAddresses_1 = require("../services/userAddresses");
 const shippingZones_1 = require("../services/shippingZones");
 const router = (0, express_1.Router)();
@@ -107,6 +108,11 @@ async function getInviteCodeLength(conn = db_1.pool) {
     if (!Number.isInteger(parsed))
         return DEFAULT_INVITE_CODE_LENGTH;
     return Math.max(MIN_INVITE_CODE_LENGTH, Math.min(MAX_INVITE_CODE_LENGTH, parsed));
+}
+function assertWithinPurchaseLimit(cantidad, limit) {
+    if ((0, purchaseLimits_1.isWithinPurchaseQuantityLimit)(cantidad, limit))
+        return;
+    throw new HttpError(400, `El limite para tu perfil es ${limit} unidades por producto.`);
 }
 function isValidInviteCode(code, length) {
     return new RegExp(`^[A-Z0-9]{${length}}$`).test(code);
@@ -616,6 +622,11 @@ async function crearCanjeCarrito(conn, { usuarioId, items, sucursalId, }) {
     if (!itemsNormalizados.length) {
         throw new HttpError(400, "Debes agregar al menos un producto al carrito.");
     }
+    const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, usuarioId);
+    const purchaseLimit = await (0, purchaseLimits_1.getPurchaseQuantityLimit)(conn, pricingProfile?.tipoCliente ?? "cliente");
+    for (const item of itemsNormalizados) {
+        assertWithinPurchaseLimit(item.cantidad, purchaseLimit);
+    }
     const productoIds = itemsNormalizados.map((item) => item.producto_id);
     const placeholders = productoIds.map(() => "?").join(", ");
     const productos = await (0, db_1.qAll)(conn, `SELECT id, nombre, COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS precio_puntos_effectivo, imagen_url
@@ -1072,7 +1083,7 @@ router.get("/carrito", async (req, res) => {
 router.post("/carrito/items", async (req, res) => {
     const schema = zod_1.z.object({
         producto_id: zod_1.z.number().int().positive(),
-        cantidad: zod_1.z.number().int().positive().max(100),
+        cantidad: zod_1.z.number().int().positive().max(purchaseLimits_1.MAX_SYSTEM_PURCHASE_QUANTITY),
         modo_compra: zod_1.z.literal("dinero"),
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
         sabores: zod_1.z.array(zod_1.z.object({
@@ -1102,9 +1113,8 @@ router.post("/carrito/items", async (req, res) => {
        WHERE carrito_id = ? AND producto_id = ? AND modo_compra = ? AND config_hash = ?
        LIMIT 1`, [carritoId, producto_id, modo_compra, configHash]);
         const nuevaCantidad = Number(existente?.cantidad ?? 0) + cantidad;
-        if (nuevaCantidad > 200) {
-            throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
-        }
+        const purchaseLimit = await (0, purchaseLimits_1.getPurchaseQuantityLimit)(conn, pricingProfile?.tipoCliente ?? "cliente");
+        assertWithinPurchaseLimit(nuevaCantidad, purchaseLimit);
         const saboresDetalle = await validateFlavorSelectionForProduct(conn, {
             producto,
             sabores: saboresSeleccionados,
@@ -1159,7 +1169,7 @@ router.post("/carrito/items", async (req, res) => {
 router.patch("/carrito/items/:itemId", async (req, res) => {
     const itemId = Number(req.params.itemId);
     const schema = zod_1.z.object({
-        cantidad: zod_1.z.number().int().positive().max(200),
+        cantidad: zod_1.z.number().int().positive().max(purchaseLimits_1.MAX_SYSTEM_PURCHASE_QUANTITY),
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
@@ -1195,6 +1205,8 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
         const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, req.user.id);
         const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
         validateProductoForMode(producto, item.modo_compra);
+        const purchaseLimit = await (0, purchaseLimits_1.getPurchaseQuantityLimit)(conn, pricingProfile?.tipoCliente ?? "cliente");
+        assertWithinPurchaseLimit(parsed.data.cantidad, purchaseLimit);
         if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
             await assertCartQuantityWithinStock(conn, {
                 producto,
@@ -2455,7 +2467,7 @@ router.post("/canjear-carrito", async (req, res) => {
     const schema = zod_1.z.object({
         items: zod_1.z.array(zod_1.z.object({
             producto_id: zod_1.z.number().int().positive(),
-            cantidad: zod_1.z.number().int().positive().max(100),
+            cantidad: zod_1.z.number().int().positive().max(purchaseLimits_1.MAX_SYSTEM_PURCHASE_QUANTITY),
         })).min(1).max(40),
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),
     });

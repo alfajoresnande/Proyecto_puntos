@@ -4,6 +4,7 @@ const express_1 = require("express");
 const db_1 = require("../db");
 const auth_1 = require("../auth");
 const customerPricing_1 = require("../services/customerPricing");
+const purchaseLimits_1 = require("../services/purchaseLimits");
 const urlSafety_1 = require("../urlSafety");
 const router = (0, express_1.Router)();
 function hasOwnProductImage(imagenUrl, imagenes) {
@@ -36,6 +37,7 @@ router.get("/destacados", async (req, res) => {
             ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
             : null;
         const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "web", profile: pricingProfile });
+        const purchaseLimit = await (0, purchaseLimits_1.getPurchaseQuantityLimit)(db_1.pool, pricingProfile?.tipoCliente ?? "cliente");
         const ids = rows.map((row) => row.id);
         const placeholders = ids.map(() => "?").join(", ");
         const [imgRowsRaw] = await db_1.pool.query(`SELECT producto_id, imagen_url, orden
@@ -78,6 +80,7 @@ router.get("/destacados", async (req, res) => {
                 puntos_para_canjear: row.puntos_para_canjear,
                 permite_envio: Boolean(row.permite_envio),
                 envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
+                limite_compra: purchaseLimit,
             };
         })
             .filter((producto) => hasOwnProductImage(producto.imagen_url, producto.imagenes))
@@ -146,6 +149,7 @@ router.get("/", async (req, res) => {
         ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
         : null;
     const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "web", profile: pricingProfile });
+    const purchaseLimit = await (0, purchaseLimits_1.getPurchaseQuantityLimit)(db_1.pool, pricingProfile?.tipoCliente ?? "cliente");
     const allIds = rows.map((row) => row.id);
     const allPlaceholders = allIds.map(() => "?").join(", ");
     const [flavorRowsRaw] = await db_1.pool.query(`SELECT ps.producto_id, s.id, s.nombre, s.descripcion, s.activo,
@@ -259,6 +263,7 @@ router.get("/", async (req, res) => {
             permite_envio: Boolean(row.permite_envio),
             envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
             permite_retiro_local: Boolean(row.permite_retiro_local),
+            limite_compra: purchaseLimit,
         };
     }));
 });

@@ -489,6 +489,9 @@ type ConfiguracionDraft = {
   puntos_referido_invitado: string;
   longitud_codigo_invitacion: string;
   envio_gratis_monto_minimo: string;
+  limite_compra_cliente: string;
+  limite_compra_mayorista: string;
+  limite_compra_empleado: string;
   pedido_efectivo_dias_vigencia: string;
   empresa_dias_habiles_retiro: string;
   empresa_horario_retiro: string;
@@ -1318,7 +1321,7 @@ export function Admin() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { showToast } = useToast();
+  const { showToast, confirmToast } = useToast();
   const adminContentRef = useRef<HTMLDivElement | null>(null);
   const user = useAuthStore((state) => state.user);
   const token = useAuthStore((state) => state.token);
@@ -1498,6 +1501,9 @@ export function Admin() {
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
     envio_gratis_monto_minimo: "",
+    limite_compra_cliente: "100",
+    limite_compra_mayorista: "100",
+    limite_compra_empleado: "100",
     pedido_efectivo_dias_vigencia: "3",
     empresa_dias_habiles_retiro: "Lunes a viernes",
     empresa_horario_retiro: "08:00 a 18:00",
@@ -1806,6 +1812,9 @@ export function Admin() {
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
       envio_gratis_monto_minimo: emptyZeroInputValue(getConfig("envio_gratis_monto_minimo", "0")),
+      limite_compra_cliente: emptyZeroInputValue(getConfig("limite_compra_cliente", "100")),
+      limite_compra_mayorista: emptyZeroInputValue(getConfig("limite_compra_mayorista", "100")),
+      limite_compra_empleado: emptyZeroInputValue(getConfig("limite_compra_empleado", "100")),
       pedido_efectivo_dias_vigencia: getConfig("pedido_efectivo_dias_vigencia", "3"),
       empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
@@ -3261,11 +3270,7 @@ export function Admin() {
     }
   }
 
-  async function limpiarPostulaciones() {
-    if (!postulacionesFiltradas.length) return;
-    const confirmed = typeof window === "undefined" || window.confirm("Esto va a limpiar el listado de postulantes del panel, pero no los borra de la base de datos. ¿Continuar?");
-    if (!confirmed) return;
-
+  async function ejecutarLimpiezaPostulaciones() {
     setBusy(true);
     setErrMsg("");
     setOkMsg("");
@@ -3282,6 +3287,21 @@ export function Admin() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function limpiarPostulaciones() {
+    if (!postulacionesFiltradas.length) return;
+
+    confirmToast({
+      tone: "warning",
+      title: "Limpiar postulantes",
+      message: "Esto va a ocultar el listado de postulantes del panel, pero no los borra de la base de datos.",
+      confirmLabel: "Limpiar",
+      cancelLabel: "Cancelar",
+      onConfirm: () => {
+        void ejecutarLimpiezaPostulaciones();
+      },
+    });
   }
 
   function cargarFormularioCaja(sesion: CajaSesionAdmin | null) {
@@ -4128,6 +4148,9 @@ export function Admin() {
     const puntosInvitado = Number(configDraft.puntos_referido_invitado);
     const longitudCodigoInvitacion = Number(configDraft.longitud_codigo_invitacion);
     const envioGratisMontoMinimo = Number(configDraft.envio_gratis_monto_minimo);
+    const limiteCompraCliente = Number(configDraft.limite_compra_cliente || 0);
+    const limiteCompraMayorista = Number(configDraft.limite_compra_mayorista || 0);
+    const limiteCompraEmpleado = Number(configDraft.limite_compra_empleado || 0);
     const pedidoEfectivoDiasVigencia = Number(configDraft.pedido_efectivo_dias_vigencia);
     const empresaDiasHabilesRetiro = configDraft.empresa_dias_habiles_retiro.trim();
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
@@ -4151,6 +4174,16 @@ export function Admin() {
     }
     if (!Number.isFinite(envioGratisMontoMinimo) || envioGratisMontoMinimo < 0 || envioGratisMontoMinimo > 999999999) {
       setConfigErr("El monto minimo para envio gratis debe ser un numero mayor o igual a 0.");
+      return;
+    }
+    const limitesCompra = [
+      { label: "cliente", value: limiteCompraCliente },
+      { label: "mayorista", value: limiteCompraMayorista },
+      { label: "empleado", value: limiteCompraEmpleado },
+    ];
+    const limiteCompraInvalido = limitesCompra.find((item) => !Number.isInteger(item.value) || item.value < 0 || item.value > 100000);
+    if (limiteCompraInvalido) {
+      setConfigErr(`El limite de compra para ${limiteCompraInvalido.label} debe ser un entero entre 0 y 100000.`);
       return;
     }
     if (!Number.isInteger(pedidoEfectivoDiasVigencia) || pedidoEfectivoDiasVigencia < 1 || pedidoEfectivoDiasVigencia > 30) {
@@ -4197,6 +4230,21 @@ export function Admin() {
           clave: "envio_gratis_monto_minimo",
           valor: String(Math.round((envioGratisMontoMinimo + Number.EPSILON) * 100) / 100),
           descripcion: "Monto minimo de productos para que el envio sea gratis. 0 desactiva la regla.",
+        },
+        {
+          clave: "limite_compra_cliente",
+          valor: String(limiteCompraCliente),
+          descripcion: "Cantidad maxima por producto para clientes comunes. 0 significa sin tope comercial.",
+        },
+        {
+          clave: "limite_compra_mayorista",
+          valor: String(limiteCompraMayorista),
+          descripcion: "Cantidad maxima por producto para clientes mayoristas. 0 significa sin tope comercial.",
+        },
+        {
+          clave: "limite_compra_empleado",
+          valor: String(limiteCompraEmpleado),
+          descripcion: "Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.",
         },
         {
           clave: "pedido_efectivo_dias_vigencia",
@@ -4792,6 +4840,48 @@ export function Admin() {
                       placeholder="Ej: 50000"
                     />
                     <p className="adm-field-help">Subtotal minimo de productos para bonificar el envio. Dejalo vacio para desactivar esta regla.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Limite compra cliente</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100000}
+                      step={1}
+                      className="adm-input"
+                      value={configDraft.limite_compra_cliente}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, limite_compra_cliente: event.target.value }))}
+                      placeholder="Ej: 100"
+                    />
+                    <p className="adm-field-help">Tope por producto para cliente comun. Vacio o 0 deja sin tope comercial.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Limite compra mayorista</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100000}
+                      step={1}
+                      className="adm-input"
+                      value={configDraft.limite_compra_mayorista}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, limite_compra_mayorista: event.target.value }))}
+                      placeholder="Ej: 500"
+                    />
+                    <p className="adm-field-help">Tope por producto para mayoristas. Vacio o 0 deja sin tope comercial.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Limite compra empleado</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100000}
+                      step={1}
+                      className="adm-input"
+                      value={configDraft.limite_compra_empleado}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, limite_compra_empleado: event.target.value }))}
+                      placeholder="Ej: 100"
+                    />
+                    <p className="adm-field-help">Tope por producto para empleados. Vacio o 0 deja sin tope comercial.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Dias habiles de retiro</label>

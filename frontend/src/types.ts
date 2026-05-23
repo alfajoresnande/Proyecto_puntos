@@ -68,6 +68,7 @@ export type Producto = {
   stock_reservado?: number;
   stock_total_disponible?: number;
   stock_total_reservado?: number;
+  limite_compra?: number | null;
   stock_sucursal_id?: number | null;
   inventario_sucursales?: Array<{
     sucursal_id: number;

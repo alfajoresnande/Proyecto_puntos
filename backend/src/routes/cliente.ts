@@ -31,6 +31,11 @@ import {
   resolvePaymentChoice,
   type PaymentChoice,
 } from "../services/paymentProviders";
+import {
+  getPurchaseQuantityLimit,
+  isWithinPurchaseQuantityLimit,
+  MAX_SYSTEM_PURCHASE_QUANTITY,
+} from "../services/purchaseLimits";
 import { buildAddressSnapshot, getUserAddress } from "../services/userAddresses";
 import {
   buildShippingQuoteSnapshot,
@@ -338,6 +343,11 @@ async function getInviteCodeLength(conn: Queryable = pool): Promise<number> {
   const parsed = Number(row?.valor ?? DEFAULT_INVITE_CODE_LENGTH);
   if (!Number.isInteger(parsed)) return DEFAULT_INVITE_CODE_LENGTH;
   return Math.max(MIN_INVITE_CODE_LENGTH, Math.min(MAX_INVITE_CODE_LENGTH, parsed));
+}
+
+function assertWithinPurchaseLimit(cantidad: number, limit: number | null) {
+  if (isWithinPurchaseQuantityLimit(cantidad, limit)) return;
+  throw new HttpError(400, `El limite para tu perfil es ${limit} unidades por producto.`);
 }
 
 function isValidInviteCode(code: string, length: number): boolean {
@@ -1017,6 +1027,11 @@ async function crearCanjeCarrito(
   if (!itemsNormalizados.length) {
     throw new HttpError(400, "Debes agregar al menos un producto al carrito.");
   }
+  const pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
+  const purchaseLimit = await getPurchaseQuantityLimit(conn, pricingProfile?.tipoCliente ?? "cliente");
+  for (const item of itemsNormalizados) {
+    assertWithinPurchaseLimit(item.cantidad, purchaseLimit);
+  }
 
   const productoIds = itemsNormalizados.map((item) => item.producto_id);
   const placeholders = productoIds.map(() => "?").join(", ");
@@ -1608,7 +1623,7 @@ router.get("/carrito", async (req, res) => {
 router.post("/carrito/items", async (req, res) => {
   const schema = z.object({
     producto_id: z.number().int().positive(),
-    cantidad: z.number().int().positive().max(100),
+    cantidad: z.number().int().positive().max(MAX_SYSTEM_PURCHASE_QUANTITY),
     modo_compra: z.literal("dinero"),
     sucursal_id: z.number().int().positive().optional().nullable(),
     sabores: z.array(z.object({
@@ -1646,9 +1661,8 @@ router.post("/carrito/items", async (req, res) => {
     );
 
     const nuevaCantidad = Number(existente?.cantidad ?? 0) + cantidad;
-    if (nuevaCantidad > 200) {
-      throw new HttpError(400, "No puedes agregar más de 200 unidades del mismo producto por modo.");
-    }
+    const purchaseLimit = await getPurchaseQuantityLimit(conn, pricingProfile?.tipoCliente ?? "cliente");
+    assertWithinPurchaseLimit(nuevaCantidad, purchaseLimit);
     const saboresDetalle = await validateFlavorSelectionForProduct(conn, {
       producto,
       sabores: saboresSeleccionados,
@@ -1720,7 +1734,7 @@ router.post("/carrito/items", async (req, res) => {
 router.patch("/carrito/items/:itemId", async (req, res) => {
   const itemId = Number(req.params.itemId);
   const schema = z.object({
-    cantidad: z.number().int().positive().max(200),
+    cantidad: z.number().int().positive().max(MAX_SYSTEM_PURCHASE_QUANTITY),
     sucursal_id: z.number().int().positive().optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
@@ -1770,6 +1784,8 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     validateProductoForMode(producto, item.modo_compra);
+    const purchaseLimit = await getPurchaseQuantityLimit(conn, pricingProfile?.tipoCliente ?? "cliente");
+    assertWithinPurchaseLimit(parsed.data.cantidad, purchaseLimit);
     if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
       await assertCartQuantityWithinStock(conn, {
         producto,
@@ -3287,7 +3303,7 @@ router.post("/canjear-carrito", async (req, res) => {
     items: z.array(
       z.object({
         producto_id: z.number().int().positive(),
-        cantidad: z.number().int().positive().max(100),
+        cantidad: z.number().int().positive().max(MAX_SYSTEM_PURCHASE_QUANTITY),
       }),
     ).min(1).max(40),
     sucursal_id: z.number().int().positive().optional().nullable(),

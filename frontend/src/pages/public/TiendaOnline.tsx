@@ -65,6 +65,9 @@ type OnlineCartResponse = {
   };
 };
 
+const DEFAULT_SELECTABLE_QUANTITY_LIMIT = 100;
+const MAX_SELECTABLE_QUANTITY_LIMIT = 100000;
+
 function productPrice(producto: Producto): number {
   const n = Number(producto.precio_dinero ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -101,10 +104,18 @@ function productAvailableStock(producto: Producto): number {
   return Number.isFinite(stock) ? Math.max(0, Math.floor(stock)) : 0;
 }
 
+function productPurchaseLimit(producto: Producto): number {
+  if (producto.limite_compra === null) return MAX_SELECTABLE_QUANTITY_LIMIT;
+  const limit = Number(producto.limite_compra ?? DEFAULT_SELECTABLE_QUANTITY_LIMIT);
+  if (!Number.isFinite(limit) || limit <= 0) return DEFAULT_SELECTABLE_QUANTITY_LIMIT;
+  return Math.min(MAX_SELECTABLE_QUANTITY_LIMIT, Math.floor(limit));
+}
+
 function maxSelectableQuantity(producto: Producto): number {
   if (isCajaSabores(producto)) return 1;
-  if (producto.track_stock === false) return 100;
-  return Math.max(1, Math.min(100, productAvailableStock(producto)));
+  const limit = productPurchaseLimit(producto);
+  if (producto.track_stock === false) return limit;
+  return Math.max(1, Math.min(limit, productAvailableStock(producto)));
 }
 
 function isCajaSabores(producto: Producto): boolean {
@@ -574,6 +585,11 @@ export function TiendaOnline() {
     }
     if (!Number.isInteger(cantidad) || cantidad < 1) {
       setToast("Elegi una cantidad mayor o igual a 1.");
+      return;
+    }
+    const maxCantidad = maxSelectableQuantity(producto);
+    if (cantidad > maxCantidad) {
+      setToast(`El maximo para este producto es ${maxCantidad}.`);
       return;
     }
     if (isCajaSabores(producto)) {
