@@ -14,6 +14,7 @@ import {
   normalizeCashPaymentMethod,
   openCajaSesion,
   registerCajaMovimiento,
+  syncCajaSesionClosureState,
 } from "../services/cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile } from "../services/customerPricing";
 import {
@@ -46,6 +47,18 @@ const dniManualSchema = z
   .string()
   .trim()
   .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const dniManualOptionalSchema = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((value) => {
+    const normalized = value?.trim() || "";
+    return normalized || null;
+  })
+  .refine((value) => value === null || /^\d{6,10}$/.test(value), {
+    message: "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.",
+  });
 
 const telefonoManualSchema = z
   .string()
@@ -62,7 +75,7 @@ const telefonoManualSchema = z
 
 const clienteLocalPayloadSchema = z.object({
   nombre: z.string().min(2).max(120),
-  dni: dniManualSchema,
+  dni: dniManualOptionalSchema,
   telefono: telefonoManualSchema.optional().nullable(),
 });
 const cajaAperturaSchema = z.object({
@@ -1172,6 +1185,7 @@ router.put("/gastos/:id", async (req, res, next) => {
         creadoPor: req.user!.id,
       });
     }
+    await syncCajaSesionClosureState(conn, { cajaSesionId: Number(gasto.caja_sesion_id) });
 
     await conn.commit();
     emitRealtime(["ordenes"]);

@@ -215,6 +215,18 @@ const dniManualSchema = zod_1.z
     .string()
     .trim()
     .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const dniManualOptionalSchema = zod_1.z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((value) => {
+    const normalized = value?.trim() || "";
+    return normalized || null;
+})
+    .refine((value) => value === null || /^\d{6,10}$/.test(value), {
+    message: "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.",
+});
 const telefonoManualSchema = zod_1.z
     .string()
     .trim()
@@ -230,7 +242,7 @@ const telefonoManualSchema = zod_1.z
 }, "El telefono manual debe tener entre 6 y 15 numeros.");
 const clienteLocalPayloadSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(2).max(120),
-    dni: dniManualSchema,
+    dni: dniManualOptionalSchema,
     telefono: telefonoManualSchema.optional().nullable(),
 });
 const proveedorSchema = zod_1.z.object({
@@ -257,6 +269,12 @@ const cajaAperturaSchema = zod_1.z.object({
 const cajaCierreSchema = zod_1.z.object({
     monto_cierre_declarado: zod_1.z.number().min(0),
     observaciones: zod_1.z.string().max(2000).optional().nullable(),
+});
+const cajaEdicionSchema = zod_1.z.object({
+    monto_apertura: zod_1.z.number().min(0),
+    observaciones_apertura: zod_1.z.string().max(2000).optional().nullable(),
+    monto_cierre_declarado: zod_1.z.number().min(0).optional().nullable(),
+    observaciones_cierre: zod_1.z.string().max(2000).optional().nullable(),
 });
 const gastoSchema = zod_1.z.object({
     sucursal_id: zod_1.z.number().int().positive(),
@@ -1178,6 +1196,40 @@ router.post("/caja/:id/cierre", async (req, res) => {
         conn.release();
     }
 });
+router.put("/caja/sesiones/:id", async (req, res) => {
+    const sessionId = Number(req.params.id);
+    const parsed = cajaEdicionSchema.safeParse(req.body);
+    if (!Number.isFinite(sessionId) || sessionId <= 0) {
+        res.status(400).json({ error: "Caja invalida." });
+        return;
+    }
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        await (0, cashRegister_1.updateCajaSesionManually)(conn, {
+            cajaSesionId: sessionId,
+            montoApertura: Number(parsed.data.monto_apertura),
+            observacionesApertura: parsed.data.observaciones_apertura,
+            montoCierreDeclarado: parsed.data.monto_cierre_declarado ?? null,
+            observacionesCierre: parsed.data.observaciones_cierre,
+            usuarioId: req.user.id,
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["ordenes"]);
+        res.json(await getCajaSesionPayload(db_1.pool, sessionId));
+    }
+    catch (err) {
+        await conn.rollback();
+        res.status(400).json({ error: err?.message || "No se pudo actualizar la caja." });
+    }
+    finally {
+        conn.release();
+    }
+});
 router.get("/caja/sesiones", async (req, res) => {
     const sucursalId = Number(req.query.sucursal_id ?? 0);
     const desde = typeof req.query.desde === "string" ? req.query.desde : null;
@@ -1394,6 +1446,7 @@ router.put("/gastos/:id", async (req, res) => {
                 creadoPor: req.user.id,
             });
         }
+        await (0, cashRegister_1.syncCajaSesionClosureState)(conn, { cajaSesionId: Number(gasto.caja_sesion_id) });
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes"]);
         res.json({ ok: true });
@@ -1411,10 +1464,19 @@ router.get("/ordenes", async (_req, res) => {
               cl.dni AS cliente_local_dni, cl.telefono AS cliente_local_telefono,
               COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
               COALESCE(u.email, '') AS cliente_email,
+              COALESCE(u.dni, cl.dni) AS cliente_dni,
+              COALESCE(u.telefono, cl.telefono) AS cliente_telefono,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              EXISTS(
+                SELECT 1
+                FROM movimientos_puntos mp
+                WHERE mp.referencia_tipo = 'ordenes'
+                  AND mp.referencia_id = o.id
+                  AND mp.tipo = 'acreditacion_compra'
+              ) AS puntos_acreditados,
               o.notas, o.created_at, o.updated_at
      FROM ordenes o
      LEFT JOIN usuarios u ON u.id = o.usuario_id
@@ -1447,10 +1509,14 @@ router.get("/ordenes", async (_req, res) => {
         const items = itemMap.get(Number(row.id)) ?? [];
         return {
             ...row,
+            usuario_id: row.usuario_id === null ? null : Number(row.usuario_id),
+            cliente_dni: row.cliente_dni ?? row.cliente_local_dni ?? null,
+            cliente_telefono: row.cliente_telefono ?? row.cliente_local_telefono ?? null,
             total_dinero: Number(row.total_dinero ?? 0),
             total_puntos: Number(row.total_puntos ?? 0),
             total_items: items.length,
             total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
+            puntos_acreditados: Boolean(row.puntos_acreditados),
             items,
             direccion_envio: parseJsonField(row.direccion_envio_json),
             sucursal: row.sucursal_retiro_id

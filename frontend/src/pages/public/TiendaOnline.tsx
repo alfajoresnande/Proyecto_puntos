@@ -404,11 +404,11 @@ export function TiendaOnline() {
     hasDragged.current = false;
   }
 
-  function ajustarCantidadSeleccionada(producto: Producto, delta: number) {
+  function actualizarCantidadSeleccionada(producto: Producto, rawValue: string | number) {
     setCantidadesSeleccionadas((prev) => {
-      const actual = Number.isInteger(prev[producto.id]) && prev[producto.id] > 0 ? prev[producto.id] : 1;
+      const parsed = Math.floor(Number(rawValue) || 0);
       const max = maxSelectableQuantity(producto);
-      const next = Math.max(1, Math.min(max, actual + delta));
+      const next = Math.max(1, Math.min(max, parsed || 1));
       return { ...prev, [producto.id]: next };
     });
   }
@@ -1125,25 +1125,15 @@ export function TiendaOnline() {
                       <div className="product-card-action-slot">
                         {user && !esCaja ? (
                           <div className="product-card-qty">
-                            <button
-                              type="button"
-                              className="vendedor-round-btn"
-                              disabled={addMutation.isPending || cantidadSeleccionada <= 1}
-                              onClick={() => ajustarCantidadSeleccionada(producto, -1)}
-                            >
-                              -
-                            </button>
-                            <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                              {cantidadSeleccionada}
-                            </span>
-                            <button
-                              type="button"
-                              className="vendedor-round-btn"
-                              disabled={addMutation.isPending || cantidadSeleccionada >= maxCantidad}
-                              onClick={() => ajustarCantidadSeleccionada(producto, +1)}
-                            >
-                              +
-                            </button>
+                            <input
+                              className="product-card-qty-input"
+                              type="number"
+                              min={1}
+                              max={Math.max(1, maxCantidad)}
+                              value={cantidadSeleccionada}
+                              disabled={addMutation.isPending || maxCantidad <= 0}
+                              onChange={(event) => actualizarCantidadSeleccionada(producto, event.target.value)}
+                            />
                           </div>
                         ) : (
                           <div className="product-card-action-spacer" aria-hidden="true" />
@@ -1392,25 +1382,15 @@ export function TiendaOnline() {
 
                   {!isCajaSabores(productoModal) ? (
                   <div className="product-card-qty">
-                    <button
-                      type="button"
-                      className="vendedor-round-btn"
-                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) <= 1}
-                      onClick={() => ajustarCantidadSeleccionada(productoModal, -1)}
-                    >
-                      -
-                    </button>
-                    <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                      {getCantidadSeleccionada(productoModal.id)}
-                    </span>
-                    <button
-                      type="button"
-                      className="vendedor-round-btn"
-                      disabled={addMutation.isPending || getCantidadSeleccionada(productoModal.id) >= maxSelectableQuantity(productoModal)}
-                      onClick={() => ajustarCantidadSeleccionada(productoModal, +1)}
-                    >
-                      +
-                    </button>
+                    <input
+                      className="product-card-qty-input"
+                      type="number"
+                      min={1}
+                      max={Math.max(1, maxSelectableQuantity(productoModal))}
+                      value={getCantidadSeleccionada(productoModal.id)}
+                      disabled={addMutation.isPending || maxSelectableQuantity(productoModal) <= 0}
+                      onChange={(event) => actualizarCantidadSeleccionada(productoModal, event.target.value)}
+                    />
                   </div>
                   ) : null}
 

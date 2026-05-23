@@ -1037,6 +1037,7 @@ async function ensureClientesLocalesSchema() {
       INDEX idx_clientes_locales_nombre (nombre)
     )`
   );
+  await pool.query("ALTER TABLE clientes_locales MODIFY COLUMN dni VARCHAR(20) NULL");
 }
 
 async function ensurePricingDiscountSchema() {

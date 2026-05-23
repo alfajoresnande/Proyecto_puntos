@@ -42,6 +42,12 @@ function normalizeManualDni(value) {
     }
     return dni;
 }
+function normalizeOptionalManualDni(value) {
+    const dni = value?.trim() || "";
+    if (!dni)
+        return null;
+    return normalizeManualDni(dni);
+}
 function normalizeManualPhone(value) {
     const phone = value?.trim() || "";
     if (!phone)
@@ -241,18 +247,32 @@ async function prepareLocalSaleItems(conn, items, resolvePrice) {
     }
     return mergePreparedItems(prepared);
 }
-async function findOrCreateLocalCustomer(conn, clienteLocal) {
+async function findOrCreateLocalCustomer(conn, clienteLocal, existingClienteLocalId) {
     const nombre = clienteLocal.nombre.trim();
-    const dni = normalizeManualDni(clienteLocal.dni);
+    const dni = normalizeOptionalManualDni(clienteLocal.dni);
     const telefono = normalizeManualPhone(clienteLocal.telefono);
     if (nombre.length < 2)
         throw new Error("El nombre del cliente manual es obligatorio.");
-    const existing = await (0, db_1.qOne)(conn, "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1", [dni]);
-    if (existing) {
+    const current = existingClienteLocalId && Number.isInteger(existingClienteLocalId) && existingClienteLocalId > 0
+        ? await (0, db_1.qOne)(conn, "SELECT id, nombre, dni FROM clientes_locales WHERE id = ? LIMIT 1", [existingClienteLocalId])
+        : null;
+    const currentIsGeneric = Boolean(current) &&
+        String(current?.dni ?? "").trim() === GENERIC_LOCAL_CUSTOMER.dni &&
+        current?.nombre.trim().toLowerCase() === GENERIC_LOCAL_CUSTOMER.nombre.toLowerCase();
+    if (dni) {
+        const existing = await (0, db_1.qOne)(conn, "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1", [dni]);
+        if (existing) {
+            await (0, db_1.qRun)(conn, `UPDATE clientes_locales
+         SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`, [nombre, telefono, Number(existing.id)]);
+            return Number(existing.id);
+        }
+    }
+    if (current && !currentIsGeneric) {
         await (0, db_1.qRun)(conn, `UPDATE clientes_locales
-       SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`, [nombre, telefono, Number(existing.id)]);
-        return Number(existing.id);
+       SET nombre = ?, dni = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`, [nombre, dni, telefono, Number(current.id)]);
+        return Number(current.id);
     }
     const created = await (0, db_1.qRun)(conn, `INSERT INTO clientes_locales (nombre, dni, telefono)
      VALUES (?, ?, ?)`, [nombre, dni, telefono]);
@@ -274,7 +294,7 @@ async function resolveLocalSaleCustomer(conn, input) {
         pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, usuarioId);
     }
     else if (input.clienteLocal) {
-        clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
+        clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal, input.existingClienteLocalId);
     }
     else {
         clienteLocalId = await findOrCreateGenericLocalCustomer(conn);
@@ -292,12 +312,12 @@ function buildLocalSaleNotes(action, channel, notes) {
     ].filter(Boolean).join(" ");
     return value || null;
 }
-function buildLocalSaleResult(orderId, preparedItems) {
+function buildLocalSaleResult(orderId, preparedItems, totalPuntosGanados) {
     return {
         ordenId: orderId,
         totalDinero: toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0)),
         totalUnidades: preparedItems.reduce((acc, item) => acc + item.cantidad, 0),
-        totalPuntosGanados: preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0),
+        totalPuntosGanados: totalPuntosGanados,
     };
 }
 async function persistPreparedLocalSaleItems(conn, orderId, preparedItems) {
@@ -348,7 +368,7 @@ async function persistLocalSalePayment(conn, { orderId, channel, metodoPago, tot
     ]);
 }
 async function updateLocalSaleCajaMovimiento(conn, { orderId, metodoPago, totalDinero, creadoPor, }) {
-    const currentMovement = await (0, db_1.qOne)(conn, `SELECT id
+    const currentMovement = await (0, db_1.qOne)(conn, `SELECT id, caja_sesion_id
      FROM caja_movimientos
      WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'venta'
      ORDER BY id DESC
@@ -360,6 +380,7 @@ async function updateLocalSaleCajaMovimiento(conn, { orderId, metodoPago, totalD
     await (0, db_1.qRun)(conn, `UPDATE caja_movimientos
      SET medio_pago = ?, monto = ?, descripcion = ?, creado_por = ?
      WHERE id = ?`, [(0, cashRegister_1.normalizeCashPaymentMethod)(metodoPago), totalDinero, `Venta local #${orderId}`, creadoPor, Number(currentMovement.id)]);
+    await (0, cashRegister_1.syncCajaSesionClosureState)(conn, { cajaSesionId: Number(currentMovement.caja_sesion_id) });
 }
 async function removeLocalSalePoints(conn, orderId, usuarioId) {
     await (0, db_1.qRun)(conn, "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'", [orderId]);
@@ -368,7 +389,7 @@ async function removeLocalSalePoints(conn, orderId, usuarioId) {
     }
 }
 async function getExistingLocalSaleOrder(conn, orderId) {
-    const order = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, canal, estado, tipo_orden, sucursal_retiro_id
+    const order = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, cliente_local_id, canal, estado, tipo_orden, sucursal_retiro_id
      FROM ordenes
      WHERE id = ?
      LIMIT 1
@@ -380,6 +401,7 @@ async function getExistingLocalSaleOrder(conn, orderId) {
         ...order,
         id: Number(order.id),
         usuario_id: order.usuario_id === null ? null : Number(order.usuario_id),
+        cliente_local_id: order.cliente_local_id === null ? null : Number(order.cliente_local_id),
         sucursal_retiro_id: order.sucursal_retiro_id === null ? null : Number(order.sucursal_retiro_id),
     };
 }
@@ -469,7 +491,10 @@ async function registerLocalSale(conn, input) {
     if (!preparedItems.length) {
         throw new Error("Agrega al menos un producto a la venta local.");
     }
-    const result = buildLocalSaleResult(0, preparedItems);
+    const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
+        ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+        : 0;
+    const result = buildLocalSaleResult(0, preparedItems, totalPuntosGanados);
     const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
     const cajaSesion = await (0, cashRegister_1.ensureDailyCajaSesion)(conn, {
         usuarioId: input.creadoPor,
@@ -553,7 +578,10 @@ async function updateLocalSale(conn, input) {
     if (Number(input.sucursalId) !== Number(existing.sucursal_retiro_id)) {
         throw new Error("Por ahora la edicion no permite cambiar la sucursal de una venta ya guardada.");
     }
-    const customer = await resolveLocalSaleCustomer(conn, input);
+    const customer = await resolveLocalSaleCustomer(conn, {
+        ...input,
+        existingClienteLocalId: existing.cliente_local_id,
+    });
     const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, {
         source: "local",
         profile: customer.pricingProfile,
@@ -562,7 +590,10 @@ async function updateLocalSale(conn, input) {
     if (!preparedItems.length) {
         throw new Error("Agrega al menos un producto a la venta local.");
     }
-    const result = buildLocalSaleResult(input.orderId, preparedItems);
+    const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
+        ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+        : 0;
+    const result = buildLocalSaleResult(input.orderId, preparedItems, totalPuntosGanados);
     const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
     await replaceLocalSaleItems(conn, {
         orderId: input.orderId,

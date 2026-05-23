@@ -304,6 +304,141 @@ export async function registerCajaMovimiento(
   );
 }
 
+export async function syncCajaSesionClosureState(
+  conn: Queryable,
+  input: { cajaSesionId: number },
+): Promise<{ updated: boolean; summary: CajaSesionSummary }> {
+  const session = await qOne<{
+    id: number;
+    estado: "abierta" | "cerrada";
+    monto_cierre_declarado: number | null;
+  }>(
+    conn,
+    `SELECT id, estado, monto_cierre_declarado
+     FROM caja_sesiones
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [input.cajaSesionId],
+  );
+  if (!session) {
+    throw new Error("La caja solicitada no existe.");
+  }
+
+  const summary = await getCajaSesionSummary(conn, input.cajaSesionId);
+  if (session.estado !== "cerrada") {
+    return { updated: false, summary };
+  }
+
+  const montoDeclarado =
+    session.monto_cierre_declarado === null || session.monto_cierre_declarado === undefined
+      ? summary.efectivoSistema
+      : Number(session.monto_cierre_declarado);
+  await qRun(
+    conn,
+    `UPDATE caja_sesiones
+     SET monto_cierre_sistema = ?,
+         diferencia_cierre = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND estado = 'cerrada'`,
+    [
+      summary.efectivoSistema,
+      toMoney(montoDeclarado - summary.efectivoSistema),
+      input.cajaSesionId,
+    ],
+  );
+
+  return { updated: true, summary };
+}
+
+export async function updateCajaSesionManually(
+  conn: Queryable,
+  input: {
+    cajaSesionId: number;
+    montoApertura: number;
+    observacionesApertura?: string | null;
+    montoCierreDeclarado?: number | null;
+    observacionesCierre?: string | null;
+    usuarioId?: number | null;
+  },
+) {
+  const session = await qOne<{
+    id: number;
+    estado: "abierta" | "cerrada";
+    monto_cierre_declarado: number | null;
+  }>(
+    conn,
+    `SELECT id, estado, monto_cierre_declarado
+     FROM caja_sesiones
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [input.cajaSesionId],
+  );
+  if (!session) {
+    throw new Error("La caja solicitada no existe.");
+  }
+
+  const montoApertura = toMoney(input.montoApertura);
+  if (!Number.isFinite(montoApertura) || montoApertura < 0) {
+    throw new Error("El monto de apertura debe ser un numero mayor o igual a 0.");
+  }
+
+  await qRun(
+    conn,
+    `UPDATE caja_sesiones
+     SET monto_apertura = ?,
+         observaciones_apertura = ?,
+         usuario_id = COALESCE(?, usuario_id),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [
+      montoApertura,
+      input.observacionesApertura?.trim() || null,
+      input.usuarioId ?? null,
+      input.cajaSesionId,
+    ],
+  );
+
+  if (session.estado !== "cerrada") {
+    return getCajaSesionSummary(conn, input.cajaSesionId);
+  }
+
+  const summary = await getCajaSesionSummary(conn, input.cajaSesionId);
+  const montoDeclaradoRaw =
+    input.montoCierreDeclarado === null || input.montoCierreDeclarado === undefined
+      ? session.monto_cierre_declarado ?? summary.efectivoSistema
+      : input.montoCierreDeclarado;
+  const montoDeclarado = toMoney(montoDeclaradoRaw);
+  if (!Number.isFinite(montoDeclarado) || montoDeclarado < 0) {
+    throw new Error("El monto de cierre declarado debe ser un numero mayor o igual a 0.");
+  }
+
+  await qRun(
+    conn,
+    `UPDATE caja_sesiones
+     SET monto_cierre_sistema = ?,
+         monto_cierre_declarado = ?,
+         diferencia_cierre = ?,
+         observaciones_cierre = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND estado = 'cerrada'`,
+    [
+      summary.efectivoSistema,
+      montoDeclarado,
+      toMoney(montoDeclarado - summary.efectivoSistema),
+      input.observacionesCierre?.trim() || null,
+      input.cajaSesionId,
+    ],
+  );
+
+  return {
+    ...summary,
+    montoCierreDeclarado: montoDeclarado,
+    diferenciaCierre: toMoney(montoDeclarado - summary.efectivoSistema),
+  };
+}
+
 export async function reverseCajaMovimientoForOrder(
   conn: Queryable,
   input: {
@@ -365,24 +500,7 @@ export async function reverseCajaMovimientoForOrder(
   );
 
   if (original.session_estado === "cerrada") {
-    const summary = await getCajaSesionSummary(conn, Number(original.caja_sesion_id));
-    const montoDeclarado =
-      original.monto_cierre_declarado === null || original.monto_cierre_declarado === undefined
-        ? summary.efectivoSistema
-        : Number(original.monto_cierre_declarado);
-    await qRun(
-      conn,
-      `UPDATE caja_sesiones
-       SET monto_cierre_sistema = ?,
-           diferencia_cierre = ?,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = ? AND estado = 'cerrada'`,
-      [
-        summary.efectivoSistema,
-        toMoney(montoDeclarado - summary.efectivoSistema),
-        Number(original.caja_sesion_id),
-      ],
-    );
+    await syncCajaSesionClosureState(conn, { cajaSesionId: Number(original.caja_sesion_id) });
   }
 
   return { reversed: true, movimientoId: Number(created.insertId) };

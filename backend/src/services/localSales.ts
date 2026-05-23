@@ -2,7 +2,13 @@ import crypto from "crypto";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { Queryable, qAll, qOne, qRun } from "../db";
-import { ensureDailyCajaSesion, normalizeCashPaymentMethod, registerCajaMovimiento, reverseCajaMovimientoForOrder } from "./cashRegister";
+import {
+  ensureDailyCajaSesion,
+  normalizeCashPaymentMethod,
+  registerCajaMovimiento,
+  reverseCajaMovimientoForOrder,
+  syncCajaSesionClosureState,
+} from "./cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
 import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
 import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "./points";
@@ -60,7 +66,7 @@ export type RegisterLocalSaleInput = {
   usuarioId?: number | null;
   clienteLocal?: {
     nombre: string;
-    dni: string;
+    dni?: string | null;
     telefono?: string | null;
   } | null;
   sucursalId: number;
@@ -97,6 +103,7 @@ type LocalSaleCustomerResolution = {
 type ExistingLocalSaleOrder = {
   id: number;
   usuario_id: number | null;
+  cliente_local_id: number | null;
   canal: string;
   estado: string;
   tipo_orden: string;
@@ -152,6 +159,12 @@ function normalizeManualDni(value: string): string {
     throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
   }
   return dni;
+}
+
+function normalizeOptionalManualDni(value: string | null | undefined): string | null {
+  const dni = value?.trim() || "";
+  if (!dni) return null;
+  return normalizeManualDni(dni);
 }
 
 function normalizeManualPhone(value: string | null | undefined): string | null {
@@ -397,27 +410,54 @@ async function prepareLocalSaleItems(
 async function findOrCreateLocalCustomer(
   conn: Queryable,
   clienteLocal: NonNullable<RegisterLocalSaleInput["clienteLocal"]>,
+  existingClienteLocalId?: number | null,
 ): Promise<number> {
   const nombre = clienteLocal.nombre.trim();
-  const dni = normalizeManualDni(clienteLocal.dni);
+  const dni = normalizeOptionalManualDni(clienteLocal.dni);
   const telefono = normalizeManualPhone(clienteLocal.telefono);
 
   if (nombre.length < 2) throw new Error("El nombre del cliente manual es obligatorio.");
 
-  const existing = await qOne<{ id: number }>(
-    conn,
-    "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1",
-    [dni],
-  );
-  if (existing) {
+  const current =
+    existingClienteLocalId && Number.isInteger(existingClienteLocalId) && existingClienteLocalId > 0
+      ? await qOne<{ id: number; nombre: string; dni: string | null }>(
+          conn,
+          "SELECT id, nombre, dni FROM clientes_locales WHERE id = ? LIMIT 1",
+          [existingClienteLocalId],
+        )
+      : null;
+  const currentIsGeneric =
+    Boolean(current) &&
+    String(current?.dni ?? "").trim() === GENERIC_LOCAL_CUSTOMER.dni &&
+    current?.nombre.trim().toLowerCase() === GENERIC_LOCAL_CUSTOMER.nombre.toLowerCase();
+
+  if (dni) {
+    const existing = await qOne<{ id: number }>(
+      conn,
+      "SELECT id FROM clientes_locales WHERE dni = ? LIMIT 1",
+      [dni],
+    );
+    if (existing) {
+      await qRun(
+        conn,
+        `UPDATE clientes_locales
+         SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [nombre, telefono, Number(existing.id)],
+      );
+      return Number(existing.id);
+    }
+  }
+
+  if (current && !currentIsGeneric) {
     await qRun(
       conn,
       `UPDATE clientes_locales
-       SET nombre = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
+       SET nombre = ?, dni = ?, telefono = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [nombre, telefono, Number(existing.id)],
+      [nombre, dni, telefono, Number(current.id)],
     );
-    return Number(existing.id);
+    return Number(current.id);
   }
 
   const created = await qRun(
@@ -435,7 +475,7 @@ async function findOrCreateGenericLocalCustomer(conn: Queryable): Promise<number
 
 async function resolveLocalSaleCustomer(
   conn: Queryable,
-  input: Pick<RegisterLocalSaleInput, "usuarioId" | "clienteLocal">,
+  input: Pick<RegisterLocalSaleInput, "usuarioId" | "clienteLocal"> & { existingClienteLocalId?: number | null },
 ): Promise<LocalSaleCustomerResolution> {
   let usuarioId: number | null = null;
   let clienteLocalId: number | null = null;
@@ -452,7 +492,7 @@ async function resolveLocalSaleCustomer(
     usuarioId = Number(cliente.id);
     pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
   } else if (input.clienteLocal) {
-    clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal);
+    clienteLocalId = await findOrCreateLocalCustomer(conn, input.clienteLocal, input.existingClienteLocalId);
   } else {
     clienteLocalId = await findOrCreateGenericLocalCustomer(conn);
   }
@@ -472,15 +512,16 @@ function buildLocalSaleNotes(action: "registrada" | "actualizada", channel: Loca
   return value || null;
 }
 
-function buildLocalSaleResult(orderId: number, preparedItems: PreparedItem[]): RegisterLocalSaleResult {
+function buildLocalSaleResult(
+  orderId: number,
+  preparedItems: PreparedItem[],
+  totalPuntosGanados: number,
+): RegisterLocalSaleResult {
   return {
     ordenId: orderId,
     totalDinero: toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0)),
     totalUnidades: preparedItems.reduce((acc, item) => acc + item.cantidad, 0),
-    totalPuntosGanados: preparedItems.reduce(
-      (acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario,
-      0,
-    ),
+    totalPuntosGanados: totalPuntosGanados,
   };
 }
 
@@ -576,9 +617,9 @@ async function updateLocalSaleCajaMovimiento(
     creadoPor: number;
   },
 ) {
-  const currentMovement = await qOne<{ id: number }>(
+  const currentMovement = await qOne<{ id: number; caja_sesion_id: number }>(
     conn,
-    `SELECT id
+    `SELECT id, caja_sesion_id
      FROM caja_movimientos
      WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'venta'
      ORDER BY id DESC
@@ -597,6 +638,7 @@ async function updateLocalSaleCajaMovimiento(
      WHERE id = ?`,
     [normalizeCashPaymentMethod(metodoPago), totalDinero, `Venta local #${orderId}`, creadoPor, Number(currentMovement.id)],
   );
+  await syncCajaSesionClosureState(conn, { cajaSesionId: Number(currentMovement.caja_sesion_id) });
 }
 
 async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId: number | null) {
@@ -613,7 +655,7 @@ async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId
 async function getExistingLocalSaleOrder(conn: Queryable, orderId: number): Promise<ExistingLocalSaleOrder> {
   const order = await qOne<ExistingLocalSaleOrder>(
     conn,
-    `SELECT id, usuario_id, canal, estado, tipo_orden, sucursal_retiro_id
+    `SELECT id, usuario_id, cliente_local_id, canal, estado, tipo_orden, sucursal_retiro_id
      FROM ordenes
      WHERE id = ?
      LIMIT 1
@@ -627,6 +669,7 @@ async function getExistingLocalSaleOrder(conn: Queryable, orderId: number): Prom
     ...order,
     id: Number(order.id),
     usuario_id: order.usuario_id === null ? null : Number(order.usuario_id),
+    cliente_local_id: order.cliente_local_id === null ? null : Number(order.cliente_local_id),
     sucursal_retiro_id: order.sucursal_retiro_id === null ? null : Number(order.sucursal_retiro_id),
   };
 }
@@ -761,7 +804,10 @@ export async function registerLocalSale(
     throw new Error("Agrega al menos un producto a la venta local.");
   }
 
-  const result = buildLocalSaleResult(0, preparedItems);
+  const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
+    ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+    : 0;
+  const result = buildLocalSaleResult(0, preparedItems, totalPuntosGanados);
   const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
   const cajaSesion = await ensureDailyCajaSesion(conn, {
     usuarioId: input.creadoPor,
@@ -860,7 +906,10 @@ export async function updateLocalSale(
     throw new Error("Por ahora la edicion no permite cambiar la sucursal de una venta ya guardada.");
   }
 
-  const customer = await resolveLocalSaleCustomer(conn, input);
+  const customer = await resolveLocalSaleCustomer(conn, {
+    ...input,
+    existingClienteLocalId: existing.cliente_local_id,
+  });
   const resolvePrice = await createPricingResolver(conn, {
     source: "local",
     profile: customer.pricingProfile,
@@ -870,7 +919,10 @@ export async function updateLocalSale(
     throw new Error("Agrega al menos un producto a la venta local.");
   }
 
-  const result = buildLocalSaleResult(input.orderId, preparedItems);
+  const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
+    ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+    : 0;
+  const result = buildLocalSaleResult(input.orderId, preparedItems, totalPuntosGanados);
   const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
 
   await replaceLocalSaleItems(conn, {
@@ -1352,7 +1404,7 @@ export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<
     { header: "Notas", key: "notas", width: 32 },
   ];
 
-  sheet.getRow(1).eachCell((cell) => {
+  sheet.getRow(1).eachCell((cell: ExcelJS.Cell) => {
     cell.font = { bold: true, color: { argb: "FF6B2E08" } };
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8EAD9" } };
     cell.border = { bottom: { style: "thin", color: { argb: "FFE3C7AD" } } };
@@ -1382,8 +1434,8 @@ export async function renderVentasExcelBuffer(rows: VentaReporteRow[]): Promise<
   sheet.getColumn("comisionPorcentaje").numFmt = '0.00%';
   sheet.getColumn("comisionMonto").numFmt = '"$"#,##0.00';
   sheet.getColumn("neto").numFmt = '"$"#,##0.00';
-  sheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
+  sheet.eachRow((row: ExcelJS.Row, rowNumber: number) => {
+    row.eachCell((cell: ExcelJS.Cell) => {
       cell.alignment = {
         vertical: "top",
         wrapText: rowNumber > 1,

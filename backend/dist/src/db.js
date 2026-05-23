@@ -806,6 +806,7 @@ async function ensureClientesLocalesSchema() {
       UNIQUE KEY uq_clientes_locales_dni (dni),
       INDEX idx_clientes_locales_nombre (nombre)
     )`);
+    await exports.pool.query("ALTER TABLE clientes_locales MODIFY COLUMN dni VARCHAR(20) NULL");
 }
 async function ensurePricingDiscountSchema() {
     await exports.pool.query(`CREATE TABLE IF NOT EXISTS descuentos_tipo_categoria (

@@ -43,6 +43,8 @@ import {
   normalizeCashPaymentMethod,
   openCajaSesion,
   registerCajaMovimiento,
+  syncCajaSesionClosureState,
+  updateCajaSesionManually,
 } from "../services/cashRegister";
 import { getCajaReportData, renderCajaPdfBuffer } from "../services/cashRegisterReports";
 import {
@@ -298,6 +300,18 @@ const dniManualSchema = z
   .string()
   .trim()
   .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const dniManualOptionalSchema = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((value) => {
+    const normalized = value?.trim() || "";
+    return normalized || null;
+  })
+  .refine((value) => value === null || /^\d{6,10}$/.test(value), {
+    message: "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.",
+  });
 const telefonoManualSchema = z
   .string()
   .trim()
@@ -312,7 +326,7 @@ const telefonoManualSchema = z
   }, "El telefono manual debe tener entre 6 y 15 numeros.");
 const clienteLocalPayloadSchema = z.object({
   nombre: z.string().min(2).max(120),
-  dni: dniManualSchema,
+  dni: dniManualOptionalSchema,
   telefono: telefonoManualSchema.optional().nullable(),
 });
 const proveedorSchema = z.object({
@@ -339,6 +353,12 @@ const cajaAperturaSchema = z.object({
 const cajaCierreSchema = z.object({
   monto_cierre_declarado: z.number().min(0),
   observaciones: z.string().max(2000).optional().nullable(),
+});
+const cajaEdicionSchema = z.object({
+  monto_apertura: z.number().min(0),
+  observaciones_apertura: z.string().max(2000).optional().nullable(),
+  monto_cierre_declarado: z.number().min(0).optional().nullable(),
+  observaciones_cierre: z.string().max(2000).optional().nullable(),
 });
 const gastoSchema = z.object({
   sucursal_id: z.number().int().positive(),
@@ -1396,6 +1416,40 @@ router.post("/caja/:id/cierre", async (req, res) => {
   }
 });
 
+router.put("/caja/sesiones/:id", async (req, res) => {
+  const sessionId = Number(req.params.id);
+  const parsed = cajaEdicionSchema.safeParse(req.body);
+  if (!Number.isFinite(sessionId) || sessionId <= 0) {
+    res.status(400).json({ error: "Caja invalida." });
+    return;
+  }
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await updateCajaSesionManually(conn, {
+      cajaSesionId: sessionId,
+      montoApertura: Number(parsed.data.monto_apertura),
+      observacionesApertura: parsed.data.observaciones_apertura,
+      montoCierreDeclarado: parsed.data.monto_cierre_declarado ?? null,
+      observacionesCierre: parsed.data.observaciones_cierre,
+      usuarioId: req.user!.id,
+    });
+    await conn.commit();
+    emitRealtime(["ordenes"]);
+    res.json(await getCajaSesionPayload(pool, sessionId));
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(400).json({ error: err?.message || "No se pudo actualizar la caja." });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/caja/sesiones", async (req, res) => {
   const sucursalId = Number(req.query.sucursal_id ?? 0);
   const desde = typeof req.query.desde === "string" ? req.query.desde : null;
@@ -1659,6 +1713,7 @@ router.put("/gastos/:id", async (req, res) => {
         creadoPor: req.user!.id,
       });
     }
+    await syncCajaSesionClosureState(conn, { cajaSesionId: Number(gasto.caja_sesion_id) });
 
     await conn.commit();
     emitRealtime(["ordenes"]);
@@ -1674,12 +1729,14 @@ router.put("/gastos/:id", async (req, res) => {
 router.get("/ordenes", async (_req, res) => {
   const rows = await qAll<{
     id: number;
-    usuario_id: number;
+    usuario_id: number | null;
     cliente_local_id: number | null;
     cliente_local_dni: string | null;
     cliente_local_telefono: string | null;
     cliente_nombre: string;
     cliente_email: string;
+    cliente_dni: string | null;
+    cliente_telefono: string | null;
     canal: string;
     estado: string;
     tipo_orden: string;
@@ -1693,6 +1750,7 @@ router.get("/ordenes", async (_req, res) => {
     sucursal_piso: string | null;
     sucursal_localidad: string | null;
     sucursal_provincia: string | null;
+    puntos_acreditados: number;
     notas: string | null;
     created_at: string;
     updated_at: string;
@@ -1702,10 +1760,19 @@ router.get("/ordenes", async (_req, res) => {
               cl.dni AS cliente_local_dni, cl.telefono AS cliente_local_telefono,
               COALESCE(u.nombre, cl.nombre, 'Cliente local') AS cliente_nombre,
               COALESCE(u.email, '') AS cliente_email,
+              COALESCE(u.dni, cl.dni) AS cliente_dni,
+              COALESCE(u.telefono, cl.telefono) AS cliente_telefono,
               o.canal, o.estado, o.tipo_orden, o.total_dinero, o.total_puntos, o.moneda,
               o.direccion_envio_json, o.sucursal_retiro_id,
               s.nombre AS sucursal_nombre, s.direccion AS sucursal_direccion,
               s.piso AS sucursal_piso, s.localidad AS sucursal_localidad, s.provincia AS sucursal_provincia,
+              EXISTS(
+                SELECT 1
+                FROM movimientos_puntos mp
+                WHERE mp.referencia_tipo = 'ordenes'
+                  AND mp.referencia_id = o.id
+                  AND mp.tipo = 'acreditacion_compra'
+              ) AS puntos_acreditados,
               o.notas, o.created_at, o.updated_at
      FROM ordenes o
      LEFT JOIN usuarios u ON u.id = o.usuario_id
@@ -1746,10 +1813,14 @@ router.get("/ordenes", async (_req, res) => {
       const items = itemMap.get(Number(row.id)) ?? [];
       return {
         ...row,
+        usuario_id: row.usuario_id === null ? null : Number(row.usuario_id),
+        cliente_dni: row.cliente_dni ?? row.cliente_local_dni ?? null,
+        cliente_telefono: row.cliente_telefono ?? row.cliente_local_telefono ?? null,
         total_dinero: Number(row.total_dinero ?? 0),
         total_puntos: Number(row.total_puntos ?? 0),
         total_items: items.length,
         total_unidades: items.reduce((acc, item) => acc + Number(item.cantidad), 0),
+        puntos_acreditados: Boolean(row.puntos_acreditados),
         items,
         direccion_envio: parseJsonField(row.direccion_envio_json),
         sucursal: row.sucursal_retiro_id

@@ -305,6 +305,8 @@ type OrdenAdmin = {
   cliente_local_telefono?: string | null;
   cliente_nombre: string;
   cliente_email: string | null;
+  cliente_dni?: string | null;
+  cliente_telefono?: string | null;
   canal: "web" | "admin" | "vendedor";
   estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
@@ -358,6 +360,7 @@ type OrdenAdmin = {
     monto: number;
     moneda: string;
   } | null;
+  puntos_acreditados?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -1412,6 +1415,7 @@ export function Admin() {
   const [cajaMontoCierre, setCajaMontoCierre] = useState("");
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
   const [cajaObservacionesCierre, setCajaObservacionesCierre] = useState("");
+  const [cajaEditSesion, setCajaEditSesion] = useState<CajaSesionAdmin | null>(null);
   const [cajaReporteFecha, setCajaReporteFecha] = useState(() => getBuenosAiresDateStamp());
   const [cajaSesionesPage, setCajaSesionesPage] = useState(1);
   const [gastoProveedorId, setGastoProveedorId] = useState("");
@@ -1734,6 +1738,12 @@ export function Admin() {
   }, [cajaSesionesPage, cajaSesionesQuery.data?.totalPages]);
 
   useEffect(() => {
+    if (!ventaLocalClienteId && ventaLocalAcreditarPuntos) {
+      setVentaLocalAcreditarPuntos(false);
+    }
+  }, [ventaLocalClienteId, ventaLocalAcreditarPuntos]);
+
+  useEffect(() => {
     const requestedVentasPathView = ventasViewFromPath(location.pathname);
     if (requestedVentasPathView) {
       setTab("ordenes");
@@ -1982,10 +1992,12 @@ export function Admin() {
   const totalMovimientosInicioPages = Math.max(1, Math.ceil(movimientos.length / MOVIMIENTOS_INICIO_POR_PAGINA));
 
   useEffect(() => {
-    if (!cajaActual) return;
+    if (cajaEditSesion || !cajaActual) return;
     setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
     setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
-  }, [cajaActual?.id]);
+    setCajaObservacionesApertura(cajaActual.observaciones_apertura ?? "");
+    setCajaObservacionesCierre(cajaActual.observaciones_cierre ?? "");
+  }, [cajaActual?.id, cajaEditSesion]);
 
   const inventarioPorProducto = useMemo(() => {
     const map = new Map<number, InventarioSucursal[]>();
@@ -2141,7 +2153,7 @@ export function Admin() {
       actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver ventas",
       onClick: () => openOrderFromToast(Number(latest.id)),
       onAction: () => openOrderFromToast(Number(latest.id)),
-      duration: 8500,
+      persistent: true,
     });
     showBrowserAlert(
       nuevas.length === 1 ? "Nueva compra" : "Nuevas compras",
@@ -2905,7 +2917,7 @@ export function Admin() {
     setVentaLocalSucursalId(String(orden.sucursal_retiro_id ?? ""));
     setVentaLocalMetodoPago(orden.pago?.metodo || "cash");
     setVentaLocalNotas(orden.notas || "");
-    setVentaLocalAcreditarPuntos(false);
+    setVentaLocalAcreditarPuntos(Boolean(orden.usuario_id && orden.puntos_acreditados));
     if (orden.usuario_id) {
       setVentaLocalClienteId(String(orden.usuario_id));
       setVentaLocalClienteManualNombre("");
@@ -3030,10 +3042,10 @@ export function Admin() {
         ventaLocalClienteManualTelefono.trim(),
       );
       if (!ventaLocalClienteId && hasManualCustomer) {
-        if (!ventaLocalClienteManualNombre.trim() || !ventaLocalClienteManualDni.trim()) {
-          throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
+        if (!ventaLocalClienteManualNombre.trim()) {
+          throw new Error("Para cliente manual completa al menos el nombre, o deja los campos vacios para usar Cliente generico.");
         }
-        if (!validateManualDni(ventaLocalClienteManualDni)) {
+        if (ventaLocalClienteManualDni.trim() && !validateManualDni(ventaLocalClienteManualDni)) {
           throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
         }
         if (!validateManualPhone(ventaLocalClienteManualTelefono)) {
@@ -3050,12 +3062,12 @@ export function Admin() {
             ? undefined
             : {
                 nombre: ventaLocalClienteManualNombre.trim(),
-                dni: ventaLocalClienteManualDni.trim(),
+                dni: ventaLocalClienteManualDni.trim() || undefined,
                 telefono: ventaLocalClienteManualTelefono.trim() || undefined,
               },
           sucursal_id: Number(ventaLocalSucursalId),
           metodo_pago: ventaLocalMetodoPago,
-          acreditar_puntos: ventaLocalAcreditarPuntos,
+          acreditar_puntos: clienteVentaLocalSeleccionado ? ventaLocalAcreditarPuntos : false,
           notas: ventaLocalNotas.trim() || undefined,
           items: ventaLocalItems.map((item) => ({
             producto_id: item.producto_id,
@@ -3209,6 +3221,69 @@ export function Admin() {
       const result = await api.post<{ ok: boolean; ordenes_expiradas: number; canjes_expirados: number }>("/admin/reservas/expirar");
       setOkMsg(`Reservas revisadas. Ordenes expiradas: ${result.ordenes_expiradas}. Canjes expirados: ${result.canjes_expirados}.`);
       await refreshQueries([["admin", "ordenes"], ["admin", "canjes"], ["admin", "inventario"], ["admin", "movimientos-stock"], ["admin", "movimientos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cargarFormularioCaja(sesion: CajaSesionAdmin | null) {
+    if (!sesion) {
+      setCajaMontoApertura("");
+      setCajaMontoCierre("");
+      setCajaObservacionesApertura("");
+      setCajaObservacionesCierre("");
+      return;
+    }
+    setCajaSucursalId(String(sesion.sucursal_id));
+    setCajaMontoApertura(String(Number(sesion.monto_apertura ?? 0)));
+    setCajaMontoCierre(String(Number(sesion.monto_cierre_declarado ?? sesion.summary.efectivoSistema ?? 0)));
+    setCajaObservacionesApertura(sesion.observaciones_apertura ?? "");
+    setCajaObservacionesCierre(sesion.observaciones_cierre ?? "");
+  }
+
+  function iniciarEdicionCaja(sesion: CajaSesionAdmin) {
+    setCajaEditSesion(sesion);
+    cargarFormularioCaja(sesion);
+    setErrMsg("");
+    setOkMsg(`Editando caja del ${sesion.fecha_operativa} en ${sesion.sucursal_nombre}.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelarEdicionCaja() {
+    setCajaEditSesion(null);
+    setErrMsg("");
+    setOkMsg("");
+    cargarFormularioCaja(cajaActual);
+  }
+
+  async function guardarCajaEditada() {
+    if (!cajaEditSesion) return;
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      await commandMutation.mutateAsync({
+        method: "put",
+        path: `/admin/caja/sesiones/${cajaEditSesion.id}`,
+        body: {
+          monto_apertura: Number(cajaMontoApertura || 0),
+          observaciones_apertura: cajaObservacionesApertura.trim() || undefined,
+          monto_cierre_declarado: cajaEditSesion.estado === "cerrada" ? Number(cajaMontoCierre || 0) : undefined,
+          observaciones_cierre: cajaEditSesion.estado === "cerrada" ? (cajaObservacionesCierre.trim() || undefined) : undefined,
+        },
+      });
+      const cajaFecha = cajaEditSesion.fecha_operativa;
+      setCajaEditSesion(null);
+      cargarFormularioCaja(cajaActual);
+      setOkMsg(`Caja del ${cajaFecha} actualizada correctamente.`);
+      await refreshQueries([
+        ["admin", "caja-actual", cajaSucursalId],
+        ["admin", "caja-sesiones", cajaSucursalId],
+        ["admin", "gastos", cajaSucursalId],
+        ["admin", "ordenes"],
+      ]);
     } catch (error) {
       setErrMsg((error as Error).message);
     } finally {
@@ -5985,7 +6060,7 @@ export function Admin() {
                         ))}
                       </select>
                     </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Cliente manual" tip="Opcional. Si lo dejas vacio, la venta se registra como Cliente generico. Si lo completas, usa nombre y DNI.">
+                    <FieldWithFloatingTip label="Cliente manual" tip="Opcional. Si lo dejas vacio, la venta se registra como Cliente generico. Si lo completas, el nombre es obligatorio y el DNI queda opcional.">
                       <input
                         className="adm-input"
                         placeholder="Nombre cliente manual (opcional)"
@@ -5994,7 +6069,7 @@ export function Admin() {
                         onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
                       />
                     </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="DNI manual" tip="Opcional si usas Cliente generico. Si completas cliente manual, nombre y DNI van juntos.">
+                    <FieldWithFloatingTip label="DNI manual" tip="Opcional. Si lo tienes, sirve para identificar mejor al cliente manual sin convertirlo en usuario web.">
                       <input
                         className="adm-input"
                         placeholder="DNI cliente manual (opcional)"
@@ -6039,14 +6114,19 @@ export function Admin() {
                   </div>
                   <FieldWithFloatingTip label="Acreditar puntos" tip="Si esta marcado, el cliente gana los puntos configurados por los productos comprados. Si no, solo queda registrada la venta.">
                     <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700, minHeight: "42px", paddingRight: "3.4rem" }}>
-                      <input type="checkbox" checked={ventaLocalAcreditarPuntos} onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={ventaLocalAcreditarPuntos}
+                        disabled={!clienteVentaLocalSeleccionado}
+                        onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)}
+                      />
                       Acreditar puntos de compra al cliente
                     </label>
                   </FieldWithFloatingTip>
                   <p className="adm-inline-tip" style={{ margin: 0 }}>
                     {clienteVentaLocalSeleccionado
                       ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. Los precios se ajustan por categoria segun ese perfil.`
-                      : "Si dejas los datos del cliente vacios, la venta queda como Cliente generico y usa el perfil cliente comun. Si completas cliente manual, queda asociada a DNI/nombre. No acredita puntos de usuario web."}
+                      : "Si dejas los datos del cliente vacios, la venta queda como Cliente generico y usa el perfil cliente comun. Si completas cliente manual, el nombre es obligatorio y el DNI queda opcional. Solo los clientes web registrados pueden recibir puntos."}
                   </p>
                   <div className="adm-form-grid">
                     <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">
@@ -6386,7 +6466,7 @@ export function Admin() {
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
                     <FieldLabel text="Sucursal" tip="Sucursal que queres revisar. La caja diaria y el historial cambian segun este punto de venta." />
-                    <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)}>
+                    <select className="adm-input" value={cajaSucursalId} onChange={(event) => setCajaSucursalId(event.target.value)} disabled={Boolean(cajaEditSesion)}>
                       <option value="">Sucursal</option>
                       {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
                         <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
@@ -6394,11 +6474,21 @@ export function Admin() {
                     </select>
                   </label>
                 </div>
+                {cajaEditSesion ? (
+                  <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.4rem", background: "#FFF8F0", border: "1px solid rgba(180,84,20,0.22)" }}>
+                    <strong>Editando caja historica</strong>
+                    <p className="adm-inline-tip" style={{ margin: 0 }}>
+                      Caja del {cajaEditSesion.fecha_operativa} en {cajaEditSesion.sucursal_nombre}. Puedes corregir apertura, observaciones y, si ya fue cerrada, el cierre declarado.
+                    </p>
+                  </div>
+                ) : null}
                 <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.75rem" }}>
                   <div>
-                    <strong>Apertura / efectivo inicial</strong>
+                    <strong>{cajaEditSesion ? "Editar apertura de caja" : "Apertura / efectivo inicial"}</strong>
                     <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
-                      Es la plata en efectivo con la que arranca la caja del dia. Se suma solo al calculo de efectivo: apertura + ventas en efectivo - gastos en efectivo.
+                      {cajaEditSesion
+                        ? "Corrige el efectivo inicial y la nota de la sesion seleccionada. El sistema vuelve a calcular el efectivo resultante de esa caja."
+                        : "Es la plata en efectivo con la que arranca la caja del dia. Se suma solo al calculo de efectivo: apertura + ventas en efectivo - gastos en efectivo."}
                     </p>
                   </div>
                   <div className="adm-form-grid">
@@ -6422,11 +6512,61 @@ export function Admin() {
                         placeholder="Ej: fondo fijo contado al iniciar el dia"
                       />
                     </label>
-                    <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId} onClick={() => void abrirCaja()}>
-                      Guardar apertura
-                    </button>
+                    {cajaEditSesion ? (
+                      <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap", alignItems: "end" }}>
+                        <button type="button" className="adm-btn-secondary" disabled={busy} onClick={cancelarEdicionCaja}>
+                          Cancelar edicion
+                        </button>
+                        <button type="button" className="adm-btn-primary" disabled={busy || !cajaSucursalId} onClick={() => void guardarCajaEditada()}>
+                          Guardar cambios
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" className="adm-btn-secondary" disabled={busy || !cajaSucursalId} onClick={() => void abrirCaja()}>
+                        Guardar apertura
+                      </button>
+                    )}
                   </div>
                 </div>
+                {cajaEditSesion?.estado === "cerrada" || (!cajaEditSesion && cajaActual) ? (
+                  <div className="admin-card" style={{ padding: "0.9rem", display: "grid", gap: "0.75rem" }}>
+                    <div>
+                      <strong>{cajaEditSesion ? "Editar cierre declarado" : "Cierre de caja"}</strong>
+                      <p className="adm-inline-tip" style={{ margin: "0.25rem 0 0" }}>
+                        {cajaEditSesion
+                          ? "Ajusta el efectivo contado al cierre para recalcular la diferencia de esa caja historica."
+                          : "Cuando termine la jornada, registra cuanto efectivo habia realmente en caja para comparar contra el calculo del sistema."}
+                      </p>
+                    </div>
+                    <div className="adm-form-grid">
+                      <label style={{ display: "grid", gap: "0.35rem" }}>
+                        <FieldLabel text="Monto contado al cierre" tip="Importe real contado en efectivo al cerrar la caja." />
+                        <input
+                          className="adm-input"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={cajaMontoCierre}
+                          onChange={(event) => setCajaMontoCierre(event.target.value)}
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: "0.35rem" }}>
+                        <FieldLabel text="Nota de cierre" tip="Observacion opcional para explicar diferencias o dejar un detalle de arqueo." />
+                        <input
+                          className="adm-input"
+                          value={cajaObservacionesCierre}
+                          onChange={(event) => setCajaObservacionesCierre(event.target.value)}
+                          placeholder="Ej: diferencia detectada al arqueo"
+                        />
+                      </label>
+                      {!cajaEditSesion ? (
+                        <button type="button" className="adm-btn-primary" disabled={busy || !cajaActual?.id} onClick={() => void cerrarCaja()}>
+                          Guardar cierre
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
                 {cajaActual ? (
                   <>
                     <div className="adm-form-grid">
@@ -6505,7 +6645,7 @@ export function Admin() {
                           <th>Gastos</th>
                           <th>Efectivo sistema</th>
                           <th>Diferencia</th>
-                          <th>PDF</th>
+                          <th>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -6520,9 +6660,14 @@ export function Admin() {
                             <td>{formatMoney(sesion.summary.efectivoSistema)}</td>
                             <td>{sesion.diferencia_cierre === null ? "-" : formatMoney(sesion.diferencia_cierre)}</td>
                             <td>
-                              <button className="adm-btn-link" onClick={() => void descargarCajaPdf(sesion.fecha_operativa, String(sesion.sucursal_id))} disabled={busy}>
-                                Exportar
-                              </button>
+                              <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
+                                <button className="adm-btn-link" onClick={() => iniciarEdicionCaja(sesion)} disabled={busy}>
+                                  Editar
+                                </button>
+                                <button className="adm-btn-link" onClick={() => void descargarCajaPdf(sesion.fecha_operativa, String(sesion.sucursal_id))} disabled={busy}>
+                                  Exportar
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}

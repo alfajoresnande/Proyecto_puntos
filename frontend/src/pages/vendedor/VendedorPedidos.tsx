@@ -449,7 +449,7 @@ export function VendedorPedidos() {
       actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver pedidos",
       onClick: () => openOrderFromToast(Number(latest.id)),
       onAction: () => openOrderFromToast(Number(latest.id)),
-      duration: 8500,
+      persistent: true,
     });
   }, [ordenes, ordenesQuery.data, showToast]);
 
@@ -465,6 +465,12 @@ export function VendedorPedidos() {
     setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
     setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
   }, [cajaActual?.id]);
+
+  useEffect(() => {
+    if (!ventaCliente && ventaAcreditarPuntos) {
+      setVentaAcreditarPuntos(false);
+    }
+  }, [ventaAcreditarPuntos, ventaCliente]);
 
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
@@ -561,10 +567,10 @@ export function VendedorPedidos() {
       ventaClienteManualTelefono.trim(),
     );
     if (!ventaCliente && hasManualCustomer) {
-      if (!ventaClienteManualNombre.trim() || !ventaClienteManualDni.trim()) {
-        throw new Error("Para cliente manual completa nombre y DNI, o deja esos campos vacios para usar Cliente generico.");
+      if (!ventaClienteManualNombre.trim()) {
+        throw new Error("Para cliente manual completa al menos el nombre, o deja los campos vacios para usar Cliente generico.");
       }
-      if (!validateManualDni(ventaClienteManualDni)) {
+      if (ventaClienteManualDni.trim() && !validateManualDni(ventaClienteManualDni)) {
         throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
       }
       if (!validateManualPhone(ventaClienteManualTelefono)) {
@@ -578,12 +584,12 @@ export function VendedorPedidos() {
         ? undefined
         : {
             nombre: ventaClienteManualNombre.trim(),
-            dni: ventaClienteManualDni.trim(),
+            dni: ventaClienteManualDni.trim() || undefined,
             telefono: ventaClienteManualTelefono.trim() || undefined,
           },
       sucursal_id: Number(ventaSucursalId),
       metodo_pago: ventaMetodoPago,
-      acreditar_puntos: ventaAcreditarPuntos,
+      acreditar_puntos: ventaCliente ? ventaAcreditarPuntos : false,
       notas: ventaNotas.trim() || undefined,
       items: ventaItems.map((item) => ({
         producto_id: item.producto_id,
@@ -831,7 +837,7 @@ export function VendedorPedidos() {
     setVentaSabores({});
     setVentaSucursalId(String(orden.sucursal?.id ?? selectedSucursalValue));
     setVentaMetodoPago(orden.pago?.metodo ?? "cash");
-    setVentaAcreditarPuntos(Boolean(orden.puntos_acreditados));
+    setVentaAcreditarPuntos(Boolean(orden.usuario_id && orden.puntos_acreditados));
     setVentaNotas(extractEditableSaleNotes(orden.notas));
     setVentaItems(
       (orden.items ?? []).map((item) => ({
@@ -1398,7 +1404,12 @@ export function VendedorPedidos() {
               <input className="ios-input" placeholder="Notas internas" value={ventaNotas} onChange={(event) => setVentaNotas(event.target.value)} />
             </div>
             <label className="text-sm" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#3D1A02", fontWeight: 700 }}>
-              <input type="checkbox" checked={ventaAcreditarPuntos} onChange={(event) => setVentaAcreditarPuntos(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={ventaAcreditarPuntos}
+                disabled={!ventaCliente}
+                onChange={(event) => setVentaAcreditarPuntos(event.target.checked)}
+              />
               Acreditar puntos de compra al cliente
             </label>
             {ventaCliente ? (
@@ -1407,7 +1418,7 @@ export function VendedorPedidos() {
               </p>
             ) : (
               <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                Si dejas los datos del cliente vacios, la venta se registra como Cliente generico. Si completas cliente manual, usa nombre y DNI. No acredita puntos de usuario web.
+                Si dejas los datos del cliente vacios, la venta se registra como Cliente generico. Si completas cliente manual, el nombre es obligatorio y el DNI es opcional. Solo los clientes web registrados pueden recibir puntos.
               </p>
             )}
 

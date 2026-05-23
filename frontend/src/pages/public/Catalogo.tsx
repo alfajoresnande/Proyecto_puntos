@@ -631,12 +631,17 @@ export function Catalogo() {
     return Number.isInteger(value) && value > 0 ? value : 1;
   }
 
-  function ajustarCantidadSeleccionada(productoId: number, delta: number) {
+  function actualizarCantidadSeleccionada(productoId: number, rawValue: string | number, maxCantidad = 100) {
     setCantidadesSeleccionadas((prev) => {
-      const actual = Number.isInteger(prev[productoId]) && prev[productoId] > 0 ? prev[productoId] : 1;
-      const next = Math.max(1, Math.min(100, actual + delta));
+      const parsed = Math.floor(Number(rawValue) || 0);
+      const next = Math.max(1, Math.min(maxCantidad, parsed || 1));
       return { ...prev, [productoId]: next };
     });
+  }
+
+  function actualizarCantidadModalCanje(rawValue: string | number, maxCantidad: number) {
+    const parsed = Math.floor(Number(rawValue) || 0);
+    setCantidadModalCanje(Math.max(1, Math.min(maxCantidad, parsed || 1)));
   }
 
   function actualizarPuntosMin(value: number) {
@@ -1162,25 +1167,21 @@ export function Catalogo() {
                       <>
                         <div className="product-card-action-slot">
                           <div className="product-card-qty">
-                            <button
-                              type="button"
-                              className="vendedor-round-btn"
-                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada <= 1}
-                              onClick={() => ajustarCantidadSeleccionada(producto.id, -1)}
-                            >
-                              -
-                            </button>
-                            <span style={{ minWidth: "28px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                              {cantidadSeleccionada}
-                            </span>
-                            <button
-                              type="button"
-                              className="vendedor-round-btn"
-                              disabled={canjearCarritoMutation.isPending || cantidadSeleccionada >= Math.max(1, cantidadDisponibleParaCargar)}
-                              onClick={() => ajustarCantidadSeleccionada(producto.id, +1)}
-                            >
-                              +
-                            </button>
+                            <input
+                              className="product-card-qty-input"
+                              type="number"
+                              min={1}
+                              max={Math.max(1, cantidadDisponibleParaCargar)}
+                              value={cantidadSeleccionada}
+                              disabled={canjearCarritoMutation.isPending || cantidadDisponibleParaCargar <= 0}
+                              onChange={(event) =>
+                                actualizarCantidadSeleccionada(
+                                  producto.id,
+                                  event.target.value,
+                                  Math.max(1, cantidadDisponibleParaCargar),
+                                )
+                              }
+                            />
                           </div>
                         </div>
                         <button
@@ -1478,25 +1479,20 @@ export function Catalogo() {
               {user ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.55rem", marginBottom: "0.65rem" }}>
-                    <button
-                      type="button"
-                      className="vendedor-round-btn"
-                      disabled={cantidadModalCanje <= 1}
-                      onClick={() => setCantidadModalCanje((prev) => Math.max(1, prev - 1))}
-                    >
-                      -
-                    </button>
-                    <span style={{ minWidth: "26px", textAlign: "center", fontWeight: 700, color: "#4A2C1A" }}>
-                      {cantidadModalCanje}
-                    </span>
-                    <button
-                      type="button"
-                      className="vendedor-round-btn"
-                      disabled={cantidadModalCanje >= Math.max(1, productoModalCantidadDisponible)}
-                      onClick={() => setCantidadModalCanje((prev) => Math.min(Math.max(1, productoModalCantidadDisponible), prev + 1))}
-                    >
-                      +
-                    </button>
+                    <input
+                      className="product-card-qty-input"
+                      type="number"
+                      min={1}
+                      max={Math.max(1, productoModalCantidadDisponible)}
+                      value={cantidadModalCanje}
+                      disabled={canjearCarritoMutation.isPending || productoModalCantidadDisponible <= 0}
+                      onChange={(event) =>
+                        actualizarCantidadModalCanje(
+                          event.target.value,
+                          Math.max(1, productoModalCantidadDisponible),
+                        )
+                      }
+                    />
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"

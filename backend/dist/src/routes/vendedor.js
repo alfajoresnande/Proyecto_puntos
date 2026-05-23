@@ -24,6 +24,18 @@ const dniManualSchema = zod_1.z
     .string()
     .trim()
     .regex(/^\d{6,10}$/, "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.");
+const dniManualOptionalSchema = zod_1.z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((value) => {
+    const normalized = value?.trim() || "";
+    return normalized || null;
+})
+    .refine((value) => value === null || /^\d{6,10}$/.test(value), {
+    message: "El DNI manual debe tener solo numeros y entre 6 y 10 digitos.",
+});
 const telefonoManualSchema = zod_1.z
     .string()
     .trim()
@@ -39,7 +51,7 @@ const telefonoManualSchema = zod_1.z
 }, "El telefono manual debe tener entre 6 y 15 numeros.");
 const clienteLocalPayloadSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(2).max(120),
-    dni: dniManualSchema,
+    dni: dniManualOptionalSchema,
     telefono: telefonoManualSchema.optional().nullable(),
 });
 const cajaAperturaSchema = zod_1.z.object({
@@ -978,6 +990,7 @@ router.put("/gastos/:id", async (req, res, next) => {
                 creadoPor: req.user.id,
             });
         }
+        await (0, cashRegister_1.syncCajaSesionClosureState)(conn, { cajaSesionId: Number(gasto.caja_sesion_id) });
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes"]);
         res.json({ ok: true });
