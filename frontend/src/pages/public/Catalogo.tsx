@@ -129,8 +129,8 @@ export function Catalogo() {
   const pendingCanje = useCartStore((state) => state.pendingCanje);
   const consumePendingCanje = useCartStore((state) => state.consumePendingCanje);
   const [canjeConfirmOpen, setCanjeConfirmOpen] = useState(false);
-  const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
-  const [cantidadModalCanje, setCantidadModalCanje] = useState(1);
+  const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, string>>({});
+  const [cantidadModalCanje, setCantidadModalCanje] = useState("1");
   const [codigoCopiado, setCodigoCopiado] = useState(false);
 
   const productosQuery = useQuery({
@@ -483,7 +483,7 @@ export function Catalogo() {
 
   function abrirProducto(producto: Producto) {
     setProductoModal(producto);
-    setCantidadModalCanje(1);
+    setCantidadModalCanje("1");
     setImgZoomed(false);
     setPan({ x: 0, y: 0 });
     setZoomOrigin("50% 50%");
@@ -503,7 +503,16 @@ export function Catalogo() {
     }
 
     if (canjearCarritoMutation.isPending) return;
-    const cantidadPedida = Number.isInteger(cantidad) && cantidad > 0 ? cantidad : 1;
+    if (!Number.isInteger(cantidad) || cantidad < 1) {
+      setToast({
+        msg: "Elegi una cantidad mayor o igual a 1.",
+        variant: "info",
+        dismissLabel: "Cerrar",
+        autoHideMs: 5000,
+      });
+      return;
+    }
+    const cantidadPedida = cantidad;
     const maxCantidad = maxSelectableCanjeQuantity(producto);
     const cantidadYaCargada = canjeCart[producto.id]?.cantidad ?? 0;
     const cantidadDisponibleParaCargar = Math.max(0, maxCantidad - cantidadYaCargada);
@@ -626,22 +635,46 @@ export function Catalogo() {
     });
   }
 
+  function getCantidadInputValue(productoId: number): string {
+    return Object.prototype.hasOwnProperty.call(cantidadesSeleccionadas, productoId)
+      ? cantidadesSeleccionadas[productoId]
+      : "1";
+  }
+
   function getCantidadSeleccionada(productoId: number): number {
-    const value = cantidadesSeleccionadas[productoId];
-    return Number.isInteger(value) && value > 0 ? value : 1;
+    const value = Math.floor(Number(getCantidadInputValue(productoId)));
+    return Number.isInteger(value) && value >= 1 ? value : 0;
   }
 
   function actualizarCantidadSeleccionada(productoId: number, rawValue: string | number, maxCantidad = 100) {
     setCantidadesSeleccionadas((prev) => {
-      const parsed = Math.floor(Number(rawValue) || 0);
-      const next = Math.max(1, Math.min(maxCantidad, parsed || 1));
-      return { ...prev, [productoId]: next };
+      const raw = String(rawValue);
+      if (raw.trim() === "") return { ...prev, [productoId]: "" };
+
+      const parsed = Math.floor(Number(raw));
+      if (!Number.isFinite(parsed)) return prev;
+
+      const next = Math.max(0, Math.min(maxCantidad, parsed));
+      return { ...prev, [productoId]: String(next) };
     });
   }
 
+  function getCantidadModalCanje(): number {
+    const value = Math.floor(Number(cantidadModalCanje));
+    return Number.isInteger(value) && value >= 1 ? value : 0;
+  }
+
   function actualizarCantidadModalCanje(rawValue: string | number, maxCantidad: number) {
-    const parsed = Math.floor(Number(rawValue) || 0);
-    setCantidadModalCanje(Math.max(1, Math.min(maxCantidad, parsed || 1)));
+    const raw = String(rawValue);
+    if (raw.trim() === "") {
+      setCantidadModalCanje("");
+      return;
+    }
+
+    const parsed = Math.floor(Number(raw));
+    if (!Number.isFinite(parsed)) return;
+
+    setCantidadModalCanje(String(Math.max(0, Math.min(maxCantidad, parsed))));
   }
 
   function actualizarPuntosMin(value: number) {
@@ -712,6 +745,7 @@ export function Catalogo() {
   }
 
   const productoModalSinStock = productoModal ? !productHasStock(productoModal) : false;
+  const cantidadModalCanjeSeleccionada = getCantidadModalCanje();
 
   return (
     <section className="catalog-page catalog-redemption-page">
@@ -1108,6 +1142,7 @@ export function Catalogo() {
               const maxCantidad = maxSelectableCanjeQuantity(producto);
               const cantidadYaCargada = canjeCart[producto.id]?.cantidad ?? 0;
               const cantidadDisponibleParaCargar = Math.max(0, maxCantidad - cantidadYaCargada);
+              const cantidadInputValue = getCantidadInputValue(producto.id);
               const cantidadSeleccionada = Math.min(
                 getCantidadSeleccionada(producto.id),
                 Math.max(1, cantidadDisponibleParaCargar),
@@ -1184,9 +1219,11 @@ export function Catalogo() {
                             <input
                               className="product-card-qty-input"
                               type="number"
-                              min={1}
+                              min={0}
                               max={Math.max(1, cantidadDisponibleParaCargar)}
-                              value={cantidadSeleccionada}
+                              step={1}
+                              inputMode="numeric"
+                              value={cantidadInputValue}
                               disabled={canjearCarritoMutation.isPending || cantidadDisponibleParaCargar <= 0}
                               onChange={(event) =>
                                 actualizarCantidadSeleccionada(
@@ -1214,7 +1251,7 @@ export function Catalogo() {
                         </div>
                         <button
                           className="product-card-btn product-card-btn-canjear"
-                          disabled={canjearCarritoMutation.isPending || sinStock || cantidadDisponibleParaCargar <= 0}
+                          disabled={canjearCarritoMutation.isPending || sinStock || cantidadDisponibleParaCargar <= 0 || cantidadSeleccionada < 1}
                           onClick={() =>
                             agregarProductoAlCarrito(
                               producto,
@@ -1228,7 +1265,7 @@ export function Catalogo() {
                             )
                           }
                         >
-                          {sinStock ? "Sin stock" : cantidadDisponibleParaCargar <= 0 ? "Stock cargado" : "Agregar al carrito"}
+                          {sinStock ? "Sin stock" : cantidadDisponibleParaCargar <= 0 ? "Stock cargado" : cantidadSeleccionada < 1 ? "Elegi cantidad" : "Agregar al carrito"}
                         </button>
                       </>
                     ) : (
@@ -1510,10 +1547,10 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
-                      disabled={canjearCarritoMutation.isPending || cantidadModalCanje <= 1}
+                      disabled={canjearCarritoMutation.isPending || cantidadModalCanjeSeleccionada <= 1}
                       onClick={() =>
                         actualizarCantidadModalCanje(
-                          cantidadModalCanje - 1,
+                          cantidadModalCanjeSeleccionada - 1,
                           Math.max(1, productoModalCantidadDisponible),
                         )
                       }
@@ -1523,8 +1560,10 @@ export function Catalogo() {
                     <input
                       className="product-card-qty-input"
                       type="number"
-                      min={1}
+                      min={0}
                       max={Math.max(1, productoModalCantidadDisponible)}
+                      step={1}
+                      inputMode="numeric"
                       value={cantidadModalCanje}
                       disabled={canjearCarritoMutation.isPending || productoModalCantidadDisponible <= 0}
                       onChange={(event) =>
@@ -1537,10 +1576,10 @@ export function Catalogo() {
                     <button
                       type="button"
                       className="vendedor-round-btn"
-                      disabled={canjearCarritoMutation.isPending || cantidadModalCanje >= Math.max(1, productoModalCantidadDisponible)}
+                      disabled={canjearCarritoMutation.isPending || cantidadModalCanjeSeleccionada >= Math.max(1, productoModalCantidadDisponible)}
                       onClick={() =>
                         actualizarCantidadModalCanje(
-                          cantidadModalCanje + 1,
+                          cantidadModalCanjeSeleccionada + 1,
                           Math.max(1, productoModalCantidadDisponible),
                         )
                       }
@@ -1550,10 +1589,10 @@ export function Catalogo() {
                   </div>
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={canjearCarritoMutation.isPending || productoModalSinStock || productoModalCantidadDisponible <= 0}
-                    onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanje)}
+                    disabled={canjearCarritoMutation.isPending || productoModalSinStock || productoModalCantidadDisponible <= 0 || cantidadModalCanjeSeleccionada < 1}
+                    onClick={() => agregarProductoAlCarrito(productoModal, () => setProductoModal(null), cantidadModalCanjeSeleccionada)}
                   >
-                    {productoModalSinStock ? "Sin stock" : productoModalCantidadDisponible <= 0 ? "Stock cargado" : `Agregar ${cantidadModalCanje > 1 ? `${cantidadModalCanje} al carrito` : "al carrito"}`}
+                    {productoModalSinStock ? "Sin stock" : productoModalCantidadDisponible <= 0 ? "Stock cargado" : cantidadModalCanjeSeleccionada < 1 ? "Elegi cantidad" : `Agregar ${cantidadModalCanjeSeleccionada > 1 ? `${cantidadModalCanjeSeleccionada} al carrito` : "al carrito"}`}
                   </button>
                 </>
               ) : (

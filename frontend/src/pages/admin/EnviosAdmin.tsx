@@ -26,12 +26,21 @@ const ENVIOS_AREA_EXPLANATION = [
   "Desactivar una zona la saca de la cotizacion sin borrar el historial.",
 ];
 
+function emptyZeroInputValue(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const stringValue = String(value);
+  if (!stringValue.trim()) return "";
+  const numericValue = Number(stringValue);
+  if (!Number.isFinite(numericValue) || numericValue === 0) return "";
+  return stringValue;
+}
+
 function emptyZoneForm(): ZoneForm {
   return {
     nombre: "",
     descripcion: "",
     precio: "",
-    prioridad: "0",
+    prioridad: "",
     color: DEFAULT_ZONE_COLOR,
     activo: true,
     points: [],
@@ -76,8 +85,8 @@ function formFromZone(zone: ShippingZone): ZoneForm {
   return {
     nombre: zone.nombre,
     descripcion: zone.descripcion ?? "",
-    precio: String(zone.precio ?? 0),
-    prioridad: String(zone.prioridad ?? 0),
+    precio: emptyZeroInputValue(zone.precio),
+    prioridad: emptyZeroInputValue(zone.prioridad),
     color: zone.color || DEFAULT_ZONE_COLOR,
     activo: zone.activo,
     points: pointsFromPolygon(zone.polygon_geojson),

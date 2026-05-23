@@ -147,6 +147,15 @@ function money(value: number | string | null | undefined): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
 }
 
+function emptyZeroInputValue(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const stringValue = String(value);
+  if (!stringValue.trim()) return "";
+  const numericValue = Number(stringValue);
+  if (!Number.isFinite(numericValue) || numericValue === 0) return "";
+  return stringValue;
+}
+
 function formatDate(value: string): string {
   return formatBuenosAiresDateTime(value);
 }
@@ -324,7 +333,7 @@ export function VendedorPedidos() {
   });
   const [ventaProductoId, setVentaProductoId] = useState("");
   const [ventaCantidad, setVentaCantidad] = useState("1");
-  const [ventaSabores, setVentaSabores] = useState<Record<string, number>>({});
+  const [ventaSabores, setVentaSabores] = useState<Record<string, string>>({});
   const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaNotas, setVentaNotas] = useState("");
   const [ventaEditId, setVentaEditId] = useState<number | null>(null);
@@ -462,8 +471,8 @@ export function VendedorPedidos() {
 
   useEffect(() => {
     if (!cajaActual) return;
-    setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
-    setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
+    setCajaMontoApertura(emptyZeroInputValue(cajaActual.monto_apertura));
+    setCajaMontoCierre(emptyZeroInputValue(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura));
   }, [cajaActual?.id]);
 
   useEffect(() => {
@@ -479,10 +488,21 @@ export function VendedorPedidos() {
 
   function updateSaborVenta(saborId: number, rawValue: string) {
     const max = getMaxSaborVenta(saborId);
-    const value = Math.floor(Number(rawValue) || 0);
+    if (rawValue === "") {
+      setVentaSabores((prev) => ({
+        ...prev,
+        [String(saborId)]: "",
+      }));
+      return;
+    }
+
+    const numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) return;
+
+    const value = Math.floor(numericValue);
     setVentaSabores((prev) => ({
       ...prev,
-      [String(saborId)]: Math.min(max, Math.max(0, value)),
+      [String(saborId)]: String(Math.min(max, Math.max(0, value))),
     }));
   }
 
@@ -643,7 +663,7 @@ export function VendedorPedidos() {
       setOrdenErr("");
       setOrdenMsg("Apertura de caja guardada correctamente.");
       setCajaObservacionesApertura("");
-      setCajaMontoCierre(cajaMontoApertura || "0");
+      setCajaMontoCierre(cajaMontoApertura);
       await queryClient.invalidateQueries({ queryKey: ["vendedor", "caja-actual", ventaSucursalId] });
     },
     onError: (err: Error) => {
@@ -806,7 +826,7 @@ export function VendedorPedidos() {
       categoria: gasto.categoria ?? "",
       descripcion: gasto.descripcion ?? "",
       medio_pago: gasto.medio_pago || "cash",
-      monto: String(Number(gasto.monto ?? 0)),
+      monto: emptyZeroInputValue(gasto.monto),
       notas: gasto.notas ?? "",
     });
   }
@@ -1456,7 +1476,9 @@ export function VendedorPedidos() {
                         type="number"
                         min={0}
                         max={getMaxSaborVenta(sabor.id)}
-                        value={ventaSabores[String(sabor.id)] ?? 0}
+                        step={1}
+                        inputMode="numeric"
+                        value={ventaSabores[String(sabor.id)] ?? ""}
                         onChange={(event) => updateSaborVenta(sabor.id, event.target.value)}
                       />
                     </label>

@@ -127,7 +127,7 @@ export function TiendaOnline() {
   const resultsColumnRef = useRef<HTMLDivElement>(null);
   const [productosPage, setProductosPage] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
-  const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, number>>({});
+  const [cantidadesSeleccionadas, setCantidadesSeleccionadas] = useState<Record<number, string>>({});
   const [saboresCajaDraft, setSaboresCajaDraft] = useState<Record<number, Record<number, number>>>({});
   const [productoModal, setProductoModal] = useState<Producto | null>(null);
   const [productoModalImageIndex, setProductoModalImageIndex] = useState(0);
@@ -361,9 +361,15 @@ export function TiendaOnline() {
     });
   }
 
+  function getCantidadInputValue(productoId: number): string {
+    return Object.prototype.hasOwnProperty.call(cantidadesSeleccionadas, productoId)
+      ? cantidadesSeleccionadas[productoId]
+      : "1";
+  }
+
   function getCantidadSeleccionada(productoId: number): number {
-    const value = cantidadesSeleccionadas[productoId];
-    return Number.isInteger(value) && value > 0 ? value : 1;
+    const value = Math.floor(Number(getCantidadInputValue(productoId)));
+    return Number.isInteger(value) && value >= 1 ? value : 0;
   }
 
   function openProductoModal(producto: Producto) {
@@ -406,10 +412,15 @@ export function TiendaOnline() {
 
   function actualizarCantidadSeleccionada(producto: Producto, rawValue: string | number) {
     setCantidadesSeleccionadas((prev) => {
-      const parsed = Math.floor(Number(rawValue) || 0);
+      const raw = String(rawValue);
+      if (raw.trim() === "") return { ...prev, [producto.id]: "" };
+
+      const parsed = Math.floor(Number(raw));
+      if (!Number.isFinite(parsed)) return prev;
+
       const max = maxSelectableQuantity(producto);
-      const next = Math.max(1, Math.min(max, parsed || 1));
-      return { ...prev, [producto.id]: next };
+      const next = Math.max(0, Math.min(max, parsed));
+      return { ...prev, [producto.id]: String(next) };
     });
   }
 
@@ -559,6 +570,10 @@ export function TiendaOnline() {
   function agregar(producto: Producto, cantidad: number) {
     if (!user || user.rol !== "cliente") {
       navigate("/login");
+      return;
+    }
+    if (!Number.isInteger(cantidad) || cantidad < 1) {
+      setToast("Elegi una cantidad mayor o igual a 1.");
       return;
     }
     if (isCajaSabores(producto)) {
@@ -1033,6 +1048,7 @@ export function TiendaOnline() {
               const stock = Number(producto.stock_disponible ?? 0);
               const esCaja = isCajaSabores(producto);
               const sinStock = esCaja ? !productHasStock(producto) : producto.track_stock !== false && stock <= 0;
+              const cantidadInputValue = getCantidadInputValue(producto.id);
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
               const maxCantidad = maxSelectableQuantity(producto);
               return (
@@ -1136,9 +1152,11 @@ export function TiendaOnline() {
                             <input
                               className="product-card-qty-input"
                               type="number"
-                              min={1}
+                              min={0}
                               max={Math.max(1, maxCantidad)}
-                              value={cantidadSeleccionada}
+                              step={1}
+                              inputMode="numeric"
+                              value={cantidadInputValue}
                               disabled={addMutation.isPending || maxCantidad <= 0}
                               onChange={(event) => actualizarCantidadSeleccionada(producto, event.target.value)}
                             />
@@ -1157,7 +1175,7 @@ export function TiendaOnline() {
                       </div>
                       <button
                         className="product-card-btn product-card-btn-canjear"
-                        disabled={addMutation.isPending || sinStock}
+                        disabled={addMutation.isPending || sinStock || (!esCaja && cantidadSeleccionada < 1)}
                         onClick={() => esCaja ? openProductoModal(producto) : agregar(producto, cantidadSeleccionada)}
                       >
                         {sinStock
@@ -1166,7 +1184,9 @@ export function TiendaOnline() {
                             ? "Agregando..."
                             : esCaja
                               ? "Comprar caja"
-                              : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
+                              : cantidadSeleccionada < 1
+                                ? "Elegi cantidad"
+                                : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
                       </button>
                     </div>
                   </div>
@@ -1409,9 +1429,11 @@ export function TiendaOnline() {
                     <input
                       className="product-card-qty-input"
                       type="number"
-                      min={1}
+                      min={0}
                       max={Math.max(1, maxSelectableQuantity(productoModal))}
-                      value={getCantidadSeleccionada(productoModal.id)}
+                      step={1}
+                      inputMode="numeric"
+                      value={getCantidadInputValue(productoModal.id)}
                       disabled={addMutation.isPending || maxSelectableQuantity(productoModal) <= 0}
                       onChange={(event) => actualizarCantidadSeleccionada(productoModal, event.target.value)}
                     />
@@ -1428,7 +1450,7 @@ export function TiendaOnline() {
 
                   <button
                     className="product-card-btn product-card-btn-canjear"
-                    disabled={addMutation.isPending || !productHasStock(productoModal) || (isCajaSabores(productoModal) && !cajaSeleccionCompleta(productoModal))}
+                    disabled={addMutation.isPending || !productHasStock(productoModal) || (!isCajaSabores(productoModal) && getCantidadSeleccionada(productoModal.id) < 1) || (isCajaSabores(productoModal) && !cajaSeleccionCompleta(productoModal))}
                     onClick={() => agregar(productoModal, getCantidadSeleccionada(productoModal.id))}
                   >
                     {!productHasStock(productoModal)
@@ -1437,7 +1459,9 @@ export function TiendaOnline() {
                         ? "Agregando..."
                         : isCajaSabores(productoModal)
                           ? "Agregar al carrito de compras"
-                          : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito de compras` : "al carrito de compras"}`}
+                          : getCantidadSeleccionada(productoModal.id) < 1
+                            ? "Elegi cantidad"
+                            : `Agregar ${getCantidadSeleccionada(productoModal.id) > 1 ? `${getCantidadSeleccionada(productoModal.id)} al carrito de compras` : "al carrito de compras"}`}
                   </button>
                 </>
               ) : (

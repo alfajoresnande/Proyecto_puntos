@@ -28,6 +28,17 @@ function sanitizeDownloadName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, "_").trim() || "cv";
 }
 
+function resolveStoredCvPath(storedFilename: string): string | null {
+  const resolvedPath = path.resolve(CV_UPLOAD_DIR, storedFilename);
+  const uploadRoot = path.resolve(CV_UPLOAD_DIR);
+  return resolvedPath.startsWith(uploadRoot + path.sep) ? resolvedPath : null;
+}
+
+function storedCvExists(storedFilename: string): boolean {
+  const resolvedPath = resolveStoredCvPath(storedFilename);
+  return Boolean(resolvedPath && fs.existsSync(resolvedPath));
+}
+
 const cvStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     try {
@@ -109,12 +120,30 @@ router.post("/", cvUpload.single("cv"), async (req, res) => {
 router.get("/admin", requireAuth, requireRole("admin", "superAdmin"), async (_req, res) => {
   const rows = await qAll(
     pool,
-    `SELECT id, nombre, email, telefono, mensaje, archivo_original, mime_type, size_bytes, estado, created_at
+    `SELECT id, nombre, email, telefono, mensaje, archivo_original, archivo_guardado, mime_type, size_bytes, estado, created_at
      FROM postulaciones_cv
+     WHERE estado <> 'archivada'
      ORDER BY created_at DESC, id DESC
      LIMIT 300`,
   );
-  res.json(rows);
+  res.json(rows.map((row: any) => ({
+    id: row.id,
+    nombre: row.nombre,
+    email: row.email,
+    telefono: row.telefono,
+    mensaje: row.mensaje,
+    archivo_original: row.archivo_original,
+    mime_type: row.mime_type,
+    size_bytes: row.size_bytes,
+    estado: row.estado,
+    created_at: row.created_at,
+    archivo_disponible: storedCvExists(row.archivo_guardado),
+  })));
+});
+
+router.patch("/admin/limpiar", requireAuth, requireRole("admin", "superAdmin"), async (_req, res) => {
+  const result = await qRun(pool, "UPDATE postulaciones_cv SET estado = 'archivada' WHERE estado <> 'archivada'");
+  res.json({ ok: true, archivadas: result.affectedRows });
 });
 
 router.get("/admin/:id/cv", requireAuth, requireRole("admin", "superAdmin"), async (req, res) => {
@@ -134,17 +163,20 @@ router.get("/admin/:id/cv", requireAuth, requireRole("admin", "superAdmin"), asy
     return;
   }
 
-  const resolvedPath = path.resolve(CV_UPLOAD_DIR, row.archivo_guardado);
-  const uploadRoot = path.resolve(CV_UPLOAD_DIR);
-  if (!resolvedPath.startsWith(uploadRoot + path.sep)) {
+  const resolvedPath = resolveStoredCvPath(row.archivo_guardado);
+  if (!resolvedPath) {
     res.status(400).json({ error: "Ruta de archivo invalida." });
+    return;
+  }
+  if (!fs.existsSync(resolvedPath)) {
+    res.status(404).json({ error: "El archivo del CV no esta disponible en el servidor. Puede haberse borrado, no haberse copiado al deploy o pertenecer a otro entorno." });
     return;
   }
 
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.download(resolvedPath, sanitizeDownloadName(row.archivo_original), (error) => {
     if (error && !res.headersSent) {
-      res.status(404).json({ error: "No se pudo descargar el CV." });
+      res.status(404).json({ error: "No se pudo descargar el CV desde el servidor." });
     }
   });
 });

@@ -291,6 +291,7 @@ type PostulacionCv = {
   telefono: string | null;
   mensaje: string;
   archivo_original: string;
+  archivo_disponible?: boolean;
   mime_type: string | null;
   size_bytes: number;
   estado: "nueva" | "vista" | "archivada";
@@ -893,8 +894,23 @@ function discountDraftKey(tipoCliente: TipoCliente, categoria: string): string {
 function normalizeDiscountDraftValue(value: string): string {
   if (value.trim() === "") return "";
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return "0";
+  if (!Number.isFinite(numeric)) return "";
   return String(Math.max(0, Math.min(100, numeric)));
+}
+
+function emptyZeroInputValue(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const stringValue = String(value);
+  if (!stringValue.trim()) return "";
+  const numericValue = Number(stringValue);
+  if (!Number.isFinite(numericValue) || numericValue === 0) return "";
+  return stringValue;
+}
+
+function emptyZeroStockValue(value: number | string | null | undefined): number | null {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue === 0) return null;
+  return numericValue;
 }
 
 function formatEstadoCanje(estado: string): string {
@@ -1076,7 +1092,7 @@ function inventoryDraftFromRows(rows: InventarioSucursal[] | undefined, sucursal
   const draft: Record<string, number | null> = {};
   for (const sucursal of sucursales) {
     const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
-    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : null;
+    draft[String(sucursal.id)] = row ? emptyZeroStockValue(row.stock_disponible) : null;
   }
   return draft;
 }
@@ -1085,7 +1101,7 @@ function flavorInventoryDraftFromRows(rows: SaborAdmin["inventario_sucursales"] 
   const draft: Record<string, number | null> = {};
   for (const sucursal of sucursales) {
     const row = rows?.find((item) => Number(item.sucursal_id) === Number(sucursal.id));
-    draft[String(sucursal.id)] = row ? Number(row.stock_disponible ?? 0) : null;
+    draft[String(sucursal.id)] = row ? emptyZeroStockValue(row.stock_disponible) : null;
   }
   return draft;
 }
@@ -1132,7 +1148,7 @@ function ProductInventoryEditor({
     ? hasDraftStock
       ? values[selectedKey]
       : selectedRow
-        ? Number(selectedRow.stock_disponible ?? 0)
+        ? emptyZeroStockValue(selectedRow.stock_disponible)
         : null
     : null;
   const selectedStockReservado = Number(selectedRow?.stock_reservado ?? 0);
@@ -1339,7 +1355,7 @@ export function Admin() {
     email: "",
     rol: "cliente",
     tipo_cliente: "cliente",
-    descuento_porcentaje: "0",
+    descuento_porcentaje: "",
     dni: "",
     telefono: "",
   });
@@ -1365,7 +1381,7 @@ export function Admin() {
     nombre: "",
     rol: "cliente" as Rol,
     tipo_cliente: "cliente" as TipoCliente,
-    descuento_porcentaje: "0",
+    descuento_porcentaje: "",
     dni: "",
   });
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
@@ -1403,7 +1419,7 @@ export function Admin() {
   const [ventaLocalAcreditarPuntos, setVentaLocalAcreditarPuntos] = useState(false);
   const [ventaLocalProductoId, setVentaLocalProductoId] = useState("");
   const [ventaLocalCantidad, setVentaLocalCantidad] = useState("1");
-  const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, number>>({});
+  const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, string>>({});
   const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaLocalNotas, setVentaLocalNotas] = useState("");
   const [ventaLocalEditOrdenId, setVentaLocalEditOrdenId] = useState<number | null>(null);
@@ -1465,9 +1481,9 @@ export function Admin() {
   const [webDiscountLoaded, setWebDiscountLoaded] = useState(false);
   const [webDiscountDraft, setWebDiscountDraft] = useState<WebDiscountDraft>({
     activo: false,
-    cliente: "0",
-    mayorista: "0",
-    empleado: "0",
+    cliente: "",
+    mayorista: "",
+    empleado: "",
   });
   const [costosCobroLoaded, setCostosCobroLoaded] = useState(false);
   const [costosCobroDraft, setCostosCobroDraft] = useState<Record<string, PaymentFeeDraftValue>>({});
@@ -1481,7 +1497,7 @@ export function Admin() {
     puntos_referido_invitador: "50",
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
-    envio_gratis_monto_minimo: "0",
+    envio_gratis_monto_minimo: "",
     pedido_efectivo_dias_vigencia: "3",
     empresa_dias_habiles_retiro: "Lunes a viernes",
     empresa_horario_retiro: "08:00 a 18:00",
@@ -1789,7 +1805,7 @@ export function Admin() {
       puntos_referido_invitador: getConfig("puntos_referido_invitador", "50"),
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
-      envio_gratis_monto_minimo: getConfig("envio_gratis_monto_minimo", "0"),
+      envio_gratis_monto_minimo: emptyZeroInputValue(getConfig("envio_gratis_monto_minimo", "0")),
       pedido_efectivo_dias_vigencia: getConfig("pedido_efectivo_dias_vigencia", "3"),
       empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
@@ -1804,9 +1820,9 @@ export function Admin() {
     const activeValue = String(byKey.get("descuento_web_global_activo") ?? "0").trim().toLowerCase();
     setWebDiscountDraft({
       activo: activeValue === "1" || activeValue === "true" || activeValue === "si" || activeValue === "yes" || activeValue === "on",
-      cliente: String(byKey.get("descuento_web_global_cliente") ?? "0"),
-      mayorista: String(byKey.get("descuento_web_global_mayorista") ?? "0"),
-      empleado: String(byKey.get("descuento_web_global_empleado") ?? "0"),
+      cliente: emptyZeroInputValue(byKey.get("descuento_web_global_cliente")),
+      mayorista: emptyZeroInputValue(byKey.get("descuento_web_global_mayorista")),
+      empleado: emptyZeroInputValue(byKey.get("descuento_web_global_empleado")),
     });
     setWebDiscountLoaded(true);
   }, [configuracionQuery.data, webDiscountLoaded]);
@@ -1817,7 +1833,7 @@ export function Admin() {
     for (const item of costosCobroQuery.data) {
       nextDraft[paymentFeeDraftKey(item.proveedor, item.metodo)] = {
         descripcion: item.descripcion,
-        porcentaje: String(Number(item.porcentaje ?? 0)),
+        porcentaje: emptyZeroInputValue(item.porcentaje),
         activo: Boolean(item.activo),
       };
     }
@@ -1830,14 +1846,14 @@ export function Admin() {
     const currentRows = new Map(
       descuentosCategoriasQuery.data.map((item) => [
         discountDraftKey(item.tipo_cliente, item.categoria),
-        item.activo ? String(Number(item.descuento_porcentaje ?? 0)) : "0",
+        item.activo ? emptyZeroInputValue(item.descuento_porcentaje) : "",
       ]),
     );
     const nextDraft: Record<string, string> = {};
     for (const categoria of categoriasQuery.data.filter((item) => item.activo !== false)) {
       for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
         const key = discountDraftKey(tipoCliente, categoria.nombre);
-        nextDraft[key] = currentRows.get(key) ?? "0";
+        nextDraft[key] = currentRows.get(key) ?? "";
       }
     }
     setDescuentosCategoriasDraft(nextDraft);
@@ -1993,8 +2009,8 @@ export function Admin() {
 
   useEffect(() => {
     if (cajaEditSesion || !cajaActual) return;
-    setCajaMontoApertura(String(Number(cajaActual.monto_apertura ?? 0)));
-    setCajaMontoCierre(String(Number(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura ?? 0)));
+    setCajaMontoApertura(emptyZeroInputValue(cajaActual.monto_apertura));
+    setCajaMontoCierre(emptyZeroInputValue(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura));
     setCajaObservacionesApertura(cajaActual.observaciones_apertura ?? "");
     setCajaObservacionesCierre(cajaActual.observaciones_cierre ?? "");
   }, [cajaActual?.id, cajaEditSesion]);
@@ -2083,10 +2099,21 @@ export function Admin() {
 
   function updateSaborVentaLocal(saborId: number, rawValue: string) {
     const max = getMaxSaborVentaLocal(saborId);
-    const value = Math.floor(Number(rawValue) || 0);
+    if (rawValue === "") {
+      setVentaLocalSabores((prev) => ({
+        ...prev,
+        [String(saborId)]: "",
+      }));
+      return;
+    }
+
+    const numericValue = Number(rawValue);
+    if (!Number.isFinite(numericValue)) return;
+
+    const value = Math.floor(numericValue);
     setVentaLocalSabores((prev) => ({
       ...prev,
-      [String(saborId)]: Math.min(max, Math.max(0, value)),
+      [String(saborId)]: String(Math.min(max, Math.max(0, value))),
     }));
   }
 
@@ -3187,6 +3214,12 @@ export function Admin() {
   }
 
   async function descargarCvPostulacion(postulacion: PostulacionCv) {
+    if (postulacion.archivo_disponible === false) {
+      setErrMsg("El archivo del CV no esta disponible en el servidor. Puede haberse borrado, no haberse copiado al deploy o pertenecer a otro entorno.");
+      setOkMsg("");
+      return;
+    }
+
     setBusy(true);
     setErrMsg("");
     setOkMsg("");
@@ -3228,6 +3261,29 @@ export function Admin() {
     }
   }
 
+  async function limpiarPostulaciones() {
+    if (!postulacionesFiltradas.length) return;
+    const confirmed = typeof window === "undefined" || window.confirm("Esto va a limpiar el listado de postulantes del panel, pero no los borra de la base de datos. ¿Continuar?");
+    if (!confirmed) return;
+
+    setBusy(true);
+    setErrMsg("");
+    setOkMsg("");
+    try {
+      const result = await commandMutation.mutateAsync({
+        method: "patch",
+        path: "/postulaciones/admin/limpiar",
+      }) as { archivadas?: number };
+      setPostulacionesPage(1);
+      await refreshQueries([["admin", "postulaciones"]]);
+      setOkMsg(`Listado de postulantes limpiado. Archivadas: ${result.archivadas ?? 0}.`);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function cargarFormularioCaja(sesion: CajaSesionAdmin | null) {
     if (!sesion) {
       setCajaMontoApertura("");
@@ -3237,8 +3293,8 @@ export function Admin() {
       return;
     }
     setCajaSucursalId(String(sesion.sucursal_id));
-    setCajaMontoApertura(String(Number(sesion.monto_apertura ?? 0)));
-    setCajaMontoCierre(String(Number(sesion.monto_cierre_declarado ?? sesion.summary.efectivoSistema ?? 0)));
+    setCajaMontoApertura(emptyZeroInputValue(sesion.monto_apertura));
+    setCajaMontoCierre(emptyZeroInputValue(sesion.monto_cierre_declarado ?? sesion.summary.efectivoSistema));
     setCajaObservacionesApertura(sesion.observaciones_apertura ?? "");
     setCajaObservacionesCierre(sesion.observaciones_cierre ?? "");
   }
@@ -3306,7 +3362,7 @@ export function Admin() {
         },
       });
       setCajaObservacionesApertura("");
-      setCajaMontoCierre(cajaMontoApertura || "0");
+      setCajaMontoCierre(cajaMontoApertura);
       setOkMsg("Apertura de caja guardada correctamente.");
       await refreshQueries([["admin", "caja-actual", cajaSucursalId], ["admin", "caja-sesiones", cajaSucursalId]]);
     } catch (error) {
@@ -3393,7 +3449,7 @@ export function Admin() {
       categoria: gasto.categoria ?? "",
       descripcion: gasto.descripcion ?? "",
       medio_pago: gasto.medio_pago || "cash",
-      monto: String(Number(gasto.monto ?? 0)),
+      monto: emptyZeroInputValue(gasto.monto),
       notas: gasto.notas ?? "",
     });
   }
@@ -3516,7 +3572,7 @@ export function Admin() {
       ...prev,
       [key]: {
         descripcion: prev[key]?.descripcion ?? "",
-        porcentaje: prev[key]?.porcentaje ?? "0",
+        porcentaje: prev[key]?.porcentaje ?? "",
         activo: prev[key]?.activo ?? true,
         ...patch,
       },
@@ -3531,7 +3587,7 @@ export function Admin() {
       const payload = costosCobro.map((item) => {
         const draft = costosCobroDraft[paymentFeeDraftKey(item.proveedor, item.metodo)] ?? {
           descripcion: item.descripcion,
-          porcentaje: String(item.porcentaje ?? 0),
+          porcentaje: emptyZeroInputValue(item.porcentaje),
           activo: Boolean(item.activo),
         };
         const porcentaje = Math.max(0, Math.min(100, Number(draft.porcentaje || 0)));
@@ -3676,7 +3732,7 @@ export function Admin() {
     try {
       for (const categoria of categoriasActivas) {
         for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
-          const rawValue = descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "0";
+          const rawValue = descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "";
           const descuento = Math.max(0, Math.min(100, Number(rawValue || 0)));
           if (!Number.isFinite(descuento)) {
             throw new Error(`Hay un descuento invalido en ${categoria.nombre} para ${formatTipoClienteLabel(tipoCliente).toLowerCase()}.`);
@@ -3769,7 +3825,7 @@ export function Admin() {
       email: usuario.email,
       rol: usuario.rol,
       tipo_cliente: usuario.tipo_cliente ?? "cliente",
-      descuento_porcentaje: "0",
+      descuento_porcentaje: "",
       dni: usuario.dni || "",
       telefono: usuario.telefono || "",
     });
@@ -3784,7 +3840,7 @@ export function Admin() {
       email: "",
       rol: "cliente",
       tipo_cliente: "cliente",
-      descuento_porcentaje: "0",
+      descuento_porcentaje: "",
       dni: "",
       telefono: "",
     });
@@ -3938,7 +3994,7 @@ export function Admin() {
           dni: nuevoUsuario.rol === "cliente" ? nuevoUsuario.dni : undefined,
         },
       });
-      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "cliente", tipo_cliente: "cliente", descuento_porcentaje: "0", dni: "" });
+      setNuevoUsuario({ email: "", password: "", nombre: "", rol: "cliente", tipo_cliente: "cliente", descuento_porcentaje: "", dni: "" });
       setOkMsg("Usuario creado.");
       await refreshQueries([["admin", "usuarios"]]);
     } catch (error) {
@@ -4735,7 +4791,7 @@ export function Admin() {
                       onChange={(event) => setConfigDraft((prev) => ({ ...prev, envio_gratis_monto_minimo: event.target.value }))}
                       placeholder="Ej: 50000"
                     />
-                    <p className="adm-field-help">Subtotal minimo de productos para bonificar el envio. Usa 0 para desactivar esta regla.</p>
+                    <p className="adm-field-help">Subtotal minimo de productos para bonificar el envio. Dejalo vacio para desactivar esta regla.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Dias habiles de retiro</label>
@@ -5286,7 +5342,8 @@ export function Admin() {
                               className="adm-input"
                               type="number"
                               min={row.stock_reservado}
-                              defaultValue={row.stock_disponible}
+                              defaultValue={emptyZeroInputValue(row.stock_disponible)}
+                              placeholder="0"
                               onBlur={(event) => void actualizarStockSabor(sabor, row.sucursal_id, Number(event.target.value))}
                             />
                           </label>
@@ -5886,7 +5943,8 @@ export function Admin() {
                                 type="number"
                                 min={0}
                                 className="adm-input"
-                                value={inventarioDraft[key] ?? String(row.stock_disponible)}
+                                value={inventarioDraft[key] ?? emptyZeroInputValue(row.stock_disponible)}
+                                placeholder="0"
                                 onChange={(event) => setInventarioDraft((prev) => ({ ...prev, [key]: event.target.value }))}
                               />
                             </td>
@@ -5952,13 +6010,31 @@ export function Admin() {
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Postulaciones recibidas" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
-                <input
-                  className="adm-input"
-                  placeholder="Buscar por nombre, email, telefono, archivo o mensaje..."
-                  value={busquedaPostulaciones}
-                  onChange={(event) => setBusquedaPostulaciones(event.target.value)}
-                />
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                  <input
+                    className="adm-input"
+                    placeholder="Buscar por nombre, email, telefono, archivo o mensaje..."
+                    value={busquedaPostulaciones}
+                    onChange={(event) => {
+                      setBusquedaPostulaciones(event.target.value);
+                      setPostulacionesPage(1);
+                    }}
+                    style={{ flex: "1 1 260px" }}
+                  />
+                  <button
+                    type="button"
+                    className="adm-btn-secondary"
+                    onClick={() => void limpiarPostulaciones()}
+                    disabled={busy || postulacionesFiltradas.length === 0}
+                    style={{ width: "auto", whiteSpace: "nowrap" }}
+                  >
+                    Limpiar listado
+                  </button>
+                </div>
                 <p className="adm-inline-tip">Se muestran los ultimos CV enviados desde el home. La descarga requiere sesion de administrador.</p>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Pagina {postulacionesPage} de {totalPostulacionesPages}. {postulacionesFiltradas.length} postulante{postulacionesFiltradas.length === 1 ? "" : "s"} visible{postulacionesFiltradas.length === 1 ? "" : "s"}.
+                </p>
               </div>
 
               <div className="admin-card">
@@ -5996,10 +6072,16 @@ export function Admin() {
                             {postulacion.archivo_original}
                             <br />
                             <span style={{ color: "#8B5A30", fontSize: "0.75rem" }}>{Math.max(1, Math.round(Number(postulacion.size_bytes || 0) / 1024))} KB</span>
+                            {postulacion.archivo_disponible === false ? (
+                              <>
+                                <br />
+                                <span style={{ color: "#B42318", fontSize: "0.75rem", fontWeight: 700 }}>Archivo no disponible</span>
+                              </>
+                            ) : null}
                           </td>
                           <td>
-                            <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy}>
-                              Descargar CV
+                            <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy || postulacion.archivo_disponible === false}>
+                              {postulacion.archivo_disponible === false ? "No disponible" : "Descargar CV"}
                             </button>
                           </td>
                         </tr>
@@ -6016,8 +6098,11 @@ export function Admin() {
                       <p>{postulacion.email}</p>
                       <p>{postulacion.telefono || "Sin telefono"} - {formatDate(postulacion.created_at)}</p>
                       <p>{postulacion.mensaje}</p>
-                      <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy}>
-                        Descargar CV
+                      {postulacion.archivo_disponible === false ? (
+                        <p style={{ margin: "0.35rem 0", color: "#B42318", fontWeight: 700 }}>Archivo no disponible</p>
+                      ) : null}
+                      <button className="adm-btn-link" onClick={() => void descargarCvPostulacion(postulacion)} disabled={busy || postulacion.archivo_disponible === false}>
+                        {postulacion.archivo_disponible === false ? "No disponible" : "Descargar CV"}
                       </button>
                     </div>
                   ))}
@@ -6169,7 +6254,9 @@ export function Admin() {
                                 type="number"
                                 min={0}
                                 max={getMaxSaborVentaLocal(sabor.id)}
-                                value={ventaLocalSabores[String(sabor.id)] ?? 0}
+                                step={1}
+                                inputMode="numeric"
+                                value={ventaLocalSabores[String(sabor.id)] ?? ""}
                                 onChange={(event) => updateSaborVentaLocal(sabor.id, event.target.value)}
                               />
                             </FieldWithFloatingTip>
@@ -6971,7 +7058,7 @@ export function Admin() {
                         const key = paymentFeeDraftKey(item.proveedor, item.metodo);
                         const draft = costosCobroDraft[key] ?? {
                           descripcion: item.descripcion,
-                          porcentaje: String(item.porcentaje ?? 0),
+                          porcentaje: emptyZeroInputValue(item.porcentaje),
                           activo: Boolean(item.activo),
                         };
                         return (
@@ -7056,7 +7143,7 @@ export function Admin() {
                                 max={100}
                                 step="0.01"
                                 className="adm-input"
-                                value={descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? "0"}
+                                value={descuentosCategoriasDraft[discountDraftKey(tipoCliente, categoria.nombre)] ?? ""}
                                 onChange={(event) => updateDescuentoCategoriaDraft(tipoCliente, categoria.nombre, event.target.value)}
                               />
                             </td>
