@@ -1482,6 +1482,16 @@ router.get("/ordenes", async (_req, res) => {
      LEFT JOIN usuarios u ON u.id = o.usuario_id
      LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
+     WHERE NOT (
+       o.direccion_envio_json IS NOT NULL
+       AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
+       AND NOT EXISTS (
+         SELECT 1
+         FROM pagos p_visible
+         WHERE p_visible.orden_id = o.id
+           AND p_visible.estado IN ('aprobado', 'reembolsado')
+       )
+     )
      ORDER BY o.created_at DESC, o.id DESC`);
     const orderIds = rows.map((row) => Number(row.id));
     const itemMap = await getOrdenItemsByOrdenIds(orderIds);

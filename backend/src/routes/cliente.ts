@@ -2217,7 +2217,9 @@ router.post("/checkout/confirm", async (req, res) => {
     }
 
     const tipoOrden = "venta";
-    const estadoOrden = totalDinero > 0 ? "pendiente_pago" : "preparada";
+    const estadoOrden = totalDinero > 0
+      ? metodoEntrega === "envio" ? "borrador" : "pendiente_pago"
+      : "preparada";
     const envioCotizacionSnapshot = shippingQuote ? buildShippingQuoteSnapshot(shippingQuote) : null;
     const direccionEnvioSnapshot = direccionEnvio && shippingQuote
       ? buildShippingAddressOrderSnapshot(direccionEnvio, shippingQuote)
@@ -2372,7 +2374,7 @@ router.post("/checkout/confirm", async (req, res) => {
 
     await qRun(conn, "UPDATE carritos SET estado = 'convertido' WHERE id = ?", [carritoId]);
     await conn.commit();
-    emitRealtime(["ordenes", "inventario", "productos", "stats"]);
+    emitRealtime(estadoOrden === "borrador" ? ["inventario", "productos", "stats"] : ["ordenes", "inventario", "productos", "stats"]);
 
     res.status(201).json({
       ok: true,
@@ -2463,7 +2465,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     const orden = await qOne<{
       id: number;
       usuario_id: number;
-      estado: "pendiente_pago" | "pagada" | "cancelada" | "expirada" | string;
+      estado: "borrador" | "pendiente_pago" | "pagada" | "cancelada" | "expirada" | string;
       total_dinero: number;
       moneda: string;
       comprador_email: string | null;
@@ -2486,7 +2488,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
       res.json({ ok: true, orden_id: ordenId, estado: "pagada", already_paid: true });
       return;
     }
-    if (orden.estado !== "pendiente_pago") {
+    if (!(orden.estado === "pendiente_pago" || orden.estado === "borrador")) {
       throw new HttpError(400, `No se puede pagar una orden en estado '${orden.estado}'.`);
     }
 
@@ -2569,7 +2571,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     res.json({
       ok: false,
       orden_id: ordenId,
-      estado: "pendiente_pago",
+      estado: orden.estado,
       pago_estado: mpResult.status,
       provider_payment_id: mpResult.providerPaymentId,
       status_detail: mpResult.statusDetail,
@@ -2587,6 +2589,168 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
   }
 });
 
+router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
+  const ordenId = Number(req.params.id);
+  if (!Number.isInteger(ordenId) || ordenId <= 0) {
+    res.status(400).json({ error: "ID de orden invalido." });
+    return;
+  }
+
+  const schema = z.object({
+    pago: z.object({
+      provider: z.enum(["mercadopago", "efectivo"]),
+      method: z.enum(["brick", "wallet", "qr", "cash"]).optional(),
+    }),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message || "Medio de pago invalido." });
+    return;
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const orden = await qOne<{
+      id: number;
+      usuario_id: number;
+      estado: string;
+      total_dinero: number;
+      moneda: string;
+      direccion_envio_json: string | null;
+      comprador_nombre: string | null;
+      comprador_email: string | null;
+      total_puntos_ganados: number;
+    }>(
+      conn,
+      `SELECT o.id, o.usuario_id, o.estado, o.total_dinero, o.moneda, o.direccion_envio_json,
+              u.nombre AS comprador_nombre, u.email AS comprador_email,
+              (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
+               FROM orden_items
+               WHERE orden_id = o.id AND modo_compra = 'dinero') AS total_puntos_ganados
+       FROM ordenes o
+       JOIN usuarios u ON u.id = o.usuario_id
+       WHERE o.id = ? AND o.usuario_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [ordenId, req.user!.id],
+    );
+    if (!orden) {
+      throw new HttpError(404, "Orden no encontrada.");
+    }
+    if (!(orden.estado === "pendiente_pago" || orden.estado === "borrador")) {
+      throw new HttpError(400, `La orden esta en estado '${orden.estado}' y no permite cambiar el medio de pago.`);
+    }
+
+    const total = toMoney(Number(orden.total_dinero ?? 0));
+    if (total <= 0) {
+      throw new HttpError(400, "La orden no tiene monto pendiente en dinero.");
+    }
+
+    const direccionEnvio = parseJsonField(orden.direccion_envio_json);
+    const isShippingOrder = Boolean(direccionEnvio);
+    const paymentChoice = resolvePaymentChoice(parsed.data.pago);
+    if (paymentChoice.provider === "efectivo" && isShippingOrder) {
+      throw new HttpError(400, "El pago en efectivo no esta disponible para envios.");
+    }
+
+    const availability = isPaymentChoiceAvailable(paymentChoice);
+    if (!availability.ok) {
+      throw new HttpError(400, availability.reason || "Medio de pago no disponible.");
+    }
+
+    const paymentFee = await resolvePaymentFee(conn, {
+      proveedor: paymentChoice.provider,
+      metodo: paymentChoice.method,
+      monto: total,
+    });
+    const paymentSession = await createPaymentSession({
+      choice: paymentChoice,
+      orderId: ordenId,
+      amount: total,
+      currency: orden.moneda || "ARS",
+      buyerName: orden.comprador_nombre || `Cliente #${req.user!.id}`,
+      buyerEmail: orden.comprador_email || "",
+      description: `Pedido #${ordenId}`,
+    });
+
+    await qRun(conn, "UPDATE pagos SET estado = 'rechazado' WHERE orden_id = ? AND estado = 'iniciado'", [ordenId]);
+    await qRun(
+      conn,
+      `INSERT INTO pagos (
+         orden_id, proveedor, metodo, estado, monto, comision_porcentaje, comision_monto, monto_neto,
+         moneda, provider_payment_id, checkout_url, payload_json
+       )
+       VALUES (?, ?, ?, 'iniciado', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        ordenId,
+        paymentChoice.provider,
+        paymentChoice.method,
+        total,
+        paymentFee.porcentaje,
+        paymentFee.montoComision,
+        paymentFee.montoNeto,
+        orden.moneda || "ARS",
+        paymentSession.providerPaymentId,
+        paymentSession.checkoutUrl,
+        JSON.stringify({
+          ...(paymentSession.payload ?? {}),
+          comision: paymentFee,
+        }),
+      ],
+    );
+
+    await conn.commit();
+    if (orden.estado !== "borrador") {
+      emitRealtime(["ordenes"]);
+    }
+
+    res.json({
+      ok: true,
+      orden_id: ordenId,
+      estado: orden.estado,
+      total_dinero: total,
+      total_puntos_ganados: Number(orden.total_puntos_ganados),
+      pago_pendiente: true,
+      metodo_entrega: isShippingOrder ? "envio" : "retiro",
+      pago: {
+        proveedor: paymentChoice.provider,
+        metodo: paymentChoice.method,
+        estado: "iniciado",
+        checkout_url: paymentSession.checkoutUrl,
+        preference_id: paymentSession.preferenceId,
+        public_key: paymentSession.publicKey,
+        qr_data: paymentSession.qrData ?? null,
+        qr_image: paymentSession.qrImage ?? null,
+        expires_at: paymentSession.expiresAt ?? null,
+        provider_payment_id: paymentSession.providerPaymentId,
+        setup_status: paymentSession.status,
+        setup_message: paymentSession.message,
+      },
+    });
+  } catch (err: unknown) {
+    await conn.rollback();
+    if (err instanceof HttpError) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    if (err instanceof MercadoPagoQrOrderError) {
+      res.status(400).json({
+        error: "No se pudo crear la orden QR de Mercado Pago",
+        message: "No se pudo crear la orden QR de Mercado Pago",
+        mercadoPagoError: err.detail,
+        status: err.status,
+        cause: err.cause ?? null,
+      });
+      return;
+    }
+    const msg = err instanceof Error ? err.message : "No se pudo cambiar el medio de pago.";
+    res.status(400).json({ error: msg });
+  } finally {
+    conn.release();
+  }
+});
+
 router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
   const ordenId = Number(req.params.id);
   if (!Number.isInteger(ordenId) || ordenId <= 0) {
@@ -2598,10 +2762,11 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     id: number;
     estado: string;
     total_dinero: number;
+    direccion_envio_json: string | null;
     total_puntos_ganados: number;
   }>(
     pool,
-    `SELECT id, estado, total_dinero,
+    `SELECT id, estado, total_dinero, direccion_envio_json,
             (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
              FROM orden_items
              WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
@@ -2614,7 +2779,7 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     res.status(404).json({ error: "Orden no encontrada." });
     return;
   }
-  if (orden.estado !== "pendiente_pago") {
+  if (!(orden.estado === "pendiente_pago" || orden.estado === "borrador")) {
     res.status(400).json({ error: `La orden esta en estado '${orden.estado}' y no tiene un pago pendiente para reanudar.` });
     return;
   }
@@ -2645,6 +2810,7 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
   const preferenceId = firstNonEmptyString(payloadRecord.id, payloadRecord.preference_id);
   const qrData = firstNonEmptyString(payloadRecord.qr_data);
   const qrImage = firstNonEmptyString(payloadRecord.qr_image);
+  const direccionEnvio = parseJsonField(orden.direccion_envio_json);
 
   res.json({
     orden_id: ordenId,
@@ -2652,6 +2818,7 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     total_dinero: Number(orden.total_dinero),
     total_puntos_ganados: Number(orden.total_puntos_ganados),
     pago_pendiente: true,
+    metodo_entrega: direccionEnvio ? "envio" : "retiro",
     pago: {
       proveedor: pago.proveedor,
       metodo: pago.metodo,
@@ -2717,7 +2884,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
       [ordenId],
     );
 
-    if (!pago || orden.estado !== "pendiente_pago") {
+    if (!pago || !(orden.estado === "pendiente_pago" || orden.estado === "borrador")) {
       if (orden.estado === "pagada") queueOrderReceiptEmail(ordenId);
       res.json({
         ok: orden.estado === "pagada",
@@ -2930,6 +3097,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
       });
       await conn.commit();
       transactionOpen = false;
+      emitRealtime(["ordenes", "inventario", "productos", "stats", "puntos"]);
       queueOrderReceiptEmail(resolvedOrderId);
       res.json({
         ok: true,
@@ -3008,6 +3176,16 @@ router.get("/ordenes", async (req, res) => {
      FROM ordenes o
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      WHERE o.usuario_id = ?
+      AND NOT (
+        o.direccion_envio_json IS NOT NULL
+        AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pagos p_visible
+          WHERE p_visible.orden_id = o.id
+            AND p_visible.estado IN ('aprobado', 'reembolsado')
+        )
+      )
      ORDER BY o.created_at DESC, o.id DESC`,
     [req.user!.id],
   );
@@ -3137,6 +3315,16 @@ router.get("/ordenes/:id", async (req, res) => {
      FROM ordenes o
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      WHERE o.id = ? AND o.usuario_id = ?
+      AND NOT (
+        o.direccion_envio_json IS NOT NULL
+        AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pagos p_visible
+          WHERE p_visible.orden_id = o.id
+            AND p_visible.estado IN ('aprobado', 'reembolsado')
+        )
+      )
      LIMIT 1`,
     [ordenId, req.user!.id],
   );

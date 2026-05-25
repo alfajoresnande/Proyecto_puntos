@@ -72,6 +72,7 @@ type CheckoutConfirmResponse = {
   total_dinero_productos?: number;
   costo_envio?: number;
   total_puntos_ganados?: number;
+  metodo_entrega?: "retiro" | "envio";
   envio?: ShippingQuote | null;
   pago_pendiente: boolean;
   pago: null | {
@@ -126,6 +127,7 @@ function money(value: number | string | null | undefined): string {
 function estadoPedidoLabel(estado: string): string {
   const normalized = estado.trim().toLowerCase();
   const labels: Record<string, string> = {
+    borrador: "Pendiente de pago",
     pendiente_pago: "Pendiente de pago",
     pagada: "Pago aprobado",
     preparandose: "Preparando pedido",
@@ -374,6 +376,7 @@ export function CarritoTienda() {
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
   const [cartToast, setCartToast] = useState<CartToast | null>(null);
+  const [pendingPaymentId, setPendingPaymentId] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState<"retiro" | "envio">("retiro");
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<UserAddress | null>(null);
@@ -458,9 +461,25 @@ export function CarritoTienda() {
     : isCashOrder
       ? "Pedido reservado"
       : "Pedido pendiente de pago";
-  const confirmedHasShipping = Boolean(confirmed && (deliveryMethod === "envio" || confirmed.envio));
+  const confirmedHasShipping = Boolean(confirmed && (confirmed.metodo_entrega === "envio" || deliveryMethod === "envio" || confirmed.envio));
   const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmed.estado === "pagada"));
   const confirmedTrackingPath = confirmed ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
+  const currentPendingPaymentId = confirmed?.pago
+    ? paymentOptions.find((option) => option.provider === confirmed.pago?.proveedor && option.method === confirmed.pago?.metodo)?.id ?? ""
+    : "";
+  const pendingPaymentOptions = useMemo(
+    () => paymentOptions.filter((option) => option.enabled && !(confirmedHasShipping && option.provider === "efectivo")),
+    [confirmedHasShipping, paymentOptions],
+  );
+  const selectedPendingPayment =
+    pendingPaymentOptions.find((option) => option.id === (pendingPaymentId || currentPendingPaymentId)) ??
+    pendingPaymentOptions[0];
+  const canChangePendingPayment = Boolean(
+    confirmed?.orden_id &&
+    (confirmed.estado === "pendiente_pago" || confirmed.estado === "borrador") &&
+    selectedPendingPayment &&
+    selectedPendingPayment.id !== currentPendingPaymentId,
+  );
 
   const confirmedOrderQuery = useQuery({
     queryKey: ["cliente", "orden-payment-status", confirmed?.orden_id],
@@ -469,7 +488,7 @@ export function CarritoTienda() {
     refetchInterval: (query) => {
       if (!shouldPollMercadoPagoOrder || !confirmed?.orden_id) return false;
       const currentOrder = query.state.data;
-      return currentOrder?.estado === "pendiente_pago" || !currentOrder ? 5000 : false;
+      return !currentOrder || currentOrder.estado === "pendiente_pago" || currentOrder.estado === "borrador" ? 5000 : false;
     },
     refetchIntervalInBackground: true,
   });
@@ -496,6 +515,12 @@ export function CarritoTienda() {
   }, [resumeOrderId, resumePaymentQuery.data, resumePaymentQuery.error, searchParams, setSearchParams]);
 
   useEffect(() => {
+    if (currentPendingPaymentId) {
+      setPendingPaymentId(currentPendingPaymentId);
+    }
+  }, [currentPendingPaymentId]);
+
+  useEffect(() => {
     if (!sucursales.length) return;
     if (!sucursalId || !sucursales.some((sucursal) => String(sucursal.id) === sucursalId)) {
       setSucursalId(String(sucursales[0].id));
@@ -518,7 +543,7 @@ export function CarritoTienda() {
     if (!confirmed?.orden_id || !confirmedOrderQuery.data) return;
     const currentOrder = confirmedOrderQuery.data;
     const nextState = currentOrder?.estado?.trim().toLowerCase();
-    if (!nextState || nextState === "pendiente_pago") return;
+    if (!nextState || nextState === "pendiente_pago" || nextState === "borrador") return;
 
     if (nextState === "pagada") {
       if (!paymentApproved || confirmed.estado !== "pagada") {
@@ -668,6 +693,33 @@ export function CarritoTienda() {
     },
   });
 
+  const changePaymentMethod = useMutation({
+    mutationFn: (option: PaymentOption) => {
+      if (!confirmed?.orden_id) throw new Error("No hay una orden pendiente para actualizar.");
+      return api.post<CheckoutConfirmResponse>(`/cliente/checkout/ordenes/${confirmed.orden_id}/change-payment-method`, {
+        pago: { provider: option.provider, method: option.method },
+      });
+    },
+    onSuccess: async (data) => {
+      setConfirmed(data);
+      setPaymentApproved(data.estado === "pagada");
+      setPaymentNotice({
+        variant: "info",
+        msg: data.pago?.metodo === "qr"
+          ? "Listo, generamos un QR nuevo para este pedido."
+          : data.pago?.metodo === "wallet"
+            ? "Listo, ahora podes pagar este pedido desde Mercado Pago."
+            : "Listo, actualizamos el medio de pago de este pedido.",
+      });
+      setMessage(null);
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "orden-payment-status", data.orden_id] });
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+    },
+    onError: (error: Error) => {
+      setPaymentNotice({ variant: "error", msg: error.message || "No se pudo cambiar el medio de pago." });
+    },
+  });
+
   function confirmar() {
     if (!cartItems.length) {
       setMessage("Tu carrito esta vacio.");
@@ -741,21 +793,6 @@ export function CarritoTienda() {
               ) : null}
             </div>
 
-            {isShippingConfirmed ? (
-              <div className="checkout-tracking-alert" role="status" aria-live="polite">
-                <div className="checkout-tracking-alert-icon" aria-hidden="true">OK</div>
-                <div className="checkout-tracking-alert-body">
-                  <p className="checkout-tracking-alert-title">Tu seguimiento de envio ya esta activo</p>
-                  <p className="checkout-tracking-alert-text">
-                    En Mis pedidos podes ver el avance del envio hasta que sea marcado como entregado.
-                  </p>
-                </div>
-                <Link to={confirmedTrackingPath} className="checkout-tracking-alert-btn">
-                  Ir a Mis pedidos
-                </Link>
-              </div>
-            ) : null}
-
             <div className="catalog-confirm-branch-detail catalog-canje-block">
               <p><strong>Estado:</strong> {estadoLabel}</p>
               {isShippingConfirmed ? (
@@ -806,11 +843,6 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
-              {isShippingConfirmed ? (
-                <p className="checkout-approved-text checkout-shipping-followup">
-                  Podes seguir el estado de tu envio desde Mis pedidos.
-                </p>
-              ) : null}
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
                   Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
@@ -847,6 +879,40 @@ export function CarritoTienda() {
               <p className="catalog-confirm-hint">
                 Si Mercado Pago abre la app, termina el pago ahi. Cuando llegue la confirmacion, esta pantalla se actualiza sola.
               </p>
+            ) : null}
+            {(confirmed.estado === "pendiente_pago" || confirmed.estado === "borrador") && pendingPaymentOptions.length > 1 ? (
+              <div className="checkout-payment-switcher">
+                <label className="catalog-confirm-label" htmlFor="checkout-pending-payment-method">
+                  Cambiar medio de pago
+                </label>
+                <div className="checkout-payment-switcher-row">
+                  <select
+                    id="checkout-pending-payment-method"
+                    className="catalog-pickup-select"
+                    value={selectedPendingPayment?.id ?? ""}
+                    onChange={(event) => setPendingPaymentId(event.target.value)}
+                  >
+                    {pendingPaymentOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="catalog-float-toast-btn-secondary"
+                    disabled={!selectedPendingPayment || !canChangePendingPayment || changePaymentMethod.isPending}
+                    onClick={() => selectedPendingPayment && changePaymentMethod.mutate(selectedPendingPayment)}
+                  >
+                    {changePaymentMethod.isPending ? "Cambiando..." : "Cambiar"}
+                  </button>
+                </div>
+                <p className="catalog-confirm-hint">
+                  {isShippingConfirmed
+                    ? "Para envios podes cambiar entre medios online. Efectivo no esta disponible para envio."
+                    : "Podes cambiar el medio mientras la orden siga pendiente de pago."}
+                </p>
+              </div>
             ) : null}
             {confirmed.pago?.metodo === "wallet" && confirmed.pago.checkout_url ? (
               <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">

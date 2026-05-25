@@ -32,7 +32,7 @@ export async function expireStalePendingOrders(): Promise<number> {
        ON p_cash.orden_id = o.id
       AND p_cash.proveedor = 'efectivo'
       AND p_cash.metodo = 'cash'
-     WHERE o.estado = 'pendiente_pago'
+     WHERE o.estado IN ('pendiente_pago', 'borrador')
        AND (
          (p_cash.id IS NOT NULL AND o.created_at < DATE_SUB(NOW(), INTERVAL ? DAY))
          OR

@@ -234,7 +234,7 @@ async function refundOrderPointsIfReserved(
   creadoPor: number | null,
 ) {
   if (Number(order.total_puntos ?? 0) <= 0) return;
-  if (!(order.estado === "pendiente_pago" || order.estado === "preparada")) return;
+  if (!(order.estado === "borrador" || order.estado === "pendiente_pago" || order.estado === "preparada")) return;
 
   await registrarMovimientoPuntos(conn, {
     usuarioId: order.usuario_id,
@@ -269,7 +269,7 @@ export async function approvePaidOrder(
     throw new Error("Orden no encontrada.");
   }
 
-  if (order.estado !== "pendiente_pago") {
+  if (!(order.estado === "pendiente_pago" || order.estado === "borrador")) {
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "aprobado", payload });
     console.log("[approvePaidOrder] Orden ya no estaba en pendiente_pago, verificando puntos igualmente", {
       orderId,
@@ -335,7 +335,7 @@ export async function rejectOrExpirePendingOrder(
     throw new Error("Orden no encontrada.");
   }
 
-  if (!(order.estado === "pendiente_pago" || order.estado === "preparada")) {
+  if (!(order.estado === "pendiente_pago" || order.estado === "borrador" || order.estado === "preparada")) {
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
     return { ok: true, orderId, previousState: order.estado, state: order.estado, changed: false };
   }

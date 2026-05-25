@@ -1027,6 +1027,16 @@ router.get("/ordenes", async (_req, res, next) => {
        LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
        LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
        WHERE o.tipo_orden IN ('venta', 'mixta')
+         AND NOT (
+           o.direccion_envio_json IS NOT NULL
+           AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM pagos p_visible
+             WHERE p_visible.orden_id = o.id
+               AND p_visible.estado IN ('aprobado', 'reembolsado')
+           )
+         )
        ORDER BY o.created_at DESC, o.id DESC
        LIMIT 300`);
         const orderIds = rows.map((row) => Number(row.id));
@@ -1095,6 +1105,16 @@ router.get("/ordenes/mapa", async (req, res, next) => {
        LEFT JOIN usuarios u ON u.id = o.usuario_id
        LEFT JOIN clientes_locales cl ON cl.id = o.cliente_local_id
        WHERE o.tipo_orden IN ('venta', 'mixta')
+         AND NOT (
+           o.direccion_envio_json IS NOT NULL
+           AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
+           AND NOT EXISTS (
+             SELECT 1
+             FROM pagos p_visible
+             WHERE p_visible.orden_id = o.id
+               AND p_visible.estado IN ('aprobado', 'reembolsado')
+           )
+         )
          AND o.direccion_envio_json IS NOT NULL
          AND o.estado NOT IN ('cancelada', 'expirada')
          AND (o.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)${includeSelectedOrder ? " OR o.id = ?" : ""})
