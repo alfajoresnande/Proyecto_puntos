@@ -432,6 +432,13 @@
   transition: background 0.15s ease;
 }
 
+.navbar-name-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
 .navbar-name-btn:hover {
   background: #EEDCC7;
 }
@@ -1080,6 +1087,17 @@
   line-height: 1;
   min-width: 18px;
   padding: 0 0.35rem;
+}
+
+.navbar-link-badge-warning {
+  background: #FFF3CD;
+  color: #7A4D00;
+}
+
+.navbar-user-dropdown-item .navbar-link-content,
+.navbar-mobile-user-links .navbar-link-content {
+  justify-content: space-between;
+  width: 100%;
 }
 
 .navbar-link-dot {

@@ -3176,16 +3176,6 @@ router.get("/ordenes", async (req, res) => {
      FROM ordenes o
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      WHERE o.usuario_id = ?
-      AND NOT (
-        o.direccion_envio_json IS NOT NULL
-        AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
-        AND NOT EXISTS (
-          SELECT 1
-          FROM pagos p_visible
-          WHERE p_visible.orden_id = o.id
-            AND p_visible.estado IN ('aprobado', 'reembolsado')
-        )
-      )
      ORDER BY o.created_at DESC, o.id DESC`,
     [req.user!.id],
   );
@@ -3315,16 +3305,6 @@ router.get("/ordenes/:id", async (req, res) => {
      FROM ordenes o
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      WHERE o.id = ? AND o.usuario_id = ?
-      AND NOT (
-        o.direccion_envio_json IS NOT NULL
-        AND o.estado IN ('borrador', 'pendiente_pago', 'expirada', 'cancelada')
-        AND NOT EXISTS (
-          SELECT 1
-          FROM pagos p_visible
-          WHERE p_visible.orden_id = o.id
-            AND p_visible.estado IN ('aprobado', 'reembolsado')
-        )
-      )
      LIMIT 1`,
     [ordenId, req.user!.id],
   );
@@ -3401,7 +3381,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
       throw new HttpError(404, "Orden no encontrada.");
     }
 
-    if (!(orden.estado === "pendiente_pago" || orden.estado === "preparada")) {
+    if (!(orden.estado === "borrador" || orden.estado === "pendiente_pago" || orden.estado === "preparada")) {
       throw new HttpError(400, `No se puede cancelar una orden en estado '${orden.estado}'.`);
     }
 

@@ -634,6 +634,41 @@
   margin: 0.1rem 0 0;
 }
 
+.store-orders-pending-payment {
+  background: linear-gradient(135deg, #FFF8F0, #FFF0C7);
+  border-color: #E7C45D;
+}
+
+.store-orders-pending-payment .store-orders-active-dot {
+  background: #D96A24;
+  box-shadow: 0 0 0 4px rgba(217, 106, 36, 0.14), 0 4px 12px rgba(74, 25, 17, 0.22);
+}
+
+.store-order-cancel-btn {
+  background: #FFF8F0;
+  border: 1px solid #9B2C2C;
+  border-radius: 999px;
+  color: #8A1F1F;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 850;
+  min-height: 38px;
+  padding: 0.5rem 1rem;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.store-order-cancel-btn:hover:not(:disabled) {
+  background: #FDE2E2;
+  color: #7A1717;
+  transform: translateY(-1px);
+}
+
+.store-order-cancel-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .store-order-tracking {
   border-top: 1px solid #F0DFCA;
   display: grid;

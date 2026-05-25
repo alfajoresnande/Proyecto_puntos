@@ -35,12 +35,18 @@ type StaffOrderNav = {
 type ClienteOrderNav = {
   id: number;
   estado: string;
+  tipo_orden?: "canje" | "venta" | "mixta" | string;
   direccion_envio?: unknown | null;
 };
 
 function hasActiveShippingOrder(order: ClienteOrderNav): boolean {
   const estado = order.estado.trim().toLowerCase();
-  return Boolean(order.direccion_envio) && !["entregada", "cancelada", "expirada"].includes(estado);
+  return Boolean(order.direccion_envio) && ["pagada", "preparandose", "preparada", "enviada", "entregando"].includes(estado);
+}
+
+function hasPendingCustomerOrder(order: ClienteOrderNav): boolean {
+  const estado = order.estado.trim().toLowerCase();
+  return order.tipo_orden !== "canje" && (estado === "pendiente_pago" || estado === "borrador");
 }
 
 export function Navbar() {
@@ -129,7 +135,17 @@ export function Navbar() {
     () => (clienteOrdersQuery.data ?? []).filter(hasActiveShippingOrder).length,
     [clienteOrdersQuery.data],
   );
-  const navbarMobileBadgeCount = supportUnreadCount + (canSeeVendedor ? staffOrdersAttentionCount : 0) + (canSeeCliente ? activeShippingOrdersCount : 0);
+  const pendingOrdersCount = useMemo(
+    () => (clienteOrdersQuery.data ?? []).filter(hasPendingCustomerOrder).length,
+    [clienteOrdersQuery.data],
+  );
+  const pendingOrdersLabel = pendingOrdersCount === 1
+    ? "Tenes un pedido pendiente en Mis pedidos"
+    : `Tenes ${pendingOrdersCount} pedidos pendientes en Mis pedidos`;
+  const navbarMobileBadgeCount =
+    supportUnreadCount +
+    (canSeeVendedor ? staffOrdersAttentionCount : 0) +
+    (canSeeCliente ? activeShippingOrdersCount + pendingOrdersCount : 0);
   const isRedemptionCatalog = location.pathname.startsWith("/catalogo");
   const activeCart = isRedemptionCatalog
     ? {
@@ -165,10 +181,19 @@ export function Navbar() {
     );
   }
 
-  function renderShippingOrdersLabel(label = "Mis Pedidos") {
+  function renderOrdersLabel(label = "Mis Pedidos") {
     return (
       <span className="navbar-link-content">
         <span>{label}</span>
+        {pendingOrdersCount > 0 ? (
+          <span
+            className="navbar-link-badge navbar-link-badge-warning"
+            aria-label={pendingOrdersLabel}
+            title={pendingOrdersLabel}
+          >
+            {pendingOrdersCount > 99 ? "99+" : pendingOrdersCount}
+          </span>
+        ) : null}
         {activeShippingOrdersCount > 0 ? (
           <span
             className="navbar-link-dot"
@@ -335,7 +360,9 @@ export function Navbar() {
                     aria-expanded={userMenuOpen}
                     aria-haspopup="menu"
                   >
-                    <span className="navbar-name">{user.nombre}</span>
+                    <span className="navbar-name-wrap">
+                      <span className="navbar-name">{user.nombre}</span>
+                    </span>
                     <span className={`navbar-name-caret${userMenuOpen ? " open" : ""}`} />
                   </button>
 
@@ -369,7 +396,7 @@ export function Navbar() {
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
-                            {renderShippingOrdersLabel()}
+                            {renderOrdersLabel()}
                           </Link>
                           <Link
                             to="/soporte"
@@ -523,7 +550,7 @@ export function Navbar() {
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
                     <Link to="/mis-direcciones" className="navbar-link" onClick={closeMenu}>Mis Direcciones</Link>
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
-                    <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>{renderShippingOrdersLabel()}</Link>
+                    <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>{renderOrdersLabel()}</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                   </div>
                 ) : null}

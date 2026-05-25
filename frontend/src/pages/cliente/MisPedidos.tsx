@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
+import { useToast } from "../../components/ToastProvider";
 import { formatBuenosAiresDate } from "../../lib/dateTime";
 
 type Orden = {
@@ -83,6 +84,7 @@ function dateLabel(value: string): string {
 function estadoPedidoLabel(estado: string): string {
   const normalized = estado.trim().toLowerCase();
   const labels: Record<string, string> = {
+    borrador: "Pendiente de pago",
     pendiente_pago: "Pendiente de pago",
     pagada: "Pedido recibido",
     preparandose: "Preparando pedido",
@@ -99,7 +101,7 @@ function estadoPedidoLabel(estado: string): string {
 function estadoPedidoClass(estado: string): string {
   const normalized = estado.trim().toLowerCase();
   if (["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"].includes(normalized)) return " is-ok";
-  if (normalized === "pendiente_pago") return " is-pending";
+  if (normalized === "pendiente_pago" || normalized === "borrador") return " is-pending";
   if (normalized === "cancelada" || normalized === "expirada") return " is-danger";
   return "";
 }
@@ -121,15 +123,19 @@ function branchLabel(sucursal: Orden["sucursal"]): string {
 
 function canContinueOnlinePayment(orden: Orden): boolean {
   return (
-    orden.estado === "pendiente_pago" &&
+    (orden.estado === "pendiente_pago" || orden.estado === "borrador") &&
     orden.pago?.proveedor === "mercadopago" &&
     orden.pago?.estado === "iniciado"
   );
 }
 
+function canCancelOrder(orden: Orden): boolean {
+  return ["borrador", "pendiente_pago"].includes(orden.estado.trim().toLowerCase());
+}
+
 function hasActiveShippingTracking(orden: Orden): boolean {
   const estado = orden.estado.trim().toLowerCase();
-  return Boolean(orden.direccion_envio) && !["entregada", "cancelada", "expirada"].includes(estado);
+  return Boolean(orden.direccion_envio) && ["pagada", "preparandose", "preparada", "enviada", "entregando"].includes(estado);
 }
 
 const SHIPPING_TRACKING_STEPS = [
@@ -193,6 +199,7 @@ function OrderShippingTracking({ orden }: { orden: Orden }) {
 
 export function MisPedidos() {
   const queryClient = useQueryClient();
+  const { confirmToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
   const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null);
@@ -228,6 +235,26 @@ export function MisPedidos() {
       setReturnNotice({
         variant: "error",
         msg: "No pudimos actualizar automaticamente el pago. Vamos a seguir consultando el estado desde tu historial.",
+      });
+    },
+  });
+  const cancelOrderMutation = useMutation({
+    mutationFn: (ordenId: number) => api.post<{ ok: true; orden_id: number; estado: string }>(`/cliente/ordenes/${ordenId}/cancelar`, {}),
+    onSuccess: async (response) => {
+      setReturnNotice({
+        variant: "info",
+        msg: `Cancelamos el pedido #${response.orden_id}. Si habia stock reservado, ya fue liberado.`,
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] }),
+        queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] }),
+        queryClient.invalidateQueries({ queryKey: ["productos"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setReturnNotice({
+        variant: "error",
+        msg: error.message || "No se pudo cancelar el pedido.",
       });
     },
   });
@@ -271,6 +298,10 @@ export function MisPedidos() {
     [ordenesQuery.data],
   );
   const activeShippingPedidos = useMemo(() => pedidos.filter(hasActiveShippingTracking), [pedidos]);
+  const pendingPaymentPedidos = useMemo(
+    () => pedidos.filter((orden) => ["borrador", "pendiente_pago"].includes(orden.estado.trim().toLowerCase())),
+    [pedidos],
+  );
   const requestedPedidoId = Number(searchParams.get("pedido") ?? 0);
   const pedidosTotalPages = Math.max(1, Math.ceil(pedidos.length / MIS_PEDIDOS_POR_PAGINA));
   const pedidosPagina = useMemo(() => {
@@ -338,6 +369,16 @@ export function MisPedidos() {
           </div>
         ) : null}
 
+        {pendingPaymentPedidos.length > 0 ? (
+          <div className="store-orders-active-shipping store-orders-pending-payment" role="status" aria-live="polite">
+            <span className="store-orders-active-dot" aria-hidden="true" />
+            <div>
+              <strong>{pendingPaymentPedidos.length === 1 ? "Tenes una compra pendiente de pago" : `Tenes ${pendingPaymentPedidos.length} compras pendientes de pago`}</strong>
+              <p>Podes continuar el pago o cancelar la compra desde el pedido correspondiente.</p>
+            </div>
+          </div>
+        ) : null}
+
         {ordenesQuery.isLoading ? (
           <div className="catalog-skeleton store-skeleton" />
         ) : pedidos.length === 0 ? (
@@ -373,6 +414,25 @@ export function MisPedidos() {
                         >
                           Continuar pago
                         </Link>
+                      ) : null}
+                      {canCancelOrder(orden) ? (
+                        <button
+                          type="button"
+                          className="store-order-cancel-btn"
+                          disabled={cancelOrderMutation.isPending}
+                          onClick={() =>
+                            confirmToast({
+                              tone: "danger",
+                              title: "Cancelar compra",
+                              message: `Se va a cancelar el pedido #${orden.id}. Esta accion libera la reserva y no se puede deshacer.`,
+                              confirmLabel: cancelOrderMutation.isPending ? "Cancelando..." : "Cancelar compra",
+                              cancelLabel: "Mantener pedido",
+                              onConfirm: () => cancelOrderMutation.mutate(orden.id),
+                            })
+                          }
+                        >
+                          Cancelar compra
+                        </button>
                       ) : null}
                       <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
                         Ver comprobante

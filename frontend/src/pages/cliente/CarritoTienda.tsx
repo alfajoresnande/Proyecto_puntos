@@ -456,11 +456,18 @@ export function CarritoTienda() {
     confirmed.pago?.proveedor === "mercadopago",
   );
   const isCashOrder = confirmed?.pago?.proveedor === "efectivo" || confirmed?.pago?.metodo === "cash";
-  const confirmedTitle = paymentApproved
-    ? "Pago aprobado"
-    : isCashOrder
-      ? "Pedido reservado"
-      : "Pedido pendiente de pago";
+  const confirmedEstado = confirmed?.estado.trim().toLowerCase() ?? "";
+  const confirmedPendingPayment = confirmedEstado === "pendiente_pago" || confirmedEstado === "borrador";
+  const confirmedTitle =
+    confirmedEstado === "cancelada"
+      ? "Pedido cancelado"
+      : confirmedEstado === "expirada"
+        ? "Pedido expirado"
+        : paymentApproved
+          ? "Pago aprobado"
+          : isCashOrder
+            ? "Pedido reservado"
+            : "Pedido pendiente de pago";
   const confirmedHasShipping = Boolean(confirmed && (confirmed.metodo_entrega === "envio" || deliveryMethod === "envio" || confirmed.envio));
   const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmed.estado === "pagada"));
   const confirmedTrackingPath = confirmed ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
@@ -476,7 +483,7 @@ export function CarritoTienda() {
     pendingPaymentOptions[0];
   const canChangePendingPayment = Boolean(
     confirmed?.orden_id &&
-    (confirmed.estado === "pendiente_pago" || confirmed.estado === "borrador") &&
+    confirmedPendingPayment &&
     selectedPendingPayment &&
     selectedPendingPayment.id !== currentPendingPaymentId,
   );
@@ -720,6 +727,30 @@ export function CarritoTienda() {
     },
   });
 
+  const cancelConfirmedOrder = useMutation({
+    mutationFn: (ordenId: number) => api.post<{ ok: true; orden_id: number; estado: string }>(`/cliente/ordenes/${ordenId}/cancelar`, {}),
+    onSuccess: async (data) => {
+      setConfirmed((prev) =>
+        prev && Number(prev.orden_id) === Number(data.orden_id)
+          ? { ...prev, estado: "cancelada", pago_pendiente: false }
+          : prev,
+      );
+      setPaymentApproved(false);
+      setPaymentNotice({
+        variant: "info",
+        msg: `Cancelamos el pedido #${data.orden_id}. Si habia stock reservado, ya fue liberado.`,
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] }),
+        queryClient.invalidateQueries({ queryKey: ["cliente", "orden-payment-status", data.orden_id] }),
+        queryClient.invalidateQueries({ queryKey: ["productos"] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      setPaymentNotice({ variant: "error", msg: error.message || "No se pudo cancelar el pedido." });
+    },
+  });
+
   function confirmar() {
     if (!cartItems.length) {
       setMessage("Tu carrito esta vacio.");
@@ -880,7 +911,7 @@ export function CarritoTienda() {
                 Si Mercado Pago abre la app, termina el pago ahi. Cuando llegue la confirmacion, esta pantalla se actualiza sola.
               </p>
             ) : null}
-            {(confirmed.estado === "pendiente_pago" || confirmed.estado === "borrador") && pendingPaymentOptions.length > 1 ? (
+            {confirmedPendingPayment && pendingPaymentOptions.length > 1 ? (
               <div className="checkout-payment-switcher">
                 <label className="catalog-confirm-label" htmlFor="checkout-pending-payment-method">
                   Cambiar medio de pago
@@ -914,11 +945,11 @@ export function CarritoTienda() {
                 </p>
               </div>
             ) : null}
-            {confirmed.pago?.metodo === "wallet" && confirmed.pago.checkout_url ? (
+            {confirmedPendingPayment && confirmed.pago?.metodo === "wallet" && confirmed.pago.checkout_url ? (
               <a className="product-card-btn product-card-btn-canjear" href={confirmed.pago.checkout_url} rel="noreferrer">
                 Abrir Mercado Pago
               </a>
-            ) : confirmed.pago?.metodo === "qr" && confirmed.pago.qr_image ? (
+            ) : confirmedPendingPayment && confirmed.pago?.metodo === "qr" && confirmed.pago.qr_image ? (
               <div className="store-qr-payment-card">
                 <p className="store-qr-payment-title">Escanea este QR con Mercado Pago</p>
                 <img src={confirmed.pago.qr_image} alt={`QR de pago para orden ${confirmed.orden_id}`} />
@@ -931,11 +962,32 @@ export function CarritoTienda() {
               <p>{confirmed.pago.setup_message}</p>
             ) : null}
             <div className="catalog-float-toast-actions catalog-canje-actions">
-              <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
+              <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">
+                {isShippingConfirmed && confirmedPaymentApproved ? "Ver seguimiento" : "Ver en Mis pedidos"}
+              </Link>
+              {confirmedPendingPayment ? (
+                <button
+                  type="button"
+                  className="store-order-cancel-btn"
+                  disabled={cancelConfirmedOrder.isPending}
+                  onClick={() =>
+                    confirmToast({
+                      tone: "danger",
+                      title: "Cancelar compra",
+                      message: `Se va a cancelar el pedido #${confirmed.orden_id}. Esta accion libera la reserva y no se puede deshacer.`,
+                      confirmLabel: cancelConfirmedOrder.isPending ? "Cancelando..." : "Cancelar compra",
+                      cancelLabel: "Mantener pedido",
+                      onConfirm: () => cancelConfirmedOrder.mutate(confirmed.orden_id),
+                    })
+                  }
+                >
+                  Cancelar compra
+                </button>
+              ) : null}
               <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
             </div>
           </div>
-          {confirmed.pago?.metodo === "brick" && confirmed.pago.public_key && confirmed.pago.preference_id ? (
+          {confirmedPendingPayment && confirmed.pago?.metodo === "brick" && confirmed.pago.public_key && confirmed.pago.preference_id ? (
             <MercadoPagoBrick
               confirmed={confirmed}
               buyerEmail={user?.email ?? ""}
