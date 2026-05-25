@@ -24,7 +24,7 @@ type SupportConversationNav = {
 
 type StaffOrderNav = {
   id: number;
-  estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
+  estado: "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada" | string;
   pago?: {
     proveedor: string;
     metodo: string | null;
@@ -98,7 +98,7 @@ export function Navbar() {
   const staffOrdersAttentionCount = useMemo(
     () =>
       (staffOrdersQuery.data ?? []).filter((order) => {
-        if (order.estado === "pagada" || order.estado === "preparada") return true;
+        if (order.estado === "pagada" || order.estado === "preparandose" || order.estado === "preparada") return true;
         if (order.estado !== "pendiente_pago") return false;
         return order.pago?.proveedor === "efectivo" || order.pago?.metodo === "cash";
       }).length,

@@ -789,7 +789,7 @@ async function ensureOrderCoreSchema() {
       carrito_id BIGINT UNSIGNED NULL,
       canal ENUM('web','admin','vendedor') NOT NULL DEFAULT 'web',
       tipo_orden ENUM('canje','venta','mixta') NOT NULL DEFAULT 'canje',
-      estado ENUM('borrador','pendiente_pago','pagada','preparada','enviada','entregada','cancelada','expirada')
+      estado ENUM('borrador','pendiente_pago','pagada','preparandose','preparada','enviada','entregando','entregada','cancelada','expirada')
         NOT NULL DEFAULT 'borrador',
       moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
       total_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -989,10 +989,10 @@ async function ensureOrderCoreSchema() {
        LIMIT 1`
     ) as [Array<{ column_type: string }>, any[]];
     const columnType = statusRows[0]?.column_type ?? "";
-    if (!columnType.includes("'enviada'")) {
+    if (!columnType.includes("'preparandose'") || !columnType.includes("'entregando'")) {
       await pool.query(
         `ALTER TABLE ordenes
-         MODIFY estado ENUM('borrador','pendiente_pago','pagada','preparada','enviada','entregada','cancelada','expirada')
+         MODIFY estado ENUM('borrador','pendiente_pago','pagada','preparandose','preparada','enviada','entregando','entregada','cancelada','expirada')
          NOT NULL DEFAULT 'borrador'`
       );
     }

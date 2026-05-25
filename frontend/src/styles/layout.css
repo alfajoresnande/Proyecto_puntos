@@ -66,6 +66,150 @@
   background: linear-gradient(135deg, #8f1d1d 0%, #6f1717 100%);
 }
 
+.app-toast-order-sales {
+  animation: order-sales-toast-in 0.34s cubic-bezier(0.2, 0.82, 0.2, 1);
+  background:
+    linear-gradient(135deg, rgba(255, 244, 220, 0.96) 0%, rgba(230, 200, 148, 0.92) 100%),
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.58), transparent 34%);
+  border: 1px solid rgba(201, 154, 74, 0.58);
+  border-radius: 28px;
+  box-shadow: 0 18px 45px rgba(76, 45, 18, 0.25);
+  color: #2D1A0D;
+  grid-template-columns: 48px minmax(0, 1fr) 30px;
+  overflow: hidden;
+  padding: 1rem;
+  position: relative;
+  backdrop-filter: blur(14px);
+}
+
+.app-toast-order-sales::after {
+  background: linear-gradient(90deg, rgba(91, 47, 23, 0), rgba(201, 154, 74, 0.95), rgba(91, 47, 23, 0));
+  bottom: 0;
+  content: "";
+  height: 3px;
+  left: 1.2rem;
+  position: absolute;
+  right: 1.2rem;
+}
+
+.app-toast-order-sales .app-toast-icon {
+  background: linear-gradient(145deg, #6B3E26, #3D1A02);
+  border: 1px solid rgba(255, 231, 184, 0.7);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 22px rgba(61, 26, 2, 0.24);
+  color: #FFF4DC;
+  height: 48px;
+  width: 48px;
+}
+
+.app-toast-order-sales .app-toast-title {
+  color: #2D1A0D;
+  font-size: 0.98rem;
+  letter-spacing: 0;
+}
+
+.app-toast-order-sales .app-toast-message {
+  color: #5B2F17;
+  margin-top: 0.45rem;
+}
+
+.app-toast-order-sales .app-toast-actions {
+  gap: 0.55rem;
+  margin-top: 0.78rem;
+}
+
+.app-toast-order-sales .app-toast-action {
+  font-size: 0.76rem;
+  min-height: 34px;
+  padding: 0.44rem 0.88rem;
+}
+
+.app-toast-order-sales .app-toast-action-primary {
+  background: #5B2F17;
+  border-color: #5B2F17;
+  box-shadow: 0 8px 18px rgba(91, 47, 23, 0.24);
+  color: #ffffff;
+}
+
+.app-toast-order-sales .app-toast-action-secondary {
+  background: rgba(255, 250, 241, 0.54);
+  border-color: rgba(139, 75, 31, 0.3);
+  color: #5B2F17;
+}
+
+.app-toast-order-sales .app-toast-close {
+  border-color: rgba(91, 47, 23, 0.18);
+  color: #5B2F17;
+}
+
+.app-toast-order-sales .app-toast-close:hover,
+.app-toast-order-sales .app-toast-action-secondary:hover {
+  background: rgba(255, 250, 241, 0.74);
+}
+
+.order-sales-toast-icon-mark {
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.order-sales-toast-content {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.order-sales-toast-topline {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.order-sales-toast-badge {
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(201, 154, 74, 0.46);
+  border-radius: 999px;
+  color: #6B3E26;
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.order-sales-toast-id {
+  color: #7A4A26;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.order-sales-toast-details {
+  display: grid;
+  gap: 0.38rem;
+  margin: 0;
+}
+
+.order-sales-toast-details div {
+  align-items: baseline;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.order-sales-toast-details dt {
+  color: #7A4A26;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.order-sales-toast-details dd {
+  color: #2D1A0D;
+  font-size: 0.82rem;
+  font-weight: 850;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .app-toast-icon {
   align-items: center;
   background: rgba(255, 255, 255, 0.16);
@@ -159,6 +303,11 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes order-sales-toast-in {
+  from { opacity: 0; transform: translateX(28px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
 @media (max-width: 760px) {
   .app-toast-viewport {
     bottom: 0.85rem;
@@ -167,6 +316,17 @@
     right: 0.75rem;
     top: auto;
     width: auto;
+  }
+
+  .app-toast-order-sales {
+    border-radius: 24px;
+    grid-template-columns: 42px minmax(0, 1fr) 30px;
+  }
+
+  .app-toast-order-sales .app-toast-icon {
+    border-radius: 14px;
+    height: 42px;
+    width: 42px;
   }
 }
 

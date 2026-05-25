@@ -227,7 +227,8 @@ export async function sendOrderReceiptEmail(orderId: number): Promise<boolean> {
     [orderId],
   );
 
-  if (!order || order.estado !== "pagada" || order.receipt_email_sent_at || !order.cliente_email) {
+  const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
+  if (!order || !paidStates.includes(order.estado) || order.receipt_email_sent_at || !order.cliente_email) {
     return false;
   }
 

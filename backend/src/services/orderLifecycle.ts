@@ -11,7 +11,17 @@ import {
 import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
 import { reverseCajaMovimientoForOrder } from "./cashRegister";
 
-export type OrderState = "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
+export type OrderState =
+  | "borrador"
+  | "pendiente_pago"
+  | "pagada"
+  | "preparandose"
+  | "preparada"
+  | "enviada"
+  | "entregando"
+  | "entregada"
+  | "cancelada"
+  | "expirada";
 export type OrderLifecycleResult = {
   ok: boolean;
   orderId: number;
@@ -412,7 +422,7 @@ export async function cancelOrderUrgently(
     throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
   }
 
-  const cancellableStates: OrderState[] = ["borrador", "pendiente_pago", "pagada", "preparada", "enviada"];
+  const cancellableStates: OrderState[] = ["borrador", "pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"];
   if (!cancellableStates.includes(previousState)) {
     throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
   }

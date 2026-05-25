@@ -1584,7 +1584,7 @@ router.patch("/ordenes/:id", async (req, res) => {
         return;
     }
     const schema = zod_1.z.object({
-        estado: zod_1.z.enum(["pendiente_pago", "pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"]),
+        estado: zod_1.z.enum(["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada", "expirada"]),
         notas: zod_1.z.string().max(1000).optional().nullable(),
     });
     const parsed = schema.safeParse(req.body);
@@ -1628,7 +1628,7 @@ router.patch("/ordenes/:id", async (req, res) => {
             res.json({ ok: true });
             return;
         }
-        const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+        const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
         if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
             console.log(`[ADMIN/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
             await (0, orderLifecycle_1.approvePaidOrder)(conn, {
@@ -1652,10 +1652,12 @@ router.patch("/ordenes/:id", async (req, res) => {
         // RESTO DE TRANSICIONES
         const allowedTransitions = {
             borrador: ["pendiente_pago", "cancelada"],
-            pendiente_pago: ["pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"],
-            pagada: ["preparada", "enviada", "entregada", "cancelada"],
-            preparada: ["enviada", "entregada", "cancelada"],
-            enviada: ["entregada", "cancelada"],
+            pendiente_pago: ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada", "expirada"],
+            pagada: ["preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada"],
+            preparandose: ["preparada", "enviada", "entregando", "entregada", "cancelada"],
+            preparada: ["enviada", "entregando", "entregada", "cancelada"],
+            enviada: ["entregando", "entregada", "cancelada"],
+            entregando: ["entregada", "cancelada"],
         };
         if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
             res.status(400).json({ error: `No se puede pasar una orden de '${orden.estado}' a '${estado}'.` });

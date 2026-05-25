@@ -594,6 +594,125 @@
   color: #9B2C2C;
 }
 
+.store-order-tracking {
+  border-top: 1px solid #F0DFCA;
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.95rem;
+  padding-top: 0.85rem;
+}
+
+.store-order-tracking-head {
+  align-items: baseline;
+  color: #4A2C1A;
+  display: flex;
+  gap: 0.65rem;
+  justify-content: space-between;
+}
+
+.store-order-tracking-head strong {
+  font-size: 0.95rem;
+}
+
+.store-order-tracking-head span {
+  color: #8A5B40;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.store-order-track-line {
+  background: #EAD7BF;
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.store-order-track-line span {
+  background: #4ECFE0;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width 220ms ease;
+}
+
+.store-order-track-steps {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.store-order-track-step {
+  align-items: center;
+  color: #9A765B;
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.store-order-track-step span {
+  align-items: center;
+  background: #F3E3D1;
+  border: 1px solid #DFC4A3;
+  border-radius: 999px;
+  color: #7A4C30;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 1.35rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.35rem;
+}
+
+.store-order-track-step p {
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.store-order-track-step.is-complete,
+.store-order-track-step.is-current {
+  color: #245F46;
+}
+
+.store-order-track-step.is-complete span,
+.store-order-track-step.is-current span {
+  background: #DFF7E8;
+  border-color: #82D8A2;
+  color: #1F7A3F;
+}
+
+.store-order-track-step.is-current span {
+  box-shadow: 0 0 0 4px rgba(78, 207, 224, 0.2);
+}
+
+@media (max-width: 520px) {
+  .store-order-tracking-head {
+    align-items: start;
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .store-order-tracking-head span {
+    text-align: left;
+  }
+
+  .store-order-track-steps {
+    gap: 0.25rem;
+  }
+
+  .store-order-track-step p {
+    font-size: 0.66rem;
+  }
+}
+
 .store-order-receipt {
   background: #fffdf9;
   border: 1px dashed #d6b690;

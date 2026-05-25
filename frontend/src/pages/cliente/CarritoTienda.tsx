@@ -128,8 +128,10 @@ function estadoPedidoLabel(estado: string): string {
   const labels: Record<string, string> = {
     pendiente_pago: "Pendiente de pago",
     pagada: "Pago aprobado",
-    preparada: "Preparando pedido",
+    preparandose: "Preparando pedido",
+    preparada: "Pedido preparado",
     enviada: "En camino",
+    entregando: "Entregando pedido",
     entregada: "Entregado",
     cancelada: "Cancelado",
     expirada: "Expirado",

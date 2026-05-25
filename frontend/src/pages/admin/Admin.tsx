@@ -309,7 +309,7 @@ type OrdenAdmin = {
   cliente_dni?: string | null;
   cliente_telefono?: string | null;
   canal: "web" | "admin" | "vendedor";
-  estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
+  estado: "borrador" | "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
   total_dinero: number;
   total_puntos: number;
@@ -690,7 +690,6 @@ const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
 const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
-const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
 const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"];
 
@@ -988,8 +987,10 @@ function formatEstadoOrden(estado: string): string {
     borrador: "Borrador",
     pendiente_pago: "Pendiente pago",
     pagada: "Pagada",
+    preparandose: "Preparandose",
     preparada: "Preparada",
     enviada: "Enviada",
+    entregando: "Entregando",
     entregada: "Entregada",
     cancelada: "Cancelada",
     expirada: "Expirada",
@@ -1802,6 +1803,13 @@ export function Admin() {
   }, [location.pathname, location.search, navigate, panelBasePath]);
 
   useEffect(() => {
+    const requestedOrderId = Number(new URLSearchParams(location.search).get("pedido") ?? 0);
+    if (!Number.isInteger(requestedOrderId) || requestedOrderId <= 0) return;
+    if (!ventasViewFromPath(location.pathname)) return;
+    openOrderFromToast(requestedOrderId);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
     if (!configuracionQuery.data) return;
     if (configLoaded) return;
     const getConfig = (clave: keyof ConfiguracionDraft, fallback: string) =>
@@ -2160,44 +2168,6 @@ export function Admin() {
   function openRedeemsFromToast() {
     seleccionarTab("canjes");
   }
-
-  useEffect(() => {
-    if (!ordenesQuery.data) return;
-    const currentIds = ordenes.map((orden) => Number(orden.id));
-    const knownIds = readStoredIds(ADMIN_ALERT_ORDER_IDS_KEY);
-    if (!hasStoredIds(ADMIN_ALERT_ORDER_IDS_KEY)) {
-      writeStoredIds(ADMIN_ALERT_ORDER_IDS_KEY, currentIds);
-      return;
-    }
-
-    const knownSet = new Set(knownIds);
-    const nuevas = ordenes.filter((orden) => !knownSet.has(Number(orden.id)));
-    if (!nuevas.length) return;
-
-    writeStoredIds(ADMIN_ALERT_ORDER_IDS_KEY, [...currentIds, ...knownIds]);
-    if (tab !== "ordenes") {
-      setAdminAlerts((prev) => ({ ...prev, ordenes: prev.ordenes + nuevas.length }));
-    }
-
-    const latest = nuevas[0];
-    showToast({
-      tone: "info",
-      title: nuevas.length === 1 ? `Nuevo pedido #${latest.id}` : `${nuevas.length} pedidos nuevos`,
-      message: nuevas.length === 1
-        ? `${latest.cliente_nombre} hizo una compra. Toca para verla.`
-        : "Toca para revisar las ventas.",
-      actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver ventas",
-      onClick: () => openOrderFromToast(Number(latest.id)),
-      onAction: () => openOrderFromToast(Number(latest.id)),
-      persistent: true,
-    });
-    showBrowserAlert(
-      nuevas.length === 1 ? "Nueva compra" : "Nuevas compras",
-      nuevas.length === 1
-        ? `${latest.cliente_nombre} hizo la compra #${latest.id}.`
-        : `Tienes ${nuevas.length} compras nuevas en el panel.`,
-    );
-  }, [ordenes, ordenesQuery.data, tab, showToast]);
 
   useEffect(() => {
     if (!canjesQuery.data) return;
@@ -6414,8 +6384,10 @@ export function Admin() {
                         <option value="">Todos los estados</option>
                         <option value="pendiente_pago">Pendiente pago</option>
                         <option value="pagada">Pagada</option>
+                        <option value="preparandose">Preparandose</option>
                         <option value="preparada">Preparada</option>
                         <option value="enviada">Enviada</option>
+                        <option value="entregando">Entregando</option>
                         <option value="entregada">Entregada</option>
                         <option value="cancelada">Cancelada</option>
                         <option value="expirada">Expirada</option>
@@ -6430,7 +6402,7 @@ export function Admin() {
                       </button>
                     </div>
                     <p className="adm-inline-tip">
-                      Pago y preparacion van separados: primero pagada, luego preparada, enviada o entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.
+                      Pago y preparacion van separados: primero pagada, luego preparandose, preparada, enviada, entregando o entregada. Cancelada o expirada libera reservas pendientes y devuelve puntos si correspondia.
                     </p>
                   </div>
 
@@ -6512,15 +6484,21 @@ export function Admin() {
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "pagada")} disabled={busy}>Marcar pagada</button>
                                     ) : null}
                                     {orden.estado === "pagada" ? (
-                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparada")} disabled={busy}>Preparar</button>
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparandose")} disabled={busy}>Preparar</button>
                                     ) : null}
-                                    {(orden.estado === "pagada" || orden.estado === "preparada") && orden.direccion_envio ? (
+                                    {orden.estado === "preparandose" ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "preparada")} disabled={busy}>Pedido preparado</button>
+                                    ) : null}
+                                    {orden.estado === "preparada" && orden.direccion_envio ? (
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "enviada")} disabled={busy}>Enviar</button>
                                     ) : null}
-                                    {(orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada") ? (
+                                    {orden.estado === "enviada" && orden.direccion_envio ? (
+                                      <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregando")} disabled={busy}>Entregando</button>
+                                    ) : null}
+                                    {(!orden.direccion_envio && ["pagada", "preparandose", "preparada"].includes(orden.estado)) || orden.estado === "entregando" ? (
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
                                     ) : null}
-                                    {(["pendiente_pago", "pagada", "preparada", "enviada"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
+                                    {(["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
                                       <button className="adm-btn-danger" onClick={() => abrirCancelacionUrgente(orden)} disabled={busy}>Cancelar</button>
                                     ) : null}
                                   </div>

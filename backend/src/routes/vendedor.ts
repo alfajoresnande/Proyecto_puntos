@@ -1535,7 +1535,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
   }
 
   const schema = z.object({
-    estado: z.enum(["pagada", "preparada", "enviada", "entregada"]),
+    estado: z.enum(["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"]),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -1549,7 +1549,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
     await conn.beginTransaction();
     const orden = await qOne<{
       id: number;
-      estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
+      estado: "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada" | string;
       sucursal_retiro_id: number | null;
     }>(
       conn,
@@ -1587,12 +1587,14 @@ router.patch("/ordenes/:id", async (req, res, next) => {
       [orderId],
     );
     const isCashPayment = pago?.proveedor === "efectivo" || pago?.metodo === "cash";
-    const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+    const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
     const allowedTransitions: Record<string, string[]> = {
       pendiente_pago: isCashPayment ? paidStates : [],
-      pagada: ["preparada", "enviada", "entregada"],
-      preparada: ["enviada", "entregada"],
-      enviada: ["entregada"],
+      pagada: ["preparandose", "preparada", "enviada", "entregando", "entregada"],
+      preparandose: ["preparada", "enviada", "entregando", "entregada"],
+      preparada: ["enviada", "entregando", "entregada"],
+      enviada: ["entregando", "entregada"],
+      entregando: ["entregada"],
     };
     if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
       await conn.rollback();

@@ -247,7 +247,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
     if (previousState === "entregada" || previousState === "expirada") {
         throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
     }
-    const cancellableStates = ["borrador", "pendiente_pago", "pagada", "preparada", "enviada"];
+    const cancellableStates = ["borrador", "pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"];
     if (!cancellableStates.includes(previousState)) {
         throw new Error(`No se puede cancelar una orden en estado '${previousState}'.`);
     }

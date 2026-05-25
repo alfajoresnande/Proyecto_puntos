@@ -167,7 +167,7 @@ type CarritoItemDB = {
 
 type OrdenClienteRow = {
   id: number;
-  estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
+  estado: "borrador" | "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada";
   tipo_orden: "canje" | "venta" | "mixta";
   total_dinero: number;
   total_puntos: number;
@@ -3197,7 +3197,7 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
     const orden = await qOne<{
       id: number;
       usuario_id: number;
-      estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
+      estado: "borrador" | "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada";
       total_puntos: number;
       sucursal_retiro_id: number | null;
     }>(

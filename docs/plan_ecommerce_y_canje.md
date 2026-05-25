@@ -69,7 +69,7 @@ Nota: `puntos_requeridos` puede migrarse a `precio_puntos` para unificar nombres
 ### `ordenes`
 - `id`, `usuario_id`
 - `canal`: web, admin, vendedor
-- `estado`: borrador, pendiente_pago, pagada, preparada, entregada, cancelada, expirada
+- `estado`: borrador, pendiente_pago, pagada, preparandose, preparada, enviada, entregando, entregada, cancelada, expirada
 - `total_dinero`, `total_puntos`
 - `moneda`
 - `direccion_envio_json` (nullable)
@@ -151,7 +151,7 @@ Regla multi-sucursal:
 - mismo flujo de orden pero sin pasarela de pago
 - valida puntos y stock
 - descuenta puntos
-- deja orden en `preparada` o `pendiente_retiro`
+- deja orden en `preparandose`, `preparada` o `pendiente_retiro`
 - se mantiene `codigo_retiro` para UX de canje
 
 ---

@@ -1236,7 +1236,7 @@ router.patch("/ordenes/:id", async (req, res, next) => {
         return;
     }
     const schema = zod_1.z.object({
-        estado: zod_1.z.enum(["pagada", "preparada", "enviada", "entregada"]),
+        estado: zod_1.z.enum(["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"]),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1274,12 +1274,14 @@ router.patch("/ordenes/:id", async (req, res, next) => {
        LIMIT 1
        FOR UPDATE`, [orderId]);
         const isCashPayment = pago?.proveedor === "efectivo" || pago?.metodo === "cash";
-        const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+        const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
         const allowedTransitions = {
             pendiente_pago: isCashPayment ? paidStates : [],
-            pagada: ["preparada", "enviada", "entregada"],
-            preparada: ["enviada", "entregada"],
-            enviada: ["entregada"],
+            pagada: ["preparandose", "preparada", "enviada", "entregando", "entregada"],
+            preparandose: ["preparada", "enviada", "entregando", "entregada"],
+            preparada: ["enviada", "entregando", "entregada"],
+            enviada: ["entregando", "entregada"],
+            entregando: ["entregada"],
         };
         if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
             await conn.rollback();

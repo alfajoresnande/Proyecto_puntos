@@ -13,6 +13,8 @@ type ToastTone = "info" | "success" | "warning" | "danger";
 
 type ToastInput = {
   tone?: ToastTone;
+  variant?: "default" | "order-sales";
+  icon?: ReactNode;
   title: string;
   message?: ReactNode;
   actionLabel?: string;
@@ -64,7 +66,7 @@ function ToastCard({ toast, dismissToast }: { toast: ToastItem; dismissToast: (i
 
   return (
     <article
-      className={`app-toast app-toast-${toast.tone}${isClickable ? " app-toast-clickable" : ""}`}
+      className={`app-toast app-toast-${toast.tone} app-toast-${toast.variant ?? "default"}${isClickable ? " app-toast-clickable" : ""}`}
       role={toast.tone === "danger" ? "alert" : "status"}
       tabIndex={isClickable ? 0 : undefined}
       onClick={() => {
@@ -81,7 +83,7 @@ function ToastCard({ toast, dismissToast }: { toast: ToastItem; dismissToast: (i
       }}
     >
       <div className="app-toast-icon" aria-hidden="true">
-        {toneIcon[toast.tone]}
+        {toast.icon ?? toneIcon[toast.tone]}
       </div>
       <div className="app-toast-body">
         <p className="app-toast-title">{toast.title}</p>

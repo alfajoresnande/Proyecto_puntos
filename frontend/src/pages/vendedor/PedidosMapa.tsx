@@ -13,7 +13,7 @@ type PedidoMapa = {
   cliente_nombre: string;
   cliente_email: string | null;
   canal: "web" | "admin" | "vendedor" | string;
-  estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | string;
+  estado: "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | string;
   tipo_orden: "venta" | "mixta" | string;
   total_dinero: number;
   total_puntos: number;
@@ -72,8 +72,10 @@ function estadoLabel(estado: string): string {
   const labels: Record<string, string> = {
     pendiente_pago: "Pendiente pago",
     pagada: "Pagada",
+    preparandose: "Preparandose",
     preparada: "Preparada",
     enviada: "Enviada",
+    entregando: "Entregando",
     entregada: "Entregada",
   };
   return labels[estado] ?? estado;

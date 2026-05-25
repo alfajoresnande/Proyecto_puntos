@@ -179,7 +179,8 @@ async function sendOrderReceiptEmail(orderId) {
      LEFT JOIN sucursales s ON s.id = o.sucursal_retiro_id
      WHERE o.id = ?
      LIMIT 1`, [orderId]);
-    if (!order || order.estado !== "pagada" || order.receipt_email_sent_at || !order.cliente_email) {
+    const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
+    if (!order || !paidStates.includes(order.estado) || order.receipt_email_sent_at || !order.cliente_email) {
         return false;
     }
     const items = await (0, db_1.qAll)(db_1.pool, `SELECT p.nombre, oi.cantidad, oi.precio_dinero_unit, oi.subtotal_dinero, oi.puntaje_al_comprar_unitario

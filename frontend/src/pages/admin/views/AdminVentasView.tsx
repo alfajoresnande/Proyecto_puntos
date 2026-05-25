@@ -19,7 +19,7 @@ const SALES_VIEWS: Array<{
     key: "pedidos",
     label: "Pedidos",
     explanation: [
-      "Aca se revisan los pedidos web y su estado: pagado, preparado, entregado, cancelado o expirado.",
+      "Aca se revisan los pedidos web y su estado: pagado, preparandose, enviado, entregando, entregado, cancelado o expirado.",
       "Usa esta vista para preparar pedidos, entregar compras, ver comprobantes y cancelar pedidos cuando haga falta avisando el motivo.",
       "Las fechas se muestran en horario Buenos Aires para que el control coincida con reportes y comprobantes.",
     ],

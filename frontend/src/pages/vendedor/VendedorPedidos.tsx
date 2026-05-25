@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
-import { useToast } from "../../components/ToastProvider";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
@@ -47,7 +46,7 @@ type OrdenVendedor = {
   cliente_email: string;
   cliente_dni?: string | null;
   cliente_telefono?: string | null;
-  estado: "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada" | string;
+  estado: "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada" | string;
   tipo_orden: "venta" | "mixta" | string;
   total_dinero: number;
   total_puntos: number;
@@ -164,8 +163,10 @@ function estadoOrdenLabel(estado: string): string {
   const labels: Record<string, string> = {
     pendiente_pago: "Pendiente pago",
     pagada: "Pagada",
+    preparandose: "Preparandose",
     preparada: "Preparada",
     enviada: "Enviada",
+    entregando: "Entregando",
     entregada: "Entregada",
     cancelada: "Cancelada",
     expirada: "Expirada",
@@ -240,41 +241,16 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
 }
 
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
-const VENDEDOR_ALERT_ORDER_IDS_KEY = "vendedor_alert_known_ordenes_v1";
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
 }
 
-function readStoredOrderIds(key: string): number[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0);
-  } catch {
-    return [];
-  }
-}
-
-function hasStoredOrderIds(key: string): boolean {
-  if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(key) !== null;
-}
-
-function writeStoredOrderIds(key: string, ids: number[]) {
-  if (typeof window === "undefined") return;
-  const uniqueIds = Array.from(new Set(ids.map((value) => Number(value)).filter((value) => Number.isInteger(value) && value > 0)));
-  window.localStorage.setItem(key, JSON.stringify(uniqueIds.slice(0, 250)));
-}
-
 export function VendedorPedidos() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const params = useParams<{ ventasPage?: string }>();
+  const [searchParams] = useSearchParams();
   const currentPage: VendedorVentasPage = isVendedorVentasPage(params.ventasPage) ? params.ventasPage : "pedidos";
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
   const [filtroEstadoOrden, setFiltroEstadoOrden] = useState("");
@@ -397,13 +373,6 @@ export function VendedorPedidos() {
   const ventaEnEdicion = ventaEditId !== null;
   const selectedSucursalValue = ventaSucursalId || (sucursales[0]?.id ? String(sucursales[0].id) : "");
 
-  function openOrderFromToast(orderId: number) {
-    setFiltroEstadoOrden("");
-    setBusquedaOrdenes("");
-    setOrdenExpandidaId(orderId);
-    navigate("/vendedor/ventas/pedidos");
-  }
-
   const productoVentaSeleccionado = useMemo(
     () => productosLocales.find((producto) => Number(producto.id) === Number(ventaProductoId)) ?? null,
     [productosLocales, ventaProductoId],
@@ -435,32 +404,12 @@ export function VendedorPedidos() {
   }, [navigate, params.ventasPage]);
 
   useEffect(() => {
-    if (!ordenesQuery.data) return;
-    const currentIds = ordenes.map((orden) => Number(orden.id));
-    const knownIds = readStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY);
-    if (!hasStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY)) {
-      writeStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY, currentIds);
-      return;
-    }
-
-    const knownSet = new Set(knownIds);
-    const nuevas = ordenes.filter((orden) => !knownSet.has(Number(orden.id)));
-    if (!nuevas.length) return;
-
-    writeStoredOrderIds(VENDEDOR_ALERT_ORDER_IDS_KEY, [...currentIds, ...knownIds]);
-    const latest = nuevas[0];
-    showToast({
-      tone: "info",
-      title: nuevas.length === 1 ? `Nuevo pedido #${latest.id}` : `${nuevas.length} pedidos nuevos`,
-      message: nuevas.length === 1
-        ? `${latest.cliente_nombre} hizo una compra. Toca para verla.`
-        : "Toca para revisar los pedidos.",
-      actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver pedidos",
-      onClick: () => openOrderFromToast(Number(latest.id)),
-      onAction: () => openOrderFromToast(Number(latest.id)),
-      persistent: true,
-    });
-  }, [ordenes, ordenesQuery.data, showToast]);
+    const requestedOrderId = Number(searchParams.get("pedido") ?? 0);
+    if (!Number.isInteger(requestedOrderId) || requestedOrderId <= 0) return;
+    setFiltroEstadoOrden("");
+    setBusquedaOrdenes("");
+    setOrdenExpandidaId(requestedOrderId);
+  }, [searchParams]);
 
   useEffect(() => {
     if (ventaSucursalId) return;
@@ -525,7 +474,7 @@ export function VendedorPedidos() {
   }, [busquedaOrdenes, filtroEstadoOrden, ordenes]);
 
   const actualizarOrdenMutation = useMutation({
-    mutationFn: ({ id, estado }: { id: number; estado: "pagada" | "preparada" | "enviada" | "entregada" }) =>
+    mutationFn: ({ id, estado }: { id: number; estado: "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" }) =>
       api.patch<{ ok: true }>(`/vendedor/ordenes/${id}`, { estado }),
     onSuccess: async (_data, variables) => {
       setOrdenErr("");
@@ -908,10 +857,10 @@ export function VendedorPedidos() {
   }
 
   function puedeCancelarOrden(orden: OrdenVendedor): boolean {
-    return ["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado);
+    return ["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"].includes(orden.estado);
   }
 
-  function actualizarOrden(id: number, estado: "pagada" | "preparada" | "enviada" | "entregada") {
+  function actualizarOrden(id: number, estado: "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada") {
     setOrdenErr("");
     setOrdenMsg("");
     actualizarOrdenMutation.mutate({ id, estado });
@@ -1537,8 +1486,10 @@ export function VendedorPedidos() {
             <option value="">Todos los estados</option>
             <option value="pendiente_pago">Pendiente pago</option>
             <option value="pagada">Pagada</option>
+            <option value="preparandose">Preparandose</option>
             <option value="preparada">Preparada</option>
             <option value="enviada">Enviada</option>
+            <option value="entregando">Entregando</option>
             <option value="entregada">Entregada</option>
           </select>
         </div>
@@ -1618,16 +1569,26 @@ export function VendedorPedidos() {
                   </button>
                 ) : null}
                 {orden.estado === "pagada" ? (
-                  <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "preparada")}>
+                  <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "preparandose")}>
                     Preparar
                   </button>
                 ) : null}
-                {(orden.estado === "pagada" || orden.estado === "preparada") && orden.direccion_envio ? (
+                {orden.estado === "preparandose" ? (
+                  <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "preparada")}>
+                    Pedido preparado
+                  </button>
+                ) : null}
+                {orden.estado === "preparada" && orden.direccion_envio ? (
                   <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "enviada")}>
                     Enviar
                   </button>
                 ) : null}
-                {orden.estado === "pagada" || orden.estado === "preparada" || orden.estado === "enviada" ? (
+                {orden.estado === "enviada" && orden.direccion_envio ? (
+                  <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "entregando")}>
+                    Entregando
+                  </button>
+                ) : null}
+                {(!orden.direccion_envio && ["pagada", "preparandose", "preparada"].includes(orden.estado)) || orden.estado === "entregando" ? (
                   <button type="button" className="ios-btn-primary" style={{ width: "auto", padding: "0.55rem 0.85rem", background: "#16a34a", borderColor: "#16a34a" }} disabled={actualizarOrdenMutation.isPending} onClick={() => actualizarOrden(orden.id, "entregada")}>
                     Entregar
                   </button>

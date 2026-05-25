@@ -83,9 +83,11 @@ function estadoPedidoLabel(estado: string): string {
   const normalized = estado.trim().toLowerCase();
   const labels: Record<string, string> = {
     pendiente_pago: "Pendiente de pago",
-    pagada: "Pago aprobado",
-    preparada: "Preparando pedido",
+    pagada: "Pedido recibido",
+    preparandose: "Preparando pedido",
+    preparada: "Pedido preparado",
     enviada: "En camino",
+    entregando: "Entregando pedido",
     entregada: "Entregado",
     cancelada: "Cancelado",
     expirada: "Expirado",
@@ -95,7 +97,7 @@ function estadoPedidoLabel(estado: string): string {
 
 function estadoPedidoClass(estado: string): string {
   const normalized = estado.trim().toLowerCase();
-  if (normalized === "pagada" || normalized === "preparada" || normalized === "entregada") return " is-ok";
+  if (["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"].includes(normalized)) return " is-ok";
   if (normalized === "pendiente_pago") return " is-pending";
   if (normalized === "cancelada" || normalized === "expirada") return " is-danger";
   return "";
@@ -124,6 +126,63 @@ function canContinueOnlinePayment(orden: Orden): boolean {
   );
 }
 
+const SHIPPING_TRACKING_STEPS = [
+  { key: "recibido", label: "Recibido" },
+  { key: "preparandose", label: "Preparandose" },
+  { key: "enviado", label: "Enviado" },
+  { key: "entregando", label: "Entregando" },
+  { key: "entregado", label: "Entregado" },
+];
+
+const SHIPPING_TRACKING_INDEX: Record<string, number> = {
+  pagada: 0,
+  preparandose: 1,
+  preparada: 1,
+  enviada: 2,
+  entregando: 3,
+  entregada: 4,
+};
+
+const SHIPPING_TRACKING_COPY: Record<string, string> = {
+  pagada: "Recibimos tu pedido.",
+  preparandose: "El equipo esta preparando tu pedido.",
+  preparada: "Tu pedido ya esta preparado y listo para salir.",
+  enviada: "Tu pedido fue enviado.",
+  entregando: "Estamos realizando la entrega.",
+  entregada: "Pedido entregado.",
+};
+
+function OrderShippingTracking({ orden }: { orden: Orden }) {
+  if (!orden.direccion_envio) return null;
+  const normalized = orden.estado.trim().toLowerCase();
+  const activeIndex = SHIPPING_TRACKING_INDEX[normalized];
+  if (activeIndex === undefined) return null;
+  const progress = activeIndex <= 0 ? 0 : (activeIndex / (SHIPPING_TRACKING_STEPS.length - 1)) * 100;
+
+  return (
+    <div className="store-order-tracking" aria-label={`Seguimiento del pedido ${orden.id}`}>
+      <div className="store-order-tracking-head">
+        <strong>{estadoPedidoLabel(orden.estado)}</strong>
+        <span>{SHIPPING_TRACKING_COPY[normalized] ?? "Actualizamos el estado cuando avance el pedido."}</span>
+      </div>
+      <div className="store-order-track-line" aria-hidden="true">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <ol className="store-order-track-steps">
+        {SHIPPING_TRACKING_STEPS.map((step, index) => {
+          const stateClass = index < activeIndex ? " is-complete" : index === activeIndex ? " is-current" : "";
+          return (
+            <li key={step.key} className={`store-order-track-step${stateClass}`}>
+              <span>{index + 1}</span>
+              <p>{step.label}</p>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 export function MisPedidos() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -134,7 +193,7 @@ export function MisPedidos() {
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
     refetchInterval: (query) => {
       const orders = query.state.data ?? [];
-      return orders.some((orden) => ["pendiente_pago", "pagada", "preparada", "enviada"].includes(orden.estado)) ? 5000 : 15000;
+      return orders.some((orden) => ["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"].includes(orden.estado)) ? 5000 : 15000;
     },
     refetchIntervalInBackground: true,
   });
@@ -277,6 +336,7 @@ export function MisPedidos() {
                     </Link>
                   </div>
                 </div>
+                <OrderShippingTracking orden={orden} />
               </article>
             ))}
           </div>

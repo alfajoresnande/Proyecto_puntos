@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { API_BASE_URL } from "../lib/apiBase";
 import { useAuthStore } from "../store/authStore";
+import { OrderSalesToast, OrderSalesToastIcon } from "./OrderSalesToast";
 import { useToast } from "./ToastProvider";
 
 type RealtimeEvent = {
@@ -17,6 +18,16 @@ type StaffRole = "vendedor" | "admin" | "superAdmin";
 type StaffOrderAlert = {
   id: number;
   cliente_nombre?: string | null;
+  canal?: string | null;
+  tipo_orden?: string | null;
+  total_dinero?: number | string | null;
+  direccion_envio?: unknown | null;
+  pago?: {
+    proveedor?: string | null;
+    metodo?: string | null;
+    estado?: string | null;
+    monto?: number | string | null;
+  } | null;
 };
 
 const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
@@ -48,6 +59,10 @@ function getStaffOrdersPath(role: StaffRole): string {
   return "/admin/ventas/pedidos";
 }
 
+function getStaffOrderTargetPath(role: StaffRole, orderId: number): string {
+  return `${getStaffOrdersPath(role)}?pedido=${orderId}`;
+}
+
 function getStaffOrderIdsKey(role: StaffRole): string {
   return role === "vendedor" ? VENDEDOR_ALERT_ORDER_IDS_KEY : ADMIN_ALERT_ORDER_IDS_KEY;
 }
@@ -76,6 +91,64 @@ function writeStoredOrderIds(key: string, ids: number[]) {
   window.localStorage.setItem(key, JSON.stringify(uniqueIds.slice(0, 250)));
 }
 
+function money(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
+}
+
+function paymentMethodLabel(order: StaffOrderAlert): string {
+  const metodo = order.pago?.metodo?.trim().toLowerCase();
+  const proveedor = order.pago?.proveedor?.trim().toLowerCase();
+  if (metodo === "cash" || proveedor === "efectivo") return "Pago efectivo";
+  if (metodo === "transferencia") return "Pago transferencia";
+  if (metodo === "tarjeta" || metodo === "brick") return "Pago tarjeta";
+  if (metodo === "qr") return "Pago QR";
+  if (metodo === "wallet" || proveedor === "mercadopago") return "Pago Mercado Pago";
+  return "Pago registrado";
+}
+
+function isLocalSale(order: StaffOrderAlert): boolean {
+  const canal = order.canal?.trim().toLowerCase();
+  return canal === "admin" || canal === "vendedor";
+}
+
+function orderMethodLabel(order: StaffOrderAlert): string {
+  if (isLocalSale(order)) return paymentMethodLabel(order);
+  return order.direccion_envio ? "Envio a domicilio" : "Retiro en sucursal";
+}
+
+function customerLabel(order: StaffOrderAlert): string {
+  const rawName = order.cliente_nombre?.trim();
+  if (!rawName) return isLocalSale(order) ? "Mostrador" : "Cliente";
+  if (isLocalSale(order) && rawName.toLowerCase() === "cliente") return "Mostrador";
+  return rawName;
+}
+
+function tryPlayOrderSalesSound() {
+  if (typeof window === "undefined") return;
+  if (window.localStorage.getItem("nande_order_sales_sound") !== "on") return;
+
+  try {
+    const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const audio = new AudioContextCtor();
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(740, audio.currentTime);
+    gain.gain.setValueAtTime(0.0001, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.12, audio.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.26);
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+    oscillator.start();
+    oscillator.stop(audio.currentTime + 0.28);
+    window.setTimeout(() => void audio.close().catch(() => undefined), 420);
+  } catch {
+    // El sonido es opcional; si el navegador lo bloquea, la alerta visual sigue funcionando.
+  }
+}
+
 export function RealtimeBridge() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -89,6 +162,7 @@ export function RealtimeBridge() {
   const topicsBufferRef = useRef<Set<string>>(new Set());
   const flushTimerRef = useRef<number | null>(null);
   const staffOrdersCheckPendingRef = useRef(false);
+  const notifiedOrderEventsRef = useRef<Set<string>>(new Set());
 
   const syncStaffOrderAlerts = useCallback(
     async (notify: boolean) => {
@@ -108,21 +182,47 @@ export function RealtimeBridge() {
         writeStoredOrderIds(storageKey, [...currentIds, ...knownIds]);
         if (!notify || !hadStoredIds || nuevas.length === 0) return;
 
-        const latest = nuevas[0];
-        const targetPath = getStaffOrdersPath(userRole);
-        const clienteNombre = latest.cliente_nombre?.trim() || "Un cliente";
+        const unseen = nuevas.filter((order) => {
+          const eventKey = `${storageKey}:${Number(order.id)}`;
+          if (notifiedOrderEventsRef.current.has(eventKey)) return false;
+          notifiedOrderEventsRef.current.add(eventKey);
+          return true;
+        });
+        if (!unseen.length) return;
+
+        const latest = unseen[0];
+        const orderId = Number(latest.id);
+        const kind = isLocalSale(latest) ? "sale" : "order";
+        const targetPath = getStaffOrderTargetPath(userRole, orderId);
+        const title = unseen.length > 1
+          ? `${unseen.length} novedades de ventas`
+          : kind === "sale"
+            ? "Nueva venta registrada"
+            : "Nuevo pedido recibido";
 
         showToast({
           tone: "info",
-          title: nuevas.length === 1 ? `Nueva compra #${latest.id}` : `${nuevas.length} compras nuevas`,
-          message: nuevas.length === 1
-            ? `${clienteNombre} hizo una compra. Toca para verla.`
-            : "Toca para revisar los pedidos.",
-          actionLabel: nuevas.length === 1 ? "Ver pedido" : "Ver pedidos",
+          variant: "order-sales",
+          icon: <OrderSalesToastIcon kind={kind} />,
+          title,
+          message: (
+            <OrderSalesToast
+              kind={kind}
+              customer={customerLabel(latest)}
+              total={money(latest.total_dinero)}
+              method={orderMethodLabel(latest)}
+              orderId={orderId}
+              count={unseen.length}
+            />
+          ),
+          actionLabel: kind === "sale" ? "Ver venta" : "Ver pedido",
+          secondaryActionLabel: "Cerrar",
+          duration: 60000,
           onClick: () => navigate(targetPath),
           onAction: () => navigate(targetPath),
-          persistent: true,
+          onSecondaryAction: () => undefined,
         });
+        tryPlayOrderSalesSound();
       } catch {
         // Las alertas no deben romper la sincronizacion en tiempo real.
       } finally {

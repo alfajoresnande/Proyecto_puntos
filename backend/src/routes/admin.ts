@@ -1891,7 +1891,7 @@ router.patch("/ordenes/:id", async (req, res) => {
   }
 
   const schema = z.object({
-    estado: z.enum(["pendiente_pago", "pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"]),
+    estado: z.enum(["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada", "expirada"]),
     notas: z.string().max(1000).optional().nullable(),
   });
   const parsed = schema.safeParse(req.body);
@@ -1907,7 +1907,7 @@ router.patch("/ordenes/:id", async (req, res) => {
     const orden = await qOne<{
       id: number;
       usuario_id: number;
-      estado: "borrador" | "pendiente_pago" | "pagada" | "preparada" | "enviada" | "entregada" | "cancelada" | "expirada";
+      estado: "borrador" | "pendiente_pago" | "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" | "cancelada" | "expirada";
       total_puntos: number;
       sucursal_retiro_id: number | null;
       total_dinero: number;
@@ -1950,7 +1950,7 @@ router.patch("/ordenes/:id", async (req, res) => {
       return;
     }
 
-    const paidStates = ["pagada", "preparada", "enviada", "entregada"];
+    const paidStates = ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"];
     if (orden.estado === "pendiente_pago" && paidStates.includes(estado)) {
       console.log(`[ADMIN/ORDENES] Aprobando pago automático para orden #${orderId} al pasar a ${estado}`);
       await approvePaidOrder(conn, {
@@ -1975,10 +1975,12 @@ router.patch("/ordenes/:id", async (req, res) => {
     // RESTO DE TRANSICIONES
     const allowedTransitions: Record<string, string[]> = {
       borrador: ["pendiente_pago", "cancelada"],
-      pendiente_pago: ["pagada", "preparada", "enviada", "entregada", "cancelada", "expirada"],
-      pagada: ["preparada", "enviada", "entregada", "cancelada"],
-      preparada: ["enviada", "entregada", "cancelada"],
-      enviada: ["entregada", "cancelada"],
+      pendiente_pago: ["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada", "expirada"],
+      pagada: ["preparandose", "preparada", "enviada", "entregando", "entregada", "cancelada"],
+      preparandose: ["preparada", "enviada", "entregando", "entregada", "cancelada"],
+      preparada: ["enviada", "entregando", "entregada", "cancelada"],
+      enviada: ["entregando", "entregada", "cancelada"],
+      entregando: ["entregada", "cancelada"],
     };
 
     if (!(allowedTransitions[orden.estado] ?? []).includes(estado)) {
