@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { AddressSelector } from "../../components/addresses/AddressSelector";
 import { useToast } from "../../components/ToastProvider";
@@ -360,7 +360,8 @@ function MercadoPagoBrick({
 
 export function CarritoTienda() {
   const queryClient = useQueryClient();
-  const { confirmToast } = useToast();
+  const navigate = useNavigate();
+  const { confirmToast, showToast } = useToast();
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeOrderId = searchParams.get("pagar_orden");
@@ -457,6 +458,9 @@ export function CarritoTienda() {
     : isCashOrder
       ? "Pedido reservado"
       : "Pedido pendiente de pago";
+  const confirmedHasShipping = Boolean(confirmed && (deliveryMethod === "envio" || confirmed.envio));
+  const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmed.estado === "pagada"));
+  const confirmedTrackingPath = confirmed ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
 
   const confirmedOrderQuery = useQuery({
     queryKey: ["cliente", "orden-payment-status", confirmed?.orden_id],
@@ -564,6 +568,38 @@ export function CarritoTienda() {
     const timer = window.setTimeout(() => setCartToast(null), 2600);
     return () => window.clearTimeout(timer);
   }, [cartToast]);
+
+  useEffect(() => {
+    if (!confirmed?.orden_id || !confirmedHasShipping || !confirmedPaymentApproved) return;
+
+    const storageKey = `nande-shipping-tracking-toast-${confirmed.orden_id}`;
+    if (window.sessionStorage.getItem(storageKey) === "shown") return;
+    window.sessionStorage.setItem(storageKey, "shown");
+
+    showToast({
+      tone: "success",
+      variant: "order-sales",
+      icon: <span className="order-sales-toast-icon-mark">OK</span>,
+      title: "Seguimiento de envio activo",
+      message: (
+        <div className="checkout-tracking-toast-copy">
+          <p>Tu compra ya fue aprobada. Podes ver como avanza el envio desde Mis pedidos.</p>
+        </div>
+      ),
+      actionLabel: "Ir a Mis pedidos",
+      onAction: () => navigate(confirmedTrackingPath),
+      secondaryActionLabel: "Cerrar",
+      onSecondaryAction: () => undefined,
+      duration: 15000,
+    });
+  }, [
+    confirmed?.orden_id,
+    confirmedHasShipping,
+    confirmedPaymentApproved,
+    confirmedTrackingPath,
+    navigate,
+    showToast,
+  ]);
 
   const updateQuantity = useMutation({
     mutationFn: ({ itemId, cantidad }: { itemId: number; cantidad: number }) =>
@@ -698,17 +734,27 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
-              {isShippingConfirmed ? (
-                <p className="checkout-approved-text checkout-shipping-followup">
-                  Podes seguir el estado de tu envio desde Mis pedidos.
-                </p>
-              ) : null}
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
                   Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
                 </p>
               ) : null}
             </div>
+
+            {isShippingConfirmed ? (
+              <div className="checkout-tracking-alert" role="status" aria-live="polite">
+                <div className="checkout-tracking-alert-icon" aria-hidden="true">OK</div>
+                <div className="checkout-tracking-alert-body">
+                  <p className="checkout-tracking-alert-title">Tu seguimiento de envio ya esta activo</p>
+                  <p className="checkout-tracking-alert-text">
+                    En Mis pedidos podes ver el avance del envio hasta que sea marcado como entregado.
+                  </p>
+                </div>
+                <Link to={confirmedTrackingPath} className="checkout-tracking-alert-btn">
+                  Ir a Mis pedidos
+                </Link>
+              </div>
+            ) : null}
 
             <div className="catalog-confirm-branch-detail catalog-canje-block">
               <p><strong>Estado:</strong> {estadoLabel}</p>
@@ -718,7 +764,7 @@ export function CarritoTienda() {
                 </p>
               ) : null}
               <div className="catalog-float-toast-actions catalog-canje-actions">
-                <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
+                <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
                 <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
               </div>
             </div>
@@ -739,7 +785,9 @@ export function CarritoTienda() {
               <p>{paymentNotice.msg}</p>
               <div className="catalog-float-toast-actions catalog-canje-actions">
                 {paymentNotice.variant === "success" ? (
-                  <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
+                  <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">
+                    {isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}
+                  </Link>
                 ) : null}
                 <button className="catalog-float-toast-btn-secondary" onClick={() => setPaymentNotice(null)}>
                   Cerrar
@@ -817,7 +865,7 @@ export function CarritoTienda() {
               <p>{confirmed.pago.setup_message}</p>
             ) : null}
             <div className="catalog-float-toast-actions catalog-canje-actions">
-              <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
+              <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
               <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
             </div>
           </div>

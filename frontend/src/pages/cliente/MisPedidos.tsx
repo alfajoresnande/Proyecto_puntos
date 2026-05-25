@@ -271,6 +271,7 @@ export function MisPedidos() {
     [ordenesQuery.data],
   );
   const activeShippingPedidos = useMemo(() => pedidos.filter(hasActiveShippingTracking), [pedidos]);
+  const requestedPedidoId = Number(searchParams.get("pedido") ?? 0);
   const pedidosTotalPages = Math.max(1, Math.ceil(pedidos.length / MIS_PEDIDOS_POR_PAGINA));
   const pedidosPagina = useMemo(() => {
     const safePage = Math.min(Math.max(1, pedidosPage), pedidosTotalPages);
@@ -281,6 +282,13 @@ export function MisPedidos() {
   useEffect(() => {
     setPedidosPage((prev) => Math.min(prev, pedidosTotalPages));
   }, [pedidosTotalPages]);
+
+  useEffect(() => {
+    if (!Number.isInteger(requestedPedidoId) || requestedPedidoId <= 0) return;
+    const pedidoIndex = pedidos.findIndex((orden) => orden.id === requestedPedidoId);
+    if (pedidoIndex < 0) return;
+    setPedidosPage(Math.floor(pedidoIndex / MIS_PEDIDOS_POR_PAGINA) + 1);
+  }, [pedidos, requestedPedidoId]);
 
   return (
     <section className="catalog-page catalog-canje-page">
@@ -341,7 +349,7 @@ export function MisPedidos() {
           <>
             <div className="store-orders-list">
               {pedidosPagina.map((orden) => (
-                <article key={orden.id} className="store-order-card">
+                <article key={orden.id} className={`store-order-card${orden.id === requestedPedidoId ? " is-highlighted" : ""}`}>
                   <div className="store-order-head">
                     <div>
                       <p className="store-order-title">Pedido #{orden.id}</p>
