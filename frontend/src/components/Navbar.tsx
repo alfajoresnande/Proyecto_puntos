@@ -362,6 +362,15 @@ export function Navbar() {
                   >
                     <span className="navbar-name-wrap">
                       <span className="navbar-name">{user.nombre}</span>
+                      {pendingOrdersCount > 0 ? (
+                        <span
+                          className="navbar-link-badge navbar-link-badge-warning navbar-name-order-badge"
+                          aria-label={pendingOrdersLabel}
+                          title={pendingOrdersLabel}
+                        >
+                          {pendingOrdersCount > 99 ? "99+" : pendingOrdersCount}
+                        </span>
+                      ) : null}
                     </span>
                     <span className={`navbar-name-caret${userMenuOpen ? " open" : ""}`} />
                   </button>

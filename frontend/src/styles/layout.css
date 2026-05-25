@@ -439,6 +439,10 @@
   min-width: 0;
 }
 
+.navbar-name-order-badge {
+  flex: 0 0 auto;
+}
+
 .navbar-name-btn:hover {
   background: #EEDCC7;
 }

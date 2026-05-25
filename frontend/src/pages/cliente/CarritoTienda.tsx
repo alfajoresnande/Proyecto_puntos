@@ -738,7 +738,7 @@ export function CarritoTienda() {
       setPaymentApproved(false);
       setPaymentNotice({
         variant: "info",
-        msg: `Cancelamos el pedido #${data.orden_id}. Si habia stock reservado, ya fue liberado.`,
+        msg: `Pedido #${data.orden_id} cancelado. Por cualquier consulta comuniquese a traves de la mensajeria. Vuelva pronto.`,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] }),

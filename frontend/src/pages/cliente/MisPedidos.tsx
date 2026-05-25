@@ -243,7 +243,7 @@ export function MisPedidos() {
     onSuccess: async (response) => {
       setReturnNotice({
         variant: "info",
-        msg: `Cancelamos el pedido #${response.orden_id}. Si habia stock reservado, ya fue liberado.`,
+        msg: `Pedido #${response.orden_id} cancelado. Por cualquier consulta comuniquese a traves de la mensajeria. Muchas gracias vuelva pronto.`,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] }),
