@@ -112,6 +112,31 @@ function paymentProviderLabel(proveedor: string | null | undefined): string {
   return proveedor || "Sin definir";
 }
 
+function paymentWasCompleted(orden: OrdenDetalle): boolean {
+  const pagoEstado = orden.pago?.estado?.trim().toLowerCase() ?? "";
+  return pagoEstado === "aprobado" || pagoEstado === "reembolsado";
+}
+
+function paymentSummaryLabel(orden: OrdenDetalle): string {
+  const estado = orden.estado.trim().toLowerCase();
+  if ((estado === "cancelada" || estado === "expirada") && !paymentWasCompleted(orden)) {
+    return "No realizado";
+  }
+  return paymentMethodLabel(orden.pago?.metodo);
+}
+
+function paymentProviderSummaryLabel(orden: OrdenDetalle): string {
+  const estado = orden.estado.trim().toLowerCase();
+  if ((estado === "cancelada" || estado === "expirada") && !paymentWasCompleted(orden)) {
+    return "-";
+  }
+  return paymentProviderLabel(orden.pago?.proveedor);
+}
+
+function paidAmount(orden: OrdenDetalle): number {
+  return paymentWasCompleted(orden) ? Number(orden.pago?.monto ?? orden.total_dinero ?? 0) : 0;
+}
+
 function canContinueOnlinePayment(orden: OrdenDetalle): boolean {
   return (
     orden.estado === "pendiente_pago" &&
@@ -219,9 +244,9 @@ export function ComprobantePedido() {
           <div className="comprobante-box">
             <h3>Resumen de pago</h3>
             <p><strong>Estado:</strong> {estadoPedidoLabel(orden.estado)}</p>
-            <p><strong>Método de pago:</strong> {paymentMethodLabel(orden.pago?.metodo)}</p>
-            <p><strong>Proveedor:</strong> {paymentProviderLabel(orden.pago?.proveedor)}</p>
-            <p><strong>Total pagado:</strong> {money(orden.pago?.monto || orden.total_dinero)}</p>
+            <p><strong>Método de pago:</strong> {paymentSummaryLabel(orden)}</p>
+            <p><strong>Proveedor:</strong> {paymentProviderSummaryLabel(orden)}</p>
+            <p><strong>Total pagado:</strong> {money(paidAmount(orden))}</p>
           </div>
 
           <div className="comprobante-box">

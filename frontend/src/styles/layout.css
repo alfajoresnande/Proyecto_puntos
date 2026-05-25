@@ -1315,9 +1315,10 @@
 
 .navbar-hamburger-badge {
   align-items: center;
-  background: #fff8f0;
+  background: #FFF3CD;
   border-radius: 999px;
-  color: #6b3e26;
+  box-shadow: 0 0 0 2px #6C3D25;
+  color: #7A4D00;
   display: inline-flex;
   font-size: 0.62rem;
   font-weight: 900;
@@ -1328,6 +1329,7 @@
   position: absolute;
   right: -7px;
   top: -7px;
+  z-index: 2;
 }
 
 @media (max-width: 1020px) {

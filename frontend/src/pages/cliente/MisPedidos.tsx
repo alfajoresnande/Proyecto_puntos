@@ -114,6 +114,19 @@ function paymentMethodLabel(metodo: string | null | undefined): string {
   return "Sin definir";
 }
 
+function paymentWasCompleted(orden: Orden): boolean {
+  const pagoEstado = orden.pago?.estado?.trim().toLowerCase() ?? "";
+  return pagoEstado === "aprobado" || pagoEstado === "reembolsado";
+}
+
+function paymentSummaryLabel(orden: Orden): string {
+  const estado = orden.estado.trim().toLowerCase();
+  if ((estado === "cancelada" || estado === "expirada") && !paymentWasCompleted(orden)) {
+    return "No realizado";
+  }
+  return paymentMethodLabel(orden.pago?.metodo);
+}
+
 function branchLabel(sucursal: Orden["sucursal"]): string {
   if (!sucursal?.nombre) return "-";
   return [sucursal.nombre, sucursal.direccion, sucursal.piso ? `Piso ${sucursal.piso}` : "", sucursal.localidad, sucursal.provincia]
@@ -392,7 +405,7 @@ export function MisPedidos() {
               {pedidosPagina.map((orden) => (
                 <article key={orden.id} className={`store-order-card${orden.id === requestedPedidoId ? " is-highlighted" : ""}`}>
                   <div className="store-order-head">
-                    <div>
+                    <div className="store-order-main">
                       <p className="store-order-title">Pedido #{orden.id}</p>
                       <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
                     </div>
@@ -403,9 +416,9 @@ export function MisPedidos() {
                       <strong>{money(orden.total_dinero)}</strong>
                     </div>
                   </div>
-                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                    <span className="store-order-muted">Pago: {paymentMethodLabel(orden.pago?.metodo)}</span>
-                    <div className="catalog-float-toast-actions" style={{ gap: "0.5rem", margin: 0 }}>
+                  <div className="store-order-actions-row">
+                    <span className="store-order-muted store-order-payment-label">Pago: {paymentSummaryLabel(orden)}</span>
+                    <div className="catalog-float-toast-actions store-order-action-buttons">
                       {canContinueOnlinePayment(orden) ? (
                         <Link
                           to={`/carrito-tienda?pagar_orden=${orden.id}`}

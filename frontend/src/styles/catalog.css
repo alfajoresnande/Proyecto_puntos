@@ -542,6 +542,10 @@
   padding: 0.85rem 0.95rem;
 }
 
+.store-order-main {
+  min-width: 0;
+}
+
 .store-order-card.is-highlighted {
   border-color: #D8B56A;
   box-shadow: 0 0 0 3px rgba(216, 181, 106, 0.2), 0 12px 28px rgba(76, 45, 18, 0.13);
@@ -558,6 +562,9 @@
   color: #4A2C1A;
   font-weight: 800;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .store-order-muted {
@@ -570,8 +577,14 @@
   align-items: center;
   color: #4A2C1A;
   display: flex;
+  flex: 0 0 auto;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.store-order-meta strong,
+.store-order-status {
+  white-space: nowrap;
 }
 
 .store-order-status {
@@ -597,6 +610,21 @@
 .store-order-status.is-danger {
   background: #FDE2E2;
   color: #9B2C2C;
+}
+
+.store-order-actions-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.store-order-action-buttons {
+  gap: 0.5rem;
+  margin: 0;
+  margin-left: auto;
 }
 
 .store-orders-active-shipping {
@@ -667,6 +695,59 @@
 .store-order-cancel-btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+@media (max-width: 520px) {
+  .store-order-card {
+    align-content: start;
+    gap: 0.72rem;
+    min-height: 154px;
+    padding: 0.95rem 0.9rem;
+  }
+
+  .store-order-head {
+    align-items: start;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .store-order-title {
+    font-size: 0.98rem;
+    line-height: 1.25;
+  }
+
+  .store-order-muted {
+    line-height: 1.35;
+  }
+
+  .store-order-meta {
+    display: grid;
+    gap: 0.38rem;
+    justify-items: end;
+  }
+
+  .store-order-status {
+    font-size: 0.68rem;
+    max-width: 8.7rem;
+    overflow: hidden;
+    padding: 0.25rem 0.52rem;
+    text-overflow: ellipsis;
+  }
+
+  .store-order-actions-row {
+    align-items: end;
+    display: grid;
+    gap: 0.62rem;
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 0.45rem;
+  }
+
+  .store-order-action-buttons {
+    justify-content: flex-end;
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 .store-order-tracking {
