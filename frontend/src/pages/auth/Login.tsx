@@ -1,6 +1,7 @@
 ﻿import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import { useRetryAfterCooldown } from "../../lib/rateLimitError";
 import { useAuthStore } from "../../store/authStore";
 
 let initializedGoogleClientId: string | null = null;
@@ -21,11 +22,15 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const { cooldownSeconds, cooldownMessage, startCooldownFromError } = useRetryAfterCooldown();
 
   const loginMutation = useMutation({
     mutationFn: () => login({ email, password }),
     onSuccess: () => {
       navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
+    },
+    onError: (error) => {
+      startCooldownFromError(error);
     },
   });
 
@@ -35,6 +40,7 @@ export function Login() {
       navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
     },
     onError: (error) => {
+      startCooldownFromError(error);
       setGoogleError(error.message);
     },
   });
@@ -177,10 +183,11 @@ export function Login() {
             </button>
           </div>
 
-          {loginMutation.error ? <p className="login-error">{loginMutation.error.message}</p> : null}
+          {cooldownMessage ? <p className="login-error">{cooldownMessage}</p> : null}
+          {!cooldownMessage && loginMutation.error ? <p className="login-error">{loginMutation.error.message}</p> : null}
 
-          <button type="submit" className="login-btn-primary" disabled={loginMutation.isPending}>
-            {loginMutation.isPending ? "Ingresando..." : "Iniciar sesión"}
+          <button type="submit" className="login-btn-primary" disabled={loginMutation.isPending || cooldownSeconds > 0}>
+            {loginMutation.isPending ? "Ingresando..." : cooldownSeconds > 0 ? "Espera para reintentar" : "Iniciar sesión"}
           </button>
         </form>
 

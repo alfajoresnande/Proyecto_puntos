@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
+import { createApiError, useRetryAfterCooldown } from "../../lib/rateLimitError";
 
 async function requestPasswordReset(email: string): Promise<{ message: string }> {
   const res = await fetch(apiUrl("/api/auth/forgot-password"), {
@@ -17,7 +18,7 @@ async function requestPasswordReset(email: string): Promise<{ message: string }>
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof body?.error === "string" ? body.error : "No pudimos enviar el enlace.");
+    throw createApiError(body, "No pudimos enviar el enlace.");
   }
 
   return body;
@@ -25,9 +26,13 @@ async function requestPasswordReset(email: string): Promise<{ message: string }>
 
 export function ForgotPassword() {
   const [email, setEmail] = useState("");
+  const { cooldownSeconds, cooldownMessage, startCooldownFromError } = useRetryAfterCooldown();
 
   const forgotMutation = useMutation({
     mutationFn: () => requestPasswordReset(email.trim().toLowerCase()),
+    onError: (error) => {
+      startCooldownFromError(error);
+    },
   });
 
   useEffect(() => {
@@ -67,7 +72,8 @@ export function ForgotPassword() {
             />
           </div>
 
-          {forgotMutation.error ? <p className="login-error">{forgotMutation.error.message}</p> : null}
+          {cooldownMessage ? <p className="login-error">{cooldownMessage}</p> : null}
+          {!cooldownMessage && forgotMutation.error ? <p className="login-error">{forgotMutation.error.message}</p> : null}
           {forgotMutation.data ? (
             <div className="login-info">
               <p>{forgotMutation.data.message}</p>
@@ -75,8 +81,8 @@ export function ForgotPassword() {
             </div>
           ) : null}
 
-          <button type="submit" className="login-btn-primary" disabled={forgotMutation.isPending}>
-            {forgotMutation.isPending ? "Enviando..." : "Enviar enlace"}
+          <button type="submit" className="login-btn-primary" disabled={forgotMutation.isPending || cooldownSeconds > 0}>
+            {forgotMutation.isPending ? "Enviando..." : cooldownSeconds > 0 ? "Espera para reintentar" : "Enviar enlace"}
           </button>
         </form>
 

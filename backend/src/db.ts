@@ -239,6 +239,104 @@ async function ensureEmailVerificationSchema() {
   );
 }
 
+async function ensureAuthProtectionSchema() {
+  const columnExists = async (tableName: string, columnName: string) => {
+    const [rows] = await pool.query(
+      `SELECT 1 FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
+       LIMIT 1`,
+      [tableName, columnName]
+    ) as [any[], any[]];
+    return rows.length > 0;
+  };
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS auth_rate_limit_counters (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      rate_key VARCHAR(255) NOT NULL,
+      action VARCHAR(80) NOT NULL,
+      count INT UNSIGNED NOT NULL DEFAULT 0,
+      window_start DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_auth_rate_limit_key (rate_key),
+      INDEX idx_auth_rate_limit_expires (expires_at),
+      INDEX idx_auth_rate_limit_action (action)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS auth_cooldowns (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      cooldown_key VARCHAR(255) NOT NULL,
+      action VARCHAR(80) NOT NULL,
+      strikes TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      blocked_until DATETIME NOT NULL,
+      expires_at DATETIME NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_auth_cooldown_key (cooldown_key),
+      INDEX idx_auth_cooldown_blocked_until (blocked_until),
+      INDEX idx_auth_cooldown_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS pending_registrations (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      email_hash CHAR(64) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      nombre VARCHAR(100) NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      dni VARCHAR(20) NULL,
+      fecha_nacimiento DATE NULL,
+      localidad VARCHAR(120) NULL,
+      provincia VARCHAR(120) NULL,
+      codigo_invitacion_usado VARCHAR(32) NULL,
+      device_id CHAR(36) NULL,
+      ip VARCHAR(64) NULL,
+      attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      resend_available_at DATETIME NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_pending_registrations_email_hash (email_hash),
+      INDEX idx_pending_registrations_token_hash (token_hash),
+      INDEX idx_pending_registrations_expires (expires_at),
+      INDEX idx_pending_registrations_device (device_id, updated_at),
+      INDEX idx_pending_registrations_ip (ip, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      token_hash CHAR(64) NOT NULL,
+      expires_at DATETIME NOT NULL,
+      used_at DATETIME NULL,
+      attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      requested_ip VARCHAR(64) NULL,
+      requested_user_agent VARCHAR(255) NULL,
+      device_id CHAR(36) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_password_reset_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      UNIQUE KEY uq_password_reset_token_hash (token_hash),
+      INDEX idx_password_reset_usuario_estado (usuario_id, used_at, expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  if (!(await columnExists("password_reset_tokens", "attempts"))) {
+    await pool.query("ALTER TABLE password_reset_tokens ADD COLUMN attempts TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER used_at");
+  }
+  if (!(await columnExists("password_reset_tokens", "device_id"))) {
+    await pool.query("ALTER TABLE password_reset_tokens ADD COLUMN device_id CHAR(36) NULL AFTER requested_user_agent");
+  }
+}
+
 async function ensureUsuarioRolesSchema() {
   const [roleRows] = await pool.query(
     `SELECT COLUMN_TYPE
@@ -1684,6 +1782,11 @@ pool
       await ensureEmailVerificationSchema();
     } catch (err: any) {
       console.error("Migracion verificacion de email:", err.message);
+    }
+    try {
+      await ensureAuthProtectionSchema();
+    } catch (err: any) {
+      console.error("Migracion proteccion auth:", err.message);
     }
     try {
       await ensureUbicacionesArgentinaSchema();

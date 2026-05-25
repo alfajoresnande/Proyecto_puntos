@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { apiUrl } from "../lib/apiBase";
 import { getCsrfToken } from "../lib/csrf";
+import { createApiError } from "../lib/rateLimitError";
 import { useCartStore } from "./cartStore";
 import type { AuthResponse, RegisterResponse, User } from "../types";
 
@@ -49,14 +50,6 @@ type AuthStore = {
 
 const STORAGE_KEY = "nande-auth";
 
-function parseErrorMessage(body: unknown, fallback: string): string {
-  if (body && typeof body === "object" && "error" in body) {
-    const err = (body as { error?: unknown }).error;
-    if (typeof err === "string") return err;
-  }
-  return fallback;
-}
-
 async function requestAuth<TResponse>(
   path: string,
   payload: LoginPayload | RegisterPayload | GoogleLoginPayload | VerifyEmailPayload | ResendEmailVerificationPayload,
@@ -73,7 +66,7 @@ async function requestAuth<TResponse>(
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(parseErrorMessage(body, "No se pudo completar la autenticacion."));
+    throw createApiError(body, "No se pudo completar la autenticacion.");
   }
 
   return body as TResponse;

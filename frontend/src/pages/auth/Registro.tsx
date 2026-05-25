@@ -2,6 +2,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { defaultRouteForRole } from "../../lib/auth";
+import { useRetryAfterCooldown } from "../../lib/rateLimitError";
 import { useAuthStore } from "../../store/authStore";
 
 function passwordValidationErrors(value: string): string[] {
@@ -32,6 +33,21 @@ export function Registro() {
   const [pendingEmail, setPendingEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationInfo, setVerificationInfo] = useState("");
+  const {
+    cooldownSeconds: registerCooldownSeconds,
+    cooldownMessage: registerCooldownMessage,
+    startCooldownFromError: startRegisterCooldown,
+  } = useRetryAfterCooldown();
+  const {
+    cooldownSeconds: verifyCooldownSeconds,
+    cooldownMessage: verifyCooldownMessage,
+    startCooldownFromError: startVerifyCooldown,
+  } = useRetryAfterCooldown();
+  const {
+    cooldownSeconds: resendCooldownSeconds,
+    cooldownMessage: resendCooldownMessage,
+    startCooldownFromError: startResendCooldown,
+  } = useRetryAfterCooldown();
 
   const registerMutation = useMutation({
     mutationFn: () =>
@@ -48,6 +64,7 @@ export function Registro() {
       setShowSuccessToast(true);
     },
     onError: (error) => {
+      startRegisterCooldown(error);
       if (error.message.toLowerCase().includes("falta verificarlo")) {
         setPendingEmail(email.trim().toLowerCase());
         setVerificationCode("");
@@ -62,12 +79,18 @@ export function Registro() {
       setShowSuccessToast(true);
       navigate(defaultRouteForRole(session.user.rol));
     },
+    onError: (error) => {
+      startVerifyCooldown(error);
+    },
   });
 
   const resendMutation = useMutation({
     mutationFn: () => resendEmailVerification({ email: pendingEmail }),
     onSuccess: (response) => {
       setVerificationInfo(response.message || "Te enviamos un nuevo codigo.");
+    },
+    onError: (error) => {
+      startResendCooldown(error);
     },
   });
 
@@ -153,11 +176,13 @@ export function Registro() {
 
             {verificationInfo ? <p className="login-info">{verificationInfo}</p> : null}
             {localError ? <p className="login-error">{localError}</p> : null}
-            {verifyMutation.error ? <p className="login-error">{verifyMutation.error.message}</p> : null}
-            {resendMutation.error ? <p className="login-error">{resendMutation.error.message}</p> : null}
+            {verifyCooldownMessage ? <p className="login-error">{verifyCooldownMessage}</p> : null}
+            {!verifyCooldownMessage && verifyMutation.error ? <p className="login-error">{verifyMutation.error.message}</p> : null}
+            {resendCooldownMessage ? <p className="login-error">{resendCooldownMessage}</p> : null}
+            {!resendCooldownMessage && resendMutation.error ? <p className="login-error">{resendMutation.error.message}</p> : null}
 
-            <button type="submit" className="login-btn-primary" disabled={verifyMutation.isPending}>
-              {verifyMutation.isPending ? "Verificando..." : "Verificar y entrar"}
+            <button type="submit" className="login-btn-primary" disabled={verifyMutation.isPending || verifyCooldownSeconds > 0}>
+              {verifyMutation.isPending ? "Verificando..." : verifyCooldownSeconds > 0 ? "Espera para reintentar" : "Verificar y entrar"}
             </button>
 
             <button
@@ -165,9 +190,9 @@ export function Registro() {
               className="register-optional-btn"
               style={{ marginTop: "0.85rem" }}
               onClick={() => resendMutation.mutate()}
-              disabled={resendMutation.isPending}
+              disabled={resendMutation.isPending || resendCooldownSeconds > 0}
             >
-              {resendMutation.isPending ? "Enviando..." : "Reenviar código"}
+              {resendMutation.isPending ? "Enviando..." : resendCooldownSeconds > 0 ? "Espera para reenviar" : "Reenviar código"}
             </button>
           </form>
         ) : (
@@ -249,10 +274,16 @@ export function Registro() {
           ) : null}
 
           {localError ? <p className="login-error">{localError}</p> : null}
-          {registerMutation.error ? <p className="login-error">{registerMutation.error.message}</p> : null}
+          {registerCooldownMessage ? <p className="login-error">{registerCooldownMessage}</p> : null}
+          {!registerCooldownMessage && registerMutation.error ? <p className="login-error">{registerMutation.error.message}</p> : null}
 
-          <button type="submit" className="login-btn-primary" style={{ marginTop: "0.75rem" }} disabled={registerMutation.isPending}>
-            {registerMutation.isPending ? "Creando..." : "Crear cuenta"}
+          <button
+            type="submit"
+            className="login-btn-primary"
+            style={{ marginTop: "0.75rem" }}
+            disabled={registerMutation.isPending || registerCooldownSeconds > 0}
+          >
+            {registerMutation.isPending ? "Creando..." : registerCooldownSeconds > 0 ? "Espera para reintentar" : "Crear cuenta"}
           </button>
         </form>
         )}

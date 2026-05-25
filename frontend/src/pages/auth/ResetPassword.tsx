@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
+import { createApiError, useRetryAfterCooldown } from "../../lib/rateLimitError";
 
 async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
   const res = await fetch(apiUrl("/api/auth/reset-password"), {
@@ -17,7 +18,7 @@ async function resetPassword(token: string, newPassword: string): Promise<{ mess
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof body?.error === "string" ? body.error : "No pudimos actualizar tu contraseña.");
+    throw createApiError(body, "No pudimos actualizar tu contrasena.");
   }
 
   return body;
@@ -38,9 +39,13 @@ export function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
+  const { cooldownSeconds, cooldownMessage, startCooldownFromError } = useRetryAfterCooldown();
 
   const resetMutation = useMutation({
     mutationFn: () => resetPassword(token, password),
+    onError: (error) => {
+      startCooldownFromError(error);
+    },
   });
 
   useEffect(() => {
@@ -124,13 +129,18 @@ export function ResetPassword() {
           </div>
 
           {localError ? <p className="login-error">{localError}</p> : null}
-          {resetMutation.error ? <p className="login-error">{resetMutation.error.message}</p> : null}
+          {cooldownMessage ? <p className="login-error">{cooldownMessage}</p> : null}
+          {!cooldownMessage && resetMutation.error ? <p className="login-error">{resetMutation.error.message}</p> : null}
           {resetMutation.data ? (
             <p className="login-info">{resetMutation.data.message} Te llevamos al login en 5 segundos.</p>
           ) : null}
 
-          <button type="submit" className="login-btn-primary" disabled={resetMutation.isPending || Boolean(resetMutation.data)}>
-            {resetMutation.isPending ? "Actualizando..." : "Actualizar contraseña"}
+          <button
+            type="submit"
+            className="login-btn-primary"
+            disabled={resetMutation.isPending || Boolean(resetMutation.data) || cooldownSeconds > 0}
+          >
+            {resetMutation.isPending ? "Actualizando..." : cooldownSeconds > 0 ? "Espera para reintentar" : "Actualizar contraseña"}
           </button>
         </form>
 

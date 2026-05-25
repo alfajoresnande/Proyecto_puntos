@@ -95,8 +95,13 @@ describe("authStore — token almacenado después de autenticación", () => {
     expect(useAuthStore.getState().user).toEqual(mockUser);
   });
 
-  it("register() guarda el token del body de respuesta del backend", async () => {
-    global.fetch = stubFetch({ user: mockUser, token: "jwt.register.token" });
+  it("register() deja la sesion vacia hasta verificar el correo", async () => {
+    global.fetch = stubFetch({
+      ok: true,
+      email: "test@test.com",
+      verification_required: true,
+      message: "Si los datos son validos, te enviaremos un correo de verificacion.",
+    });
 
     await useAuthStore.getState().register({
       nombre: "Test",
@@ -104,7 +109,8 @@ describe("authStore — token almacenado después de autenticación", () => {
       password: "pass123456789",
     });
 
-    expect(useAuthStore.getState().token).toBe("jwt.register.token");
+    expect(useAuthStore.getState().token).toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
   });
 
   it("loginWithGoogle() guarda el token del body de respuesta del backend", async () => {

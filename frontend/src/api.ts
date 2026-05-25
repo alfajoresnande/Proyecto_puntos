@@ -1,4 +1,5 @@
 import { getCsrfToken } from "./lib/csrf";
+import { createApiError } from "./lib/rateLimitError";
 import { apiUrl } from "./lib/apiBase";
 import { useAuthStore } from "./store/authStore";
 
@@ -108,7 +109,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (response.status === 401) {
     if (isAuthPath) {
-      throw new Error(parseErrorMessage(body, "Credenciales invalidas."));
+      throw createApiError(body, "Credenciales invalidas.");
     }
 
     // Auto-logout SOLO si efectivamente enviamos un token y el server lo rechazó.
@@ -126,7 +127,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    throw new Error(parseErrorMessage(body, `Error ${response.status}`));
+    throw createApiError(body, `Error ${response.status}`);
   }
 
   if (response.status === 204) {

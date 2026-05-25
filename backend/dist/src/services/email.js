@@ -69,7 +69,7 @@ async function sendEmailVerificationCode(input) {
         subject: "Verifica tu correo - Nande",
         html,
         text,
-        devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Codigo de verificacion: to=${input.to} code=${input.code}`,
+        devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Codigo de verificacion generado para ${input.to} (oculto).`,
     });
 }
 async function sendPasswordResetEmail(input) {
@@ -109,7 +109,7 @@ async function sendPasswordResetEmail(input) {
         subject: "Restablecer contrase\u00f1a - Nand\u00e9",
         html,
         text,
-        devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Link de reset: to=${input.to} link=${input.resetLink}`,
+        devLog: `[MAIL][DEV] RESEND_API_KEY no configurada. Link de reset generado para ${input.to} (oculto).`,
     });
 }
 function money(value) {
