@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { CatalogPagination } from "../../components/CatalogPagination";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
@@ -242,6 +243,8 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
 
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
+const ORDENES_POR_PAGINA = 5;
+
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
 }
@@ -254,6 +257,7 @@ export function VendedorPedidos() {
   const currentPage: VendedorVentasPage = isVendedorVentasPage(params.ventasPage) ? params.ventasPage : "pedidos";
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
   const [filtroEstadoOrden, setFiltroEstadoOrden] = useState("");
+  const [ordenesPage, setOrdenesPage] = useState(1);
   const [ordenExpandidaId, setOrdenExpandidaId] = useState<number | null>(null);
   const [ordenMsg, setOrdenMsg] = useState("");
   const [ordenErr, setOrdenErr] = useState("");
@@ -472,6 +476,29 @@ export function VendedorPedidos() {
       ].some((value) => value.toLowerCase().includes(q));
     });
   }, [busquedaOrdenes, filtroEstadoOrden, ordenes]);
+
+  const ordenesTotalPages = Math.max(1, Math.ceil(ordenesFiltradas.length / ORDENES_POR_PAGINA));
+  const ordenesPagina = useMemo(() => {
+    const safePage = Math.min(Math.max(1, ordenesPage), ordenesTotalPages);
+    const start = (safePage - 1) * ORDENES_POR_PAGINA;
+    return ordenesFiltradas.slice(start, start + ORDENES_POR_PAGINA);
+  }, [ordenesFiltradas, ordenesPage, ordenesTotalPages]);
+
+  useEffect(() => {
+    setOrdenesPage(1);
+  }, [busquedaOrdenes, filtroEstadoOrden]);
+
+  useEffect(() => {
+    setOrdenesPage((prev) => Math.min(prev, ordenesTotalPages));
+  }, [ordenesTotalPages]);
+
+  useEffect(() => {
+    if (!ordenExpandidaId) return;
+    const expandedIndex = ordenesFiltradas.findIndex((orden) => orden.id === ordenExpandidaId);
+    if (expandedIndex < 0) return;
+    const targetPage = Math.floor(expandedIndex / ORDENES_POR_PAGINA) + 1;
+    setOrdenesPage((prev) => (prev === targetPage ? prev : targetPage));
+  }, [ordenExpandidaId, ordenesFiltradas]);
 
   const actualizarOrdenMutation = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: "pagada" | "preparandose" | "preparada" | "enviada" | "entregando" | "entregada" }) =>
@@ -1499,7 +1526,7 @@ export function VendedorPedidos() {
           {!ordenesQuery.isLoading && ordenesFiltradas.length === 0 ? (
             <div className="ios-row text-ios-secondary text-sm">No hay pedidos para mostrar.</div>
           ) : null}
-          {ordenesFiltradas.map((orden) => (
+          {ordenesPagina.map((orden) => (
             <div key={orden.id} className="ios-card p-4" style={{ background: "#FFF8F1" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
                 <div>
@@ -1627,6 +1654,14 @@ export function VendedorPedidos() {
             </div>
           ))}
         </div>
+        <CatalogPagination
+          page={ordenesPage}
+          totalPages={ordenesTotalPages}
+          totalItems={ordenesFiltradas.length}
+          pageSize={ORDENES_POR_PAGINA}
+          itemLabel="pedidos"
+          onPageChange={setOrdenesPage}
+        />
         </>
         ) : null}
       </div>

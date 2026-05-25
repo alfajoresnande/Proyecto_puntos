@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
+import { CatalogPagination } from "../../components/CatalogPagination";
 import { formatBuenosAiresDate } from "../../lib/dateTime";
 
 type Orden = {
@@ -126,6 +127,11 @@ function canContinueOnlinePayment(orden: Orden): boolean {
   );
 }
 
+function hasActiveShippingTracking(orden: Orden): boolean {
+  const estado = orden.estado.trim().toLowerCase();
+  return Boolean(orden.direccion_envio) && !["entregada", "cancelada", "expirada"].includes(estado);
+}
+
 const SHIPPING_TRACKING_STEPS = [
   { key: "recibido", label: "Recibido" },
   { key: "preparandose", label: "Preparandose" },
@@ -151,6 +157,8 @@ const SHIPPING_TRACKING_COPY: Record<string, string> = {
   entregando: "Estamos realizando la entrega.",
   entregada: "Pedido entregado.",
 };
+
+const MIS_PEDIDOS_POR_PAGINA = 5;
 
 function OrderShippingTracking({ orden }: { orden: Orden }) {
   if (!orden.direccion_envio) return null;
@@ -188,6 +196,7 @@ export function MisPedidos() {
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
   const [returnNotice, setReturnNotice] = useState<ReturnNotice | null>(null);
+  const [pedidosPage, setPedidosPage] = useState(1);
   const ordenesQuery = useQuery({
     queryKey: ["cliente", "ordenes"],
     queryFn: () => api.get<Orden[]>("/cliente/ordenes"),
@@ -201,6 +210,7 @@ export function MisPedidos() {
     mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
       api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
     onSuccess: async (response) => {
+      setPedidosPage(1);
       setReturnNotice(
         response.estado === "pagada"
           ? {
@@ -256,7 +266,21 @@ export function MisPedidos() {
     );
   }, [confirmReturnMutation, searchParams, setSearchParams]);
 
-  const pedidos = (ordenesQuery.data ?? []).filter((orden) => orden.tipo_orden === "venta" || orden.tipo_orden === "mixta");
+  const pedidos = useMemo(
+    () => (ordenesQuery.data ?? []).filter((orden) => orden.tipo_orden === "venta" || orden.tipo_orden === "mixta"),
+    [ordenesQuery.data],
+  );
+  const activeShippingPedidos = useMemo(() => pedidos.filter(hasActiveShippingTracking), [pedidos]);
+  const pedidosTotalPages = Math.max(1, Math.ceil(pedidos.length / MIS_PEDIDOS_POR_PAGINA));
+  const pedidosPagina = useMemo(() => {
+    const safePage = Math.min(Math.max(1, pedidosPage), pedidosTotalPages);
+    const start = (safePage - 1) * MIS_PEDIDOS_POR_PAGINA;
+    return pedidos.slice(start, start + MIS_PEDIDOS_POR_PAGINA);
+  }, [pedidos, pedidosPage, pedidosTotalPages]);
+
+  useEffect(() => {
+    setPedidosPage((prev) => Math.min(prev, pedidosTotalPages));
+  }, [pedidosTotalPages]);
 
   return (
     <section className="catalog-page catalog-canje-page">
@@ -296,6 +320,16 @@ export function MisPedidos() {
           </div>
         ) : null}
 
+        {activeShippingPedidos.length > 0 ? (
+          <div className="store-orders-active-shipping" role="status" aria-live="polite">
+            <span className="store-orders-active-dot" aria-hidden="true" />
+            <div>
+              <strong>{activeShippingPedidos.length === 1 ? "Tenes un envio en seguimiento" : `Tenes ${activeShippingPedidos.length} envios en seguimiento`}</strong>
+              <p>Revisa esta pantalla para ver como va progresando hasta que sea entregado.</p>
+            </div>
+          </div>
+        ) : null}
+
         {ordenesQuery.isLoading ? (
           <div className="catalog-skeleton store-skeleton" />
         ) : pedidos.length === 0 ? (
@@ -304,42 +338,52 @@ export function MisPedidos() {
             <Link className="product-card-btn product-card-btn-canjear" to="/tienda">Ir a tienda</Link>
           </div>
         ) : (
-          <div className="store-orders-list">
-            {pedidos.map((orden) => (
-              <article key={orden.id} className="store-order-card">
-                <div className="store-order-head">
-                  <div>
-                    <p className="store-order-title">Pedido #{orden.id}</p>
-                    <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
+          <>
+            <div className="store-orders-list">
+              {pedidosPagina.map((orden) => (
+                <article key={orden.id} className="store-order-card">
+                  <div className="store-order-head">
+                    <div>
+                      <p className="store-order-title">Pedido #{orden.id}</p>
+                      <p className="store-order-muted">{dateLabel(orden.created_at)} - {orden.total_unidades} producto(s)</p>
+                    </div>
+                    <div className="store-order-meta">
+                      <span className={`store-order-status${estadoPedidoClass(orden.estado)}`}>
+                        {estadoPedidoLabel(orden.estado)}
+                      </span>
+                      <strong>{money(orden.total_dinero)}</strong>
+                    </div>
                   </div>
-                  <div className="store-order-meta">
-                    <span className={`store-order-status${estadoPedidoClass(orden.estado)}`}>
-                      {estadoPedidoLabel(orden.estado)}
-                    </span>
-                    <strong>{money(orden.total_dinero)}</strong>
-                  </div>
-                </div>
-                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <span className="store-order-muted">Pago: {paymentMethodLabel(orden.pago?.metodo)}</span>
-                  <div className="catalog-float-toast-actions" style={{ gap: "0.5rem", margin: 0 }}>
-                    {canContinueOnlinePayment(orden) ? (
-                      <Link
-                        to={`/carrito-tienda?pagar_orden=${orden.id}`}
-                        className="catalog-float-toast-btn-primary"
-                        style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}
-                      >
-                        Continuar pago
+                  <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+                    <span className="store-order-muted">Pago: {paymentMethodLabel(orden.pago?.metodo)}</span>
+                    <div className="catalog-float-toast-actions" style={{ gap: "0.5rem", margin: 0 }}>
+                      {canContinueOnlinePayment(orden) ? (
+                        <Link
+                          to={`/carrito-tienda?pagar_orden=${orden.id}`}
+                          className="catalog-float-toast-btn-primary"
+                          style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}
+                        >
+                          Continuar pago
+                        </Link>
+                      ) : null}
+                      <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
+                        Ver comprobante
                       </Link>
-                    ) : null}
-                    <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
-                      Ver comprobante
-                    </Link>
+                    </div>
                   </div>
-                </div>
-                <OrderShippingTracking orden={orden} />
-              </article>
-            ))}
-          </div>
+                  <OrderShippingTracking orden={orden} />
+                </article>
+              ))}
+            </div>
+            <CatalogPagination
+              page={pedidosPage}
+              totalPages={pedidosTotalPages}
+              totalItems={pedidos.length}
+              pageSize={MIS_PEDIDOS_POR_PAGINA}
+              itemLabel="pedidos"
+              onPageChange={setPedidosPage}
+            />
+          </>
         )}
       </div>
     </section>

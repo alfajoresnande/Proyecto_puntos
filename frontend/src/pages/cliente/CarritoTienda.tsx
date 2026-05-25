@@ -678,6 +678,7 @@ export function CarritoTienda() {
 
   if (confirmed) {
     const estadoLabel = estadoPedidoLabel(confirmed.estado);
+    const isShippingConfirmed = deliveryMethod === "envio" || Boolean(confirmed.envio);
     if (paymentApproved || confirmed.estado === "pagada") {
       return (
         <section className="catalog-page catalog-canje-page">
@@ -697,6 +698,11 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
+              {isShippingConfirmed ? (
+                <p className="checkout-approved-text checkout-shipping-followup">
+                  Podes seguir el estado de tu envio desde Mis pedidos.
+                </p>
+              ) : null}
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
                   Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
@@ -706,8 +712,13 @@ export function CarritoTienda() {
 
             <div className="catalog-confirm-branch-detail catalog-canje-block">
               <p><strong>Estado:</strong> {estadoLabel}</p>
+              {isShippingConfirmed ? (
+                <p className="catalog-confirm-hint">
+                  El seguimiento queda activo hasta que el pedido sea marcado como entregado.
+                </p>
+              ) : null}
               <div className="catalog-float-toast-actions catalog-canje-actions">
-                <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
+                <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
                 <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
               </div>
             </div>
@@ -747,6 +758,11 @@ export function CarritoTienda() {
               <p className="checkout-approved-text">
                 Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.
               </p>
+              {isShippingConfirmed ? (
+                <p className="checkout-approved-text checkout-shipping-followup">
+                  Podes seguir el estado de tu envio desde Mis pedidos.
+                </p>
+              ) : null}
               {(confirmed.total_puntos_ganados ?? 0) > 0 ? (
                 <p className="checkout-approved-text" style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.5rem" }}>
                   Se acreditaron {confirmed.total_puntos_ganados} puntos en tu cuenta.
@@ -774,6 +790,11 @@ export function CarritoTienda() {
           )}
           <div className="catalog-confirm-branch-detail catalog-canje-block">
             <p><strong>Estado:</strong> {estadoLabel}</p>
+            {isShippingConfirmed ? (
+              <p className="catalog-confirm-hint">
+                Cuando se confirme el pago, vas a poder seguir el envio desde Mis pedidos hasta que sea entregado.
+              </p>
+            ) : null}
             {shouldPollMercadoPagoOrder ? (
               <p className="catalog-confirm-hint">
                 Si Mercado Pago abre la app, termina el pago ahi. Cuando llegue la confirmacion, esta pantalla se actualiza sola.
@@ -796,7 +817,7 @@ export function CarritoTienda() {
               <p>{confirmed.pago.setup_message}</p>
             ) : null}
             <div className="catalog-float-toast-actions catalog-canje-actions">
-              <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">Ver mis pedidos</Link>
+              <Link to="/mis-pedidos" className="catalog-float-toast-btn-primary">{isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}</Link>
               <Link to="/tienda" className="catalog-float-toast-btn-secondary">Volver a tienda</Link>
             </div>
           </div>

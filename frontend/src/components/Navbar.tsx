@@ -32,6 +32,17 @@ type StaffOrderNav = {
   } | null;
 };
 
+type ClienteOrderNav = {
+  id: number;
+  estado: string;
+  direccion_envio?: unknown | null;
+};
+
+function hasActiveShippingOrder(order: ClienteOrderNav): boolean {
+  const estado = order.estado.trim().toLowerCase();
+  return Boolean(order.direccion_envio) && !["entregada", "cancelada", "expirada"].includes(estado);
+}
+
 export function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -66,6 +77,16 @@ export function Navbar() {
     queryFn: () => api.get<SupportConversationNav[]>("/soporte/conversaciones"),
     enabled: authReady && canSeeSupport,
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
+  });
+  const clienteOrdersQuery = useQuery({
+    queryKey: ["cliente", "ordenes"],
+    queryFn: () => api.get<ClienteOrderNav[]>("/cliente/ordenes"),
+    enabled: authReady && canSeeCliente,
+    refetchInterval: (query) => {
+      const orders = query.state.data ?? [];
+      return orders.some(hasActiveShippingOrder) ? 5000 : 15000;
+    },
     refetchIntervalInBackground: true,
   });
   const staffOrdersQuery = useQuery({
@@ -104,7 +125,11 @@ export function Navbar() {
       }).length,
     [staffOrdersQuery.data],
   );
-  const navbarMobileBadgeCount = supportUnreadCount + (canSeeVendedor ? staffOrdersAttentionCount : 0);
+  const activeShippingOrdersCount = useMemo(
+    () => (clienteOrdersQuery.data ?? []).filter(hasActiveShippingOrder).length,
+    [clienteOrdersQuery.data],
+  );
+  const navbarMobileBadgeCount = supportUnreadCount + (canSeeVendedor ? staffOrdersAttentionCount : 0) + (canSeeCliente ? activeShippingOrdersCount : 0);
   const isRedemptionCatalog = location.pathname.startsWith("/catalogo");
   const activeCart = isRedemptionCatalog
     ? {
@@ -135,6 +160,21 @@ export function Navbar() {
           <span className="navbar-link-badge" aria-label={`${unreadCount} mensajes sin leer`}>
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  function renderShippingOrdersLabel(label = "Mis Pedidos") {
+    return (
+      <span className="navbar-link-content">
+        <span>{label}</span>
+        {activeShippingOrdersCount > 0 ? (
+          <span
+            className="navbar-link-dot"
+            aria-label={`${activeShippingOrdersCount} envio${activeShippingOrdersCount === 1 ? "" : "s"} en seguimiento`}
+            title={`${activeShippingOrdersCount} envio${activeShippingOrdersCount === 1 ? "" : "s"} en seguimiento`}
+          />
         ) : null}
       </span>
     );
@@ -329,7 +369,7 @@ export function Navbar() {
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
                           >
-                            Mis Pedidos
+                            {renderShippingOrdersLabel()}
                           </Link>
                           <Link
                             to="/soporte"
@@ -483,7 +523,7 @@ export function Navbar() {
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
                     <Link to="/mis-direcciones" className="navbar-link" onClick={closeMenu}>Mis Direcciones</Link>
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
-                    <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>Mis Pedidos</Link>
+                    <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>{renderShippingOrdersLabel()}</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                   </div>
                 ) : null}

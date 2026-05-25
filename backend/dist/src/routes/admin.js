@@ -105,7 +105,7 @@ const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("admin", "superAdmin"));
 function requireSuperAdmin(req, res, next) {
     if (req.user?.rol !== "superAdmin") {
-        res.status(403).json({ error: "Solo superAdmin puede usar esta funcion." });
+        res.status(403).json({ error: "Contacta a soporte para acceder a esta funcion." });
         return;
     }
     next();
@@ -466,7 +466,7 @@ router.post("/usuarios", async (req, res) => {
     }
     const { nombre, email, password, rol, tipo_cliente, descuento_porcentaje, dni, fecha_nacimiento, localidad, provincia } = parsed.data;
     if (rol === "admin" && req.user?.rol !== "superAdmin") {
-        res.status(403).json({ error: "Solo superAdmin puede crear administradores." });
+        res.status(403).json({ error: "Contacta a soporte para crear administradores." });
         return;
     }
     if (rol === "cliente" && !dni) {
@@ -539,7 +539,7 @@ router.put("/usuarios/:id", async (req, res) => {
     }
     const { nombre, email, rol, tipo_cliente, descuento_porcentaje, dni, telefono, fecha_nacimiento, localidad, provincia } = parsed.data;
     if (rol === "admin" && req.user?.rol !== "superAdmin") {
-        res.status(403).json({ error: "Solo superAdmin puede asignar rol administrador." });
+        res.status(403).json({ error: "Contacta a soporte para editar o crear administradores." });
         return;
     }
     if (rol === "cliente" && !dni?.trim()) {

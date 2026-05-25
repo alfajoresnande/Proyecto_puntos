@@ -1082,6 +1082,16 @@
   padding: 0 0.35rem;
 }
 
+.navbar-link-dot {
+  background: #D7332F;
+  border: 2px solid #FFF8F0;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(215, 51, 47, 0.16), 0 4px 10px rgba(74, 25, 17, 0.24);
+  display: inline-flex;
+  height: 0.72rem;
+  width: 0.72rem;
+}
+
 .navbar-link:hover,
 .navbar-name-btn:hover,
 .navbar-logout:hover {

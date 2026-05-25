@@ -5115,7 +5115,7 @@ export function Admin() {
                               <div className="adm-user-actions">
                                 {usuario.rol === "superAdmin" || (usuario.rol === "admin" && !isSuperAdmin) ? (
                                   <span style={{ color: "#8B5A30", fontSize: "0.85rem" }}>
-                                    {usuario.rol === "superAdmin" ? "Solo gestionable por superAdmin" : "Solo superAdmin puede editar admins"}
+                                    Contacta a soporte para crear o editar administradores.
                                   </span>
                                 ) : (
                                   <>
