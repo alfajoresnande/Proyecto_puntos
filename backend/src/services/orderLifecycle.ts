@@ -408,6 +408,7 @@ export async function cancelOrderUrgently(
 
   const previousState = order.estado;
   if (previousState === "cancelada") {
+    await removerPuntosAcreditadosPorCompra(conn, orderId, order.usuario_id);
     return {
       ok: true,
       orderId,

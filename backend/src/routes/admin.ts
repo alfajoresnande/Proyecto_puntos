@@ -3272,7 +3272,7 @@ router.post("/puntos/reconciliar-saldos", requireAuth, requireRole("admin"), asy
     const resultados: Array<{ usuario_id: number; saldo_anterior: number; saldo_nuevo: number }> = [];
     for (const row of usuarios) {
       const usuarioId = Number(row.usuario_id);
-      const saldoCalculado = Number(row.saldo_calculado);
+      const saldoCalculado = Math.max(0, Number(row.saldo_calculado));
       const actual = await qOne<{ puntos_saldo: number }>(
         conn,
         "SELECT puntos_saldo FROM usuarios WHERE id = ?",

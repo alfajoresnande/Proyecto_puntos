@@ -3,6 +3,7 @@ import { pool, qAll, qRun } from "../db";
 /**
  * Script de reconciliación global de saldos de puntos.
  * Ejecuta este script para sincronizar usuarios.puntos_saldo con la suma de movimientos_puntos.
+ * El saldo visible nunca baja de 0, aunque el historial tenga ajustes negativos.
  */
 async function reconcileAllUsers() {
   console.log("Starting global points reconciliation...");
@@ -18,8 +19,8 @@ async function reconcileAllUsers() {
         FROM movimientos_puntos
         GROUP BY usuario_id
       ) mp ON mp.usuario_id = u.id
-      SET u.puntos_saldo = COALESCE(mp.saldo_calculado, 0)
-      WHERE u.puntos_saldo <> COALESCE(mp.saldo_calculado, 0)
+      SET u.puntos_saldo = GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
+      WHERE u.puntos_saldo <> GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
     `);
 
     const affected = (result as any).affectedRows || 0;

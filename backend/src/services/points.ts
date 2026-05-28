@@ -24,8 +24,8 @@ function isDuplicateKeyError(error: unknown): boolean {
  *   FROM movimientos_puntos
  *   GROUP BY usuario_id
  * ) mp ON mp.usuario_id = u.id
- * SET u.puntos_saldo = COALESCE(mp.saldo_calculado, 0)
- * WHERE u.puntos_saldo <> COALESCE(mp.saldo_calculado, 0);
+ * SET u.puntos_saldo = GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
+ * WHERE u.puntos_saldo <> GREATEST(COALESCE(mp.saldo_calculado, 0), 0);
  */
 
 /**
@@ -43,7 +43,7 @@ export async function recalcularSaldoPuntosUsuario(
      WHERE usuario_id = ?`,
     [usuarioId],
   );
-  const saldoCalculado = Number(row?.saldo ?? 0);
+  const saldoCalculado = Math.max(0, Number(row?.saldo ?? 0));
 
   const previo = await qOne<{ puntos_saldo: number }>(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
   if (previo && Number(previo.puntos_saldo) !== saldoCalculado) {
@@ -125,14 +125,30 @@ export async function removerPuntosAcreditadosPorCompra(
   orderId: number,
   usuarioId: number | null | undefined,
 ): Promise<void> {
-  await qRun(
+  const acreditado = await qOne<{ total: number }>(
     conn,
-    "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
+    `SELECT COALESCE(SUM(puntos), 0) AS total
+     FROM movimientos_puntos
+     WHERE referencia_tipo = 'ordenes'
+       AND referencia_id = ?
+       AND tipo = 'acreditacion_compra'
+       AND puntos > 0`,
     [orderId],
   );
-  if (usuarioId) {
-    await recalcularSaldoPuntosUsuario(conn, Number(usuarioId));
+  const puntosAcreditados = Number(acreditado?.total ?? 0);
+  if (!usuarioId || puntosAcreditados <= 0) {
+    if (usuarioId) await recalcularSaldoPuntosUsuario(conn, Number(usuarioId));
+    return;
   }
+
+  await registrarMovimientoPuntos(conn, {
+    usuarioId: Number(usuarioId),
+    tipo: "ajuste",
+    puntos: -puntosAcreditados,
+    descripcion: `Descuento de puntos por cancelacion de orden #${orderId}`,
+    referenciaId: orderId,
+    referenciaTipo: "ordenes_cancelacion",
+  });
 }
 
 /**

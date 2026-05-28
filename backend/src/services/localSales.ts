@@ -11,7 +11,7 @@ import {
 } from "./cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
 import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
-import { acreditarPuntosPorCompra, removerPuntosAcreditadosPorCompra } from "./points";
+import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, removerPuntosAcreditadosPorCompra } from "./points";
 import {
   finalizeFlavorStockForCheckoutItems,
   finalizeStockForCheckoutItems,
@@ -642,7 +642,14 @@ async function updateLocalSaleCajaMovimiento(
 }
 
 async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId: number | null) {
-  await removerPuntosAcreditadosPorCompra(conn, orderId, usuarioId);
+  await qRun(
+    conn,
+    "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
+    [orderId],
+  );
+  if (usuarioId) {
+    await recalcularSaldoPuntosUsuario(conn, usuarioId);
+  }
 }
 
 async function getExistingLocalSaleOrder(conn: Queryable, orderId: number): Promise<ExistingLocalSaleOrder> {
@@ -1007,7 +1014,7 @@ export async function cancelLocalSale(
     ordenId: input.orderId,
   });
 
-  await removeLocalSalePoints(conn, input.orderId, existing.usuario_id);
+  await removerPuntosAcreditadosPorCompra(conn, input.orderId, existing.usuario_id);
   await qRun(conn, "UPDATE pagos SET estado = 'reembolsado' WHERE orden_id = ? AND estado IN ('iniciado', 'aprobado')", [input.orderId]);
   await reverseCajaMovimientoForOrder(conn, {
     orderId: input.orderId,

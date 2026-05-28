@@ -1605,6 +1605,43 @@ async function ensureAcreditacionPuntosSchema() {
        AND ci.puntaje_al_comprar_unitario = 0
        AND COALESCE(p.puntaje_al_comprar, 0) > 0`
   ).catch(() => {});
+  await pool.query(
+    `INSERT IGNORE INTO movimientos_puntos
+       (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
+     SELECT
+       o.usuario_id,
+       'ajuste',
+       -SUM(mp.puntos),
+       CONCAT('Descuento de puntos por cancelacion de orden #', o.id),
+       o.id,
+       'ordenes_cancelacion'
+     FROM ordenes o
+     JOIN movimientos_puntos mp
+       ON mp.referencia_tipo = 'ordenes'
+      AND mp.referencia_id = o.id
+      AND mp.tipo = 'acreditacion_compra'
+      AND mp.puntos > 0
+     WHERE o.estado = 'cancelada'
+       AND o.usuario_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1
+         FROM movimientos_puntos mx
+         WHERE mx.referencia_tipo = 'ordenes_cancelacion'
+           AND mx.referencia_id = o.id
+           AND mx.tipo = 'ajuste'
+       )
+     GROUP BY o.id, o.usuario_id`
+  ).catch(() => {});
+  await pool.query(
+    `UPDATE usuarios u
+     LEFT JOIN (
+       SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
+       FROM movimientos_puntos
+       GROUP BY usuario_id
+     ) mp ON mp.usuario_id = u.id
+     SET u.puntos_saldo = GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
+     WHERE u.puntos_saldo <> GREATEST(COALESCE(mp.saldo_calculado, 0), 0)`
+  ).catch(() => {});
 }
 
 async function ensureCashOperationsSchema() {
