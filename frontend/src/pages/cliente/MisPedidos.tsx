@@ -447,9 +447,11 @@ export function MisPedidos() {
                           Cancelar compra
                         </button>
                       ) : null}
-                      <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
-                        Ver comprobante
-                      </Link>
+                      {!((orden.estado.trim().toLowerCase() === "cancelada" || orden.estado.trim().toLowerCase() === "expirada") && !paymentWasCompleted(orden)) ? (
+                        <Link to={`/mis-pedidos/${orden.id}`} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}>
+                          Ver comprobante
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
                   <OrderShippingTracking orden={orden} />

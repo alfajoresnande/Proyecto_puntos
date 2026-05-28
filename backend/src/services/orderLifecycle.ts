@@ -369,6 +369,8 @@ export async function rejectOrExpirePendingOrder(
     `Devolucion puntos por ${nextState} orden #${orderId}`,
     creadoPor,
   );
+  // Remover puntos acreditados por compra si la orden fue pagada previamente
+  await removerPuntosAcreditadosPorCompra(conn, orderId, order.usuario_id);
   await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
   await qRun(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [nextState, orderId]);
   return { ok: true, orderId, previousState: order.estado, state: nextState, changed: true };
