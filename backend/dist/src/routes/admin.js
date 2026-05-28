@@ -1476,6 +1476,14 @@ router.get("/ordenes", async (_req, res) => {
                 WHERE mp.referencia_tipo = 'ordenes'
                   AND mp.referencia_id = o.id
                   AND mp.tipo = 'acreditacion_compra'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM movimientos_puntos cancelacion
+                    WHERE cancelacion.usuario_id = mp.usuario_id
+                      AND cancelacion.referencia_tipo = 'ordenes_cancelacion'
+                      AND cancelacion.referencia_id = mp.referencia_id
+                      AND cancelacion.tipo = 'ajuste'
+                  )
               ) AS puntos_acreditados,
               o.notas, o.created_at, o.updated_at
      FROM ordenes o
@@ -1785,12 +1793,36 @@ router.patch("/ordenes/:id", async (req, res) => {
     }
 });
 router.get("/movimientos", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT m.id, m.tipo, m.puntos, m.descripcion, m.referencia_tipo, m.created_at,
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT m.id,
+            CASE
+              WHEN m.tipo = 'ajuste' AND m.referencia_tipo = 'ordenes_cancelacion'
+                THEN 'cancelacion_compra'
+              ELSE m.tipo
+            END AS tipo,
+            m.puntos,
+            CASE
+              WHEN m.tipo = 'ajuste' AND m.referencia_tipo = 'ordenes_cancelacion'
+                THEN COALESCE(NULLIF(m.descripcion, ''), CONCAT('Anulacion de puntos por cancelacion de compra #', m.referencia_id))
+              ELSE m.descripcion
+            END AS descripcion,
+            m.referencia_tipo, m.created_at,
             u.nombre AS usuario_nombre, u.email AS usuario_email,
             a.nombre AS admin_nombre
      FROM movimientos_puntos m
      JOIN usuarios u ON u.id = m.usuario_id
      LEFT JOIN usuarios a ON a.id = m.creado_por
+     WHERE NOT (
+       m.tipo = 'acreditacion_compra'
+       AND m.referencia_tipo = 'ordenes'
+       AND EXISTS (
+         SELECT 1
+         FROM movimientos_puntos cancelacion
+         WHERE cancelacion.usuario_id = m.usuario_id
+           AND cancelacion.referencia_tipo = 'ordenes_cancelacion'
+           AND cancelacion.referencia_id = m.referencia_id
+           AND cancelacion.tipo = 'ajuste'
+       )
+     )
      ORDER BY m.created_at DESC LIMIT 500`);
     res.json(rows);
 });
@@ -2762,7 +2794,7 @@ router.post("/puntos/reconciliar-saldos", auth_1.requireAuth, (0, auth_1.require
         const resultados = [];
         for (const row of usuarios) {
             const usuarioId = Number(row.usuario_id);
-            const saldoCalculado = Number(row.saldo_calculado);
+            const saldoCalculado = Math.max(0, Number(row.saldo_calculado));
             const actual = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
             const saldoAnterior = Number(actual?.puntos_saldo ?? 0);
             if (saldoAnterior !== saldoCalculado) {

@@ -871,6 +871,7 @@ function formatMovimientoTipo(tipo: string): string {
     referido_invitado: "Puntos por registro referido",
     canje_producto: "Canje de producto",
     devolucion_canje: "Devolucion por canje",
+    cancelacion_compra: "Anulacion por cancelacion",
     ajuste: "Ajuste",
   };
   return labels[tipo] ?? tipo.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());

@@ -1020,6 +1020,14 @@ router.get("/ordenes", async (_req, res, next) => {
                 WHERE mp.referencia_tipo = 'ordenes'
                   AND mp.referencia_id = o.id
                   AND mp.tipo = 'acreditacion_compra'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM movimientos_puntos cancelacion
+                    WHERE cancelacion.usuario_id = mp.usuario_id
+                      AND cancelacion.referencia_tipo = 'ordenes_cancelacion'
+                      AND cancelacion.referencia_id = mp.referencia_id
+                      AND cancelacion.tipo = 'ajuste'
+                  )
               ) AS puntos_acreditados,
               o.notas, o.created_at, o.updated_at
        FROM ordenes o

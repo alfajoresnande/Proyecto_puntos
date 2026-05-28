@@ -219,6 +219,8 @@ async function rejectOrExpirePendingOrder(conn, { orderId, nextState, provider, 
         }
     }
     await refundOrderPointsIfReserved(conn, order, `Devolucion puntos por ${nextState} orden #${orderId}`, creadoPor);
+    // Remover puntos acreditados por compra si la orden fue pagada previamente
+    await (0, points_1.removerPuntosAcreditadosPorCompra)(conn, orderId, order.usuario_id);
     await updatePaymentRows(conn, { orderId, provider, providerPaymentId, estado: "rechazado", payload });
     await (0, db_1.qRun)(conn, "UPDATE ordenes SET estado = ? WHERE id = ?", [nextState, orderId]);
     return { ok: true, orderId, previousState: order.estado, state: nextState, changed: true };
@@ -234,6 +236,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
     }
     const previousState = order.estado;
     if (previousState === "cancelada") {
+        await (0, points_1.removerPuntosAcreditadosPorCompra)(conn, orderId, order.usuario_id);
         return {
             ok: true,
             orderId,
@@ -295,6 +298,7 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
             }
         }
     }
+    await (0, points_1.removerPuntosAcreditadosPorCompra)(conn, orderId, order.usuario_id);
     if (Number(order.total_puntos ?? 0) > 0 && order.usuario_id) {
         await (0, points_1.registrarMovimientoPuntos)(conn, {
             usuarioId: Number(order.usuario_id),
@@ -305,7 +309,6 @@ async function cancelOrderUrgently(conn, { orderId, reason, refundMessage, cread
             referenciaTipo: "ordenes",
             creadoPor: creadoPor ?? undefined,
         });
-        await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(order.usuario_id));
     }
     const latestPayment = await (0, db_1.qOne)(conn, `SELECT estado, monto
      FROM pagos

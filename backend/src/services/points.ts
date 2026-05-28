@@ -145,7 +145,7 @@ export async function removerPuntosAcreditadosPorCompra(
     usuarioId: Number(usuarioId),
     tipo: "ajuste",
     puntos: -puntosAcreditados,
-    descripcion: `Descuento de puntos por cancelacion de orden #${orderId}`,
+    descripcion: `Anulacion de puntos por cancelacion de compra #${orderId}`,
     referenciaId: orderId,
     referenciaTipo: "ordenes_cancelacion",
   });

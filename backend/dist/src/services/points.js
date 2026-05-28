@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.recalcularSaldoPuntosUsuario = recalcularSaldoPuntosUsuario;
 exports.registrarMovimientoPuntos = registrarMovimientoPuntos;
+exports.removerPuntosAcreditadosPorCompra = removerPuntosAcreditadosPorCompra;
 exports.acreditarPuntosPorCompra = acreditarPuntosPorCompra;
 const db_1 = require("../db");
 const securityMonitor_1 = require("../securityMonitor");
@@ -24,8 +25,8 @@ function isDuplicateKeyError(error) {
  *   FROM movimientos_puntos
  *   GROUP BY usuario_id
  * ) mp ON mp.usuario_id = u.id
- * SET u.puntos_saldo = COALESCE(mp.saldo_calculado, 0)
- * WHERE u.puntos_saldo <> COALESCE(mp.saldo_calculado, 0);
+ * SET u.puntos_saldo = GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
+ * WHERE u.puntos_saldo <> GREATEST(COALESCE(mp.saldo_calculado, 0), 0);
  */
 /**
  * Recalcula el saldo de puntos de un usuario sumando todos sus movimientos.
@@ -35,7 +36,7 @@ async function recalcularSaldoPuntosUsuario(conn, usuarioId) {
     const row = await (0, db_1.qOne)(conn, `SELECT COALESCE(SUM(puntos), 0) AS saldo
      FROM movimientos_puntos
      WHERE usuario_id = ?`, [usuarioId]);
-    const saldoCalculado = Number(row?.saldo ?? 0);
+    const saldoCalculado = Math.max(0, Number(row?.saldo ?? 0));
     const previo = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
     if (previo && Number(previo.puntos_saldo) !== saldoCalculado) {
         console.log(`[recalcularSaldoPuntosUsuario] Corrigiendo saldo usuario #${usuarioId}: ${previo.puntos_saldo} -> ${saldoCalculado}`);
@@ -87,6 +88,28 @@ async function registrarMovimientoPuntos(conn, params) {
     }
     // SIEMPRE recalcular saldo tras un intento de movimiento (sea nuevo o duplicado ignorado)
     return await recalcularSaldoPuntosUsuario(conn, usuarioId);
+}
+async function removerPuntosAcreditadosPorCompra(conn, orderId, usuarioId) {
+    const acreditado = await (0, db_1.qOne)(conn, `SELECT COALESCE(SUM(puntos), 0) AS total
+     FROM movimientos_puntos
+     WHERE referencia_tipo = 'ordenes'
+       AND referencia_id = ?
+       AND tipo = 'acreditacion_compra'
+       AND puntos > 0`, [orderId]);
+    const puntosAcreditados = Number(acreditado?.total ?? 0);
+    if (!usuarioId || puntosAcreditados <= 0) {
+        if (usuarioId)
+            await recalcularSaldoPuntosUsuario(conn, Number(usuarioId));
+        return;
+    }
+    await registrarMovimientoPuntos(conn, {
+        usuarioId: Number(usuarioId),
+        tipo: "ajuste",
+        puntos: -puntosAcreditados,
+        descripcion: `Anulacion de puntos por cancelacion de compra #${orderId}`,
+        referenciaId: orderId,
+        referenciaTipo: "ordenes_cancelacion",
+    });
 }
 /**
  * Acredita puntos por compra de una orden pagada.

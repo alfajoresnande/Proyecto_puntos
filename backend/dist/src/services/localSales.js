@@ -669,7 +669,7 @@ async function cancelLocalSale(conn, input) {
         creadoPor: input.creadoPor,
         ordenId: input.orderId,
     });
-    await removeLocalSalePoints(conn, input.orderId, existing.usuario_id);
+    await (0, points_1.removerPuntosAcreditadosPorCompra)(conn, input.orderId, existing.usuario_id);
     await (0, db_1.qRun)(conn, "UPDATE pagos SET estado = 'reembolsado' WHERE orden_id = ? AND estado IN ('iniciado', 'aprobado')", [input.orderId]);
     await (0, cashRegister_1.reverseCajaMovimientoForOrder)(conn, {
         orderId: input.orderId,

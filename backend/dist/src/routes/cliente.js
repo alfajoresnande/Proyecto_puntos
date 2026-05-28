@@ -967,9 +967,35 @@ router.get("/mi-codigo", async (req, res) => {
     res.json({ codigo: user?.codigo_invitacion, total_invitados: total?.c ?? 0 });
 });
 router.get("/movimientos", async (req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, tipo, puntos, descripcion, referencia_tipo, created_at
-     FROM movimientos_puntos WHERE usuario_id = ?
-     ORDER BY created_at DESC LIMIT 100`, [req.user.id]);
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT mp.id,
+            CASE
+              WHEN mp.tipo = 'ajuste' AND mp.referencia_tipo = 'ordenes_cancelacion'
+                THEN 'cancelacion_compra'
+              ELSE mp.tipo
+            END AS tipo,
+            mp.puntos,
+            CASE
+              WHEN mp.tipo = 'ajuste' AND mp.referencia_tipo = 'ordenes_cancelacion'
+                THEN COALESCE(NULLIF(mp.descripcion, ''), CONCAT('Anulacion de puntos por cancelacion de compra #', mp.referencia_id))
+              ELSE mp.descripcion
+            END AS descripcion,
+            mp.referencia_tipo,
+            mp.created_at
+     FROM movimientos_puntos mp
+     WHERE mp.usuario_id = ?
+       AND NOT (
+         mp.tipo = 'acreditacion_compra'
+         AND mp.referencia_tipo = 'ordenes'
+         AND EXISTS (
+           SELECT 1
+           FROM movimientos_puntos cancelacion
+           WHERE cancelacion.usuario_id = mp.usuario_id
+             AND cancelacion.referencia_tipo = 'ordenes_cancelacion'
+             AND cancelacion.referencia_id = mp.referencia_id
+             AND cancelacion.tipo = 'ajuste'
+         )
+       )
+     ORDER BY mp.created_at DESC LIMIT 100`, [req.user.id]);
     res.json(rows);
 });
 router.get("/canjes", async (req, res) => {
