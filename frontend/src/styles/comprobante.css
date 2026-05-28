@@ -1,7 +1,7 @@
-.comprobante-wrapper {
-  --ticket-paper-width: 58mm;
-  --ticket-printable-width: 48mm;
+:root {
+  --ticket-paper-width: 48mm;
   --ticket-print-padding-y: 1.2mm;
+  --ticket-print-padding-x: 1mm;
 }
 
 .comprobante-wrapper {
@@ -206,14 +206,14 @@
 }
 
 .comprobante-ticket {
-  width: var(--ticket-printable-width);
-  min-width: var(--ticket-printable-width);
+  width: var(--ticket-paper-width);
+  min-width: var(--ticket-paper-width);
   background: #ffffff;
   color: #111111;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  padding: var(--ticket-print-padding-y) 0;
+  padding: var(--ticket-print-padding-y) var(--ticket-print-padding-x);
   margin: 0 auto;
   box-sizing: border-box;
   font-family: "Courier New", Courier, monospace;
@@ -390,24 +390,32 @@
 
   .comprobante-ticket.comprobante-print-target {
     position: static;
-    width: var(--ticket-printable-width);
-    min-width: var(--ticket-printable-width);
+    width: var(--ticket-paper-width);
+    min-width: var(--ticket-paper-width);
     border: none;
     border-radius: 0;
     box-shadow: none;
-    padding: var(--ticket-print-padding-y) 0;
-    margin: 0 auto;
+    padding: var(--ticket-print-padding-y) var(--ticket-print-padding-x);
+    margin: 0;
+  }
+
+  html[data-print-format="ticket"] {
+    width: var(--ticket-paper-width);
+    min-width: var(--ticket-paper-width);
+    min-height: auto;
   }
 
   body[data-print-format="ticket"] {
     width: var(--ticket-paper-width);
     min-width: var(--ticket-paper-width);
     min-height: auto;
+    overflow: visible;
   }
 
   body[data-print-format="ticket"] .comprobante-wrapper {
     width: var(--ticket-paper-width);
-    margin: 0 auto !important;
+    min-width: var(--ticket-paper-width);
+    margin: 0 !important;
   }
 
   .comprobante-header,

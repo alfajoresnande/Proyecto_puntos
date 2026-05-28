@@ -69,6 +69,7 @@ type OrdenVendedorDetalle = {
 type PrintFormat = "a4" | "ticket";
 
 const PRINT_STYLE_ID = "comprobante-print-page-style";
+const POS58_PAGE_WIDTH = "48mm";
 
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
@@ -175,6 +176,7 @@ export function ComprobantePedidoVendedor() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.dataset.printFormat = printFormat;
     document.body.dataset.printFormat = printFormat;
 
     let style = document.getElementById(PRINT_STYLE_ID) as HTMLStyleElement | null;
@@ -186,10 +188,11 @@ export function ComprobantePedidoVendedor() {
 
     style.textContent =
       printFormat === "ticket"
-        ? "@media print { @page { size: 58mm auto; margin: 0; } }"
+        ? `@media print { @page { size: ${POS58_PAGE_WIDTH} auto; margin: 0; } }`
         : "@media print { @page { size: A4; margin: 12mm; } }";
 
     return () => {
+      delete document.documentElement.dataset.printFormat;
       delete document.body.dataset.printFormat;
       style?.remove();
     };
@@ -260,7 +263,7 @@ export function ComprobantePedidoVendedor() {
           style={{ padding: "0.5rem 1rem", height: "auto" }}
           onClick={() => updatePrintFormat("ticket")}
         >
-          Vista 58mm
+          Vista POS58
         </button>
         <button
           type="button"
@@ -268,7 +271,7 @@ export function ComprobantePedidoVendedor() {
           style={{ padding: "0.5rem 1rem", height: "auto" }}
           onClick={() => window.print()}
         >
-          {printFormat === "ticket" ? "Imprimir 58mm" : "Imprimir A4"}
+          {printFormat === "ticket" ? "Imprimir POS58" : "Imprimir A4"}
         </button>
       </div>
 
