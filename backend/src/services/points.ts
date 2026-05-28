@@ -120,6 +120,21 @@ export async function registrarMovimientoPuntos(
   return await recalcularSaldoPuntosUsuario(conn, usuarioId);
 }
 
+export async function removerPuntosAcreditadosPorCompra(
+  conn: Queryable,
+  orderId: number,
+  usuarioId: number | null | undefined,
+): Promise<void> {
+  await qRun(
+    conn,
+    "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
+    [orderId],
+  );
+  if (usuarioId) {
+    await recalcularSaldoPuntosUsuario(conn, Number(usuarioId));
+  }
+}
+
 /**
  * Acredita puntos por compra de una orden pagada.
  */

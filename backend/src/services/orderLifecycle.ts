@@ -8,7 +8,7 @@ import {
   restoreFlavorStockForCheckoutItems,
   restoreStockForCheckoutItems,
 } from "./stock";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "./points";
+import { acreditarPuntosPorCompra, registrarMovimientoPuntos, removerPuntosAcreditadosPorCompra } from "./points";
 import { reverseCajaMovimientoForOrder } from "./cashRegister";
 
 export type OrderState =
@@ -472,6 +472,8 @@ export async function cancelOrderUrgently(
     }
   }
 
+  await removerPuntosAcreditadosPorCompra(conn, orderId, order.usuario_id);
+
   if (Number(order.total_puntos ?? 0) > 0 && order.usuario_id) {
     await registrarMovimientoPuntos(conn, {
       usuarioId: Number(order.usuario_id),
@@ -482,7 +484,6 @@ export async function cancelOrderUrgently(
       referenciaTipo: "ordenes",
       creadoPor: creadoPor ?? undefined,
     });
-    await recalcularSaldoPuntosUsuario(conn, Number(order.usuario_id));
   }
 
   const latestPayment = await qOne<{ estado: string; monto: number }>(

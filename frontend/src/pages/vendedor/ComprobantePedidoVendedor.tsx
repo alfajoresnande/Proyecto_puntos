@@ -230,6 +230,8 @@ export function ComprobantePedidoVendedor() {
     : Math.max(0, Number(orden.total_dinero || 0) - costoEnvio);
   const puntosGanados =
     orden.items?.reduce((acc, item) => acc + Number(item.puntaje_al_comprar_unitario || 0) * Number(item.cantidad || 0), 0) || 0;
+  const isCancelledOrder = orden.estado.trim().toLowerCase() === "cancelada";
+  const shouldShowPuntosGanados = !isCancelledOrder && puntosGanados > 0;
   const receiptTitle = isLocalSale ? "Comprobante de venta local" : "Comprobante de pedido";
   const orderLabel = isLocalSale ? `Venta local #${orden.id}` : `Pedido web #${orden.id}`;
 
@@ -277,9 +279,6 @@ export function ComprobantePedidoVendedor() {
 
       {printFormat === "ticket" ? (
         <div className="comprobante-ticket comprobante-print-target">
-          <p className="comprobante-ticket-center comprobante-ticket-legal">NO VALIDO COMO FACTURA</p>
-          <div className="comprobante-ticket-divider" />
-
           <div className="comprobante-ticket-header">
             <p className="comprobante-ticket-brand">NANDE</p>
             <p className="comprobante-ticket-title">{receiptTitle}</p>
@@ -345,7 +344,7 @@ export function ComprobantePedidoVendedor() {
                 <span>{orden.total_puntos} pts</span>
               </div>
             ) : null}
-            {puntosGanados > 0 ? (
+            {shouldShowPuntosGanados ? (
               <div className="comprobante-ticket-row">
                 <span>Puntos ganados</span>
                 <span>+{puntosGanados} pts</span>
@@ -488,7 +487,7 @@ export function ComprobantePedidoVendedor() {
                 <span>{orden.total_puntos} pts</span>
               </div>
             ) : null}
-            {puntosGanados > 0 ? (
+            {shouldShowPuntosGanados ? (
               <div className="comprobante-total-row">
                 <span>Puntos ganados:</span>
                 <span style={{ color: "#D4621A", fontWeight: 600 }}>+{puntosGanados} pts</span>

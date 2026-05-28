@@ -157,6 +157,7 @@ export function RealtimeBridge() {
   const userRole = useAuthStore((state) => state.user?.rol);
   const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
   const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
+  const restoreSession = useAuthStore((state) => state.restoreSession);
   const reconnectTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
   const topicsBufferRef = useRef<Set<string>>(new Set());
@@ -323,6 +324,7 @@ export function RealtimeBridge() {
           queryClient.invalidateQueries({ queryKey: ["admin", "movimientos"] }),
           queryClient.invalidateQueries({ queryKey: ["admin", "stats"] }),
         ]);
+        void restoreSession();
         return;
       }
 
@@ -401,7 +403,7 @@ export function RealtimeBridge() {
       topicsBufferRef.current.clear();
       socket?.close();
     };
-  }, [hasRestoredSession, isRestoringSession, queryClient, syncStaffOrderAlerts, token]);
+  }, [hasRestoredSession, isRestoringSession, queryClient, restoreSession, syncStaffOrderAlerts, token]);
 
   return null;
 }

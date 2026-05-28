@@ -11,7 +11,7 @@ import {
 } from "./cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
 import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario } from "./points";
+import { acreditarPuntosPorCompra, removerPuntosAcreditadosPorCompra } from "./points";
 import {
   finalizeFlavorStockForCheckoutItems,
   finalizeStockForCheckoutItems,
@@ -642,14 +642,7 @@ async function updateLocalSaleCajaMovimiento(
 }
 
 async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId: number | null) {
-  await qRun(
-    conn,
-    "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
-    [orderId],
-  );
-  if (usuarioId) {
-    await recalcularSaldoPuntosUsuario(conn, usuarioId);
-  }
+  await removerPuntosAcreditadosPorCompra(conn, orderId, usuarioId);
 }
 
 async function getExistingLocalSaleOrder(conn: Queryable, orderId: number): Promise<ExistingLocalSaleOrder> {
