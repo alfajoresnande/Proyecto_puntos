@@ -150,6 +150,8 @@ type CheckoutOrderDetail = {
   }>;
 };
 
+const LAST_APPROVED_ORDER_STORAGE_KEY = "nande-last-approved-order";
+
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
@@ -450,6 +452,9 @@ export function CarritoTienda() {
     setPaymentApproved(estadoNormalizado === "pagada");
     setMessage(null);
     setNeedsProfile(false);
+    if (estadoNormalizado === "pagada") {
+      window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(ordenId));
+    }
   }, []);
 
   const cartQuery = useQuery({
@@ -590,6 +595,9 @@ export function CarritoTienda() {
     if (resumePaymentQuery.data) {
       setConfirmed(resumePaymentQuery.data);
       setPaymentApproved(resumePaymentQuery.data.estado === "pagada");
+      if (resumePaymentQuery.data.estado === "pagada") {
+        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(resumePaymentQuery.data.orden_id));
+      }
       setPaymentNotice(null);
       setMessage(null);
       setNeedsProfile(false);
@@ -605,6 +613,16 @@ export function CarritoTienda() {
       setSearchParams(nextParams, { replace: true });
     }
   }, [resumeOrderId, resumePaymentQuery.data, resumePaymentQuery.error, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (confirmed || resumeOrderId || confirmReturnMutation.isPending) return;
+    const lastApprovedOrderId = Number(window.sessionStorage.getItem(LAST_APPROVED_ORDER_STORAGE_KEY) ?? 0);
+    if (!Number.isInteger(lastApprovedOrderId) || lastApprovedOrderId <= 0) return;
+
+    void hydrateConfirmedOrder(lastApprovedOrderId).catch(() => {
+      window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+    });
+  }, [confirmReturnMutation.isPending, confirmed, hydrateConfirmedOrder, resumeOrderId]);
 
   useEffect(() => {
     const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
@@ -674,6 +692,7 @@ export function CarritoTienda() {
     if (nextState === "pagada") {
       if (!paymentApproved || confirmed.estado !== "pagada") {
         setPaymentApproved(true);
+        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(confirmed.orden_id));
         const pts = Number(currentOrder.total_puntos_ganados ?? 0);
         setPaymentNotice({
           variant: "success",
@@ -795,6 +814,9 @@ export function CarritoTienda() {
     onSuccess: async (data) => {
       setConfirmed(data);
       setPaymentApproved(data.estado === "pagada");
+      if (data.estado === "pagada") {
+        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(data.orden_id));
+      }
       if (data.estado === "pagada") {
         const pts = Number(data.total_puntos_ganados ?? 0);
         setPaymentNotice({
@@ -1123,6 +1145,7 @@ export function CarritoTienda() {
               }
               onApproved={() => {
                 setPaymentApproved(true);
+                window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(confirmed.orden_id));
                 const pts = Number(confirmed.total_puntos_ganados ?? 0);
                 setPaymentNotice({
                   variant: "success",
