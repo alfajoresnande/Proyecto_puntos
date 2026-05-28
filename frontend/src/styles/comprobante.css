@@ -1,4 +1,10 @@
 .comprobante-wrapper {
+  --ticket-paper-width: 58mm;
+  --ticket-printable-width: 48mm;
+  --ticket-print-padding-y: 1.2mm;
+}
+
+.comprobante-wrapper {
   padding: 2rem;
   background-color: #f3f4f6;
   min-height: calc(100vh - var(--navbar-height, 80px));
@@ -23,7 +29,7 @@
 
 .comprobante-actions-ticket {
   margin-bottom: 0;
-  max-width: 58mm;
+  max-width: var(--ticket-paper-width);
   justify-content: center;
 }
 
@@ -200,20 +206,22 @@
 }
 
 .comprobante-ticket {
-  width: 58mm;
-  min-width: 58mm;
+  width: var(--ticket-printable-width);
+  min-width: var(--ticket-printable-width);
   background: #ffffff;
   color: #111111;
   border: none;
   border-radius: 0;
   box-shadow: none;
-  padding: 2.5mm 2mm;
+  padding: var(--ticket-print-padding-y) 0;
+  margin: 0 auto;
   box-sizing: border-box;
   font-family: "Courier New", Courier, monospace;
-  font-size: 10px;
-  line-height: 1.22;
+  font-size: 9.2px;
+  line-height: 1.16;
   font-weight: 500;
   text-transform: uppercase;
+  letter-spacing: 0;
 }
 
 .comprobante-ticket-header {
@@ -274,6 +282,13 @@
   align-items: baseline;
 }
 
+.comprobante-ticket-row span:last-child,
+.comprobante-ticket-head > span:last-child {
+  flex: 0 0 15mm;
+  min-width: 15mm;
+  text-align: right;
+}
+
 .comprobante-ticket-head {
   display: flex;
   justify-content: space-between;
@@ -291,6 +306,7 @@
   display: grid;
   gap: 0.06rem;
   padding: 0.22rem 0;
+  border-bottom: 1px dotted #a3a3a3;
 }
 
 .comprobante-ticket-item-top {
@@ -316,12 +332,23 @@
   margin-top: 0.22rem;
   padding-top: 0.3rem;
   border-top: 1px solid #111827;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.06em;
 }
 
 @media print {
+  html,
+  body {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -340,35 +367,68 @@
   }
 
   .comprobante-wrapper {
+    display: block;
+    width: 100%;
     background: transparent;
-    padding: 0;
+    padding: 0 !important;
+    margin: 0 !important;
     min-height: auto;
   }
 
   .comprobante-a4.comprobante-print-target {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 1px solid #ccc;
-    border-radius: 0;
-    box-shadow: none;
-    background: transparent;
-  }
-
-  .comprobante-ticket.comprobante-print-target {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 58mm;
-    min-width: 58mm;
+    position: static;
+    width: 186mm;
+    min-height: auto;
+    margin: 0 auto;
+    padding: 10mm 12mm 12mm;
     border: none;
     border-radius: 0;
     box-shadow: none;
-    padding: 2.5mm 2mm;
-    margin: 0;
+    background: #ffffff;
+    box-sizing: border-box;
+  }
+
+  .comprobante-ticket.comprobante-print-target {
+    position: static;
+    width: var(--ticket-printable-width);
+    min-width: var(--ticket-printable-width);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: var(--ticket-print-padding-y) 0;
+    margin: 0 auto;
+  }
+
+  body[data-print-format="ticket"] {
+    width: var(--ticket-paper-width);
+    min-width: var(--ticket-paper-width);
+    min-height: auto;
+  }
+
+  body[data-print-format="ticket"] .comprobante-wrapper {
+    width: var(--ticket-paper-width);
+    margin: 0 auto !important;
+  }
+
+  .comprobante-header,
+  .comprobante-grid,
+  .comprobante-table-wrapper,
+  .comprobante-footer {
+    page-break-inside: avoid;
+  }
+
+  .comprobante-table-wrapper {
+    overflow: visible;
+    border: none;
+    margin-bottom: 1.4rem;
+  }
+
+  .comprobante-table {
+    min-width: 0;
+  }
+
+  .comprobante-footer {
+    margin-top: 1.25rem;
   }
 
   .comprobante-table tr,
@@ -428,5 +488,9 @@
 
   .comprobante-actions {
     justify-content: center;
+  }
+
+  .comprobante-actions-ticket {
+    max-width: 100%;
   }
 }
