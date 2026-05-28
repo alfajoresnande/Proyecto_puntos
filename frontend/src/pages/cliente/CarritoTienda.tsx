@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { AddressSelector } from "../../components/addresses/AddressSelector";
@@ -98,6 +98,16 @@ type ProcessPaymentResponse = {
   status_detail?: string | null;
 };
 
+type MercadoPagoReturnResponse = {
+  ok: boolean;
+  orden_id: number;
+  estado: string;
+  pago_estado?: string;
+  status_detail?: string | null;
+  already_paid?: boolean;
+  provider_payment_id?: string | null;
+};
+
 type OrdenCheckoutStatus = {
   ok?: boolean;
   orden_id?: number;
@@ -117,6 +127,27 @@ type PaymentNotice = {
 type CartToast = {
   variant: "success" | "error";
   msg: string;
+};
+
+type CheckoutOrderDetail = {
+  id: number;
+  estado: string;
+  total_dinero: number;
+  direccion_envio?: {
+    costo_envio?: number | null;
+    envio?: ShippingQuote | null;
+  } | null;
+  pago?: {
+    proveedor: string;
+    metodo: "brick" | "wallet" | "qr" | "cash" | null;
+    estado: string;
+    provider_payment_id?: string | null;
+    checkout_url?: string | null;
+  } | null;
+  items?: Array<{
+    cantidad: number;
+    puntaje_al_comprar_unitario?: number | null;
+  }>;
 };
 
 function money(value: number | string | null | undefined): string {
@@ -366,6 +397,7 @@ export function CarritoTienda() {
   const { confirmToast, showToast } = useToast();
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
+  const hasProcessedReturnRef = useRef(false);
   const resumeOrderId = searchParams.get("pagar_orden");
   const sucursalId = usePickupStore((state) => state.sucursalRetiroId);
   const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
@@ -380,6 +412,45 @@ export function CarritoTienda() {
   const [deliveryMethod, setDeliveryMethod] = useState<"retiro" | "envio">("retiro");
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<UserAddress | null>(null);
+
+  const hydrateConfirmedOrder = useCallback(async (ordenId: number) => {
+    const orden = await api.get<CheckoutOrderDetail>(`/cliente/ordenes/${ordenId}`);
+    const totalPuntosGanados =
+      orden.items?.reduce(
+        (acc, item) => acc + Number(item.cantidad ?? 0) * Number(item.puntaje_al_comprar_unitario ?? 0),
+        0,
+      ) ?? 0;
+    const estadoNormalizado = orden.estado.trim().toLowerCase();
+
+    setConfirmed({
+      orden_id: Number(orden.id),
+      estado: orden.estado,
+      total_dinero: Number(orden.total_dinero ?? 0),
+      total_puntos_ganados: totalPuntosGanados,
+      costo_envio: Number(orden.direccion_envio?.costo_envio ?? orden.direccion_envio?.envio?.costo_envio ?? 0),
+      metodo_entrega: orden.direccion_envio ? "envio" : "retiro",
+      envio: orden.direccion_envio?.envio ?? null,
+      pago_pendiente: estadoNormalizado === "pendiente_pago" || estadoNormalizado === "borrador",
+      pago: orden.pago
+        ? {
+            proveedor: orden.pago.proveedor,
+            metodo: orden.pago.metodo,
+            checkout_url: orden.pago.checkout_url ?? null,
+            preference_id: null,
+            public_key: null,
+            qr_data: null,
+            qr_image: null,
+            expires_at: undefined,
+            provider_payment_id: orden.pago.provider_payment_id ?? null,
+            setup_status: null,
+            setup_message: null,
+          }
+        : null,
+    });
+    setPaymentApproved(estadoNormalizado === "pagada");
+    setMessage(null);
+    setNeedsProfile(false);
+  }, []);
 
   const cartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
@@ -500,6 +571,20 @@ export function CarritoTienda() {
     refetchIntervalInBackground: true,
   });
 
+  const confirmReturnMutation = useMutation({
+    mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
+      api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
+    onSuccess: async (response) => {
+      await hydrateConfirmedOrder(response.orden_id);
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+      await queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
+    },
+    onError: (error: Error) => {
+      setMessage(error.message || "No pudimos recuperar el estado del pago.");
+    },
+  });
+
   useEffect(() => {
     if (!resumeOrderId) return;
     if (resumePaymentQuery.data) {
@@ -520,6 +605,40 @@ export function CarritoTienda() {
       setSearchParams(nextParams, { replace: true });
     }
   }, [resumeOrderId, resumePaymentQuery.data, resumePaymentQuery.error, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const paymentId = searchParams.get("payment_id") || searchParams.get("collection_id");
+    const externalReference = searchParams.get("external_reference");
+    const status = searchParams.get("status") || searchParams.get("collection_status");
+
+    if (hasProcessedReturnRef.current) return;
+    if (!paymentId && !externalReference) return;
+
+    hasProcessedReturnRef.current = true;
+    confirmReturnMutation.mutate(
+      {
+        payment_id: paymentId,
+        external_reference: externalReference,
+        status,
+      },
+      {
+        onSettled: () => {
+          const nextParams = new URLSearchParams(searchParams);
+          [
+            "payment_id",
+            "collection_id",
+            "collection_status",
+            "status",
+            "external_reference",
+            "merchant_order_id",
+            "preference_id",
+            "mp_return",
+          ].forEach((key) => nextParams.delete(key));
+          setSearchParams(nextParams, { replace: true });
+        },
+      },
+    );
+  }, [confirmReturnMutation, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (currentPendingPaymentId) {
