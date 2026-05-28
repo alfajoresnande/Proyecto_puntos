@@ -219,7 +219,7 @@
   font-family: "Courier New", Courier, monospace;
   font-size: 9.2px;
   line-height: 1.16;
-  font-weight: 500;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0;
 }
@@ -329,12 +329,23 @@
 }
 
 .comprobante-ticket-total {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  gap: 0.7rem;
   margin-top: 0.22rem;
   padding-top: 0.3rem;
   border-top: 1px solid #111827;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.comprobante-ticket-total span,
+.comprobante-ticket-total span:last-child {
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 @media print {
