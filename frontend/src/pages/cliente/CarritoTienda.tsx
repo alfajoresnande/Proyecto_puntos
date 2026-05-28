@@ -152,6 +152,32 @@ type CheckoutOrderDetail = {
 
 const LAST_APPROVED_ORDER_STORAGE_KEY = "nande-last-approved-order";
 
+function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CheckoutConfirmResponse | null;
+    if (!parsed || !Number.isInteger(Number(parsed.orden_id)) || String(parsed.estado).trim().toLowerCase() !== "pagada") {
+      window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+    return null;
+  }
+}
+
+function storeApprovedCheckout(checkout: CheckoutConfirmResponse | null) {
+  if (typeof window === "undefined") return;
+  if (!checkout || String(checkout.estado).trim().toLowerCase() !== "pagada") {
+    window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, JSON.stringify(checkout));
+}
+
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
@@ -400,14 +426,17 @@ export function CarritoTienda() {
   const user = useAuthStore((state) => state.user);
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
+  const storedApprovedCheckoutRef = useRef<CheckoutConfirmResponse | null>(readStoredApprovedCheckout());
   const resumeOrderId = searchParams.get("pagar_orden");
   const sucursalId = usePickupStore((state) => state.sucursalRetiroId);
   const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
   const [paymentId, setPaymentId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
-  const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(null);
-  const [paymentApproved, setPaymentApproved] = useState(false);
+  const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(storedApprovedCheckoutRef.current);
+  const [paymentApproved, setPaymentApproved] = useState(
+    storedApprovedCheckoutRef.current?.estado === "pagada",
+  );
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
   const [cartToast, setCartToast] = useState<CartToast | null>(null);
   const [pendingPaymentId, setPendingPaymentId] = useState("");
@@ -424,7 +453,7 @@ export function CarritoTienda() {
       ) ?? 0;
     const estadoNormalizado = orden.estado.trim().toLowerCase();
 
-    setConfirmed({
+    const nextConfirmed: CheckoutConfirmResponse = {
       orden_id: Number(orden.id),
       estado: orden.estado,
       total_dinero: Number(orden.total_dinero ?? 0),
@@ -448,12 +477,13 @@ export function CarritoTienda() {
             setup_message: null,
           }
         : null,
-    });
+    };
+    setConfirmed(nextConfirmed);
     setPaymentApproved(estadoNormalizado === "pagada");
     setMessage(null);
     setNeedsProfile(false);
     if (estadoNormalizado === "pagada") {
-      window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(ordenId));
+      storeApprovedCheckout(nextConfirmed);
     }
   }, []);
 
@@ -596,7 +626,7 @@ export function CarritoTienda() {
       setConfirmed(resumePaymentQuery.data);
       setPaymentApproved(resumePaymentQuery.data.estado === "pagada");
       if (resumePaymentQuery.data.estado === "pagada") {
-        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(resumePaymentQuery.data.orden_id));
+        storeApprovedCheckout(resumePaymentQuery.data);
       }
       setPaymentNotice(null);
       setMessage(null);
@@ -616,11 +646,13 @@ export function CarritoTienda() {
 
   useEffect(() => {
     if (confirmed || resumeOrderId || confirmReturnMutation.isPending) return;
-    const lastApprovedOrderId = Number(window.sessionStorage.getItem(LAST_APPROVED_ORDER_STORAGE_KEY) ?? 0);
-    if (!Number.isInteger(lastApprovedOrderId) || lastApprovedOrderId <= 0) return;
+    const storedApprovedCheckout = readStoredApprovedCheckout();
+    if (!storedApprovedCheckout) return;
 
-    void hydrateConfirmedOrder(lastApprovedOrderId).catch(() => {
-      window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
+    setConfirmed(storedApprovedCheckout);
+    setPaymentApproved(true);
+    void hydrateConfirmedOrder(storedApprovedCheckout.orden_id).catch(() => {
+      storeApprovedCheckout(storedApprovedCheckout);
     });
   }, [confirmReturnMutation.isPending, confirmed, hydrateConfirmedOrder, resumeOrderId]);
 
@@ -692,7 +724,6 @@ export function CarritoTienda() {
     if (nextState === "pagada") {
       if (!paymentApproved || confirmed.estado !== "pagada") {
         setPaymentApproved(true);
-        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(confirmed.orden_id));
         const pts = Number(currentOrder.total_puntos_ganados ?? 0);
         setPaymentNotice({
           variant: "success",
@@ -700,11 +731,14 @@ export function CarritoTienda() {
             ? `Pago aprobado. Se acreditaron ${pts} puntos en tu cuenta.`
             : "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
         });
-        setConfirmed((prev) =>
-          prev && Number(prev.orden_id) === Number(confirmed.orden_id)
-            ? { ...prev, estado: "pagada", pago_pendiente: false, total_puntos_ganados: pts }
-            : prev,
-        );
+        setConfirmed((prev) => {
+          const nextConfirmed =
+            prev && Number(prev.orden_id) === Number(confirmed.orden_id)
+              ? { ...prev, estado: "pagada", pago_pendiente: false, total_puntos_ganados: pts }
+              : prev;
+          storeApprovedCheckout(nextConfirmed);
+          return nextConfirmed;
+        });
         void queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
         void queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
         void queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
@@ -713,6 +747,7 @@ export function CarritoTienda() {
     }
 
     if (nextState === "cancelada" || nextState === "expirada") {
+      storeApprovedCheckout(null);
       setPaymentNotice({
         variant: "error",
         msg: nextState === "expirada"
@@ -815,7 +850,7 @@ export function CarritoTienda() {
       setConfirmed(data);
       setPaymentApproved(data.estado === "pagada");
       if (data.estado === "pagada") {
-        window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(data.orden_id));
+        storeApprovedCheckout(data);
       }
       if (data.estado === "pagada") {
         const pts = Number(data.total_puntos_ganados ?? 0);
@@ -1145,7 +1180,11 @@ export function CarritoTienda() {
               }
               onApproved={() => {
                 setPaymentApproved(true);
-                window.sessionStorage.setItem(LAST_APPROVED_ORDER_STORAGE_KEY, String(confirmed.orden_id));
+                storeApprovedCheckout({
+                  ...confirmed,
+                  estado: "pagada",
+                  pago_pendiente: false,
+                });
                 const pts = Number(confirmed.total_puntos_ganados ?? 0);
                 setPaymentNotice({
                   variant: "success",
