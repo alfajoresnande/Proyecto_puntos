@@ -1,6 +1,3 @@
-/* 
-  Contenedor A4 para visualización en pantalla
-*/
 .comprobante-wrapper {
   padding: 2rem;
   background-color: #f3f4f6;
@@ -17,6 +14,7 @@
   width: 100%;
   max-width: 210mm;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .comprobante-a4 {
@@ -55,7 +53,7 @@
 .comprobante-title {
   font-size: 1.6rem;
   font-weight: 700;
-  color: #D4621A;
+  color: #d4621a;
   margin: 0;
   letter-spacing: -0.02em;
 }
@@ -191,65 +189,184 @@
   line-height: 1.3;
 }
 
-/* 
-  Estilos para impresión 
-*/
-@media print {
-  @page {
-    size: A4;
-    margin: 12mm;
-  }
+.comprobante-ticket {
+  width: 58mm;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d8c4ad;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 0.45rem;
+  box-sizing: border-box;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
 
+.comprobante-ticket-header {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+}
+
+.comprobante-ticket-logo {
+  width: 30mm;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.comprobante-ticket-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.comprobante-ticket-center {
+  text-align: center;
+  margin: 0;
+}
+
+.comprobante-ticket-muted {
+  color: #4b5563;
+  margin: 0.1rem 0;
+}
+
+.comprobante-ticket-legal {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.comprobante-ticket-divider {
+  border-top: 1px dashed #9ca3af;
+  margin: 0.45rem 0;
+}
+
+.comprobante-ticket-block {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.comprobante-ticket-block p {
+  margin: 0;
+}
+
+.comprobante-ticket-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.comprobante-ticket-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.comprobante-ticket-item {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px dotted #d1d5db;
+}
+
+.comprobante-ticket-item-top {
+  font-weight: 700;
+}
+
+.comprobante-ticket-flavors {
+  display: grid;
+  gap: 0.1rem;
+  padding-left: 0.45rem;
+  color: #4b5563;
+}
+
+.comprobante-ticket-flavors p {
+  margin: 0;
+}
+
+.comprobante-ticket-total {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media print {
   body * {
     visibility: hidden;
   }
 
-  .comprobante-a4, .comprobante-a4 * {
+  .comprobante-print-target,
+  .comprobante-print-target * {
     visibility: visible;
   }
 
-  .comprobante-a4 {
+  .no-print,
+  nav,
+  footer,
+  .catalog-float-toast,
+  .comprobante-actions {
+    display: none !important;
+  }
+
+  .comprobante-wrapper {
+    background: transparent;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .comprobante-a4.comprobante-print-target {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     margin: 0;
     padding: 0;
-    box-shadow: none;
-    border-radius: 0;
     border: 1px solid #ccc;
+    border-radius: 0;
+    box-shadow: none;
     background: transparent;
   }
 
-  /* Ocultar elementos no imprimibles explícitamente */
-  .no-print, 
-  nav, 
-  footer, 
-  .catalog-float-toast,
-  .comprobante-actions {
-    display: none !important;
+  .comprobante-ticket.comprobante-print-target {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 58mm;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    margin: 0;
   }
 
-  /* Evitar cortes feos dentro de filas de tabla o cajas */
   .comprobante-table tr,
   .comprobante-box,
-  .comprobante-totals {
+  .comprobante-totals,
+  .comprobante-ticket-item,
+  .comprobante-ticket-block {
     page-break-inside: avoid;
   }
 }
 
-/* Adaptación responsive para pantallas más pequeñas (antes de imprimir) */
 @media (max-width: 850px) {
   .comprobante-wrapper {
     padding: 1rem;
   }
-  
+
   .comprobante-a4 {
     width: 100%;
     min-height: auto;
     padding: 1rem;
   }
-  
+
   .comprobante-header {
     flex-direction: column;
     align-items: center;
@@ -260,7 +377,7 @@
   .comprobante-meta {
     text-align: center;
   }
-  
+
   .comprobante-grid {
     grid-template-columns: 1fr;
     gap: 1rem;
@@ -278,10 +395,14 @@
   .comprobante-table {
     margin-bottom: 0;
     border: none;
-    min-width: 500px; /* Asegura que no se aplaste en pantallas muy chicas */
+    min-width: 500px;
   }
 
   .comprobante-totals {
     max-width: 100%;
+  }
+
+  .comprobante-actions {
+    justify-content: center;
   }
 }

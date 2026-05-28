@@ -1,6 +1,7 @@
 ﻿import { useMutation } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import { AuthTermsCheckbox } from "../../components/auth/AuthTermsCheckbox";
 import { defaultRouteForRole } from "../../lib/auth";
 import { useRetryAfterCooldown } from "../../lib/rateLimitError";
 import { useAuthStore } from "../../store/authStore";
@@ -27,6 +28,7 @@ export function Registro() {
   const [codigoInvitacion, setCodigoInvitacion] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [localError, setLocalError] = useState("");
   const [showOptionalCode, setShowOptionalCode] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -56,6 +58,7 @@ export function Registro() {
         email: email.trim(),
         password,
         codigo_invitacion_usado: codigoInvitacion.trim() ? codigoInvitacion.trim().toUpperCase() : null,
+        accepted_terms: true,
       }),
     onSuccess: (response) => {
       setPendingEmail(response.email);
@@ -121,6 +124,10 @@ export function Registro() {
     }
     if (password !== confirmPassword) {
       setLocalError("Las contraseñas no coinciden.");
+      return;
+    }
+    if (!acceptedTerms) {
+      setLocalError("Debes aceptar los Terminos y Condiciones.");
       return;
     }
 
@@ -276,6 +283,17 @@ export function Registro() {
           {localError ? <p className="login-error">{localError}</p> : null}
           {registerCooldownMessage ? <p className="login-error">{registerCooldownMessage}</p> : null}
           {!registerCooldownMessage && registerMutation.error ? <p className="login-error">{registerMutation.error.message}</p> : null}
+
+          <AuthTermsCheckbox
+            checked={acceptedTerms}
+            onChange={(checked) => {
+              setAcceptedTerms(checked);
+              if (checked && localError === "Debes aceptar los Terminos y Condiciones.") {
+                setLocalError("");
+              }
+            }}
+            disabled={registerMutation.isPending}
+          />
 
           <button
             type="submit"

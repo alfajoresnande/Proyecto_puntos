@@ -89,7 +89,7 @@ describe("authStore — token almacenado después de autenticación", () => {
   it("login() guarda el token del body de respuesta del backend", async () => {
     global.fetch = stubFetch({ user: mockUser, token: "jwt.login.token" });
 
-    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
+    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789", accepted_terms: true });
 
     expect(useAuthStore.getState().token).toBe("jwt.login.token");
     expect(useAuthStore.getState().user).toEqual(mockUser);
@@ -107,6 +107,7 @@ describe("authStore — token almacenado después de autenticación", () => {
       nombre: "Test",
       email: "test@test.com",
       password: "pass123456789",
+      accepted_terms: true,
     });
 
     expect(useAuthStore.getState().token).toBeNull();
@@ -116,7 +117,7 @@ describe("authStore — token almacenado después de autenticación", () => {
   it("loginWithGoogle() guarda el token del body de respuesta del backend", async () => {
     global.fetch = stubFetch({ user: mockUser, token: "jwt.google.token" });
 
-    await useAuthStore.getState().loginWithGoogle("google-credential-xyz");
+    await useAuthStore.getState().loginWithGoogle({ credential: "google-credential-xyz", accepted_terms: true });
 
     expect(useAuthStore.getState().token).toBe("jwt.google.token");
   });
@@ -134,7 +135,7 @@ describe("authStore — token almacenado después de autenticación", () => {
   it("login() sin token en la respuesta no rompe (token queda null)", async () => {
     global.fetch = stubFetch({ user: mockUser }); // backend viejo sin token
 
-    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
+    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789", accepted_terms: true });
 
     expect(useAuthStore.getState().token).toBeNull();
     expect(useAuthStore.getState().user).toEqual(mockUser);

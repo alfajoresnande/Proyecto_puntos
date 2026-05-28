@@ -179,6 +179,18 @@ body.auth-background .app-main {
   flex-shrink: 0;
 }
 
+.login-terms-check {
+  margin: 0.75rem 0 1rem;
+  align-items: flex-start;
+  line-height: 1.45;
+}
+
+.login-terms-check a {
+  color: #D4621A;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .login-forgot {
   font-size: 0.875rem;
   color: #D4621A;               /* ← color del link "¿Olvidaste tu contraseña?" */
