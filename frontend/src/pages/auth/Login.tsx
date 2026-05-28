@@ -1,7 +1,6 @@
-﻿import { useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { AuthTermsCheckbox } from "../../components/auth/AuthTermsCheckbox";
 import { useRetryAfterCooldown } from "../../lib/rateLimitError";
 import { useAuthStore } from "../../store/authStore";
 
@@ -22,13 +21,11 @@ export function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [termsError, setTermsError] = useState<string | null>(null);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const { cooldownSeconds, cooldownMessage, startCooldownFromError } = useRetryAfterCooldown();
 
   const loginMutation = useMutation({
-    mutationFn: () => login({ email, password, accepted_terms: true }),
+    mutationFn: () => login({ email, password }),
     onSuccess: () => {
       navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
     },
@@ -38,7 +35,7 @@ export function Login() {
   });
 
   const googleMutation = useMutation({
-    mutationFn: (credential: string) => loginWithGoogle({ credential, accepted_terms: true }),
+    mutationFn: (credential: string) => loginWithGoogle(credential),
     onSuccess: () => {
       navigate(LOGIN_SUCCESS_ROUTE, { replace: true });
     },
@@ -56,15 +53,10 @@ export function Login() {
   }, []);
 
   useEffect(() => {
-    if (!googleClientId || user || !acceptedTerms) return;
+    if (!googleClientId || user) return;
 
     let cancelled = false;
     googleCredentialHandler = (credential: string) => {
-      if (!acceptedTerms) {
-        setTermsError("Debes aceptar los Terminos y Condiciones.");
-        return;
-      }
-      setTermsError(null);
       setGoogleError(null);
       googleMutation.mutate(credential);
     };
@@ -125,7 +117,7 @@ export function Login() {
       script.onerror = null;
       if (googleCredentialHandler) googleCredentialHandler = null;
     };
-  }, [acceptedTerms, googleClientId, googleMutation, user]);
+  }, [googleClientId, googleMutation, user]);
 
   if (isRestoringSession || !hasRestoredSession) {
     return (
@@ -154,12 +146,6 @@ export function Login() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (!acceptedTerms) {
-              setTermsError("Debes aceptar los Terminos y Condiciones.");
-              setGoogleError(null);
-              return;
-            }
-            setTermsError(null);
             loginMutation.mutate();
           }}
         >
@@ -199,16 +185,6 @@ export function Login() {
 
           {cooldownMessage ? <p className="login-error">{cooldownMessage}</p> : null}
           {!cooldownMessage && loginMutation.error ? <p className="login-error">{loginMutation.error.message}</p> : null}
-          {termsError ? <p className="login-error">{termsError}</p> : null}
-
-          <AuthTermsCheckbox
-            checked={acceptedTerms}
-            onChange={(checked) => {
-              setAcceptedTerms(checked);
-              if (checked) setTermsError(null);
-            }}
-            disabled={loginMutation.isPending || googleMutation.isPending}
-          />
 
           <button type="submit" className="login-btn-primary" disabled={loginMutation.isPending || cooldownSeconds > 0}>
             {loginMutation.isPending ? "Ingresando..." : cooldownSeconds > 0 ? "Espera para reintentar" : "Iniciar sesión"}
@@ -221,7 +197,7 @@ export function Login() {
 
         <div className="login-divider">o continua con</div>
 
-        {googleClientId && acceptedTerms ? (
+        {googleClientId ? (
           <div className="login-google-button-shell">
             <div ref={googleButtonRef} className="login-google-button" />
           </div>
@@ -229,13 +205,9 @@ export function Login() {
           <button
             type="button"
             className="login-btn-google"
-            onClick={() =>
-              googleClientId
-                ? setTermsError("Debes aceptar los Terminos y Condiciones para continuar con Google.")
-                : setGoogleError("Falta configurar VITE_GOOGLE_CLIENT_ID en el frontend.")
-            }
+            onClick={() => setGoogleError("Falta configurar VITE_GOOGLE_CLIENT_ID en el frontend.")}
           >
-            {googleClientId ? "Acepta los terminos para continuar con Google" : "Continuar con Google"}
+            Continuar con Google
           </button>
         )}
 
@@ -249,4 +221,3 @@ export function Login() {
     </section>
   );
 }
-

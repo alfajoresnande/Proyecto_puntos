@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import "../../styles/comprobante.css";
@@ -142,10 +142,14 @@ function itemSubtotalLabel(item: NonNullable<OrdenVendedorDetalle["items"]>[numb
   return item.modo_compra === "dinero" ? money(item.subtotal_dinero) : `${item.subtotal_puntos} pts`;
 }
 
+function compactMoney(value: number | string | null | undefined): string {
+  const formatted = money(value);
+  return formatted.replace(/\s/g, "");
+}
+
 export function ComprobantePedidoVendedor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: orden, isLoading, isError } = useQuery({
     queryKey: ["vendedor", "orden", id],
@@ -153,9 +157,7 @@ export function ComprobantePedidoVendedor() {
     enabled: !!id,
     retry: false,
   });
-
-  const requestedFormat = searchParams.get("formato") === "ticket" ? "ticket" : "a4";
-  const printFormat: PrintFormat = orden && isLocalSaleOrder(orden) && requestedFormat === "ticket" ? "ticket" : "a4";
+  const printFormat: PrintFormat = orden && isLocalSaleOrder(orden) ? "ticket" : "a4";
 
   useEffect(() => {
     document.body.classList.add("catalogo-background");
@@ -205,7 +207,6 @@ export function ComprobantePedidoVendedor() {
       </div>
     );
   }
-
   const isLocalSale = isLocalSaleOrder(orden);
   const clienteNombre = orden.direccion_envio?.nombre || orden.usuario?.nombre || "-";
   const clienteEmail = orden.usuario?.email || "-";
@@ -220,49 +221,19 @@ export function ComprobantePedidoVendedor() {
   const receiptTitle = isLocalSale ? "Comprobante de venta local" : "Comprobante de pedido";
   const orderLabel = isLocalSale ? `Venta local #${orden.id}` : `Pedido web #${orden.id}`;
 
-  function updatePrintFormat(nextFormat: PrintFormat) {
-    const nextParams = new URLSearchParams(searchParams);
-    if (nextFormat === "ticket") {
-      nextParams.set("formato", "ticket");
-    } else {
-      nextParams.delete("formato");
-    }
-    setSearchParams(nextParams, { replace: true });
-  }
-
   return (
     <div className="comprobante-wrapper">
       <div className="comprobante-actions no-print">
         <Link to={LOGIN_SUCCESS_ROUTE} className="catalog-float-toast-btn-secondary" style={{ padding: "0.5rem 1rem", height: "auto" }}>
           Volver
         </Link>
-        {isLocalSale ? (
-          <>
-            <button
-              type="button"
-              className={printFormat === "a4" ? "catalog-float-toast-btn-primary" : "catalog-float-toast-btn-secondary"}
-              style={{ padding: "0.5rem 1rem", height: "auto" }}
-              onClick={() => updatePrintFormat("a4")}
-            >
-              Vista A4
-            </button>
-            <button
-              type="button"
-              className={printFormat === "ticket" ? "catalog-float-toast-btn-primary" : "catalog-float-toast-btn-secondary"}
-              style={{ padding: "0.5rem 1rem", height: "auto" }}
-              onClick={() => updatePrintFormat("ticket")}
-            >
-              Ticket 58mm
-            </button>
-          </>
-        ) : null}
         <button
           type="button"
           className="catalog-float-toast-btn-primary"
           style={{ padding: "0.5rem 1rem", height: "auto" }}
           onClick={() => window.print()}
         >
-          {printFormat === "ticket" ? "Imprimir ticket 58mm" : "Imprimir A4"}
+          {printFormat === "ticket" ? "Imprimir 58mm" : "Imprimir A4"}
         </button>
       </div>
 
@@ -272,51 +243,40 @@ export function ComprobantePedidoVendedor() {
           <div className="comprobante-ticket-divider" />
 
           <div className="comprobante-ticket-header">
-            <img src="/logo.png" alt="Nande" className="comprobante-ticket-logo" />
+            <p className="comprobante-ticket-brand">NANDE</p>
             <p className="comprobante-ticket-title">{receiptTitle}</p>
-            <p className="comprobante-ticket-muted">{orderLabel}</p>
-            <p className="comprobante-ticket-muted">{dateLabel(orden.created_at)}</p>
           </div>
 
           <div className="comprobante-ticket-divider" />
 
           <div className="comprobante-ticket-block">
-            <div className="comprobante-ticket-row">
-              <span>Estado</span>
-              <span>{estadoPedidoLabel(orden.estado)}</span>
-            </div>
-            <div className="comprobante-ticket-row">
-              <span>Pago</span>
-              <span>{paymentMethodLabel(orden.pago?.metodo)}</span>
-            </div>
-            <div className="comprobante-ticket-row">
-              <span>Canal</span>
-              <span>{canalLabel(orden.canal)}</span>
-            </div>
-          </div>
-
-          <div className="comprobante-ticket-divider" />
-
-          <div className="comprobante-ticket-block">
-            <p><strong>Cliente:</strong> {clienteNombre}</p>
+            <p><strong>FECHA:</strong> {dateLabel(orden.created_at)}</p>
+            <p><strong>COMPROBANTE:</strong> {orderLabel}</p>
+            <p><strong>CLIENTE:</strong> {clienteNombre}</p>
             {clienteDni !== "-" ? <p><strong>DNI:</strong> {clienteDni}</p> : null}
-            {clienteTelefono !== "-" ? <p><strong>Tel:</strong> {clienteTelefono}</p> : null}
-            {orden.sucursal?.nombre ? <p><strong>Sucursal:</strong> {orden.sucursal.nombre}</p> : null}
+            {clienteTelefono !== "-" ? <p><strong>TEL:</strong> {clienteTelefono}</p> : null}
+            <p><strong>PAGO:</strong> {paymentMethodLabel(orden.pago?.metodo)}</p>
+            <p><strong>CANAL:</strong> {canalLabel(orden.canal)}</p>
+            <p><strong>ESTADO:</strong> {estadoPedidoLabel(orden.estado)}</p>
           </div>
 
           <div className="comprobante-ticket-divider" />
 
           <div className="comprobante-ticket-head">
-            <span>Detalle</span>
+            <div>
+              <p>Cant./Precio Unit.</p>
+              <p>Descripcion</p>
+            </div>
             <span>Importe</span>
           </div>
           {orden.items?.map((item, idx) => (
             <div key={`${item.producto_id}-${idx}`} className="comprobante-ticket-item">
               <div className="comprobante-ticket-row comprobante-ticket-item-top">
-                <span>{item.cantidad} x {item.nombre}</span>
+                <span>{item.cantidad} x {compactMoney(item.precio_dinero_unit)}</span>
                 <span>{itemSubtotalLabel(item)}</span>
               </div>
-              <p className="comprobante-ticket-muted">Unitario: {itemUnitLabel(item)}</p>
+              <p className="comprobante-ticket-item-name">{item.nombre}</p>
+              {item.modo_compra !== "dinero" ? <p className="comprobante-ticket-muted">Canje: {itemUnitLabel(item)}</p> : null}
               {item.sabores?.length ? (
                 <div className="comprobante-ticket-flavors">
                   {item.sabores.map((sabor, saborIndex) => (
@@ -332,12 +292,12 @@ export function ComprobantePedidoVendedor() {
           <div className="comprobante-ticket-block">
             <div className="comprobante-ticket-row">
               <span>Subtotal</span>
-              <span>{money(subtotalProductosDinero)}</span>
+              <span>{compactMoney(subtotalProductosDinero)}</span>
             </div>
             {costoEnvio > 0 ? (
               <div className="comprobante-ticket-row">
                 <span>Envio</span>
-                <span>{money(costoEnvio)}</span>
+                <span>{compactMoney(costoEnvio)}</span>
               </div>
             ) : null}
             {orden.total_puntos > 0 ? (
@@ -354,25 +314,27 @@ export function ComprobantePedidoVendedor() {
             ) : null}
             <div className="comprobante-ticket-row comprobante-ticket-total">
               <span>TOTAL</span>
-              <span>{money(orden.total_dinero)}</span>
+              <span>{compactMoney(orden.total_dinero)}</span>
             </div>
           </div>
 
           <div className="comprobante-ticket-divider" />
 
           <div className="comprobante-ticket-block">
-            <p><strong>Proveedor:</strong> {paymentProviderLabel(orden.pago?.proveedor)}</p>
+            <p><strong>PROVEEDOR:</strong> {paymentProviderLabel(orden.pago?.proveedor)}</p>
             {orden.sucursal?.direccion ? (
               <p>
-                <strong>Direccion:</strong> {orden.sucursal.direccion}
+                <strong>DIRECCION:</strong> {orden.sucursal.direccion}
                 {orden.sucursal.localidad ? `, ${orden.sucursal.localidad}` : ""}
                 {orden.sucursal.provincia ? `, ${orden.sucursal.provincia}` : ""}
               </p>
             ) : null}
+            {orden.sucursal?.nombre ? <p><strong>SUCURSAL:</strong> {orden.sucursal.nombre}</p> : null}
+            {orden.notas ? <p><strong>NOTAS:</strong> {orden.notas}</p> : null}
           </div>
 
           <div className="comprobante-ticket-divider" />
-          <p className="comprobante-ticket-center comprobante-ticket-muted">Gracias por elegir Nande Alfajores Correntinos.</p>
+          <p className="comprobante-ticket-center comprobante-ticket-muted">Gracias por elegir Nande.</p>
           <p className="comprobante-ticket-center comprobante-ticket-legal">NO VALIDO COMO FACTURA</p>
         </div>
       ) : (

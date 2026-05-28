@@ -9,7 +9,6 @@ import type { AuthResponse, RegisterResponse, User } from "../types";
 type LoginPayload = {
   email: string;
   password: string;
-  accepted_terms: true;
 };
 
 type RegisterPayload = {
@@ -22,7 +21,6 @@ type RegisterPayload = {
 
 type GoogleLoginPayload = {
   credential: string;
-  accepted_terms: true;
 };
 
 type VerifyEmailPayload = {
@@ -42,7 +40,7 @@ type AuthStore = {
   setSession: (session: AuthResponse) => void;
   logout: () => void;
   login: (payload: LoginPayload) => Promise<AuthResponse>;
-  loginWithGoogle: (payload: GoogleLoginPayload) => Promise<AuthResponse>;
+  loginWithGoogle: (credential: string) => Promise<AuthResponse>;
   register: (payload: RegisterPayload) => Promise<RegisterResponse>;
   verifyEmail: (payload: VerifyEmailPayload) => Promise<AuthResponse>;
   resendEmailVerification: (payload: ResendEmailVerificationPayload) => Promise<{ ok: boolean; message?: string }>;
@@ -115,7 +113,8 @@ export const useAuthStore = create<AuthStore>()(
         return session;
       },
 
-      loginWithGoogle: async (payload) => {
+      loginWithGoogle: async (credential) => {
+        const payload: GoogleLoginPayload = { credential };
         const session = await requestAuth<AuthResponse>("google", payload);
         set({ user: session.user, token: session.token ?? null, isRestoringSession: false, hasRestoredSession: true });
         return session;

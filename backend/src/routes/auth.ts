@@ -821,7 +821,6 @@ router.post("/login", async (req, res) => {
   const schema = z.object({
     email: z.string().email(),
     password: z.string().min(1),
-    accepted_terms: acceptedTermsSchema,
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -900,7 +899,6 @@ router.post("/login", async (req, res) => {
 router.post("/google", async (req, res) => {
   const schema = z.object({
     credential: z.string().min(20),
-    accepted_terms: acceptedTermsSchema,
     fecha_nacimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     localidad: z.string().min(2).max(120).optional().nullable(),
     provincia: z.string().min(2).max(120).optional().nullable(),

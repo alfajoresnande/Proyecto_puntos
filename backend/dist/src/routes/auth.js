@@ -28,6 +28,7 @@ const EMAIL_VERIFICATION_MAX_ATTEMPTS = 5;
 const RESEND_VERIFICATION_COOLDOWN_SECONDS = 60;
 const REGISTER_PUBLIC_MESSAGE = "Si los datos son validos, te enviaremos un correo de verificacion.";
 const PASSWORD_RESET_PUBLIC_MESSAGE = "Si el correo esta registrado, te enviaremos instrucciones para recuperar tu contrasena.";
+const ACCEPT_TERMS_MESSAGE = "Debes aceptar los Terminos y Condiciones.";
 // Política:
 // - Mínimo 12 caracteres (priorizamos longitud sobre "complejidad" artificial).
 // - Al menos un caracter especial y un numero.
@@ -38,6 +39,9 @@ const strongPasswordSchema = zod_1.z
     .max(128, "La contrasena no puede superar 128 caracteres")
     .regex(/[^A-Za-z0-9]/, "La contrasena debe incluir al menos 1 caracter especial")
     .regex(/\d/, "La contrasena debe incluir al menos un numero");
+const acceptedTermsSchema = zod_1.z.literal(true, {
+    errorMap: () => ({ message: ACCEPT_TERMS_MESSAGE }),
+});
 function secondsToPublicText(seconds) {
     const minutes = Math.max(1, Math.ceil(seconds / 60));
     return `${minutes} minuto${minutes === 1 ? "" : "s"}`;
@@ -226,6 +230,7 @@ const registerSchema = zod_1.z.object({
     nombre: zod_1.z.string().min(1).max(100),
     email: zod_1.z.string().email(),
     password: strongPasswordSchema,
+    accepted_terms: acceptedTermsSchema,
     dni: zod_1.z.string().regex(/^\d{6,15}$/, "El DNI debe contener solo numeros (6 a 15 digitos)").optional().nullable(),
     fecha_nacimiento: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fecha_nacimiento debe tener formato YYYY-MM-DD").optional().nullable(),
     localidad: zod_1.z.string().min(2).max(120).optional().nullable(),
@@ -613,10 +618,13 @@ async function confirmRegisterWithCode(req, res) {
 router.post("/verify-email", confirmRegisterWithCode);
 router.post("/confirm-register", confirmRegisterWithCode);
 router.post("/login", async (req, res) => {
-    const schema = zod_1.z.object({ email: zod_1.z.string().email(), password: zod_1.z.string().min(1) });
+    const schema = zod_1.z.object({
+        email: zod_1.z.string().email(),
+        password: zod_1.z.string().min(1),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-        res.status(400).json({ error: "Email y contrasena requeridos" });
+        res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
     const { password } = parsed.data;
@@ -680,7 +688,7 @@ router.post("/google", async (req, res) => {
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-        res.status(400).json({ error: "Token de Google requerido" });
+        res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
     const clientId = process.env.GOOGLE_CLIENT_ID;
