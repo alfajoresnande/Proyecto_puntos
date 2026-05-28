@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
@@ -6461,6 +6461,9 @@ export function Admin() {
                                     <button className="adm-btn-link" onClick={() => setOrdenExpandidaId((prev) => prev === orden.id ? null : orden.id)}>
                                       {ordenExpandidaId === orden.id ? "Ocultar" : "Detalle"}
                                     </button>
+                                    <Link className="adm-btn-link" to={`${panelBasePath}/pedidos/${orden.id}`} style={{ textDecoration: "none" }}>
+                                      Ver comprobante
+                                    </Link>
                                     {isOrdenVentaLocal(orden) && orden.estado !== "cancelada" && orden.estado !== "expirada" ? (
                                       <>
                                         <button className="adm-btn-link" onClick={() => editarVentaLocalDesdeOrden(orden)} disabled={busy}>

@@ -279,6 +279,22 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/pedidos/:id"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <ComprobantePedidoVendedor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/pedidos/:id"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <ComprobantePedidoVendedor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/sucursales"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>

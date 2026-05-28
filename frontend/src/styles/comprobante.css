@@ -7,6 +7,10 @@
   align-items: center;
 }
 
+.comprobante-wrapper-ticket {
+  gap: 1rem;
+}
+
 .comprobante-actions {
   display: flex;
   gap: 1rem;
@@ -15,6 +19,12 @@
   max-width: 210mm;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.comprobante-actions-ticket {
+  margin-bottom: 0;
+  max-width: 58mm;
+  justify-content: center;
 }
 
 .comprobante-a4 {
