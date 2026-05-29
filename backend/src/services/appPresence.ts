@@ -182,7 +182,7 @@ export async function recordAppPresence(input: RecordAppPresenceInput, conn: Que
        referrer = COALESCE(VALUES(referrer), referrer),
        ip = VALUES(ip),
        user_agent = COALESCE(VALUES(user_agent), user_agent),
-       page_views = page_views + 1,
+       page_views = page_views + IF(last_path <> VALUES(last_path), 1, 0),
        updated_at = CURRENT_TIMESTAMP`,
     [
       identityKey,

@@ -74,9 +74,9 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Usa esta area cuando necesites corregir datos de una cuenta, activar o bloquear usuarios, o revisar quien tiene permisos de vendedor o administrador.",
   ],
   "personas-app": [
-    "Aca ves quienes estan navegando la app ahora mismo, separados entre visitantes anonimos y clientes logueados.",
+    "Aca ves quienes estan navegando la app ahora mismo, separados entre usuarios no registrados y clientes con sesion iniciada.",
     "Cada dispositivo genera una sesion y el sistema renueva el registro cada 30 minutos mientras la persona sigue navegando.",
-    "El staff no aparece en esta vista: solo se cuentan clientes o visitantes que recorren la parte publica o cliente de la app.",
+    "El staff no aparece en esta vista: solo se cuentan clientes o personas que recorren la parte publica o cliente de la app.",
   ],
   productos: [
     "Aca se ve el listado general de productos cargados, con precio, categoria, tipo, stock e imagenes.",
@@ -895,15 +895,66 @@ function shortPresenceId(value: string | null | undefined): string {
   return text.slice(0, 8).toUpperCase();
 }
 
+function cleanPresencePageTitle(title: string | null | undefined): string | null {
+  const raw = (title || "").trim();
+  if (!raw) return null;
+
+  if (raw === "Nande Alfajores Correntinos" || raw === "Ñandé Alfajores Correntinos") {
+    return "Inicio";
+  }
+
+  const splitByPipe = raw.split("|")[0]?.trim();
+  if (splitByPipe) return splitByPipe;
+  return raw;
+}
+
+function mapPresencePathToView(path: string | null | undefined): string {
+  const raw = (path || "").trim();
+  if (!raw) return "Vista sin identificar";
+
+  const normalized = raw.split("?")[0] || raw;
+  if (normalized === "/" || normalized === "/inicio") return "Inicio";
+  if (normalized === "/login") return "Iniciar sesion";
+  if (normalized === "/registro") return "Registro";
+  if (normalized === "/forgot-password") return "Recuperar acceso";
+  if (normalized === "/reset-password") return "Restablecer acceso";
+  if (normalized === "/tienda") return "Tienda";
+  if (normalized === "/catalogo") return "Catalogo de canjes";
+  if (normalized === "/cliente") return "Panel del cliente";
+  if (normalized === "/mi-perfil") return "Mi perfil";
+  if (normalized === "/mis-canjes") return "Mis canjes";
+  if (/^\/mis-canjes\/[^/]+$/.test(normalized)) return "Detalle de canje";
+  if (normalized === "/mis-direcciones") return "Mis direcciones";
+  if (normalized === "/carrito-canjes") return "Carrito de canjes";
+  if (normalized === "/carrito-tienda") return "Carrito de compra";
+  if (normalized === "/mis-pedidos") return "Mis pedidos";
+  if (/^\/mis-pedidos\/[^/]+$/.test(normalized)) return "Detalle de pedido";
+  if (normalized === "/soporte") return "Soporte";
+  if (normalized === "/sobre-nosotros") return "Sobre nosotros";
+  if (normalized === "/terminos") return "Terminos y condiciones";
+  return normalized;
+}
+
+function formatPresenceView(path: string | null | undefined, pageTitle: string | null | undefined): string {
+  const title = cleanPresencePageTitle(pageTitle);
+  if (title) {
+    if (title === "Nande Alfajores Correntinos" || title === "Ñandé Alfajores Correntinos") {
+      return "Inicio";
+    }
+    return title;
+  }
+  return mapPresencePathToView(path);
+}
+
 function formatPresencePerson(entry: Pick<AppPresenceSession, "visitante_tipo" | "cliente_nombre" | "cliente_email" | "usuario_id">): string {
-  if (entry.visitante_tipo === "anonimo") return "Visitante anonimo";
+  if (entry.visitante_tipo === "anonimo") return "Usuario sin iniciar sesion";
   if (entry.cliente_nombre?.trim()) return entry.cliente_nombre.trim();
   if (entry.cliente_email?.trim()) return entry.cliente_email.trim();
   return entry.usuario_id ? `Cliente #${entry.usuario_id}` : "Cliente";
 }
 
 function formatPresenceTypeLabel(type: AppPresenceSession["visitante_tipo"]): string {
-  return type === "cliente" ? "Cliente" : "Anonimo";
+  return type === "cliente" ? "Cliente" : "Usuario no registrado";
 }
 
 async function saveBlobWithPicker(blob: Blob, filename: string, mimeType: string): Promise<"saved" | "downloaded" | "cancelled"> {
@@ -5364,7 +5415,7 @@ export function Admin() {
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Este tablero registra visitantes anonimos y clientes logueados por dispositivo/sesion. Cada sesion se renueva con un pulso cada 30 minutos mientras la persona sigue navegando. Staff no se incluye.
+                  Este tablero registra usuarios no registrados y clientes con sesion iniciada por dispositivo/sesion. Cada sesion se renueva con un pulso cada 30 minutos mientras la persona sigue navegando. Staff no se incluye.
                 </p>
 
                 <div className="admin-stats" style={{ margin: 0 }}>
@@ -5377,7 +5428,13 @@ export function Admin() {
                     <p className="admin-stat-value">{appPresenceSummary?.active_clientes ?? 0}</p>
                   </div>
                   <div className="admin-stat-card">
-                    <p className="admin-stat-label">Anonimos activos</p>
+                    <p className="admin-stat-label" style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                      Usuarios no registrados
+                      <FloatingTip
+                        label="Usuarios no registrados"
+                        tip="Personas que estan navegando la app sin iniciar sesion. Pueden venir de la parte publica, login o flujo cliente previo a identificarse."
+                      />
+                    </p>
                     <p className="admin-stat-value">{appPresenceSummary?.active_anonimos ?? 0}</p>
                   </div>
                   <div className="admin-stat-card">
@@ -5409,17 +5466,17 @@ export function Admin() {
                   <>
                     <div className="adm-mobile-list">
                       {activePresenceSessions.length === 0 ? (
-                        <div className="adm-empty">No hay clientes o visitantes activos en este momento.</div>
+                        <div className="adm-empty">No hay clientes o usuarios no registrados activos en este momento.</div>
                       ) : (
                         activePresenceSessions.map((session) => (
                           <div key={`${session.session_id}-${session.last_seen_at}`} className="adm-mobile-item">
                             <p className="adm-mobile-item-title">{formatPresencePerson(session)}</p>
                             <p><strong>Tipo:</strong> {formatPresenceTypeLabel(session.visitante_tipo)}</p>
                             <p><strong>Dispositivo:</strong> {shortPresenceId(session.visitor_id)} / sesion {shortPresenceId(session.session_id)}</p>
-                            <p><strong>Ruta actual:</strong> {session.last_path}</p>
+                            <p><strong>Vista actual:</strong> {formatPresenceView(session.last_path, session.page_title)}</p>
                             <p><strong>Desde:</strong> {formatBuenosAiresDateTime(session.started_at)}</p>
                             <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(session.last_seen_at)}</p>
-                            <p><strong>Eventos:</strong> {session.page_views}</p>
+                            <p><strong>Accesos:</strong> {session.page_views}</p>
                             <p><strong>IP:</strong> {session.ip}</p>
                           </div>
                         ))
@@ -5431,12 +5488,20 @@ export function Admin() {
                         <thead>
                           <tr>
                             <th>Persona</th>
-                            <th>Tipo</th>
+                            <th>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                                Tipo
+                                <FloatingTip
+                                  label="Tipo de persona en app"
+                                  tip="Usuario no registrado significa que la persona esta navegando la app sin iniciar sesion. Cliente significa que ya ingreso con su cuenta."
+                                />
+                              </span>
+                            </th>
                             <th>Dispositivo</th>
-                            <th>Ruta actual</th>
+                            <th>Vista actual</th>
                             <th>Desde</th>
                             <th>Ultimo pulso</th>
-                            <th>Eventos</th>
+                            <th>Accesos</th>
                             <th>IP</th>
                           </tr>
                         </thead>
@@ -5444,7 +5509,7 @@ export function Admin() {
                           {activePresenceSessions.length === 0 ? (
                             <tr>
                               <td colSpan={8}>
-                                <div className="adm-empty">No hay clientes o visitantes activos en este momento.</div>
+                                <div className="adm-empty">No hay clientes o usuarios no registrados activos en este momento.</div>
                               </td>
                             </tr>
                           ) : (
@@ -5457,7 +5522,7 @@ export function Admin() {
                                   {" / "}
                                   <span className="adm-code-chip">{shortPresenceId(session.session_id)}</span>
                                 </td>
-                                <td>{session.last_path}</td>
+                                <td>{formatPresenceView(session.last_path, session.page_title)}</td>
                                 <td>{formatBuenosAiresDateTime(session.started_at)}</td>
                                 <td>{formatBuenosAiresDateTime(session.last_seen_at)}</td>
                                 <td>{session.page_views}</td>
@@ -5490,11 +5555,11 @@ export function Admin() {
                         <p><strong>Ventana 30m:</strong> {formatBuenosAiresDateTime(log.bucket_start)}</p>
                         <p><strong>Tipo:</strong> {formatPresenceTypeLabel(log.visitante_tipo)}</p>
                         <p><strong>Dispositivo:</strong> {shortPresenceId(log.visitor_id)} / sesion {shortPresenceId(log.session_id)}</p>
-                        <p><strong>Inicio:</strong> {log.first_path}</p>
-                        <p><strong>Ruta actual:</strong> {log.last_path}</p>
+                        <p><strong>Vista inicial:</strong> {formatPresenceView(log.first_path, log.page_title)}</p>
+                        <p><strong>Vista actual:</strong> {formatPresenceView(log.last_path, log.page_title)}</p>
                         <p><strong>Primer ingreso:</strong> {formatBuenosAiresDateTime(log.first_seen_at)}</p>
                         <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(log.last_seen_at)}</p>
-                        <p><strong>Eventos:</strong> {log.page_views}</p>
+                        <p><strong>Accesos:</strong> {log.page_views}</p>
                         <p><strong>IP:</strong> {log.ip}</p>
                       </div>
                     ))
@@ -5507,13 +5572,21 @@ export function Admin() {
                       <tr>
                         <th>Ventana 30m</th>
                         <th>Persona</th>
-                        <th>Tipo</th>
+                        <th>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            Tipo
+                            <FloatingTip
+                              label="Tipo de persona en registros"
+                              tip="Usuario no registrado significa que la persona esta navegando la app sin iniciar sesion. Cliente significa que ya ingreso con su cuenta."
+                            />
+                          </span>
+                        </th>
                         <th>Dispositivo</th>
-                        <th>Inicio</th>
-                        <th>Ruta actual</th>
+                        <th>Vista inicial</th>
+                        <th>Vista actual</th>
                         <th>Primer ingreso</th>
                         <th>Ultimo pulso</th>
-                        <th>Eventos</th>
+                        <th>Accesos</th>
                         <th>IP</th>
                       </tr>
                     </thead>
@@ -5535,8 +5608,8 @@ export function Admin() {
                               {" / "}
                               <span className="adm-code-chip">{shortPresenceId(log.session_id)}</span>
                             </td>
-                            <td>{log.first_path}</td>
-                            <td>{log.last_path}</td>
+                            <td>{formatPresenceView(log.first_path, log.page_title)}</td>
+                            <td>{formatPresenceView(log.last_path, log.page_title)}</td>
                             <td>{formatBuenosAiresDateTime(log.first_seen_at)}</td>
                             <td>{formatBuenosAiresDateTime(log.last_seen_at)}</td>
                             <td>{log.page_views}</td>
