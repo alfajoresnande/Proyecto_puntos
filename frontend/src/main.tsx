@@ -17,6 +17,7 @@ import "./styles/footer.css";
 import "./styles/home.css";
 import "./styles/addresses.css";
 import "./styles/shipping-zones.css";
+import "./styles/ai-chat-widget.css";
 
 void useAuthStore.getState().restoreSession();
 

@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { api } from "./api";
 import { Footer } from "./components/Footer";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
+import { AiChatWidget } from "./components/AiChatWidget";
 import { AppPresenceTracker } from "./components/AppPresenceTracker";
 import { Navbar } from "./components/Navbar";
 import { ProfileCompletionBanner } from "./components/ProfileCompletionBanner";
@@ -128,6 +130,23 @@ function NumberInputGuards() {
 }
 
 export default function App() {
+  const [chatbotEnabled, setChatbotEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ enabled: boolean }>("/ai/status")
+      .then((data) => {
+        if (!cancelled) setChatbotEnabled(data.enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setChatbotEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       <RealtimeBridge />
@@ -531,7 +550,8 @@ export default function App() {
         </main>
         <Footer />
       </div>
-      <FloatingWhatsApp />
+      {chatbotEnabled === true ? <AiChatWidget /> : null}
+      {chatbotEnabled === false ? <FloatingWhatsApp /> : null}
     </>
   );
 }

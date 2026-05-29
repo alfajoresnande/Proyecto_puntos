@@ -1,0 +1,171 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.answerAiChat = answerAiChat;
+const aiSystemPrompt_1 = require("./aiSystemPrompt");
+const groqClients_1 = require("./groqClients");
+const aiRouter_1 = require("./aiRouter");
+const aiUsageLimiter_1 = require("./aiUsageLimiter");
+function readBooleanEnv(name, fallback) {
+    const value = process.env[name]?.trim().toLowerCase();
+    if (!value)
+        return fallback;
+    return ["1", "true", "yes", "on"].includes(value);
+}
+function sanitizePromptValue(value, fallback, maxLength = 180) {
+    const normalized = (value || "")
+        .replace(/[\u0000-\u001F\u007F]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, maxLength);
+    return normalized || fallback;
+}
+function buildMessages(input) {
+    const currentPath = sanitizePromptValue(input.context?.currentPath, "desconocida");
+    const userRole = input.context?.userRole ?? "anonimo";
+    const message = input.message.trim().slice(0, 500);
+    return [
+        { role: "system", content: aiSystemPrompt_1.AI_SYSTEM_PROMPT },
+        {
+            role: "user",
+            content: `
+Ruta actual: ${currentPath}
+Rol del usuario: ${userRole}
+
+Pregunta del usuario:
+${message}
+`,
+        },
+    ];
+}
+function normalizeTokens(usage) {
+    if (!usage || typeof usage !== "object")
+        return undefined;
+    const raw = usage;
+    const tokens = {};
+    for (const key of ["prompt_tokens", "completion_tokens", "total_tokens"]) {
+        if (typeof raw[key] === "number")
+            tokens[key] = raw[key];
+    }
+    return Object.keys(tokens).length ? tokens : undefined;
+}
+function safeErrorReason(error) {
+    const status = (0, aiRouter_1.getGroqErrorStatus)(error);
+    if (status)
+        return `groq_status_${status}`;
+    if (error instanceof Error && error.name)
+        return error.name;
+    return "unknown_error";
+}
+function logAiChatEvent(event) {
+    console.info("[ai-chat]", JSON.stringify({
+        fecha: new Date().toISOString(),
+        userId: event.userId ?? null,
+        ipHash: event.ipHash,
+        provider: event.provider ?? null,
+        model: event.model ?? null,
+        tokens: event.tokens ?? null,
+        status: event.status,
+        reason: event.reason ?? null,
+    }));
+}
+function fallbackResponse() {
+    return {
+        ok: false,
+        answer: aiSystemPrompt_1.AI_CHAT_FALLBACK_ANSWER,
+        fallback: true,
+    };
+}
+async function answerAiChat(input) {
+    const model = (0, groqClients_1.getGroqModel)();
+    if (!readBooleanEnv("AI_CHAT_ENABLED", false)) {
+        logAiChatEvent({
+            userId: input.userId,
+            ipHash: input.ipHash,
+            model,
+            status: "fallback",
+            reason: "disabled",
+        });
+        return fallbackResponse();
+    }
+    const usage = (0, aiUsageLimiter_1.checkAndConsumeAiUsage)({ userId: input.userId, ipHash: input.ipHash });
+    if (!usage.allowed) {
+        logAiChatEvent({
+            userId: input.userId,
+            ipHash: input.ipHash,
+            model,
+            status: "fallback",
+            reason: usage.reason,
+        });
+        return fallbackResponse();
+    }
+    const { candidates } = (0, aiRouter_1.getAiProviderCandidates)();
+    if (!candidates.length) {
+        logAiChatEvent({
+            userId: input.userId,
+            ipHash: input.ipHash,
+            model,
+            status: "fallback",
+            reason: "no_available_provider",
+        });
+        return fallbackResponse();
+    }
+    const messages = buildMessages(input);
+    for (const candidate of candidates) {
+        try {
+            const completion = await candidate.client.chat.completions.create({
+                model,
+                messages,
+                temperature: 0.3,
+                max_tokens: (0, groqClients_1.getAiChatMaxOutputTokens)(),
+                stream: false,
+            });
+            const answer = completion.choices[0]?.message?.content?.trim();
+            (0, aiRouter_1.recordAiProviderSuccess)(candidate);
+            if (!answer) {
+                logAiChatEvent({
+                    userId: input.userId,
+                    ipHash: input.ipHash,
+                    provider: candidate.publicProvider,
+                    model: completion.model || model,
+                    tokens: normalizeTokens(completion.usage),
+                    status: "fallback",
+                    reason: "empty_response",
+                });
+                return fallbackResponse();
+            }
+            logAiChatEvent({
+                userId: input.userId,
+                ipHash: input.ipHash,
+                provider: candidate.publicProvider,
+                model: completion.model || model,
+                tokens: normalizeTokens(completion.usage),
+                status: "success",
+            });
+            return {
+                ok: true,
+                answer,
+                provider: candidate.publicProvider,
+                model: completion.model || model,
+            };
+        }
+        catch (error) {
+            const failure = (0, aiRouter_1.recordAiProviderFailure)(candidate, error);
+            logAiChatEvent({
+                userId: input.userId,
+                ipHash: input.ipHash,
+                provider: candidate.publicProvider,
+                model,
+                status: "error",
+                reason: failure.status ? `groq_status_${failure.status}` : safeErrorReason(error),
+            });
+        }
+    }
+    logAiChatEvent({
+        userId: input.userId,
+        ipHash: input.ipHash,
+        model,
+        status: "fallback",
+        reason: "providers_failed",
+    });
+    return fallbackResponse();
+}

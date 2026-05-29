@@ -19,6 +19,7 @@ import ubicacionesRoutes from "./routes/ubicaciones";
 import postulacionesRoutes from "./routes/postulaciones";
 import meAddressesRoutes from "./routes/meAddresses";
 import presenciaRoutes from "./routes/presencia";
+import aiChatRoutes from "./routes/aiChat.routes";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
@@ -246,6 +247,7 @@ app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
 app.use("/api/ubicaciones", ubicacionesRoutes);
 app.use("/api/presencia", presenciaRoutes);
 app.use("/api/me/addresses", meAddressesRoutes);
+app.use("/api/ai", aiChatRoutes);
 app.use("/api/cliente", clienteRoutes);
 app.use("/api/vendedor", vendedorRoutes);
 app.use("/api/admin", adminRoutes);

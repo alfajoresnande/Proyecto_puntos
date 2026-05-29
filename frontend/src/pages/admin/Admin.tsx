@@ -566,6 +566,7 @@ type ConfiguracionDraft = {
   empresa_dias_habiles_retiro: string;
   empresa_horario_retiro: string;
   pedido_comprobante_leyenda: string;
+  chatbot_activo: boolean;
 };
 
 type SucursalAdmin = {
@@ -1663,6 +1664,7 @@ export function Admin() {
     empresa_dias_habiles_retiro: "Lunes a viernes",
     empresa_horario_retiro: "08:00 a 18:00",
     pedido_comprobante_leyenda: "Este documento no es valido como factura.",
+    chatbot_activo: true,
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
@@ -4301,6 +4303,7 @@ export function Admin() {
     const empresaDiasHabilesRetiro = configDraft.empresa_dias_habiles_retiro.trim();
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
     const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
+    const chatbotActivo = configDraft.chatbot_activo;
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -4471,6 +4474,11 @@ export function Admin() {
           clave: "pedido_comprobante_leyenda",
           valor: pedidoComprobanteLeyenda,
           descripcion: "Leyenda legal que se muestra al pie del comprobante de pedidos.",
+        },
+        {
+          clave: "chatbot_activo",
+          valor: chatbotActivo ? "1" : "0",
+          descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
         },
       ];
 
@@ -4976,6 +4984,41 @@ export function Admin() {
                   />
                 </div>
               ) : null}
+
+              {isSuperAdmin && (
+                <>
+                  <div className="admin-section-header adm-config-header">
+                    <h2 className="admin-section-title">Asistente Virtual IA</h2>
+                  </div>
+                  <div className="admin-card admin-card-padded adm-config-card">
+                    <p className="adm-config-subtitle">
+                      Controla la visibilidad del chatbot en la aplicacion (solo visible para superAdmin).
+                    </p>
+                    <div className="adm-field adm-field-checkbox" style={{ marginTop: "1rem" }}>
+                      <label className="adm-label-inline">
+                        <input
+                          type="checkbox"
+                          checked={configDraft.chatbot_activo}
+                          onChange={(e) =>
+                            setConfigDraft((prev) => ({ ...prev, chatbot_activo: e.target.checked }))
+                          }
+                          disabled={configBusy}
+                        />
+                        Activar chatbot (si esta desactivado, se mostrara el boton de WhatsApp)
+                      </label>
+                    </div>
+                    <div className="adm-actions" style={{ marginTop: "1rem" }}>
+                      <button
+                        className="adm-btn-primary adm-btn-inline"
+                        onClick={guardarConfiguracionGeneral}
+                        disabled={configBusy}
+                      >
+                        {configBusy ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="admin-section-header adm-config-header">
                 <h2 className="admin-section-title">Configuracion del programa</h2>

@@ -22,6 +22,7 @@ const ubicaciones_1 = __importDefault(require("./routes/ubicaciones"));
 const postulaciones_1 = __importDefault(require("./routes/postulaciones"));
 const meAddresses_1 = __importDefault(require("./routes/meAddresses"));
 const presencia_1 = __importDefault(require("./routes/presencia"));
+const aiChat_routes_1 = __importDefault(require("./routes/aiChat.routes"));
 const securityMonitor_1 = require("./securityMonitor");
 const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
@@ -216,6 +217,7 @@ app.use("/api/paginas", paginas_1.default); // publico (sobre nosotros, terminos
 app.use("/api/ubicaciones", ubicaciones_1.default);
 app.use("/api/presencia", presencia_1.default);
 app.use("/api/me/addresses", meAddresses_1.default);
+app.use("/api/ai", aiChat_routes_1.default);
 app.use("/api/cliente", cliente_1.default);
 app.use("/api/vendedor", vendedor_1.default);
 app.use("/api/admin", admin_1.default);
