@@ -675,6 +675,37 @@
   color: #7A5A3C;
 }
 
+.adm-config-highlight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(164, 103, 54, 0.18);
+  background: linear-gradient(180deg, rgba(255, 247, 236, 0.98) 0%, rgba(250, 238, 221, 0.9) 100%);
+  color: #5f3518;
+}
+
+.adm-config-highlight-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a05a2c;
+}
+
+.adm-config-highlight strong {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.adm-config-highlight p {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #7A5A3C;
+}
+
 .adm-config-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

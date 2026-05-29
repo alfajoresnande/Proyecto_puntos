@@ -2546,7 +2546,7 @@ router.post("/productos", async (req, res) => {
   const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
   const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
   const precioDineroFinal = precio_dinero ?? null;
-  const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+  const puntajeComprarFinal = null;
   const permiteEnvioFinal = Boolean(permite_envio);
   const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
 
@@ -2594,7 +2594,7 @@ router.post("/productos", async (req, res) => {
         precioPuntosFinal,
         precioPuntosFinal,
         puntosRequeridosLegacy,
-        puntos_acumulables ?? null,
+        null,
         puntajeComprarFinal,
         destacado_home ? 1 : 0,
         productStockDisponible,
@@ -2682,7 +2682,7 @@ router.put("/productos/:id", async (req, res) => {
   const precioPuntosFinal = puntos_para_canjear ?? precio_puntos ?? puntos_requeridos ?? null;
   const puntosRequeridosLegacy = precioPuntosFinal ?? 0;
   const precioDineroFinal = precio_dinero ?? null;
-  const puntajeComprarFinal = puntaje_al_comprar ?? puntos_acumulables ?? null;
+  const puntajeComprarFinal = null;
   const permiteEnvioFinal = Boolean(permite_envio);
   const envioGratisFinal = permiteEnvioFinal && Boolean(envio_gratis);
 
@@ -2744,7 +2744,7 @@ router.put("/productos/:id", async (req, res) => {
         precioPuntosFinal,
         precioPuntosFinal,
         puntosRequeridosLegacy,
-        puntos_acumulables ?? null,
+        null,
         puntajeComprarFinal,
         destacado_home ? 1 : 0,
         productStockDisponible,

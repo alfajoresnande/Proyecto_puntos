@@ -296,7 +296,6 @@ type Movimiento = {
 type ProductoAdmin = Producto & {
   activo: boolean;
   sku?: string | null;
-  puntaje_al_comprar?: number | null;
   destacado_home?: boolean;
   created_at: string;
 };
@@ -684,8 +683,6 @@ type ProductoForm = {
   sabor_ids: number[];
   precio_dinero: number | null;
   puntos_requeridos: number | null;
-  puntos_acumulables: number | null;
-  puntaje_al_comprar: number | null;
   destacado_home: boolean;
   track_stock: boolean;
   permite_envio: boolean;
@@ -1038,8 +1035,6 @@ function emptyProductoForm(): ProductoForm {
     sabor_ids: [],
     precio_dinero: null,
     puntos_requeridos: null,
-    puntos_acumulables: null,
-    puntaje_al_comprar: null,
     destacado_home: false,
     track_stock: true,
     permite_envio: false,
@@ -2385,7 +2380,6 @@ export function Admin() {
         producto.categoria || "",
         String(producto.puntos_requeridos),
         String(producto.precio_dinero ?? ""),
-        String(producto.puntos_acumulables ?? ""),
       ]
         .join(" ")
         .toLowerCase();
@@ -2765,8 +2759,6 @@ export function Admin() {
           precio_dinero: nuevoProducto.tipo_producto === "venta" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.precio_dinero) : null,
           puntos_requeridos: Number(nuevoProducto.puntos_requeridos),
           puntos_para_canjear: nuevoProducto.tipo_producto === "canje" || nuevoProducto.tipo_producto === "mixto" ? Number(nuevoProducto.puntos_requeridos) : null,
-          puntos_acumulables: nuevoProducto.puntos_acumulables ? Number(nuevoProducto.puntos_acumulables) : null,
-          puntaje_al_comprar: nuevoProducto.puntaje_al_comprar ? Number(nuevoProducto.puntaje_al_comprar) : null,
           destacado_home: nuevoProducto.destacado_home,
           track_stock: nuevoProducto.configuracion_tipo === "caja_sabores" ? false : nuevoProducto.track_stock,
           permite_envio: nuevoProducto.permite_envio,
@@ -2807,8 +2799,6 @@ export function Admin() {
       sabor_ids: producto.sabor_ids ?? producto.sabores?.map((sabor) => sabor.id) ?? [],
       precio_dinero: producto.precio_dinero === null || producto.precio_dinero === undefined ? null : Number(producto.precio_dinero),
       puntos_requeridos: producto.puntos_para_canjear ?? producto.precio_puntos ?? producto.puntos_requeridos,
-      puntos_acumulables: producto.puntos_acumulables,
-      puntaje_al_comprar: producto.puntaje_al_comprar ?? null,
       destacado_home: producto.destacado_home ?? false,
       track_stock: producto.track_stock ?? true,
       permite_envio: producto.permite_envio ?? false,
@@ -2860,8 +2850,6 @@ export function Admin() {
           precio_dinero: editDraft.tipo_producto === "venta" || editDraft.tipo_producto === "mixto" ? Number(editDraft.precio_dinero) : null,
           puntos_requeridos: Number(editDraft.puntos_requeridos),
           puntos_para_canjear: editDraft.tipo_producto === "canje" || editDraft.tipo_producto === "mixto" ? Number(editDraft.puntos_requeridos) : null,
-          puntos_acumulables: editDraft.puntos_acumulables ? Number(editDraft.puntos_acumulables) : null,
-          puntaje_al_comprar: editDraft.puntaje_al_comprar ? Number(editDraft.puntaje_al_comprar) : null,
           destacado_home: editDraft.destacado_home,
           track_stock: editDraft.configuracion_tipo === "caja_sabores" ? false : editDraft.track_stock,
           permite_envio: editDraft.permite_envio,
@@ -4945,6 +4933,16 @@ export function Admin() {
                 <p className="adm-config-subtitle">
                   Ajusta como se suman, vencen y se usan los puntos sin tocar codigo.
                 </p>
+                <div className="adm-config-highlight">
+                  <span className="adm-config-highlight-label">Regla de compra actual</span>
+                  <strong>
+                    Cada {formatMoney(Number(configDraft.puntos_monto_base || 0))} de compra suma {Number(configDraft.puntos_por_monto || 0)} puntos.
+                  </strong>
+                  <p>
+                    Ejemplo rapido: si una compra llega a {formatMoney(Number(configDraft.puntos_monto_base || 0) * 2)},
+                    acredita {Number(configDraft.puntos_por_monto || 0) * 2} puntos.
+                  </p>
+                </div>
                 <div className="adm-config-grid">
                   <div className="adm-field">
                     <label className="adm-label">Dias limite de retiro</label>
@@ -4960,7 +4958,7 @@ export function Admin() {
                     <p className="adm-field-help">Cantidad de dias que tiene el cliente para retirar un canje antes de que expire.</p>
                   </div>
                   <div className="adm-field">
-                    <label className="adm-label">Monto base para sumar puntos</label>
+                    <label className="adm-label">Cada este monto de compra</label>
                     <input
                       type="number"
                       min={1}
@@ -4970,10 +4968,10 @@ export function Admin() {
                       onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_monto_base: event.target.value }))}
                       placeholder="Ej: 1000"
                     />
-                    <p className="adm-field-help">Cada vez que el total de una compra alcanza este monto, suma el tramo de puntos configurado.</p>
+                    <p className="adm-field-help">Este es el X de la regla: cada X pesos de compra, el cliente suma puntos.</p>
                   </div>
                   <div className="adm-field">
-                    <label className="adm-label">Puntos por tramo</label>
+                    <label className="adm-label">Dar estos puntos</label>
                     <input
                       type="number"
                       min={0}
@@ -4983,7 +4981,7 @@ export function Admin() {
                       onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_por_monto: event.target.value }))}
                       placeholder="Ej: 20"
                     />
-                    <p className="adm-field-help">Ejemplo: con monto base 1000 y valor 20, una compra de 2500 suma 40 puntos.</p>
+                    <p className="adm-field-help">Este es el Y de la regla. Ejemplo: cada 1000 pesos, da 20 puntos.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Vencimiento de puntos</label>
@@ -5802,11 +5800,6 @@ export function Admin() {
                             Caja configurable: {producto.capacidad_sabores ?? 0} alfajores | Sabores: {producto.sabores?.map((sabor) => sabor.nombre).join(", ") || "Sin sabores"}
                           </p>
                         ) : null}
-                        {(producto.puntaje_al_comprar ?? 0) > 0 ? (
-                          <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
-                            Puntos por producto legacy: {producto.puntaje_al_comprar}
-                          </p>
-                        ) : null}
                         <p className="admin-producto-sub">Imagenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
                       </div>
                       <div className="admin-producto-actions">
@@ -5962,11 +5955,6 @@ export function Admin() {
                       <input type="number" min={1} className="adm-input" value={nuevoProducto.puntos_requeridos ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntos_requeridos: event.target.value ? Number(event.target.value) : null }))} />
                     </div>
                   ) : null}
-                  <div className="adm-field">
-                    <label className="adm-label">Puntos por producto legacy</label>
-                    <input type="number" min={0} className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
-                    <p className="adm-field-help">La acreditacion actual usa la regla global por monto configurada en Inicio.</p>
-                  </div>
                 </div>
 
                 <div className="adm-product-options">
@@ -6233,21 +6221,6 @@ export function Admin() {
                               />
                             </div>
                           ) : null}
-                          <div className="adm-field">
-                            <FieldLabel
-                              text="Puntos por producto legacy"
-                              tip="La acreditacion actual usa la regla global por monto configurada en Inicio."
-                            />
-                            <input
-                              type="number"
-                              min={0}
-                              className="adm-input"
-                              value={editDraft.puntaje_al_comprar ?? editDraft.puntos_acumulables ?? ""}
-                              onChange={(event) =>
-                                setEditDraft((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))
-                              }
-                            />
-                          </div>
                         </div>
 
                         <div className="adm-product-options">
@@ -6408,11 +6381,6 @@ export function Admin() {
                           {producto.configuracion_tipo === "caja_sabores" ? (
                             <p className="admin-producto-sub">
                               Caja configurable: {producto.capacidad_sabores ?? 0} alfajores | Sabores: {producto.sabores?.map((sabor) => sabor.nombre).join(", ") || "Sin sabores"}
-                            </p>
-                          ) : null}
-                          {(producto.puntaje_al_comprar ?? 0) > 0 ? (
-                            <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
-                              Puntos por producto legacy: {producto.puntaje_al_comprar}
                             </p>
                           ) : null}
                           <p className="admin-producto-sub">Imágenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
