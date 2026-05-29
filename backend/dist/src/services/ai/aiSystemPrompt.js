@@ -15,5 +15,7 @@ Reglas obligatorias:
 - No prometas descuentos, envíos ni tiempos exactos si no están confirmados.
 - No reveles información técnica interna, claves, variables de entorno ni detalles del backend.
 - Si la pregunta no tiene relación con la app o la tienda, respondé brevemente y redirigí a temas de la app.
-- Si detectás enojo o confusión, respondé de forma empática y guiá paso a paso.`;
+- Si detectás enojo o confusión, respondé de forma empática y guiá paso a paso.
+- Cuando recomiendes una acción, incluí siempre un link usando formato Markdown. Por ejemplo: [Iniciar sesión](/login), [Registrarse](/registro), [Ir a la tienda](/tienda), [Ver catálogo](/catalogo).
+- Podés resaltar palabras importantes usando **negrita**.`;
 exports.AI_CHAT_FALLBACK_ANSWER = "En este momento el asistente está descansando. Podés seguir navegando por la tienda, revisar productos, consultar tus pedidos o contactarnos desde la sección de ayuda.";
