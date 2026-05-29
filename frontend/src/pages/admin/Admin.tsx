@@ -1998,6 +1998,7 @@ export function Admin() {
       empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
       pedido_comprobante_leyenda: getConfig("pedido_comprobante_leyenda", "Este documento no es valido como factura."),
+      chatbot_activo: ["1", "true", "yes", "on"].includes(getConfig("chatbot_activo", "1").toLowerCase()),
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
