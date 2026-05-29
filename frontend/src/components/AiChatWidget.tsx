@@ -55,14 +55,14 @@ function getDynamicGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día!";
+      timeGreeting = "¡Buen día! Soy SolisChadBot.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes!";
+      timeGreeting = "¡Buenas tardes! Soy SolisChadBot.";
     } else {
-      timeGreeting = "¡Buenas noches!";
+      timeGreeting = "¡Buenas noches! Soy SolisChadBot.";
     }
   } catch {
-    // default
+    timeGreeting = "¡Hola! Soy SolisChadBot.";
   }
 
   if (!user) {
@@ -88,14 +88,14 @@ function getTooltipGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día!";
+      timeGreeting = "¡Buen día! Soy SolisChadBot.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes!";
+      timeGreeting = "¡Buenas tardes! Soy SolisChadBot.";
     } else {
-      timeGreeting = "¡Buenas noches!";
+      timeGreeting = "¡Buenas noches! Soy SolisChadBot.";
     }
   } catch {
-    // default
+    timeGreeting = "¡Hola! Soy SolisChadBot.";
   }
 
   if (!user) {
@@ -260,10 +260,10 @@ export function AiChatWidget() {
   return (
     <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda IA">
       {isOpen ? (
-        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="Asistente virtual">
+        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="SolisChadBot">
           <div className="ai-chat-header">
             <div>
-              <p className="ai-chat-eyebrow">Asistente virtual</p>
+              <p className="ai-chat-eyebrow">SolisChadBot</p>
               <h2>Ñandé te ayuda</h2>
             </div>
             <button
