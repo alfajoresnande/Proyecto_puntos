@@ -77,6 +77,39 @@ function getDynamicGreeting(user: User | null): string {
   return `${timeGreeting} **${user.nombre}**. ¿En qué te puedo ayudar hoy?`;
 }
 
+function getTooltipGreeting(user: User | null): string {
+  let timeGreeting = "¡Hola!";
+  try {
+    const formatter = new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      hour: "numeric",
+      hour12: false,
+    });
+    const hour = parseInt(formatter.format(new Date()), 10);
+
+    if (hour >= 6 && hour < 12) {
+      timeGreeting = "¡Buen día!";
+    } else if (hour >= 12 && hour < 20) {
+      timeGreeting = "¡Buenas tardes!";
+    } else {
+      timeGreeting = "¡Buenas noches!";
+    }
+  } catch {
+    // default
+  }
+
+  if (!user) {
+    return `${timeGreeting} ¿Te ayudo a iniciar sesión para sumar puntos? ✨`;
+  }
+
+  const faltanDatos = !user.dni || !user.telefono || !user.localidad;
+  if (faltanDatos) {
+    return `${timeGreeting} ${user.nombre}. ¿Completamos tu perfil para tu próximo pedido? 📝`;
+  }
+
+  return `${timeGreeting} ${user.nombre}. ¿En qué te ayudo hoy? 😊`;
+}
+
 function parseMessageContent(content: string) {
   // Regex to match markdown links: [Link text](/url) or bold text **bold**
   const tokenRegex = /(\[.*?\]\(.*?\))|(\*\*.*?\*\*)/g;
@@ -289,7 +322,7 @@ export function AiChatWidget() {
       {showTooltip && !isOpen ? (
         <div className="ai-chat-tooltip" onClick={() => setIsOpen(true)}>
           <div className="ai-chat-tooltip-bubble">
-            {initialGreeting}
+            {getTooltipGreeting(user)}
           </div>
           <button
             type="button"
