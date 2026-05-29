@@ -3,6 +3,8 @@ import { api } from "../api";
 import { useAuthStore } from "../store/authStore";
 import type { Rol } from "../types";
 
+import { Link } from "react-router-dom";
+
 type AiChatUserRole = "cliente" | "vendedor" | "admin" | "superadmin" | "anonimo";
 
 type AiChatResponse = {
@@ -42,6 +44,65 @@ function getCurrentPath(): string {
   return typeof window === "undefined" ? "/" : window.location.pathname;
 }
 
+function getDynamicGreeting(): string {
+  try {
+    const formatter = new Intl.DateTimeFormat("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      hour: "numeric",
+      hour12: false,
+    });
+    const hour = parseInt(formatter.format(new Date()), 10);
+
+    if (hour >= 6 && hour < 12) {
+      return "¡Buen día! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+    } else if (hour >= 12 && hour < 20) {
+      return "¡Buenas tardes! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+    } else {
+      return "¡Buenas noches! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+    }
+  } catch {
+    return "¡Hola! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+  }
+}
+
+function parseMessageContent(content: string) {
+  // Regex to match markdown links: [Link text](/url) or bold text **bold**
+  const tokenRegex = /(\[.*?\]\(.*?\))|(\*\*.*?\*\*)/g;
+  const parts = content.split(tokenRegex).filter(Boolean);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("[") && part.includes("](")) {
+      const match = part.match(/\[(.*?)\]\((.*?)\)/);
+      if (match) {
+        const text = match[1];
+        const url = match[2];
+        if (url.startsWith("/")) {
+          return (
+            <Link key={index} to={url} className="ai-chat-link">
+              {text}
+            </Link>
+          );
+        }
+        return (
+          <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="ai-chat-link">
+            {text}
+          </a>
+        );
+      }
+    } else if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+
+    // Split text parts by line breaks
+    return part.split("\n").map((line, i) => (
+      <span key={`${index}-${i}`}>
+        {line}
+        {i !== part.split("\n").length - 1 && <br />}
+      </span>
+    ));
+  });
+}
+
 export function AiChatWidget() {
   const user = useAuthStore((state) => state.user);
   const [isOpen, setIsOpen] = useState(false);
@@ -51,7 +112,7 @@ export function AiChatWidget() {
     {
       id: createMessageId(),
       role: "assistant",
-      content: "Hola, soy el asistente de Ñandé. Puedo ayudarte con compras, pedidos, pagos, envíos, puntos y navegación de la app.",
+      content: getDynamicGreeting(),
     },
   ]);
   const [conversationId] = useState(createMessageId);
@@ -149,7 +210,7 @@ export function AiChatWidget() {
                   message.fallback ? " ai-chat-message--fallback" : ""
                 }`}
               >
-                {message.content}
+                {parseMessageContent(message.content)}
               </div>
             ))}
             {isSending ? (

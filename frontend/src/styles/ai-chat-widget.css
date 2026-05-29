@@ -232,3 +232,31 @@
     max-height: min(420px, calc(100vh - 290px));
   }
 }
+
+.ai-chat-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.8rem;
+  background-color: rgba(0, 0, 0, 0.05);
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  font-size: 0.85rem;
+}
+
+.ai-chat-link:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+  text-decoration: underline;
+}
+
+.ai-chat-message--user .ai-chat-link {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.ai-chat-message--user .ai-chat-link:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}

@@ -13,3 +13,8 @@ backend/yarn.lock
 /frontend-dev.log
 /frontend-dev.err.log
 
+.env
+.env.*
+backend/.env
+backend/.env.*
+!backend/.env.example

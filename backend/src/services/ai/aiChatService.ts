@@ -8,7 +8,7 @@ import {
   recordAiProviderSuccess,
 } from "./aiRouter";
 import { checkAndConsumeAiUsage } from "./aiUsageLimiter";
-import { pool, qOne } from "../../db";
+import { pool, qOne, qAll } from "../../db";
 
 export type AiChatUserRole = "cliente" | "vendedor" | "admin" | "superadmin" | "anonimo";
 
@@ -69,13 +69,44 @@ function sanitizePromptValue(value: string | undefined, fallback: string, maxLen
   return normalized || fallback;
 }
 
-function buildMessages(input: AiChatServiceInput): Groq.Chat.ChatCompletionMessageParam[] {
+async function getProductsContext(): Promise<string> {
+  try {
+    const productos = await qAll<{
+      id: number;
+      nombre: string;
+      descripcion: string | null;
+      precio_dinero: number | null;
+      precio_puntos: number | null;
+    }>(
+      pool,
+      "SELECT id, nombre, descripcion, precio_dinero, precio_puntos FROM productos WHERE activo = 1",
+    );
+
+    if (!productos || productos.length === 0) return "No hay productos activos en este momento.";
+
+    let ctx = "CATÁLOGO DE PRODUCTOS ACTUALIZADO:\n";
+    for (const p of productos) {
+      ctx += `- ${p.nombre}: ${p.descripcion || "Sin descripción"}. Precio: $${p.precio_dinero || 0} / Puntos: ${p.precio_puntos || 0}\n`;
+    }
+    return ctx;
+  } catch (error) {
+    console.error("[ai-chat] Error fetching products context", error);
+    return "El catálogo de productos no se pudo cargar temporalmente.";
+  }
+}
+
+async function buildMessages(input: AiChatServiceInput): Promise<Groq.Chat.ChatCompletionMessageParam[]> {
   const currentPath = sanitizePromptValue(input.context?.currentPath, "desconocida");
   const userRole = input.context?.userRole ?? "anonimo";
   const message = input.message.trim().slice(0, 500);
+  
+  const productsContext = await getProductsContext();
 
   return [
-    { role: "system", content: AI_SYSTEM_PROMPT },
+    { 
+      role: "system", 
+      content: `${AI_SYSTEM_PROMPT}\n\n${productsContext}` 
+    },
     {
       role: "user",
       content: `
@@ -195,7 +226,7 @@ export async function answerAiChat(input: AiChatServiceInput): Promise<AiChatRes
     return fallbackResponse();
   }
 
-  const messages = buildMessages(input);
+  const messages = await buildMessages(input);
 
   for (const candidate of candidates) {
     try {
