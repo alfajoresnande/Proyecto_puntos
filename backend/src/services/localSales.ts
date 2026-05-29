@@ -11,7 +11,7 @@ import {
 } from "./cashRegister";
 import { createPricingResolver, getActiveClientePricingProfile, type CustomerPricingProfile, type ResolvedMoneyPrice } from "./customerPricing";
 import { buildPaymentFeeRuleMap, getPaymentFeeRules, resolvePaymentFee, resolvePaymentFeeFromRuleMap } from "./paymentFees";
-import { acreditarPuntosPorCompra, recalcularSaldoPuntosUsuario, removerPuntosAcreditadosPorCompra } from "./points";
+import { acreditarPuntosPorCompra, calcularPuntosPorMonto, recalcularSaldoPuntosUsuario, removerPuntosAcreditadosPorCompra } from "./points";
 import {
   finalizeFlavorStockForCheckoutItems,
   finalizeStockForCheckoutItems,
@@ -642,6 +642,10 @@ async function updateLocalSaleCajaMovimiento(
 }
 
 async function removeLocalSalePoints(conn: Queryable, orderId: number, usuarioId: number | null) {
+  await removerPuntosAcreditadosPorCompra(conn, orderId, usuarioId, {
+    dedupeReference: false,
+    descripcion: `Anulacion de puntos por edicion de venta local #${orderId}`,
+  });
   await qRun(
     conn,
     "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'",
@@ -804,8 +808,9 @@ export async function registerLocalSale(
     throw new Error("Agrega al menos un producto a la venta local.");
   }
 
+  const totalDineroPreview = toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0));
   const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
-    ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+    ? await calcularPuntosPorMonto(conn, totalDineroPreview)
     : 0;
   const result = buildLocalSaleResult(0, preparedItems, totalPuntosGanados);
   const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
@@ -919,8 +924,9 @@ export async function updateLocalSale(
     throw new Error("Agrega al menos un producto a la venta local.");
   }
 
+  const totalDineroPreview = toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0));
   const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
-    ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+    ? await calcularPuntosPorMonto(conn, totalDineroPreview)
     : 0;
   const result = buildLocalSaleResult(input.orderId, preparedItems, totalPuntosGanados);
   const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");

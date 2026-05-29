@@ -28,6 +28,7 @@ const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
 const email_1 = require("../services/email");
 const shippingZones_1 = require("../services/shippingZones");
+const appPresence_1 = require("../services/appPresence");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -412,6 +413,11 @@ router.get("/stats", async (_req, res) => {
         canjes_pendientes: canjesPend?.c ?? 0,
         puntos_emitidos: ptsEmitidos?.s ?? 0,
     });
+});
+router.get("/personas-app", async (req, res) => {
+    const requested = Number(req.query.limit ?? 80);
+    const limit = Number.isFinite(requested) ? requested : 80;
+    res.json(await (0, appPresence_1.getAppPresenceOverview)(limit));
 });
 router.get("/security/monitor", requireSuperAdmin, async (req, res) => {
     const requested = Number(req.query.limit ?? 50);
@@ -811,10 +817,15 @@ router.patch("/canjes/:id", async (req, res) => {
         await (0, db_1.qRun)(conn, "UPDATE canjes SET estado = ?, notas = ? WHERE id = ?", [estado, notas ?? null, id]);
         if (estado === "no_disponible" || estado === "cancelado") {
             const motivo = estado === "cancelado" ? "cancelado" : "no disponible";
-            await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos
-           (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`, [canje.usuario_id, canje.puntos_usados, `Devolucion por canje ${motivo}`, id, req.user.id]);
-            await (0, points_1.recalcularSaldoPuntosUsuario)(conn, Number(canje.usuario_id));
+            await (0, points_1.registrarMovimientoPuntos)(conn, {
+                usuarioId: Number(canje.usuario_id),
+                tipo: "devolucion_canje",
+                puntos: Number(canje.puntos_usados),
+                descripcion: `Devolucion por canje ${motivo}`,
+                referenciaId: id,
+                referenciaTipo: "canjes",
+                creadoPor: req.user.id,
+            });
         }
         await conn.commit();
         (0, realtime_1.emitRealtime)(["canjes", "inventario", "stats", "puntos"]);
@@ -2787,18 +2798,19 @@ router.post("/puntos/reconciliar-saldos", auth_1.requireAuth, (0, auth_1.require
             res.json({ ok: true, usuario_id: usuarioId, saldo_recalculado: saldo });
             return;
         }
-        // Reparar todos los usuarios con movimientos registrados
-        const usuarios = await (0, db_1.qAll)(conn, `SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
-       FROM movimientos_puntos
-       GROUP BY usuario_id`);
+        // Reparar todos los usuarios con lotes o saldo registrado
+        const usuarios = await (0, db_1.qAll)(conn, `SELECT id AS usuario_id
+       FROM usuarios
+       WHERE rol = 'cliente'
+          OR puntos_saldo <> 0
+          OR EXISTS (SELECT 1 FROM puntos_lotes pl WHERE pl.usuario_id = usuarios.id)`);
         const resultados = [];
         for (const row of usuarios) {
             const usuarioId = Number(row.usuario_id);
-            const saldoCalculado = Math.max(0, Number(row.saldo_calculado));
             const actual = await (0, db_1.qOne)(conn, "SELECT puntos_saldo FROM usuarios WHERE id = ?", [usuarioId]);
             const saldoAnterior = Number(actual?.puntos_saldo ?? 0);
+            const saldoCalculado = await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
             if (saldoAnterior !== saldoCalculado) {
-                await (0, db_1.qRun)(conn, "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?", [saldoCalculado, usuarioId]);
                 resultados.push({ usuario_id: usuarioId, saldo_anterior: saldoAnterior, saldo_nuevo: saldoCalculado });
                 console.info(`[reconciliar-saldos] Usuario #${usuarioId}: ${saldoAnterior} → ${saldoCalculado} pts`);
             }

@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
-import { recalcularSaldoPuntosUsuario } from "../services/points";
+import { recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "../services/points";
 import { clearAuthCookie, getAuthPayload, requireAuth, setAuthCookie, signToken } from "../auth";
 import { recordSecurityEvent } from "../securityMonitor";
 import { sendEmailVerificationCode, sendPasswordResetEmail } from "../services/email";
@@ -294,19 +294,23 @@ async function grantReferralBonusAfterVerification(conn: Queryable, usuarioId: n
     [inviter.id, usuarioId, ptsInv, ptsNuev]
   );
 
-  await qRun(conn,
-    `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`,
-    [inviter.id, ptsInv, `${invited.nombre} verifico su correo con tu codigo`, refId]
-  );
-  await recalcularSaldoPuntosUsuario(conn, inviter.id);
+  await registrarMovimientoPuntos(conn, {
+    usuarioId: Number(inviter.id),
+    tipo: "referido_invitador",
+    puntos: ptsInv,
+    descripcion: `${invited.nombre} verifico su correo con tu codigo`,
+    referenciaId: Number(refId),
+    referenciaTipo: "referidos",
+  });
 
-  await qRun(conn,
-    `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`,
-    [usuarioId, ptsNuev, `Bono de bienvenida por codigo de ${inviter.nombre}`, refId]
-  );
-  await recalcularSaldoPuntosUsuario(conn, usuarioId);
+  await registrarMovimientoPuntos(conn, {
+    usuarioId,
+    tipo: "referido_invitado",
+    puntos: ptsNuev,
+    descripcion: `Bono de bienvenida por codigo de ${inviter.nombre}`,
+    referenciaId: Number(refId),
+    referenciaTipo: "referidos",
+  });
 }
 
 function parseBirthDate(raw: string): Date | null {

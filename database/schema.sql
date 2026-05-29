@@ -627,6 +627,7 @@ CREATE TABLE IF NOT EXISTS movimientos_puntos (
                             'canje_producto',
                             'devolucion_canje',
                             'acreditacion_compra',
+                            'vencimiento_puntos',
                             'ajuste'
                         )               NOT NULL,
     puntos              INT             NOT NULL,
@@ -642,6 +643,94 @@ CREATE TABLE IF NOT EXISTS movimientos_puntos (
         FOREIGN KEY (creado_por)  REFERENCES usuarios(id),
     CONSTRAINT uq_mov_referencia
         UNIQUE (referencia_tipo, referencia_id, tipo)
+);
+
+-- ============================================================
+-- TABLAS: puntos_lotes / puntos_lote_consumos
+-- Cada acreditacion positiva crea un lote con vencimiento propio.
+-- Los consumos descuentan primero los lotes mas proximos a vencer.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS puntos_lotes (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    usuario_id          INT             NOT NULL,
+    movimiento_id       INT             NULL,
+    puntos_originales   INT             NOT NULL,
+    puntos_disponibles  INT             NOT NULL,
+    expires_at          DATETIME        NOT NULL,
+    origen_tipo         VARCHAR(50)     NULL,
+    origen_id           INT             NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_puntos_lotes_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_puntos_lotes_movimiento
+        FOREIGN KEY (movimiento_id) REFERENCES movimientos_puntos(id)
+        ON DELETE SET NULL,
+    CONSTRAINT uq_puntos_lotes_movimiento
+        UNIQUE (movimiento_id),
+    INDEX idx_puntos_lotes_usuario_vencimiento (usuario_id, expires_at, puntos_disponibles),
+    INDEX idx_puntos_lotes_origen (origen_tipo, origen_id)
+);
+
+CREATE TABLE IF NOT EXISTS puntos_lote_consumos (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    usuario_id          INT             NOT NULL,
+    lote_id             BIGINT UNSIGNED NOT NULL,
+    movimiento_id       INT             NOT NULL,
+    puntos              INT             NOT NULL,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_puntos_consumos_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_puntos_consumos_lote
+        FOREIGN KEY (lote_id) REFERENCES puntos_lotes(id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_puntos_consumos_movimiento
+        FOREIGN KEY (movimiento_id) REFERENCES movimientos_puntos(id)
+        ON DELETE CASCADE,
+    INDEX idx_puntos_consumos_movimiento (movimiento_id),
+    INDEX idx_puntos_consumos_lote (lote_id),
+    INDEX idx_puntos_consumos_usuario (usuario_id, created_at)
+);
+
+-- ============================================================
+-- TABLA: app_presencia_registros
+-- Presencia de visitantes anonimos y clientes en ventanas
+-- de 30 minutos para el panel admin "Personas en app".
+-- ============================================================
+CREATE TABLE IF NOT EXISTS app_presencia_registros (
+    id                  BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    identity_key        VARCHAR(80)     NOT NULL,
+    visitor_id          CHAR(36)        NOT NULL,
+    session_id          CHAR(36)        NOT NULL,
+    usuario_id          INT             NULL,
+    visitante_tipo      ENUM('anonimo','cliente') NOT NULL DEFAULT 'anonimo',
+    bucket_start        DATETIME        NOT NULL,
+    bucket_end          DATETIME        NOT NULL,
+    first_seen_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    first_path          VARCHAR(255)    NOT NULL,
+    last_path           VARCHAR(255)    NOT NULL,
+    page_title          VARCHAR(255)    NULL,
+    referrer            VARCHAR(255)    NULL,
+    ip                  VARCHAR(64)     NOT NULL,
+    user_agent          VARCHAR(255)    NULL,
+    page_views          INT UNSIGNED    NOT NULL DEFAULT 1,
+    created_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_app_presencia_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+    UNIQUE KEY uq_app_presencia_bucket_identity (session_id, bucket_start, identity_key),
+    INDEX idx_app_presencia_session (session_id, bucket_start),
+    INDEX idx_app_presencia_last_seen (last_seen_at),
+    INDEX idx_app_presencia_bucket (bucket_start),
+    INDEX idx_app_presencia_visitor (visitor_id, last_seen_at),
+    INDEX idx_app_presencia_usuario (usuario_id, last_seen_at),
+    INDEX idx_app_presencia_tipo (visitante_tipo, last_seen_at)
 );
 
 -- ============================================================
@@ -712,6 +801,22 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
         'Puntos que recibe el nuevo usuario al registrarse con un código'),
     ('dias_limite_retiro', '7',
         'Días que tiene el cliente para retirar un producto canjeado'),
+    ('puntos_monto_base', '1000',
+        'Monto de compra que habilita un tramo de puntos'),
+    ('puntos_por_monto', '20',
+        'Puntos que se acreditan por cada tramo de monto configurado'),
+    ('puntos_vencimiento_meses', '6',
+        'Cantidad de meses de vigencia para cada lote de puntos acreditado'),
+    ('puntos_alerta_pre_vencimiento_valor', '1',
+        'Cantidad de semanas o meses de anticipacion para avisar que los puntos estan por vencer'),
+    ('puntos_alerta_pre_vencimiento_unidad', 'meses',
+        'Unidad de anticipacion para avisar puntos por vencer: semanas o meses'),
+    ('home_ubicacion_imagen_1_link', '',
+        'Link opcional para la imagen principal izquierda de la seccion Donde encontrarnos del home'),
+    ('home_ubicacion_imagen_2_link', '',
+        'Link opcional para la imagen superior derecha de la seccion Donde encontrarnos del home'),
+    ('home_ubicacion_imagen_3_link', '',
+        'Link opcional para la imagen inferior derecha de la seccion Donde encontrarnos del home'),
     ('lugar_retiro_canje', 'Corrientes, Argentina',
         'Lugar físico donde el cliente debe retirar productos canjeados'),
     ('longitud_codigo_invitacion', '9',

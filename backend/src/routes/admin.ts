@@ -67,6 +67,7 @@ import {
   ShippingZoneError,
   updateShippingZone,
 } from "../services/shippingZones";
+import { getAppPresenceOverview } from "../services/appPresence";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -569,6 +570,12 @@ router.get("/stats", async (_req, res) => {
   });
 });
 
+router.get("/personas-app", async (req, res) => {
+  const requested = Number(req.query.limit ?? 80);
+  const limit = Number.isFinite(requested) ? requested : 80;
+  res.json(await getAppPresenceOverview(limit));
+});
+
 router.get("/security/monitor", requireSuperAdmin, async (req, res) => {
   const requested = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(requested) ? requested : 50;
@@ -995,14 +1002,15 @@ router.patch("/canjes/:id", async (req, res) => {
 
     if (estado === "no_disponible" || estado === "cancelado") {
       const motivo = estado === "cancelado" ? "cancelado" : "no disponible";
-      await qRun(
-        conn,
-        `INSERT INTO movimientos_puntos
-           (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`,
-        [canje.usuario_id, canje.puntos_usados, `Devolucion por canje ${motivo}`, id, req.user!.id],
-      );
-      await recalcularSaldoPuntosUsuario(conn, Number(canje.usuario_id));
+      await registrarMovimientoPuntos(conn, {
+        usuarioId: Number(canje.usuario_id),
+        tipo: "devolucion_canje",
+        puntos: Number(canje.puntos_usados),
+        descripcion: `Devolucion por canje ${motivo}`,
+        referenciaId: id,
+        referenciaTipo: "canjes",
+        creadoPor: req.user!.id,
+      });
     }
 
     await conn.commit();
@@ -3293,26 +3301,27 @@ router.post("/puntos/reconciliar-saldos", requireAuth, requireRole("admin"), asy
       return;
     }
 
-    // Reparar todos los usuarios con movimientos registrados
-    const usuarios = await qAll<{ usuario_id: number; saldo_calculado: number }>(
+    // Reparar todos los usuarios con lotes o saldo registrado
+    const usuarios = await qAll<{ usuario_id: number }>(
       conn,
-      `SELECT usuario_id, COALESCE(SUM(puntos), 0) AS saldo_calculado
-       FROM movimientos_puntos
-       GROUP BY usuario_id`,
+      `SELECT id AS usuario_id
+       FROM usuarios
+       WHERE rol = 'cliente'
+          OR puntos_saldo <> 0
+          OR EXISTS (SELECT 1 FROM puntos_lotes pl WHERE pl.usuario_id = usuarios.id)`,
     );
 
     const resultados: Array<{ usuario_id: number; saldo_anterior: number; saldo_nuevo: number }> = [];
     for (const row of usuarios) {
       const usuarioId = Number(row.usuario_id);
-      const saldoCalculado = Math.max(0, Number(row.saldo_calculado));
       const actual = await qOne<{ puntos_saldo: number }>(
         conn,
         "SELECT puntos_saldo FROM usuarios WHERE id = ?",
         [usuarioId],
       );
       const saldoAnterior = Number(actual?.puntos_saldo ?? 0);
+      const saldoCalculado = await recalcularSaldoPuntosUsuario(conn, usuarioId);
       if (saldoAnterior !== saldoCalculado) {
-        await qRun(conn, "UPDATE usuarios SET puntos_saldo = ? WHERE id = ?", [saldoCalculado, usuarioId]);
         resultados.push({ usuario_id: usuarioId, saldo_anterior: saldoAnterior, saldo_nuevo: saldoCalculado });
         console.info(`[reconciliar-saldos] Usuario #${usuarioId}: ${saldoAnterior} → ${saldoCalculado} pts`);
       }

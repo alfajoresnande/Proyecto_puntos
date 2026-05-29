@@ -5,6 +5,7 @@ exports.sendPasswordResetEmail = sendPasswordResetEmail;
 exports.sendOrderReceiptEmail = sendOrderReceiptEmail;
 require("dotenv/config");
 const db_1 = require("../db");
+const points_1 = require("./points");
 function escapeHtml(str) {
     return str
         .replace(/&/g, "&amp;")
@@ -198,7 +199,7 @@ async function sendOrderReceiptEmail(orderId) {
     const costoEnvio = numberField(direccionEnvio, "costo_envio") || numberField(envioSnapshot, "costo_envio");
     const zonaEnvio = stringField(envioSnapshot, "zona_nombre");
     const subtotalProductos = items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0);
-    const puntosGanados = items.reduce((acc, item) => acc + Number(item.cantidad) * Number(item.puntaje_al_comprar_unitario ?? 0), 0);
+    const puntosGanados = await (0, points_1.calcularPuntosPorMonto)(db_1.pool, Number(order.total_dinero ?? 0));
     const safeName = escapeHtml(order.cliente_nombre || "Cliente");
     const itemRows = items
         .map((item) => {

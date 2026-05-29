@@ -12,6 +12,7 @@ type OrdenDetalle = {
   tipo_orden: "canje" | "venta" | "mixta";
   total_dinero: number;
   total_puntos: number;
+  total_puntos_ganados?: number;
   moneda: string;
   created_at: string;
   direccion_envio?: {
@@ -194,7 +195,7 @@ export function ComprobantePedido() {
     ? orden.items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0)
     : Math.max(0, Number(orden.total_dinero || 0) - costoEnvio);
   
-  const puntosGanados = orden.items?.reduce((acc, item) => acc + (item.puntaje_al_comprar_unitario || 0) * item.cantidad, 0) || 0;
+  const puntosGanados = Number(orden.total_puntos_ganados ?? 0);
 
   return (
     <div className="comprobante-wrapper">

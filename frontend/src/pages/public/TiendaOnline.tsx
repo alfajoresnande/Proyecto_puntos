@@ -1153,12 +1153,12 @@ export function TiendaOnline() {
                           </div>
                         </>
                       ) : null}
-                      {(producto.puntaje_al_comprar ?? 0) > 0 ? (
+                      {productPrice(producto) > 0 ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                              Sumás {producto.puntaje_al_comprar} puntos con este producto
+                              Suma puntos segun el total de la compra
                             </span>
                           </div>
                         </>
@@ -1395,11 +1395,11 @@ export function TiendaOnline() {
                     </div>
                   </>
                 ) : null}
-                {(productoModal.puntaje_al_comprar ?? 0) > 0 ? (
+                {productPrice(productoModal) > 0 ? (
                   <>
                     <div className="product-card-divider" />
                     <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
-                      <span>Sumás {productoModal.puntaje_al_comprar} puntos con este producto</span>
+                      <span>Suma puntos segun el total de la compra</span>
                     </div>
                   </>
                 ) : null}

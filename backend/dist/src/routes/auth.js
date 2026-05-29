@@ -202,12 +202,22 @@ async function grantReferralBonusAfterVerification(conn, usuarioId) {
     const ptsNuev = Number(cfgRows?.nuev ?? 30);
     const { insertId: refId } = await (0, db_1.qRun)(conn, `INSERT INTO referidos (invitador_id, invitado_id, puntos_invitador, puntos_invitado)
      VALUES (?, ?, ?, ?)`, [inviter.id, usuarioId, ptsInv, ptsNuev]);
-    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'referido_invitador', ?, ?, ?, 'referidos')`, [inviter.id, ptsInv, `${invited.nombre} verifico su correo con tu codigo`, refId]);
-    await (0, points_1.recalcularSaldoPuntosUsuario)(conn, inviter.id);
-    await (0, db_1.qRun)(conn, `INSERT INTO movimientos_puntos (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo)
-     VALUES (?, 'referido_invitado', ?, ?, ?, 'referidos')`, [usuarioId, ptsNuev, `Bono de bienvenida por codigo de ${inviter.nombre}`, refId]);
-    await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
+    await (0, points_1.registrarMovimientoPuntos)(conn, {
+        usuarioId: Number(inviter.id),
+        tipo: "referido_invitador",
+        puntos: ptsInv,
+        descripcion: `${invited.nombre} verifico su correo con tu codigo`,
+        referenciaId: Number(refId),
+        referenciaTipo: "referidos",
+    });
+    await (0, points_1.registrarMovimientoPuntos)(conn, {
+        usuarioId,
+        tipo: "referido_invitado",
+        puntos: ptsNuev,
+        descripcion: `Bono de bienvenida por codigo de ${inviter.nombre}`,
+        referenciaId: Number(refId),
+        referenciaTipo: "referidos",
+    });
 }
 function parseBirthDate(raw) {
     const text = (raw || "").trim();

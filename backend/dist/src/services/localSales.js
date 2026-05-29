@@ -383,6 +383,10 @@ async function updateLocalSaleCajaMovimiento(conn, { orderId, metodoPago, totalD
     await (0, cashRegister_1.syncCajaSesionClosureState)(conn, { cajaSesionId: Number(currentMovement.caja_sesion_id) });
 }
 async function removeLocalSalePoints(conn, orderId, usuarioId) {
+    await (0, points_1.removerPuntosAcreditadosPorCompra)(conn, orderId, usuarioId, {
+        dedupeReference: false,
+        descripcion: `Anulacion de puntos por edicion de venta local #${orderId}`,
+    });
     await (0, db_1.qRun)(conn, "DELETE FROM movimientos_puntos WHERE referencia_tipo = 'ordenes' AND referencia_id = ? AND tipo = 'acreditacion_compra'", [orderId]);
     if (usuarioId) {
         await (0, points_1.recalcularSaldoPuntosUsuario)(conn, usuarioId);
@@ -491,8 +495,9 @@ async function registerLocalSale(conn, input) {
     if (!preparedItems.length) {
         throw new Error("Agrega al menos un producto a la venta local.");
     }
+    const totalDineroPreview = toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0));
     const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
-        ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+        ? await (0, points_1.calcularPuntosPorMonto)(conn, totalDineroPreview)
         : 0;
     const result = buildLocalSaleResult(0, preparedItems, totalPuntosGanados);
     const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");
@@ -590,8 +595,9 @@ async function updateLocalSale(conn, input) {
     if (!preparedItems.length) {
         throw new Error("Agrega al menos un producto a la venta local.");
     }
+    const totalDineroPreview = toMoney(preparedItems.reduce((acc, item) => acc + item.subtotal_dinero, 0));
     const totalPuntosGanados = input.acreditarPuntos && customer.usuarioId
-        ? preparedItems.reduce((acc, item) => acc + item.cantidad * item.puntaje_al_comprar_unitario, 0)
+        ? await (0, points_1.calcularPuntosPorMonto)(conn, totalDineroPreview)
         : 0;
     const result = buildLocalSaleResult(input.orderId, preparedItems, totalPuntosGanados);
     const metodoPago = normalizePaymentMethod(input.metodoPago || "cash");

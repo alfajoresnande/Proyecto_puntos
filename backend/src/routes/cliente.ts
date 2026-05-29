@@ -13,6 +13,8 @@ import {
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import {
   acreditarPuntosPorCompra,
+  calcularPuntosPorMonto,
+  getUpcomingPointExpirations,
   recalcularSaldoPuntosUsuario,
   registrarMovimientoPuntos,
 } from "../services/points";
@@ -288,11 +290,12 @@ async function uniqueRedeemCode(conn: Queryable, length = REDEEM_CODE_LENGTH): P
 }
 
 function profileMissingFields(perfil?: PerfilCanje): string[] {
-  if (!perfil) return ["nombre", "email", "dni"];
+  if (!perfil) return ["nombre", "email", "dni", "telefono"];
   const missing: string[] = [];
   if (!perfil.nombre || !perfil.nombre.trim()) missing.push("nombre");
   if (!perfil.email || !perfil.email.includes("@")) missing.push("email");
   if (!perfil.dni || perfil.dni.trim().length < 6) missing.push("dni");
+  if (!perfil.telefono || perfil.telefono.replace(/\D/g, "").length < 6) missing.push("telefono");
   if (!perfil.fecha_nacimiento) missing.push("fecha nacimiento");
   if (!perfil.localidad || !perfil.localidad.trim()) missing.push("localidad");
   if (!perfil.provincia || !perfil.provincia.trim()) missing.push("provincia");
@@ -317,7 +320,7 @@ function isAtLeastAge(date: Date, minYears: number): boolean {
 
 async function validateProfileForCheckout(usuarioId: number): Promise<string[]> {
   const perfil = await qOne<PerfilCanje>(pool,
-    "SELECT id, nombre, email, dni, fecha_nacimiento, localidad, provincia FROM usuarios WHERE id = ?",
+    "SELECT id, nombre, email, dni, telefono, fecha_nacimiento, localidad, provincia FROM usuarios WHERE id = ?",
     [usuarioId]
   );
   return profileMissingFields(perfil);
@@ -1087,6 +1090,7 @@ async function crearCanjeCarrito(
     throw new HttpError(400, "El carrito no tiene productos validos para canjear.");
   }
 
+  await recalcularSaldoPuntosUsuario(conn, usuarioId);
   const usuario = await qOne<{ puntos_saldo: number }>(
     conn,
     "SELECT puntos_saldo FROM usuarios WHERE id = ? FOR UPDATE",
@@ -1478,6 +1482,21 @@ router.get("/mi-codigo", async (req, res) => {
   res.json({ codigo: user?.codigo_invitacion, total_invitados: total?.c ?? 0 });
 });
 
+router.get("/puntos/proximos-vencer", async (req, res) => {
+  const summary = await getUpcomingPointExpirations(pool, req.user!.id);
+  res.json({
+    ventana_dias: summary.windowDays,
+    ventana_valor: summary.windowValue,
+    ventana_unidad: summary.windowUnit,
+    total_puntos: summary.totalPoints,
+    proximo_vencimiento: summary.nextExpirationAt,
+    lotes: summary.items.map((item) => ({
+      expires_at: item.expiresAt,
+      puntos: item.puntos,
+    })),
+  });
+});
+
 router.get("/movimientos", async (req, res) => {
   const rows = await qAll(pool,
     `SELECT mp.id,
@@ -1630,7 +1649,7 @@ router.get("/carrito", async (req, res) => {
   const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
   const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
   const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
-  const totalPuntosGanados = items.reduce((acc, item) => acc + (Number(item.cantidad || 0) * Number(item.puntaje_al_comprar_unitario || 0)), 0);
+  const totalPuntosGanados = await calcularPuntosPorMonto(pool, totalDinero);
   const envioGratisMontoMinimo = await getFreeShippingMinimum(pool);
 
   res.json({
@@ -2229,7 +2248,7 @@ router.post("/checkout/confirm", async (req, res) => {
     const costoEnvio = toMoney(shippingQuote?.costo_envio ?? 0);
     const totalDinero = toMoney(subtotalDineroProductos + costoEnvio);
     const totalPuntos = 0;
-    const totalPuntosGanados = itemsNormalizados.reduce((acc, item) => acc + (item.cantidad * item.puntaje_al_comprar_unitario), 0);
+    const totalPuntosGanados = await calcularPuntosPorMonto(conn, totalDinero);
     const paymentChoice: PaymentChoice | null = totalDinero > 0 ? resolvePaymentChoice(parsed.data.pago ?? null) : null;
 
     if (paymentChoice) {
@@ -2544,6 +2563,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     if (total <= 0) {
       throw new HttpError(400, "La orden no tiene monto pendiente en dinero.");
     }
+    const totalPuntosGanados = await calcularPuntosPorMonto(conn, total);
 
     const mpResult = await processMercadoPagoApiPayment({
       orderId: ordenId,
@@ -2672,6 +2692,7 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
     if (total <= 0) {
       throw new HttpError(400, "La orden no tiene monto pendiente en dinero.");
     }
+    const totalPuntosGanados = await calcularPuntosPorMonto(conn, total);
 
     const direccionEnvio = parseJsonField(orden.direccion_envio_json);
     const isShippingOrder = Boolean(direccionEnvio);
@@ -2736,7 +2757,7 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
       orden_id: ordenId,
       estado: orden.estado,
       total_dinero: total,
-      total_puntos_ganados: Number(orden.total_puntos_ganados),
+      total_puntos_ganados: totalPuntosGanados,
       pago_pendiente: true,
       metodo_entrega: isShippingOrder ? "envio" : "retiro",
       pago: {
@@ -2837,12 +2858,13 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
   const qrData = firstNonEmptyString(payloadRecord.qr_data);
   const qrImage = firstNonEmptyString(payloadRecord.qr_image);
   const direccionEnvio = parseJsonField(orden.direccion_envio_json);
+  const totalPuntosGanados = await calcularPuntosPorMonto(pool, Number(orden.total_dinero));
 
   res.json({
     orden_id: ordenId,
     estado: orden.estado,
     total_dinero: Number(orden.total_dinero),
-    total_puntos_ganados: Number(orden.total_puntos_ganados),
+    total_puntos_ganados: totalPuntosGanados,
     pago_pendiente: true,
     metodo_entrega: direccionEnvio ? "envio" : "retiro",
     pago: {
@@ -2876,10 +2898,11 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
       id: number;
       usuario_id: number;
       estado: string;
+      total_dinero: number;
       total_puntos_ganados: number;
     }>(
       conn,
-      `SELECT id, usuario_id, estado,
+      `SELECT id, usuario_id, estado, total_dinero,
               (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
                FROM orden_items
                WHERE orden_id = ordenes.id AND modo_compra = 'dinero') AS total_puntos_ganados
@@ -2892,6 +2915,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
     if (!orden) {
       throw new HttpError(404, "Orden no encontrada.");
     }
+    const totalPuntosGanados = await calcularPuntosPorMonto(conn, Number(orden.total_dinero ?? 0));
 
     const pago = await qOne<{
       id: number;
@@ -2916,7 +2940,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         ok: orden.estado === "pagada",
         orden_id: ordenId,
         estado: orden.estado,
-        total_puntos_ganados: Number(orden.total_puntos_ganados),
+        total_puntos_ganados: totalPuntosGanados,
         pago_estado: pago?.estado ?? null,
         provider_payment_id: pago?.provider_payment_id ?? null,
         status_detail: null,
@@ -2929,7 +2953,7 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         ok: false,
         orden_id: ordenId,
         estado: orden.estado,
-        total_puntos_ganados: Number(orden.total_puntos_ganados),
+        total_puntos_ganados: totalPuntosGanados,
         pago_estado: pago.estado,
         provider_payment_id: pago.provider_payment_id,
         status_detail: null,
@@ -3341,6 +3365,7 @@ router.get("/ordenes/:id", async (req, res) => {
 
   const items = await getOrdenItems(pool, ordenId);
   const config = await getOrderReceiptConfig(pool);
+  const totalPuntosGanados = await calcularPuntosPorMonto(pool, Number(orden.total_dinero ?? 0));
   const pago = await qOne<PagoClienteRow>(
     pool,
     `SELECT id, proveedor, metodo, estado, monto, moneda, provider_payment_id, checkout_url, created_at, updated_at
@@ -3355,6 +3380,7 @@ router.get("/ordenes/:id", async (req, res) => {
     ...orden,
     total_dinero: Number(orden.total_dinero),
     total_puntos: Number(orden.total_puntos),
+    total_puntos_ganados: totalPuntosGanados,
     direccion_envio: parseJsonField(orden.direccion_envio_json),
     items,
     pago: pago

@@ -1,6 +1,7 @@
 import { pool, qAll, qOne, qRun } from "../db";
 import { getCanjeItemsStock, releaseReservedStockForCanje } from "./stock";
 import { rejectOrExpirePendingOrder } from "./orderLifecycle";
+import { expirarPuntosVencidos } from "./points";
 
 const DEFAULT_CHECKOUT_RESERVATION_MINUTES = 30;
 const DEFAULT_CASH_ORDER_VALIDITY_DAYS = 3;
@@ -118,14 +119,19 @@ export async function expireOverdueCanjes(): Promise<number> {
   return expired;
 }
 
-export async function runReservationExpirations(): Promise<{ ordenes_expiradas: number; canjes_expirados: number }> {
-  const [ordenesExpiradas, canjesExpirados] = await Promise.all([
+export async function runReservationExpirations(): Promise<{ ordenes_expiradas: number; canjes_expirados: number; puntos_expirados: number }> {
+  const [ordenesExpiradas, canjesExpirados, puntosExpirados] = await Promise.all([
     expireStalePendingOrders(),
     expireOverdueCanjes(),
+    expirarPuntosVencidos(pool).catch((err) => {
+      console.error("No se pudieron expirar puntos:", err instanceof Error ? err.message : err);
+      return 0;
+    }),
   ]);
   return {
     ordenes_expiradas: ordenesExpiradas,
     canjes_expirados: canjesExpirados,
+    puntos_expirados: puntosExpirados,
   };
 }
 

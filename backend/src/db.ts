@@ -1590,7 +1590,7 @@ async function ensureAcreditacionPuntosSchema() {
     `ALTER TABLE orden_items ADD COLUMN IF NOT EXISTS puntaje_al_comprar_unitario INT NOT NULL DEFAULT 0`
   ).catch(() => {});
   await pool.query(
-    `ALTER TABLE movimientos_puntos MODIFY COLUMN tipo ENUM('asignacion_manual','codigo_canje','referido_invitador','referido_invitado','canje_producto','devolucion_canje','acreditacion_compra','ajuste') NOT NULL`
+    `ALTER TABLE movimientos_puntos MODIFY COLUMN tipo ENUM('asignacion_manual','codigo_canje','referido_invitador','referido_invitado','canje_producto','devolucion_canje','acreditacion_compra','vencimiento_puntos','ajuste') NOT NULL`
   ).catch(() => {});
   await pool.query(
     `ALTER TABLE movimientos_puntos ADD CONSTRAINT uq_mov_referencia UNIQUE (referencia_tipo, referencia_id, tipo)`
@@ -1641,6 +1641,147 @@ async function ensureAcreditacionPuntosSchema() {
      ) mp ON mp.usuario_id = u.id
      SET u.puntos_saldo = GREATEST(COALESCE(mp.saldo_calculado, 0), 0)
      WHERE u.puntos_saldo <> GREATEST(COALESCE(mp.saldo_calculado, 0), 0)`
+  ).catch(() => {});
+}
+
+async function ensurePointsLedgerSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS puntos_lotes (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      movimiento_id INT NULL,
+      puntos_originales INT NOT NULL,
+      puntos_disponibles INT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      origen_tipo VARCHAR(50) NULL,
+      origen_id INT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_puntos_lotes_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_puntos_lotes_movimiento
+        FOREIGN KEY (movimiento_id) REFERENCES movimientos_puntos(id)
+        ON DELETE SET NULL,
+      UNIQUE KEY uq_puntos_lotes_movimiento (movimiento_id),
+      INDEX idx_puntos_lotes_usuario_vencimiento (usuario_id, expires_at, puntos_disponibles),
+      INDEX idx_puntos_lotes_origen (origen_tipo, origen_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS puntos_lote_consumos (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      lote_id BIGINT UNSIGNED NOT NULL,
+      movimiento_id INT NOT NULL,
+      puntos INT NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_puntos_consumos_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_puntos_consumos_lote
+        FOREIGN KEY (lote_id) REFERENCES puntos_lotes(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_puntos_consumos_movimiento
+        FOREIGN KEY (movimiento_id) REFERENCES movimientos_puntos(id)
+        ON DELETE CASCADE,
+      INDEX idx_puntos_consumos_movimiento (movimiento_id),
+      INDEX idx_puntos_consumos_lote (lote_id),
+      INDEX idx_puntos_consumos_usuario (usuario_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await pool.query(
+    `ALTER TABLE movimientos_puntos MODIFY COLUMN tipo ENUM('asignacion_manual','codigo_canje','referido_invitador','referido_invitado','canje_producto','devolucion_canje','acreditacion_compra','vencimiento_puntos','ajuste') NOT NULL`
+  ).catch(() => {});
+
+  const defaultConfigs = [
+    {
+      clave: "puntos_monto_base",
+      valor: "1000",
+      descripcion: "Monto de compra que habilita un tramo de puntos. Ej: 1000 pesos.",
+    },
+    {
+      clave: "puntos_por_monto",
+      valor: "20",
+      descripcion: "Puntos que se acreditan por cada tramo de monto configurado.",
+    },
+    {
+      clave: "puntos_vencimiento_meses",
+      valor: "6",
+      descripcion: "Cantidad de meses de vigencia para cada lote de puntos acreditado.",
+    },
+    {
+      clave: "puntos_alerta_pre_vencimiento_valor",
+      valor: "1",
+      descripcion: "Cantidad de semanas o meses de anticipacion para avisar que los puntos estan por vencer.",
+    },
+    {
+      clave: "puntos_alerta_pre_vencimiento_unidad",
+      valor: "meses",
+      descripcion: "Unidad de anticipacion para avisar puntos por vencer: semanas o meses.",
+    },
+    {
+      clave: "home_ubicacion_imagen_1_link",
+      valor: "",
+      descripcion: "Link opcional para la imagen principal izquierda de la seccion Donde encontrarnos del home.",
+    },
+    {
+      clave: "home_ubicacion_imagen_2_link",
+      valor: "",
+      descripcion: "Link opcional para la imagen superior derecha de la seccion Donde encontrarnos del home.",
+    },
+    {
+      clave: "home_ubicacion_imagen_3_link",
+      valor: "",
+      descripcion: "Link opcional para la imagen inferior derecha de la seccion Donde encontrarnos del home.",
+    },
+  ];
+
+  for (const item of defaultConfigs) {
+    await pool.query(
+      `INSERT INTO configuracion (clave, valor, descripcion)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`,
+      [item.clave, item.valor, item.descripcion]
+    );
+  }
+
+  const [cfgRows] = await pool.query(
+    "SELECT valor FROM configuracion WHERE clave = 'puntos_vencimiento_meses' LIMIT 1"
+  ) as [Array<{ valor: string }>, any[]];
+  const months = Number.parseInt(cfgRows?.[0]?.valor ?? "6", 10);
+  const safeMonths = Number.isInteger(months) && months > 0 && months <= 120 ? months : 6;
+  const legacyExpiresAt = new Date();
+  legacyExpiresAt.setUTCMonth(legacyExpiresAt.getUTCMonth() + safeMonths);
+  const legacyExpiresAtMysql = legacyExpiresAt.toISOString().slice(0, 19).replace("T", " ");
+
+  await pool.query(
+    `INSERT INTO puntos_lotes
+       (usuario_id, movimiento_id, puntos_originales, puntos_disponibles, expires_at, origen_tipo, origen_id)
+     SELECT u.id, NULL, u.puntos_saldo, u.puntos_saldo, ?, 'saldo_legacy', u.id
+     FROM usuarios u
+     WHERE u.puntos_saldo > 0
+       AND NOT EXISTS (
+         SELECT 1
+         FROM puntos_lotes pl
+         WHERE pl.usuario_id = u.id
+         LIMIT 1
+       )`,
+    [legacyExpiresAtMysql]
+  ).catch(() => {});
+
+  await pool.query(
+    `UPDATE usuarios u
+     LEFT JOIN (
+       SELECT usuario_id, COALESCE(SUM(puntos_disponibles), 0) AS saldo_calculado
+       FROM puntos_lotes
+       WHERE expires_at > NOW()
+       GROUP BY usuario_id
+     ) pl ON pl.usuario_id = u.id
+     SET u.puntos_saldo = GREATEST(COALESCE(pl.saldo_calculado, 0), 0)
+     WHERE u.puntos_saldo <> GREATEST(COALESCE(pl.saldo_calculado, 0), 0)`
   ).catch(() => {});
 }
 
@@ -1776,6 +1917,42 @@ async function ensureCashOperationsSchema() {
       INDEX idx_gastos_sucursal_fecha (sucursal_id, fecha_gasto),
       INDEX idx_gastos_caja_sesion (caja_sesion_id),
       INDEX idx_gastos_proveedor (proveedor_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+}
+
+async function ensureAppPresenceSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS app_presencia_registros (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      identity_key VARCHAR(80) NOT NULL,
+      visitor_id CHAR(36) NOT NULL,
+      session_id CHAR(36) NOT NULL,
+      usuario_id INT NULL,
+      visitante_tipo ENUM('anonimo','cliente') NOT NULL DEFAULT 'anonimo',
+      bucket_start DATETIME NOT NULL,
+      bucket_end DATETIME NOT NULL,
+      first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      first_path VARCHAR(255) NOT NULL,
+      last_path VARCHAR(255) NOT NULL,
+      page_title VARCHAR(255) NULL,
+      referrer VARCHAR(255) NULL,
+      ip VARCHAR(64) NOT NULL,
+      user_agent VARCHAR(255) NULL,
+      page_views INT UNSIGNED NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_app_presencia_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      UNIQUE KEY uq_app_presencia_bucket_identity (session_id, bucket_start, identity_key),
+      INDEX idx_app_presencia_session (session_id, bucket_start),
+      INDEX idx_app_presencia_last_seen (last_seen_at),
+      INDEX idx_app_presencia_bucket (bucket_start),
+      INDEX idx_app_presencia_visitor (visitor_id, last_seen_at),
+      INDEX idx_app_presencia_usuario (usuario_id, last_seen_at),
+      INDEX idx_app_presencia_tipo (visitante_tipo, last_seen_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 }
@@ -1921,9 +2098,19 @@ pool
       console.error("⚠️  Migración acreditación puntos:", err.message);
     }
     try {
+      await ensurePointsLedgerSchema();
+    } catch (err: any) {
+      console.error("Migracion lotes y vencimiento de puntos:", err.message);
+    }
+    try {
       await ensureCashOperationsSchema();
     } catch (err: any) {
       console.error("Migracion proveedores/gastos/caja:", err.message);
+    }
+    try {
+      await ensureAppPresenceSchema();
+    } catch (err: any) {
+      console.error("Migracion presencia en app:", err.message);
     }
   })
   .catch((err) => {

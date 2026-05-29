@@ -12,6 +12,7 @@ type OrdenVendedorDetalle = {
   tipo_orden: "venta" | "mixta" | string;
   total_dinero: number;
   total_puntos: number;
+  total_puntos_ganados?: number;
   moneda: string;
   created_at: string;
   notas?: string | null;
@@ -228,8 +229,7 @@ export function ComprobantePedidoVendedor() {
   const subtotalProductosDinero = orden.items?.length
     ? orden.items.reduce((acc, item) => acc + (item.modo_compra === "dinero" ? Number(item.subtotal_dinero || 0) : 0), 0)
     : Math.max(0, Number(orden.total_dinero || 0) - costoEnvio);
-  const puntosGanados =
-    orden.items?.reduce((acc, item) => acc + Number(item.puntaje_al_comprar_unitario || 0) * Number(item.cantidad || 0), 0) || 0;
+  const puntosGanados = Number(orden.total_puntos_ganados ?? 0);
   const isCancelledOrder = orden.estado.trim().toLowerCase() === "cancelada";
   const shouldShowPuntosGanados = !isCancelledOrder && puntosGanados > 0;
   const receiptTitle = isLocalSale ? "Comprobante de venta local" : "Comprobante de pedido";

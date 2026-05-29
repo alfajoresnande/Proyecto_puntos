@@ -7,6 +7,7 @@ exports.startReservationExpirationWorker = startReservationExpirationWorker;
 const db_1 = require("../db");
 const stock_1 = require("./stock");
 const orderLifecycle_1 = require("./orderLifecycle");
+const points_1 = require("./points");
 const DEFAULT_CHECKOUT_RESERVATION_MINUTES = 30;
 const DEFAULT_CASH_ORDER_VALIDITY_DAYS = 3;
 function checkoutReservationMinutes() {
@@ -106,13 +107,18 @@ async function expireOverdueCanjes() {
     return expired;
 }
 async function runReservationExpirations() {
-    const [ordenesExpiradas, canjesExpirados] = await Promise.all([
+    const [ordenesExpiradas, canjesExpirados, puntosExpirados] = await Promise.all([
         expireStalePendingOrders(),
         expireOverdueCanjes(),
+        (0, points_1.expirarPuntosVencidos)(db_1.pool).catch((err) => {
+            console.error("No se pudieron expirar puntos:", err instanceof Error ? err.message : err);
+            return 0;
+        }),
     ]);
     return {
         ordenes_expiradas: ordenesExpiradas,
         canjes_expirados: canjesExpirados,
+        puntos_expirados: puntosExpirados,
     };
 }
 function startReservationExpirationWorker() {

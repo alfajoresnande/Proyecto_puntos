@@ -19,6 +19,11 @@ type CargarResponse = {
   nuevo_saldo: number;
 };
 
+function money(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
+}
+
 type CanjeInfo = {
   id: number;
   codigo_retiro: string;
@@ -116,12 +121,12 @@ export function Vendedor() {
       .map((producto) => ({
         ...producto,
         cantidad: cart[producto.id],
-        subtotal_puntos: (producto.puntos_acumulables || 0) * cart[producto.id],
+        subtotal_monto: Number(producto.precio_dinero ?? 0) * cart[producto.id],
       }));
   }, [productos, cart]);
 
-  const totalPuntos = useMemo(
-    () => cartItems.reduce((acumulado, item) => acumulado + item.subtotal_puntos, 0),
+  const totalMonto = useMemo(
+    () => cartItems.reduce((acumulado, item) => acumulado + item.subtotal_monto, 0),
     [cartItems],
   );
 
@@ -426,7 +431,7 @@ export function Vendedor() {
             <div className="min-w-0">
               <p className="text-base font-medium truncate">{producto.nombre}</p>
               <p className="text-xs" style={{ color: "#A08060" }}>
-                +{producto.puntos_acumulables || 0} pts c/u
+                {money(producto.precio_dinero)}
               </p>
             </div>
             <span className="text-[#D4621A] text-xl leading-none">+</span>
@@ -442,7 +447,7 @@ export function Vendedor() {
               <div key={item.id} className="ios-row">
                 <div className="min-w-0">
                   <p className="text-base font-medium truncate">{item.nombre}</p>
-                  <p className="text-xs text-ios-secondary">+{item.subtotal_puntos} pts</p>
+                  <p className="text-xs text-ios-secondary">{money(item.subtotal_monto)}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button type="button" className="vendedor-round-btn" onClick={() => dec(item.id)}>
@@ -459,10 +464,11 @@ export function Vendedor() {
 
               <div className="ios-card mt-3 p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs text-ios-secondary">Puntos totales a cargar</p>
+              <p className="text-xs text-ios-secondary">Monto para calcular puntos</p>
+              <p className="text-xs text-ios-secondary">La regla vigente se aplica al confirmar.</p>
             </div>
             <div className="text-right">
-              <p className="text-xl font-bold text-ios-green">+{totalPuntos}</p>
+              <p className="text-xl font-bold text-ios-green">{money(totalMonto)}</p>
             </div>
               </div>
             </>

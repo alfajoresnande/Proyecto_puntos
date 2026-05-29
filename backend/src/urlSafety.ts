@@ -1,4 +1,5 @@
 const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
+const SAFE_NAVIGATION_PROTOCOLS = new Set(["http:", "https:"]);
 
 export function normalizeSafeImageUrl(value: string | null | undefined): string | null {
   const raw = value?.trim() || "";
@@ -15,6 +16,28 @@ export function normalizeSafeImageUrl(value: string | null | undefined): string 
   try {
     const parsed = new URL(raw);
     if (!SAFE_IMAGE_PROTOCOLS.has(parsed.protocol)) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeSafeNavigationUrl(value: string | null | undefined): string | null {
+  const raw = value?.trim() || "";
+  if (!raw) return null;
+
+  if (raw.startsWith("#")) {
+    return raw.length > 1 ? raw : null;
+  }
+
+  if (raw.startsWith("/")) {
+    if (raw.startsWith("//")) return null;
+    return raw;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (!SAFE_NAVIGATION_PROTOCOLS.has(parsed.protocol)) return null;
     return parsed.toString();
   } catch {
     return null;

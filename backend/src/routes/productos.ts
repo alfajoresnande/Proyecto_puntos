@@ -3,14 +3,41 @@ import { pool } from "../db";
 import { getAuthPayload } from "../auth";
 import { createPricingResolver, getActiveClientePricingProfile } from "../services/customerPricing";
 import { getPurchaseQuantityLimit } from "../services/purchaseLimits";
-import { normalizeSafeImageUrl } from "../urlSafety";
+import { normalizeSafeImageUrl, normalizeSafeNavigationUrl } from "../urlSafety";
 
 const router = Router();
+const HOME_LOCATION_LINK_KEYS = [
+  "home_ubicacion_imagen_1_link",
+  "home_ubicacion_imagen_2_link",
+  "home_ubicacion_imagen_3_link",
+] as const;
 
 function hasOwnProductImage(imagenUrl: string | null, imagenes: string[]): boolean {
   const image = imagenes.find(Boolean) || imagenUrl || "";
   return Boolean(image && !image.endsWith("/logo.png") && image !== "logo.png");
 }
+
+router.get("/home-layout-config", async (_req, res) => {
+  try {
+    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    const placeholders = HOME_LOCATION_LINK_KEYS.map(() => "?").join(", ");
+    const [rowsRaw] = await pool.query(
+      `SELECT clave, valor
+       FROM configuracion
+       WHERE clave IN (${placeholders})`,
+      [...HOME_LOCATION_LINK_KEYS],
+    );
+    const rows = rowsRaw as Array<{ clave: string; valor: string | null }>;
+    const byKey = new Map(rows.map((row) => [row.clave, normalizeSafeNavigationUrl(row.valor)]));
+
+    res.json({
+      location_image_links: HOME_LOCATION_LINK_KEYS.map((key) => byKey.get(key) ?? null),
+    });
+  } catch (error) {
+    console.error("Home layout config:", error);
+    res.status(500).json({ error: "No se pudo cargar la configuracion del home." });
+  }
+});
 
 router.get("/destacados", async (req, res) => {
   try {

@@ -33,6 +33,7 @@
 | Metodo | Endpoint | Acceso | Descripcion |
 |---|---|---|---|
 | GET | `/api/productos` | Publico | Catalogo de productos |
+| GET | `/api/productos/home-layout-config` | Publico | Configuracion publica de links para imagenes del home |
 | GET | `/api/productos/categorias` | Publico | Categorias disponibles |
 
 ## Paginas publicas (`/api/paginas`)
@@ -40,6 +41,13 @@
 |---|---|---|---|
 | GET | `/api/paginas` | Publico | Lista de paginas de contenido |
 | GET | `/api/paginas/:slug` | Publico | Contenido de una pagina |
+
+## Presencia en app (`/api/presencia`)
+Acceso: publico.
+
+| Metodo | Endpoint | Acceso | Descripcion |
+|---|---|---|---|
+| POST | `/api/presencia/heartbeat` | Publico | Registra visitantes anonimos y clientes no staff cada 30 minutos |
 
 ## Cliente (`/api/cliente`)
 Acceso: requiere sesion + rol `cliente`.
@@ -50,6 +58,7 @@ Acceso: requiere sesion + rol `cliente`.
 | PATCH | `/api/cliente/perfil` | Actualizar perfil |
 | POST | `/api/cliente/usar-codigo-invitacion` | Vincular codigo de invitacion |
 | GET | `/api/cliente/mi-codigo` | Obtener codigo de invitacion propio |
+| GET | `/api/cliente/puntos/proximos-vencer` | Resumen de puntos proximos a vencer |
 | GET | `/api/cliente/movimientos` | Historial de puntos |
 | GET | `/api/cliente/canjes` | Historial de canjes |
 | GET | `/api/cliente/sucursales` | Sucursales activas para retiro |
@@ -73,6 +82,7 @@ Acceso: requiere sesion + rol `admin`.
 | Metodo | Endpoint | Descripcion |
 |---|---|---|
 | GET | `/api/admin/stats` | Estadisticas del panel |
+| GET | `/api/admin/personas-app` | Monitor de personas navegando la app |
 | GET | `/api/admin/security/monitor` | Monitor de seguridad (memoria + persistidos) |
 | POST | `/api/admin/backup/full` | Generar y descargar backup completo (DB + uploads) |
 | GET | `/api/admin/usuarios` | Listar usuarios |

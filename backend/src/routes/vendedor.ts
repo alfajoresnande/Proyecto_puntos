@@ -19,7 +19,7 @@ import {
 import { createPricingResolver, getActiveClientePricingProfile } from "../services/customerPricing";
 import {
   acreditarPuntosPorCompra,
-  recalcularSaldoPuntosUsuario,
+  calcularPuntosPorMonto,
   registrarMovimientoPuntos,
 } from "../services/points";
 import { approvePaidOrder, cancelOrderUrgently } from "../services/orderLifecycle";
@@ -497,10 +497,10 @@ router.post("/cargar", async (req, res, next) => {
     );
     if (!cliente) { res.status(404).json({ error: "Cliente no encontrado" }); await conn.rollback(); return; }
 
-    let totalPuntos = 0;
+    let totalMonto = 0;
     for (const item of items) {
       const prod = await qOne(conn,
-        "SELECT id, puntos_acumulables FROM productos WHERE id = ? AND activo = 1",
+        "SELECT id, precio_dinero FROM productos WHERE id = ? AND activo = 1",
         [item.producto_id]
       );
       if (!prod) {
@@ -508,16 +508,17 @@ router.post("/cargar", async (req, res, next) => {
         await conn.rollback();
         return;
       }
-      totalPuntos += (prod.puntos_acumulables ?? 0) * item.cantidad;
+      totalMonto += Number(prod.precio_dinero ?? 0) * item.cantidad;
     }
 
+    const totalPuntos = await calcularPuntosPorMonto(conn, totalMonto);
     if (totalPuntos === 0) {
-      res.status(400).json({ error: "Los productos seleccionados no tienen puntos acumulables" });
+      res.status(400).json({ error: "El monto de los productos no alcanza la regla minima para sumar puntos" });
       await conn.rollback();
       return;
     }
 
-    await registrarMovimientoPuntos(conn, {
+    const nuevoSaldo = await registrarMovimientoPuntos(conn, {
       usuarioId: Number(cliente.id),
       tipo: 'asignacion_manual',
       puntos: totalPuntos,
@@ -532,7 +533,7 @@ router.post("/cargar", async (req, res, next) => {
       ok: true,
       cliente_id: cliente.id,
       puntos_acreditados: totalPuntos,
-      nuevo_saldo: cliente.puntos_saldo + totalPuntos,
+      nuevo_saldo: nuevoSaldo,
     });
   } catch (err) {
     if (conn) await conn.rollback();
@@ -614,13 +615,15 @@ router.patch("/canje/:codigo", async (req, res, next) => {
 
     if (estado === "no_disponible" || estado === "cancelado") {
       const motivo = estado === "cancelado" ? "cancelado" : "no disponible";
-      await qRun(conn,
-        `INSERT INTO movimientos_puntos
-           (usuario_id, tipo, puntos, descripcion, referencia_id, referencia_tipo, creado_por)
-         VALUES (?, 'devolucion_canje', ?, ?, ?, 'canjes', ?)`,
-        [canje.usuario_id, canje.puntos_usados, `Devolución por canje ${motivo}`, canje.id, req.user!.id]
-      );
-      await recalcularSaldoPuntosUsuario(conn, Number(canje.usuario_id));
+      await registrarMovimientoPuntos(conn, {
+        usuarioId: Number(canje.usuario_id),
+        tipo: "devolucion_canje",
+        puntos: Number(canje.puntos_usados),
+        descripcion: `Devolucion por canje ${motivo}`,
+        referenciaId: Number(canje.id),
+        referenciaTipo: "canjes",
+        creadoPor: req.user!.id,
+      });
     }
 
     await conn.commit();
@@ -1455,6 +1458,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
       return;
     }
 
+    const totalPuntosGanados = await calcularPuntosPorMonto(pool, Number(orden.total_dinero ?? 0));
     const itemMap = await getOrdenItemsByOrdenIds([orderId]);
     const pago = await qOne<{
       id: number;
@@ -1481,6 +1485,7 @@ router.get("/ordenes/:id", async (req, res, next) => {
       ...orden,
       total_dinero: Number(orden.total_dinero ?? 0),
       total_puntos: Number(orden.total_puntos ?? 0),
+      total_puntos_ganados: totalPuntosGanados,
       direccion_envio: parseJsonField(orden.direccion_envio_json),
       sucursal: orden.sucursal_retiro_id
         ? {

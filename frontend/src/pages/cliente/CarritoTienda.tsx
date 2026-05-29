@@ -133,6 +133,7 @@ type CheckoutOrderDetail = {
   id: number;
   estado: string;
   total_dinero: number;
+  total_puntos_ganados?: number;
   direccion_envio?: {
     costo_envio?: number | null;
     envio?: ShippingQuote | null;
@@ -446,11 +447,7 @@ export function CarritoTienda() {
 
   const hydrateConfirmedOrder = useCallback(async (ordenId: number) => {
     const orden = await api.get<CheckoutOrderDetail>(`/cliente/ordenes/${ordenId}`);
-    const totalPuntosGanados =
-      orden.items?.reduce(
-        (acc, item) => acc + Number(item.cantidad ?? 0) * Number(item.puntaje_al_comprar_unitario ?? 0),
-        0,
-      ) ?? 0;
+    const totalPuntosGanados = Number(orden.total_puntos_ganados ?? 0);
     const estadoNormalizado = orden.estado.trim().toLowerCase();
 
     const nextConfirmed: CheckoutConfirmResponse = {

@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Footer } from "./components/Footer";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
+import { AppPresenceTracker } from "./components/AppPresenceTracker";
 import { Navbar } from "./components/Navbar";
+import { ProfileCompletionBanner } from "./components/ProfileCompletionBanner";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RealtimeBridge } from "./components/RealtimeBridge";
 import { SeoRouteMeta } from "./components/SeoRouteMeta";
@@ -132,8 +134,10 @@ export default function App() {
       <SeoRouteMeta />
       <ScrollToTop />
       <NumberInputGuards />
+      <AppPresenceTracker />
       <Navbar />
       <div className="app-main">
+        <ProfileCompletionBanner />
         <main>
           <Routes>
             <Route path="/" element={<Home />} />
@@ -408,6 +412,14 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/personas-app"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/ventas/:ventasPage"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>
@@ -474,6 +486,14 @@ export default function App() {
             />
             <Route
               path="/superadmin/postulaciones"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/personas-app"
               element={
                 <ProtectedRoute rol="superAdmin">
                   <Admin />

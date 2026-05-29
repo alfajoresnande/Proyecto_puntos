@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeSafeImageUrl = normalizeSafeImageUrl;
+exports.normalizeSafeNavigationUrl = normalizeSafeNavigationUrl;
 const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
+const SAFE_NAVIGATION_PROTOCOLS = new Set(["http:", "https:"]);
 function normalizeSafeImageUrl(value) {
     const raw = value?.trim() || "";
     if (!raw)
@@ -18,6 +20,28 @@ function normalizeSafeImageUrl(value) {
     try {
         const parsed = new URL(raw);
         if (!SAFE_IMAGE_PROTOCOLS.has(parsed.protocol))
+            return null;
+        return parsed.toString();
+    }
+    catch {
+        return null;
+    }
+}
+function normalizeSafeNavigationUrl(value) {
+    const raw = value?.trim() || "";
+    if (!raw)
+        return null;
+    if (raw.startsWith("#")) {
+        return raw.length > 1 ? raw : null;
+    }
+    if (raw.startsWith("/")) {
+        if (raw.startsWith("//"))
+            return null;
+        return raw;
+    }
+    try {
+        const parsed = new URL(raw);
+        if (!SAFE_NAVIGATION_PROTOCOLS.has(parsed.protocol))
             return null;
         return parsed.toString();
     }

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
+import { formatBuenosAiresDate } from "../../lib/dateTime";
+import { getProfileCompletion } from "../../lib/profileCompletion";
 import { useAuthStore } from "../../store/authStore";
 
 type ClienteMe = {
@@ -59,6 +61,20 @@ type UsarCodigoInvitacionResponse = {
   nuevo_saldo: number;
 };
 
+type ExpiringPointsAlertUnit = "semanas" | "meses";
+
+type ExpiringPointsResponse = {
+  ventana_dias: number;
+  ventana_valor: number;
+  ventana_unidad: ExpiringPointsAlertUnit;
+  total_puntos: number;
+  proximo_vencimiento: string | null;
+  lotes: Array<{
+    expires_at: string;
+    puntos: number;
+  }>;
+};
+
 function cleanDni(value: string): string {
   return value.replace(/\D/g, "");
 }
@@ -77,6 +93,23 @@ function normalizeDateInput(value: string): string {
   if (digits.length <= 4) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
+function getDaysUntilExpiration(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = date.getTime() - Date.now();
+  return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+}
+
+function formatAlertLeadTime(value: number | null | undefined, unit: ExpiringPointsAlertUnit | null | undefined): string {
+  const safeValue = typeof value === "number" && Number.isFinite(value) ? Math.max(1, Math.trunc(value)) : 1;
+  const safeUnit = unit === "semanas" ? "semanas" : "meses";
+  const unitLabel = safeUnit === "semanas"
+    ? (safeValue === 1 ? "semana" : "semanas")
+    : (safeValue === 1 ? "mes" : "meses");
+  return `${safeValue} ${unitLabel}`;
 }
 
 export function MiPerfil() {
@@ -107,6 +140,11 @@ export function MiPerfil() {
   const miCodigoQuery = useQuery({
     queryKey: ["cliente", "mi-codigo"],
     queryFn: () => api.get<MiCodigo>("/cliente/mi-codigo"),
+  });
+
+  const expiringPointsQuery = useQuery({
+    queryKey: ["cliente", "puntos-proximos-vencer"],
+    queryFn: () => api.get<ExpiringPointsResponse>("/cliente/puntos/proximos-vencer"),
   });
 
   const provinciasQuery = useQuery({
@@ -233,6 +271,23 @@ export function MiPerfil() {
   const me = meQuery.data;
   const miCodigo = miCodigoQuery.data;
   const yaUsoCodigoInvitacion = Boolean(me?.referido_por);
+  const expiringPoints = expiringPointsQuery.data;
+  const hasExpiringPoints = Number(expiringPoints?.total_puntos ?? 0) > 0;
+  const nextExpirationDays = getDaysUntilExpiration(expiringPoints?.proximo_vencimiento ?? null);
+  const expirationAlertLeadTime = formatAlertLeadTime(
+    expiringPoints?.ventana_valor,
+    expiringPoints?.ventana_unidad,
+  );
+  const profileCompletion = getProfileCompletion({
+    nombre,
+    email: me?.email ?? "",
+    dni,
+    telefono,
+    fecha_nacimiento: fechaNacimiento,
+    localidad,
+    provincia,
+  });
+  const missingProfileLabels = profileCompletion.missing.map((field) => field.label).join(", ");
 
   async function guardarPerfil() {
     if (!me) return;
@@ -328,11 +383,53 @@ export function MiPerfil() {
     <section className="dashboard-section perfil-dashboard-section">
       <h1 className="ios-title mb-4">Mi perfil</h1>
 
+      {hasExpiringPoints ? (
+        <div className="perfil-expiry-alert" role="status" aria-live="polite">
+          <div className="perfil-expiry-alert-head">
+            <div>
+              <p className="perfil-expiry-alert-kicker">Puntos por vencer</p>
+              <h2 className="perfil-expiry-alert-title">
+                Tienes {expiringPoints?.total_puntos ?? 0} puntos por vencer
+              </h2>
+            </div>
+            <span className={`perfil-expiry-alert-badge${nextExpirationDays !== null && nextExpirationDays <= 7 ? " is-urgent" : ""}`}>
+              {nextExpirationDays === null
+                ? "Revisar"
+                : nextExpirationDays <= 1
+                  ? "Vence pronto"
+                  : `En ${nextExpirationDays} dias`}
+            </span>
+          </div>
+
+          <p className="perfil-expiry-alert-copy">
+            {expiringPoints?.proximo_vencimiento
+              ? `Te avisamos ${expirationAlertLeadTime} antes. El proximo vencimiento es el ${formatBuenosAiresDate(expiringPoints.proximo_vencimiento)}.`
+              : `Te avisamos ${expirationAlertLeadTime} antes del vencimiento de tus puntos.`}
+          </p>
+
+          <div className="perfil-expiry-list">
+            {(expiringPoints?.lotes ?? []).map((lote) => (
+              <div
+                key={`${lote.expires_at}-${lote.puntos}`}
+                className={`perfil-expiry-item${(getDaysUntilExpiration(lote.expires_at) ?? 99) <= 7 ? " is-urgent" : ""}`}
+              >
+                <strong>{lote.puntos} pts</strong>
+                <span>Vencen el {formatBuenosAiresDate(lote.expires_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="perfil-top-grid">
         <div className="ios-card p-5" style={{ borderLeft: "4px solid #D4621A" }}>
-          <p className="ios-label" style={{ paddingLeft: 0 }}>Datos para completar compra online</p>
+          <p className="ios-label" style={{ paddingLeft: 0 }}>Tus datos</p>
           <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0.8rem" }}>
-            Puedes registrarte sin estos datos, pero se validan al confirmar un checkout.
+            {meQuery.isLoading
+              ? "Cargando tus datos..."
+              : profileCompletion.isComplete
+                ? "Tus datos obligatorios estan completos para comprar."
+                : `Debes completar estos datos para la compra: ${missingProfileLabels}.`}
           </p>
 
           <div style={{ display: "grid", gap: "0.75rem" }}>

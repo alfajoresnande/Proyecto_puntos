@@ -16,6 +16,7 @@ import type { Producto, Rol, TipoCliente } from "../../types";
 type AdminTab =
   | "inicio"
   | "usuarios"
+  | "personas-app"
   | "productos"
   | "productos-crear"
   | "productos-edicion"
@@ -39,6 +40,7 @@ type AdminTab =
 const ADMIN_TABS: AdminTab[] = [
   "inicio",
   "usuarios",
+  "personas-app",
   "productos",
   "productos-crear",
   "productos-edicion",
@@ -70,6 +72,11 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se revisan los usuarios registrados y se pueden editar datos importantes como rol, perfil comercial, puntos y estado de la cuenta.",
     "El perfil comercial sirve para que un cliente vea precios distintos en la tienda, por ejemplo mayorista o empleado, segun los descuentos configurados.",
     "Usa esta area cuando necesites corregir datos de una cuenta, activar o bloquear usuarios, o revisar quien tiene permisos de vendedor o administrador.",
+  ],
+  "personas-app": [
+    "Aca ves quienes estan navegando la app ahora mismo, separados entre visitantes anonimos y clientes logueados.",
+    "Cada dispositivo genera una sesion y el sistema renueva el registro cada 30 minutos mientras la persona sigue navegando.",
+    "El staff no aparece en esta vista: solo se cuentan clientes o visitantes que recorren la parte publica o cliente de la app.",
   ],
   productos: [
     "Aca se ve el listado general de productos cargados, con precio, categoria, tipo, stock e imagenes.",
@@ -203,6 +210,60 @@ type SecurityMonitorResponse = {
   counters: Record<string, number>;
   recent: Array<Record<string, unknown>>;
   persistidos: SecurityEventPersisted[];
+};
+
+type AppPresenceSummary = {
+  active_now: number;
+  active_clientes: number;
+  active_anonimos: number;
+  unique_devices_today: number;
+  unique_sessions_today: number;
+  registros_hoy: number;
+};
+
+type AppPresenceSession = {
+  session_id: string;
+  visitor_id: string;
+  usuario_id: number | null;
+  visitante_tipo: "anonimo" | "cliente";
+  cliente_nombre: string | null;
+  cliente_email: string | null;
+  started_at: string;
+  last_seen_at: string;
+  first_path: string;
+  last_path: string;
+  page_title: string | null;
+  referrer: string | null;
+  ip: string;
+  user_agent: string | null;
+  page_views: number;
+};
+
+type AppPresenceLog = {
+  id: number;
+  session_id: string;
+  visitor_id: string;
+  usuario_id: number | null;
+  visitante_tipo: "anonimo" | "cliente";
+  cliente_nombre: string | null;
+  cliente_email: string | null;
+  bucket_start: string;
+  bucket_end: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  first_path: string;
+  last_path: string;
+  page_title: string | null;
+  referrer: string | null;
+  ip: string;
+  user_agent: string | null;
+  page_views: number;
+};
+
+type AppPresenceOverviewResponse = {
+  summary: AppPresenceSummary;
+  active_sessions: AppPresenceSession[];
+  recent_logs: AppPresenceLog[];
 };
 
 type Usuario = {
@@ -483,8 +544,18 @@ type ConfiguracionItem = {
   descripcion: string | null;
 };
 
+type PuntosAlertaUnidad = "semanas" | "meses";
+
 type ConfiguracionDraft = {
   dias_limite_retiro: string;
+  puntos_monto_base: string;
+  puntos_por_monto: string;
+  puntos_vencimiento_meses: string;
+  puntos_alerta_pre_vencimiento_valor: string;
+  puntos_alerta_pre_vencimiento_unidad: PuntosAlertaUnidad;
+  home_ubicacion_imagen_1_link: string;
+  home_ubicacion_imagen_2_link: string;
+  home_ubicacion_imagen_3_link: string;
   puntos_referido_invitador: string;
   puntos_referido_invitado: string;
   longitud_codigo_invitacion: string;
@@ -757,6 +828,7 @@ function adminTabFromPath(pathname: string): AdminTab | null {
   if (/\/cobros(?:[/?#]|$)/.test(pathname)) return "cobros";
   if (/\/descuentos(?:[/?#]|$)/.test(pathname)) return "descuentos";
   if (/\/postulaciones(?:[/?#]|$)/.test(pathname)) return "postulaciones";
+  if (/\/personas-app(?:[/?#]|$)/.test(pathname)) return "personas-app";
   return null;
 }
 
@@ -776,6 +848,7 @@ function adminPathSegment(tab: AdminTab): string | null {
   if (tab === "cobros") return "cobros";
   if (tab === "descuentos") return "descuentos";
   if (tab === "postulaciones") return "postulaciones";
+  if (tab === "personas-app") return "personas-app";
   return null;
 }
 
@@ -817,6 +890,23 @@ function getDownloadFilename(contentDisposition: string | null, fallback: string
   const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
   if (!asciiMatch?.[1]) return fallback;
   return asciiMatch[1].replace(/[/\\?%*:|"<>]/g, "_");
+}
+
+function shortPresenceId(value: string | null | undefined): string {
+  const text = (value || "").trim();
+  if (!text) return "-";
+  return text.slice(0, 8).toUpperCase();
+}
+
+function formatPresencePerson(entry: Pick<AppPresenceSession, "visitante_tipo" | "cliente_nombre" | "cliente_email" | "usuario_id">): string {
+  if (entry.visitante_tipo === "anonimo") return "Visitante anonimo";
+  if (entry.cliente_nombre?.trim()) return entry.cliente_nombre.trim();
+  if (entry.cliente_email?.trim()) return entry.cliente_email.trim();
+  return entry.usuario_id ? `Cliente #${entry.usuario_id}` : "Cliente";
+}
+
+function formatPresenceTypeLabel(type: AppPresenceSession["visitante_tipo"]): string {
+  return type === "cliente" ? "Cliente" : "Anonimo";
 }
 
 async function saveBlobWithPicker(blob: Blob, filename: string, mimeType: string): Promise<"saved" | "downloaded" | "cancelled"> {
@@ -872,6 +962,7 @@ function formatMovimientoTipo(tipo: string): string {
     canje_producto: "Canje de producto",
     devolucion_canje: "Devolucion por canje",
     cancelacion_compra: "Anulacion por cancelacion",
+    vencimiento_puntos: "Vencimiento de puntos",
     ajuste: "Ajuste",
   };
   return labels[tipo] ?? tipo.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -908,6 +999,14 @@ function emptyZeroInputValue(value: number | string | null | undefined): string 
   const numericValue = Number(stringValue);
   if (!Number.isFinite(numericValue) || numericValue === 0) return "";
   return stringValue;
+}
+
+function isValidConfigNavigationLink(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.startsWith("#")) return trimmed.length > 1;
+  if (trimmed.startsWith("/")) return !trimmed.startsWith("//");
+  return /^https?:\/\//i.test(trimmed);
 }
 
 function emptyZeroStockValue(value: number | string | null | undefined): number | null {
@@ -1499,6 +1598,14 @@ export function Admin() {
   const [backupErr, setBackupErr] = useState("");
   const [configDraft, setConfigDraft] = useState<ConfiguracionDraft>({
     dias_limite_retiro: "7",
+    puntos_monto_base: "1000",
+    puntos_por_monto: "20",
+    puntos_vencimiento_meses: "6",
+    puntos_alerta_pre_vencimiento_valor: "1",
+    puntos_alerta_pre_vencimiento_unidad: "meses",
+    home_ubicacion_imagen_1_link: "",
+    home_ubicacion_imagen_2_link: "",
+    home_ubicacion_imagen_3_link: "",
     puntos_referido_invitador: "50",
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
@@ -1696,6 +1803,13 @@ export function Admin() {
     refetchIntervalInBackground: true,
   });
 
+  const appPresenceOverviewQuery = useQuery({
+    queryKey: ["admin", "personas-app"],
+    queryFn: () => api.get<AppPresenceOverviewResponse>("/admin/personas-app?limit=80"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
   const sobreQuery = useQuery({
     queryKey: ["admin", "paginas", "sobre-nosotros"],
     queryFn: () => api.get<Pagina>("/admin/paginas/sobre-nosotros"),
@@ -1817,6 +1931,14 @@ export function Admin() {
       configuracionQuery.data?.find((item) => item.clave === clave)?.valor ?? fallback;
     setConfigDraft({
       dias_limite_retiro: getConfig("dias_limite_retiro", "7"),
+      puntos_monto_base: getConfig("puntos_monto_base", "1000"),
+      puntos_por_monto: getConfig("puntos_por_monto", "20"),
+      puntos_vencimiento_meses: getConfig("puntos_vencimiento_meses", "6"),
+      puntos_alerta_pre_vencimiento_valor: getConfig("puntos_alerta_pre_vencimiento_valor", "1"),
+      puntos_alerta_pre_vencimiento_unidad: getConfig("puntos_alerta_pre_vencimiento_unidad", "meses") === "semanas" ? "semanas" : "meses",
+      home_ubicacion_imagen_1_link: getConfig("home_ubicacion_imagen_1_link", ""),
+      home_ubicacion_imagen_2_link: getConfig("home_ubicacion_imagen_2_link", ""),
+      home_ubicacion_imagen_3_link: getConfig("home_ubicacion_imagen_3_link", ""),
       puntos_referido_invitador: getConfig("puntos_referido_invitador", "50"),
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
@@ -2015,6 +2137,10 @@ export function Admin() {
   const gastos = gastosQuery.data ?? [];
   const browserAlertsSupported = browserNotificationPermission !== "unsupported";
   const securityEvents = securityMonitorQuery.data?.persistidos ?? [];
+  const appPresenceOverview = appPresenceOverviewQuery.data ?? null;
+  const appPresenceSummary = appPresenceOverview?.summary ?? null;
+  const activePresenceSessions = appPresenceOverview?.active_sessions ?? [];
+  const recentPresenceLogs = appPresenceOverview?.recent_logs ?? [];
   const blockedAccessEvents = useMemo(
     () =>
       securityEvents
@@ -4115,6 +4241,16 @@ export function Admin() {
     setConfigMsg("");
 
     const diasLimiteRetiro = Number(configDraft.dias_limite_retiro);
+    const puntosMontoBase = Number(configDraft.puntos_monto_base);
+    const puntosPorMonto = Number(configDraft.puntos_por_monto);
+    const puntosVencimientoMeses = Number(configDraft.puntos_vencimiento_meses);
+    const puntosAlertaPreVencimientoValor = Number(configDraft.puntos_alerta_pre_vencimiento_valor);
+    const puntosAlertaPreVencimientoUnidad = configDraft.puntos_alerta_pre_vencimiento_unidad === "semanas"
+      ? "semanas"
+      : "meses";
+    const homeUbicacionImagen1Link = configDraft.home_ubicacion_imagen_1_link.trim();
+    const homeUbicacionImagen2Link = configDraft.home_ubicacion_imagen_2_link.trim();
+    const homeUbicacionImagen3Link = configDraft.home_ubicacion_imagen_3_link.trim();
     const puntosInvitador = Number(configDraft.puntos_referido_invitador);
     const puntosInvitado = Number(configDraft.puntos_referido_invitado);
     const longitudCodigoInvitacion = Number(configDraft.longitud_codigo_invitacion);
@@ -4129,6 +4265,26 @@ export function Admin() {
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
+      return;
+    }
+    if (!Number.isFinite(puntosMontoBase) || puntosMontoBase <= 0 || puntosMontoBase > 999999999) {
+      setConfigErr("El monto base para sumar puntos debe ser mayor a 0.");
+      return;
+    }
+    if (!Number.isInteger(puntosPorMonto) || puntosPorMonto < 0 || puntosPorMonto > 1000000) {
+      setConfigErr("Los puntos por monto deben ser un numero entero entre 0 y 1000000.");
+      return;
+    }
+    if (!Number.isInteger(puntosVencimientoMeses) || puntosVencimientoMeses < 1 || puntosVencimientoMeses > 120) {
+      setConfigErr("El vencimiento de puntos debe ser un numero entero entre 1 y 120 meses.");
+      return;
+    }
+    if (!Number.isInteger(puntosAlertaPreVencimientoValor) || puntosAlertaPreVencimientoValor < 1 || puntosAlertaPreVencimientoValor > 120) {
+      setConfigErr("La anticipacion del aviso de puntos debe ser un numero entero entre 1 y 120.");
+      return;
+    }
+    if (!isValidConfigNavigationLink(homeUbicacionImagen1Link) || !isValidConfigNavigationLink(homeUbicacionImagen2Link) || !isValidConfigNavigationLink(homeUbicacionImagen3Link)) {
+      setConfigErr("Los links del home deben estar vacios o comenzar con /, #, http:// o https://.");
       return;
     }
     if (!Number.isInteger(puntosInvitador) || puntosInvitador < 0 || puntosInvitador > 100000) {
@@ -4181,6 +4337,46 @@ export function Admin() {
           clave: "dias_limite_retiro",
           valor: String(diasLimiteRetiro),
           descripcion: "Dias que tiene el cliente para retirar un producto canjeado antes de que expire.",
+        },
+        {
+          clave: "puntos_monto_base",
+          valor: String(Math.round((puntosMontoBase + Number.EPSILON) * 100) / 100),
+          descripcion: "Monto de compra que habilita un tramo de puntos.",
+        },
+        {
+          clave: "puntos_por_monto",
+          valor: String(puntosPorMonto),
+          descripcion: "Puntos que se acreditan por cada tramo de monto configurado.",
+        },
+        {
+          clave: "puntos_vencimiento_meses",
+          valor: String(puntosVencimientoMeses),
+          descripcion: "Cantidad de meses de vigencia para cada lote de puntos acreditado.",
+        },
+        {
+          clave: "puntos_alerta_pre_vencimiento_valor",
+          valor: String(puntosAlertaPreVencimientoValor),
+          descripcion: "Cantidad de semanas o meses de anticipacion para avisar que los puntos estan por vencer.",
+        },
+        {
+          clave: "puntos_alerta_pre_vencimiento_unidad",
+          valor: puntosAlertaPreVencimientoUnidad,
+          descripcion: "Unidad de anticipacion para avisar puntos por vencer: semanas o meses.",
+        },
+        {
+          clave: "home_ubicacion_imagen_1_link",
+          valor: homeUbicacionImagen1Link,
+          descripcion: "Link opcional para la imagen principal izquierda de la seccion Donde encontrarnos del home.",
+        },
+        {
+          clave: "home_ubicacion_imagen_2_link",
+          valor: homeUbicacionImagen2Link,
+          descripcion: "Link opcional para la imagen superior derecha de la seccion Donde encontrarnos del home.",
+        },
+        {
+          clave: "home_ubicacion_imagen_3_link",
+          valor: homeUbicacionImagen3Link,
+          descripcion: "Link opcional para la imagen inferior derecha de la seccion Donde encontrarnos del home.",
         },
         {
           clave: "puntos_referido_invitador",
@@ -4497,6 +4693,9 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => seleccionarTab("usuarios")}>
             {renderAdminNavLabel("Usuarios")}
           </button>
+          <button className={`admin-nav-btn ${tab === "personas-app" ? "active" : ""}`} onClick={() => seleccionarTab("personas-app")}>
+            {renderAdminNavLabel("Personas en app", appPresenceSummary?.active_now ?? 0)}
+          </button>
           <div className={`admin-nav-group${isProductosTab(tab) ? " active" : ""}`}>
             <button className={`admin-nav-btn ${isProductosTab(tab) ? "active" : ""}`} onClick={toggleProductosNav}>
               <span className="admin-nav-label-with-caret">
@@ -4744,7 +4943,7 @@ export function Admin() {
               </div>
               <div className="admin-card admin-card-padded adm-config-card">
                 <p className="adm-config-subtitle">
-                  Ajusta el vencimiento de canjes y la logica de puntos de referidos sin tocar codigo.
+                  Ajusta como se suman, vencen y se usan los puntos sin tocar codigo.
                 </p>
                 <div className="adm-config-grid">
                   <div className="adm-field">
@@ -4759,6 +4958,103 @@ export function Admin() {
                       placeholder="Ej: 7"
                     />
                     <p className="adm-field-help">Cantidad de dias que tiene el cliente para retirar un canje antes de que expire.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Monto base para sumar puntos</label>
+                    <input
+                      type="number"
+                      min={1}
+                      step="0.01"
+                      className="adm-input"
+                      value={configDraft.puntos_monto_base}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_monto_base: event.target.value }))}
+                      placeholder="Ej: 1000"
+                    />
+                    <p className="adm-field-help">Cada vez que el total de una compra alcanza este monto, suma el tramo de puntos configurado.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Puntos por tramo</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1000000}
+                      className="adm-input"
+                      value={configDraft.puntos_por_monto}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_por_monto: event.target.value }))}
+                      placeholder="Ej: 20"
+                    />
+                    <p className="adm-field-help">Ejemplo: con monto base 1000 y valor 20, una compra de 2500 suma 40 puntos.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Vencimiento de puntos</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      className="adm-input"
+                      value={configDraft.puntos_vencimiento_meses}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_vencimiento_meses: event.target.value }))}
+                      placeholder="Ej: 6"
+                    />
+                    <p className="adm-field-help">Meses de vigencia de cada lote nuevo. Cada carga vence segun su propia fecha.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Avisar antes del vencimiento</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={120}
+                      className="adm-input"
+                      value={configDraft.puntos_alerta_pre_vencimiento_valor}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, puntos_alerta_pre_vencimiento_valor: event.target.value }))}
+                      placeholder="Ej: 1"
+                    />
+                    <p className="adm-field-help">Define cuanta anticipacion quieres para avisar que un lote esta por vencer.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Unidad del aviso</label>
+                    <select
+                      className="adm-input"
+                      value={configDraft.puntos_alerta_pre_vencimiento_unidad}
+                      onChange={(event) => setConfigDraft((prev) => ({
+                        ...prev,
+                        puntos_alerta_pre_vencimiento_unidad: event.target.value === "semanas" ? "semanas" : "meses",
+                      }))}
+                    >
+                      <option value="meses">Meses</option>
+                      <option value="semanas">Semanas</option>
+                    </select>
+                    <p className="adm-field-help">Puedes elegir si el aviso sale meses antes o semanas antes del vencimiento.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Link imagen home izquierda</label>
+                    <input
+                      className="adm-input"
+                      value={configDraft.home_ubicacion_imagen_1_link}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_1_link: event.target.value }))}
+                      placeholder="Ej: /tienda o https://..."
+                    />
+                    <p className="adm-field-help">Imagen grande izquierda de Donde encontrarnos. Dejalo vacio si no quieres que sea clickeable.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Link imagen home superior derecha</label>
+                    <input
+                      className="adm-input"
+                      value={configDraft.home_ubicacion_imagen_2_link}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_2_link: event.target.value }))}
+                      placeholder="Ej: /catalogo o https://..."
+                    />
+                    <p className="adm-field-help">Imagen de arriba a la derecha. Acepta rutas internas, anchors o links completos.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Link imagen home inferior derecha</label>
+                    <input
+                      className="adm-input"
+                      value={configDraft.home_ubicacion_imagen_3_link}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_3_link: event.target.value }))}
+                      placeholder="Ej: https://maps.app.goo.gl/..."
+                    />
+                    <p className="adm-field-help">Imagen de abajo a la derecha. Usa /ruta, #seccion o http/https.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Puntos para quien invita</label>
@@ -5059,6 +5355,204 @@ export function Admin() {
             </>
           ) : null}
 
+          {tab === "personas-app" ? (
+            <>
+              <div className="admin-section-header">
+                <h2 className="admin-section-title">Personas en app</h2>
+                <button className="adm-btn-link" onClick={() => void appPresenceOverviewQuery.refetch()}>
+                  Actualizar
+                </button>
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Este tablero registra visitantes anonimos y clientes logueados por dispositivo/sesion. Cada sesion se renueva con un pulso cada 30 minutos mientras la persona sigue navegando. Staff no se incluye.
+                </p>
+
+                <div className="admin-stats" style={{ margin: 0 }}>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Activos ahora</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.active_now ?? 0}</p>
+                  </div>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Clientes activos</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.active_clientes ?? 0}</p>
+                  </div>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Anonimos activos</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.active_anonimos ?? 0}</p>
+                  </div>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Dispositivos hoy</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.unique_devices_today ?? 0}</p>
+                  </div>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Sesiones hoy</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.unique_sessions_today ?? 0}</p>
+                  </div>
+                  <div className="admin-stat-card">
+                    <p className="admin-stat-label">Registros 30m hoy</p>
+                    <p className="admin-stat-value">{appPresenceSummary?.registros_hoy ?? 0}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-section-header">
+                <h2 className="admin-section-title">Activos ahora</h2>
+                <span className="adm-inline-tip" style={{ margin: 0 }}>
+                  Sesiones con pulso reciente en la app.
+                </span>
+              </div>
+
+              <div className="admin-card">
+                {appPresenceOverviewQuery.isLoading && !appPresenceOverview ? (
+                  <div className="adm-empty">Cargando personas en app...</div>
+                ) : (
+                  <>
+                    <div className="adm-mobile-list">
+                      {activePresenceSessions.length === 0 ? (
+                        <div className="adm-empty">No hay clientes o visitantes activos en este momento.</div>
+                      ) : (
+                        activePresenceSessions.map((session) => (
+                          <div key={`${session.session_id}-${session.last_seen_at}`} className="adm-mobile-item">
+                            <p className="adm-mobile-item-title">{formatPresencePerson(session)}</p>
+                            <p><strong>Tipo:</strong> {formatPresenceTypeLabel(session.visitante_tipo)}</p>
+                            <p><strong>Dispositivo:</strong> {shortPresenceId(session.visitor_id)} / sesion {shortPresenceId(session.session_id)}</p>
+                            <p><strong>Ruta actual:</strong> {session.last_path}</p>
+                            <p><strong>Desde:</strong> {formatBuenosAiresDateTime(session.started_at)}</p>
+                            <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(session.last_seen_at)}</p>
+                            <p><strong>Eventos:</strong> {session.page_views}</p>
+                            <p><strong>IP:</strong> {session.ip}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="admin-table-wrap adm-desktop-table">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            <th>Persona</th>
+                            <th>Tipo</th>
+                            <th>Dispositivo</th>
+                            <th>Ruta actual</th>
+                            <th>Desde</th>
+                            <th>Ultimo pulso</th>
+                            <th>Eventos</th>
+                            <th>IP</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activePresenceSessions.length === 0 ? (
+                            <tr>
+                              <td colSpan={8}>
+                                <div className="adm-empty">No hay clientes o visitantes activos en este momento.</div>
+                              </td>
+                            </tr>
+                          ) : (
+                            activePresenceSessions.map((session) => (
+                              <tr key={`${session.session_id}-${session.last_seen_at}`}>
+                                <td>{formatPresencePerson(session)}</td>
+                                <td>{formatPresenceTypeLabel(session.visitante_tipo)}</td>
+                                <td>
+                                  <span className="adm-code-chip">{shortPresenceId(session.visitor_id)}</span>
+                                  {" / "}
+                                  <span className="adm-code-chip">{shortPresenceId(session.session_id)}</span>
+                                </td>
+                                <td>{session.last_path}</td>
+                                <td>{formatBuenosAiresDateTime(session.started_at)}</td>
+                                <td>{formatBuenosAiresDateTime(session.last_seen_at)}</td>
+                                <td>{session.page_views}</td>
+                                <td>{session.ip}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="admin-section-header">
+                <h2 className="admin-section-title">Ultimos registros de 30 minutos</h2>
+                <span className="adm-inline-tip" style={{ margin: 0 }}>
+                  Historial reciente de pulsos guardados por sesion.
+                </span>
+              </div>
+
+              <div className="admin-card">
+                <div className="adm-mobile-list">
+                  {recentPresenceLogs.length === 0 ? (
+                    <div className="adm-empty">Todavia no hay registros guardados.</div>
+                  ) : (
+                    recentPresenceLogs.map((log) => (
+                      <div key={log.id} className="adm-mobile-item">
+                        <p className="adm-mobile-item-title">{formatPresencePerson(log)}</p>
+                        <p><strong>Ventana 30m:</strong> {formatBuenosAiresDateTime(log.bucket_start)}</p>
+                        <p><strong>Tipo:</strong> {formatPresenceTypeLabel(log.visitante_tipo)}</p>
+                        <p><strong>Dispositivo:</strong> {shortPresenceId(log.visitor_id)} / sesion {shortPresenceId(log.session_id)}</p>
+                        <p><strong>Inicio:</strong> {log.first_path}</p>
+                        <p><strong>Ruta actual:</strong> {log.last_path}</p>
+                        <p><strong>Primer ingreso:</strong> {formatBuenosAiresDateTime(log.first_seen_at)}</p>
+                        <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(log.last_seen_at)}</p>
+                        <p><strong>Eventos:</strong> {log.page_views}</p>
+                        <p><strong>IP:</strong> {log.ip}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="admin-table-wrap adm-desktop-table">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Ventana 30m</th>
+                        <th>Persona</th>
+                        <th>Tipo</th>
+                        <th>Dispositivo</th>
+                        <th>Inicio</th>
+                        <th>Ruta actual</th>
+                        <th>Primer ingreso</th>
+                        <th>Ultimo pulso</th>
+                        <th>Eventos</th>
+                        <th>IP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentPresenceLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan={10}>
+                            <div className="adm-empty">Todavia no hay registros guardados.</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        recentPresenceLogs.map((log) => (
+                          <tr key={log.id}>
+                            <td>{formatBuenosAiresDateTime(log.bucket_start)}</td>
+                            <td>{formatPresencePerson(log)}</td>
+                            <td>{formatPresenceTypeLabel(log.visitante_tipo)}</td>
+                            <td>
+                              <span className="adm-code-chip">{shortPresenceId(log.visitor_id)}</span>
+                              {" / "}
+                              <span className="adm-code-chip">{shortPresenceId(log.session_id)}</span>
+                            </td>
+                            <td>{log.first_path}</td>
+                            <td>{log.last_path}</td>
+                            <td>{formatBuenosAiresDateTime(log.first_seen_at)}</td>
+                            <td>{formatBuenosAiresDateTime(log.last_seen_at)}</td>
+                            <td>{log.page_views}</td>
+                            <td>{log.ip}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : null}
+
           {tab === "usuarios" ? (
             <>
               <div className="admin-section-header">
@@ -5310,7 +5804,7 @@ export function Admin() {
                         ) : null}
                         {(producto.puntaje_al_comprar ?? 0) > 0 ? (
                           <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
-                            Suma: {producto.puntaje_al_comprar} pts
+                            Puntos por producto legacy: {producto.puntaje_al_comprar}
                           </p>
                         ) : null}
                         <p className="admin-producto-sub">Imagenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>
@@ -5469,8 +5963,9 @@ export function Admin() {
                     </div>
                   ) : null}
                   <div className="adm-field">
-                    <label className="adm-label">Puntos que suma al comprar</label>
+                    <label className="adm-label">Puntos por producto legacy</label>
                     <input type="number" min={0} className="adm-input" value={nuevoProducto.puntaje_al_comprar ?? nuevoProducto.puntos_acumulables ?? ""} onChange={(event) => setNuevoProducto((prev) => ({ ...prev, puntaje_al_comprar: event.target.value ? Number(event.target.value) : null, puntos_acumulables: event.target.value ? Number(event.target.value) : null }))} />
+                    <p className="adm-field-help">La acreditacion actual usa la regla global por monto configurada en Inicio.</p>
                   </div>
                 </div>
 
@@ -5740,8 +6235,8 @@ export function Admin() {
                           ) : null}
                           <div className="adm-field">
                             <FieldLabel
-                              text="Puntos que suma al comprar"
-                              tip="Puntos que gana el cliente cuando compra este producto."
+                              text="Puntos por producto legacy"
+                              tip="La acreditacion actual usa la regla global por monto configurada en Inicio."
                             />
                             <input
                               type="number"
@@ -5917,7 +6412,7 @@ export function Admin() {
                           ) : null}
                           {(producto.puntaje_al_comprar ?? 0) > 0 ? (
                             <p className="admin-producto-sub" style={{ color: "#8B5A30", fontWeight: 600 }}>
-                              Suma: {producto.puntaje_al_comprar} pts
+                              Puntos por producto legacy: {producto.puntaje_al_comprar}
                             </p>
                           ) : null}
                           <p className="admin-producto-sub">Imágenes: {producto.imagenes?.length ?? (producto.imagen_url ? 1 : 0)} / {MAX_PRODUCT_IMAGES}</p>

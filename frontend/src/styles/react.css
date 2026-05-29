@@ -36,6 +36,90 @@
   color: #a08060;
 }
 
+.profile-completion-band {
+  width: 100%;
+  background: #fff8ef;
+  border-bottom: 1px solid #f0dbc5;
+}
+
+.profile-completion-inner {
+  width: min(1120px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 0.9rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.profile-completion-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-completion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #6b3e26;
+  font-size: 0.92rem;
+}
+
+.profile-completion-head span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #fef3e8;
+  border: 1px solid #f5c8a8;
+  color: #b85415;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.profile-completion-copy p {
+  margin: 0.28rem 0 0;
+  color: #8b5a30;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.profile-completion-track {
+  height: 7px;
+  margin-top: 0.55rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #efd7bc;
+}
+
+.profile-completion-track span {
+  display: block;
+  height: 100%;
+  min-width: 8px;
+  border-radius: inherit;
+  background: #d4621a;
+}
+
+.profile-completion-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 1rem;
+  border-radius: 10px;
+  background: #6b3e26;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.88rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.profile-completion-action:hover {
+  background: #8b4f2d;
+}
+
 .cliente-estado-chip {
   background: #fef3e8;
   color: #d4621a;
@@ -299,6 +383,98 @@
   align-items: start;
 }
 
+.perfil-expiry-alert {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  border: 1px solid #f5c8a8;
+  background: linear-gradient(135deg, #fff6ec 0%, #ffefd9 100%);
+  box-shadow: 0 12px 28px rgba(107, 62, 38, 0.08);
+}
+
+.perfil-expiry-alert-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.perfil-expiry-alert-kicker {
+  margin: 0;
+  color: #b85415;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.perfil-expiry-alert-title {
+  margin: 0.2rem 0 0;
+  color: #3d1f0d;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.perfil-expiry-alert-copy {
+  margin: 0.65rem 0 0;
+  color: #8b5a30;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.perfil-expiry-alert-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: #fffaf5;
+  border: 1px solid #f5c8a8;
+  color: #b85415;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.perfil-expiry-alert-badge.is-urgent {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #dc2626;
+}
+
+.perfil-expiry-list {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.perfil-expiry-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid #f0dbc5;
+  background: rgba(255, 255, 255, 0.72);
+  color: #6b3e26;
+  font-size: 0.88rem;
+}
+
+.perfil-expiry-item strong {
+  color: #2d1200;
+  font-size: 0.95rem;
+}
+
+.perfil-expiry-item span {
+  color: #8b5a30;
+  text-align: right;
+}
+
+.perfil-expiry-item.is-urgent {
+  border-color: #fecdd3;
+  background: #fff7f7;
+}
+
 .perfil-promo-box {
   padding: 1rem;
   border-radius: 12px;
@@ -366,6 +542,24 @@
 }
 
 @media (max-width: 640px) {
+  .perfil-expiry-alert-head {
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .perfil-expiry-alert-badge {
+    white-space: normal;
+  }
+
+  .perfil-expiry-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .perfil-expiry-item span {
+    text-align: left;
+  }
+
   .perfil-canje-filter-row {
     grid-template-columns: 1fr;
   }
@@ -446,4 +640,23 @@
   background: #FFF8F0;
   border-color: #E6D3B8;
   color: #7A5A3C;
+}
+
+@media (max-width: 640px) {
+  .profile-completion-inner {
+    align-items: stretch;
+    flex-direction: column;
+    width: min(100% - 1.25rem, 1120px);
+    padding: 0.8rem 0;
+  }
+
+  .profile-completion-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .profile-completion-action {
+    width: 100%;
+  }
 }

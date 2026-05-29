@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { pool, qAll, qOne, qRun } from "../db";
+import { calcularPuntosPorMonto } from "./points";
 
 type PasswordResetEmailInput = {
   to: string;
@@ -262,7 +263,7 @@ export async function sendOrderReceiptEmail(orderId: number): Promise<boolean> {
   const costoEnvio = numberField(direccionEnvio, "costo_envio") || numberField(envioSnapshot, "costo_envio");
   const zonaEnvio = stringField(envioSnapshot, "zona_nombre");
   const subtotalProductos = items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0);
-  const puntosGanados = items.reduce((acc, item) => acc + Number(item.cantidad) * Number(item.puntaje_al_comprar_unitario ?? 0), 0);
+  const puntosGanados = await calcularPuntosPorMonto(pool, Number(order.total_dinero ?? 0));
   const safeName = escapeHtml(order.cliente_nombre || "Cliente");
   const itemRows = items
     .map((item) => {

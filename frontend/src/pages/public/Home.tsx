@@ -17,7 +17,18 @@ type TimelineEntry = {
 type LocationImage = {
   src: string;
   alt: string;
+  link?: string | null;
 };
+
+type HomeLayoutConfigResponse = {
+  location_image_links: Array<string | null>;
+};
+
+const HOME_LOCATION_GALLERY_BASE: LocationImage[] = [
+  { src: "/mercado-sabores-frente.jpg", alt: "Frente de Mercado de Sabores en La Unidad" },
+  { src: "/nande-la-unidad-puesto.jpg", alt: "Puesto de Ñandé dentro de La Unidad" },
+  { src: "/nande-la-unidad-productos.jpg", alt: "Productos de Ñandé en Mercado de Sabores" },
+];
 
 type MapPoint = {
   id: string;
@@ -43,13 +54,17 @@ function money(value: number | string | null | undefined): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
 }
 
-function rewardPoints(producto: Producto): number {
-  const value = Number(producto.puntaje_al_comprar ?? producto.puntos_acumulables ?? 0);
-  return Number.isFinite(value) ? value : 0;
+function canEarnPurchasePoints(producto: Producto): boolean {
+  const price = Number(producto.precio_dinero ?? 0);
+  return Number.isFinite(price) && price > 0;
 }
 
 function hasFreeShipping(producto: Producto): boolean {
   return Boolean(producto.permite_envio && producto.envio_gratis);
+}
+
+function isInternalNavigationLink(value: string): boolean {
+  return value.startsWith("/");
 }
 
 export function Home() {
@@ -129,6 +144,14 @@ export function Home() {
     refetchOnWindowFocus: false,
   });
 
+  const homeLayoutConfigQuery = useQuery({
+    queryKey: ["home", "layout-config"],
+    queryFn: () => api.get<HomeLayoutConfigResponse>("/productos/home-layout-config"),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const productosDestacados = useMemo(() => {
     const productos = productosDestacadosQuery.data ?? [];
     return productos.filter(hasProductImage);
@@ -139,11 +162,18 @@ export function Home() {
   }, [productosDestacados]);
 
   const heroImage = "/hero.webp";
-  const locationGallery: LocationImage[] = [
-    { src: "/mercado-sabores-frente.jpg", alt: "Frente de Mercado de Sabores en La Unidad" },
+  const locationGalleryBase: LocationImage[] = HOME_LOCATION_GALLERY_BASE.slice(0, 1).concat([
     { src: "/nande-la-unidad-puesto.jpg", alt: "Puesto de Ñandé dentro de La Unidad" },
     { src: "/nande-la-unidad-productos.jpg", alt: "Productos de Ñandé en Mercado de Sabores" },
-  ];
+  ]);
+  const locationGallery = useMemo(
+    () =>
+      locationGalleryBase.map((image, index) => ({
+        ...image,
+        link: homeLayoutConfigQuery.data?.location_image_links?.[index] ?? null,
+      })),
+    [homeLayoutConfigQuery.data?.location_image_links],
+  );
 
   const timelineEntries: TimelineEntry[] = [
     {
@@ -192,6 +222,19 @@ export function Home() {
     <div className="home-page">
       <section className="home-hero" aria-label="Imagen principal de Ñandé">
         <img src={heroImage} alt="Imagen principal de Ñandé Alfajores Correntinos" className="home-hero-image" />
+        <button
+          type="button"
+          className="home-hero-scroll-hint"
+          aria-label="Desplazarse hacia abajo"
+          onClick={() => {
+            const shell = document.querySelector(".home-content-shell");
+            if (shell) shell.scrollIntoView({ behavior: "smooth" });
+          }}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
       </section>
 
       <div className="home-content-shell">
@@ -201,15 +244,49 @@ export function Home() {
           </div>
 
           {locationGallery.map((image, index) => (
-            <figure key={image.src} className={`home-location-photo home-location-photo-${index + 1}`}>
-              <img
-                src={image.src}
-                alt={image.alt}
-                onError={(event) => {
-                  event.currentTarget.src = "/logo.png";
-                  event.currentTarget.classList.add("is-placeholder");
-                }}
-              />
+            <figure
+              key={image.src}
+              className={`home-location-photo home-location-photo-${index + 1}${image.link ? " has-link" : ""}`}
+            >
+              {image.link ? (
+                isInternalNavigationLink(image.link) ? (
+                  <Link to={image.link} className="home-location-photo-link">
+                    <img
+                      src={image.src}
+                      alt={image.alt}
+                      onError={(event) => {
+                        event.currentTarget.src = "/logo.png";
+                        event.currentTarget.classList.add("is-placeholder");
+                      }}
+                    />
+                  </Link>
+                ) : (
+                  <a
+                    href={image.link}
+                    className="home-location-photo-link"
+                    target={image.link.startsWith("#") ? undefined : "_blank"}
+                    rel={image.link.startsWith("#") ? undefined : "noreferrer"}
+                  >
+                    <img
+                      src={image.src}
+                      alt={image.alt}
+                      onError={(event) => {
+                        event.currentTarget.src = "/logo.png";
+                        event.currentTarget.classList.add("is-placeholder");
+                      }}
+                    />
+                  </a>
+                )
+              ) : (
+                <img
+                  src={image.src}
+                  alt={image.alt}
+                  onError={(event) => {
+                    event.currentTarget.src = "/logo.png";
+                    event.currentTarget.classList.add("is-placeholder");
+                  }}
+                />
+              )}
             </figure>
           ))}
 
@@ -317,8 +394,8 @@ export function Home() {
                       {hasFreeShipping(producto) ? (
                         <span className="home-product-free-shipping">Envio gratis</span>
                       ) : null}
-                      {rewardPoints(producto) > 0 ? (
-                        <span className="home-product-earned-points">Sumás {rewardPoints(producto)} puntos con este producto</span>
+                      {canEarnPurchasePoints(producto) ? (
+                        <span className="home-product-earned-points">Suma puntos segun el total de la compra</span>
                       ) : null}
                     </div>
                     <div className="home-product-actions">
