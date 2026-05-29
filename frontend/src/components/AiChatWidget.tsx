@@ -1,7 +1,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useAuthStore } from "../store/authStore";
-import type { Rol } from "../types";
+import type { Rol, User } from "../types";
 
 import { Link } from "react-router-dom";
 
@@ -44,7 +44,8 @@ function getCurrentPath(): string {
   return typeof window === "undefined" ? "/" : window.location.pathname;
 }
 
-function getDynamicGreeting(): string {
+function getDynamicGreeting(user: User | null): string {
+  let timeGreeting = "¡Hola!";
   try {
     const formatter = new Intl.DateTimeFormat("es-AR", {
       timeZone: "America/Argentina/Buenos_Aires",
@@ -54,15 +55,26 @@ function getDynamicGreeting(): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      return "¡Buen día! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+      timeGreeting = "¡Buen día!";
     } else if (hour >= 12 && hour < 20) {
-      return "¡Buenas tardes! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+      timeGreeting = "¡Buenas tardes!";
     } else {
-      return "¡Buenas noches! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+      timeGreeting = "¡Buenas noches!";
     }
   } catch {
-    return "¡Hola! Bienvenido a Ñandé. ¿En qué te puedo ayudar?";
+    // default
   }
+
+  if (!user) {
+    return `${timeGreeting} Bienvenido a Ñandé. Te sugiero [iniciar sesión](/login) o [registrarte](/registro) para poder comprar y acumular puntos. ¿En qué te puedo ayudar hoy?`;
+  }
+
+  const faltanDatos = !user.dni || !user.telefono || !user.localidad;
+  if (faltanDatos) {
+    return `${timeGreeting} **${user.nombre}**. Noté que te faltan algunos datos en tu perfil. Te recomiendo [completarlos aquí](/perfil) para poder realizar tus pedidos sin problemas. ¿En qué te ayudo hoy?`;
+  }
+
+  return `${timeGreeting} **${user.nombre}**. ¿En qué te puedo ayudar hoy?`;
 }
 
 function parseMessageContent(content: string) {
@@ -108,13 +120,8 @@ export function AiChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: createMessageId(),
-      role: "assistant",
-      content: getDynamicGreeting(),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
   const [conversationId] = useState(createMessageId);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -137,7 +144,20 @@ export function AiChatWidget() {
     return () => clearTimeout(timer);
   }, [isOpen, tooltipDismissed]);
 
-  const initialGreeting = messages[0]?.content || getDynamicGreeting();
+  useEffect(() => {
+    setMessages((prev) => {
+      const greeting = getDynamicGreeting(user);
+      if (prev.length === 0) {
+        return [{ id: createMessageId(), role: "assistant", content: greeting }];
+      }
+      if (prev.length === 1 && prev[0].role === "assistant") {
+        return [{ ...prev[0], content: greeting }];
+      }
+      return prev;
+    });
+  }, [user]);
+
+  const initialGreeting = messages[0]?.content || getDynamicGreeting(user);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
