@@ -118,6 +118,27 @@ export function AiChatWidget() {
   const [conversationId] = useState(createMessageId);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipDismissed, setTooltipDismissed] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShowTooltip(false);
+      setTooltipDismissed(true);
+      return;
+    }
+
+    if (tooltipDismissed) return;
+
+    const timer = setTimeout(() => {
+      setShowTooltip(true);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, tooltipDismissed]);
+
+  const initialGreeting = messages[0]?.content || getDynamicGreeting();
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isSending]);
@@ -242,6 +263,26 @@ export function AiChatWidget() {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {showTooltip && !isOpen ? (
+        <div className="ai-chat-tooltip" onClick={() => setIsOpen(true)}>
+          <div className="ai-chat-tooltip-bubble">
+            {initialGreeting}
+          </div>
+          <button
+            type="button"
+            className="ai-chat-tooltip-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowTooltip(false);
+              setTooltipDismissed(true);
+            }}
+            aria-label="Cerrar saludo"
+          >
+            ×
+          </button>
         </div>
       ) : null}
 
