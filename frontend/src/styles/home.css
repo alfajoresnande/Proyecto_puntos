@@ -810,7 +810,7 @@
   display: grid;
   gap: clamp(1.25rem, 2.1vw, 1.9rem);
   padding: 0.35rem 0 0.5rem;
-  max-width: 1180px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -860,9 +860,9 @@
 .home-timeline-card {
   position: relative;
   grid-row: 1;
-  width: min(100%, 560px);
+  width: min(100%, 650px);
   display: grid;
-  grid-template-columns: minmax(210px, 0.95fr) minmax(240px, 1.05fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
   gap: clamp(0.9rem, 1.5vw, 1.2rem);
   align-items: stretch;
   padding: clamp(0.95rem, 1.4vw, 1.15rem);
@@ -1103,6 +1103,11 @@
     width: min(100%, 480px);
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .home-timeline-media {
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+  }
 }
 
 @media (max-width: 1280px) {
@@ -1120,11 +1125,6 @@
     grid-template-rows: auto minmax(235px, auto) minmax(235px, auto) auto;
     width: 100%;
     padding-inline: max(0.9rem, calc((100vw - 1020px) / 2));
-  }
-
-  .home-timeline-media {
-    min-height: 0;
-    aspect-ratio: 16 / 10;
   }
 }
 
