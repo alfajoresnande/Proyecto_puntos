@@ -102,10 +102,18 @@ async function getEnvioGratisContext(): Promise<string> {
       "SELECT valor FROM configuracion WHERE clave = 'envio_gratis_monto_minimo'"
     );
     const monto = Number(row?.valor || 0);
+    
+    let shippingRules = "";
     if (monto > 0) {
-      return `- Información de envíos: Los envíos dentro de Corrientes Capital son GRATIS para compras mayores a $${monto}.`;
+      shippingRules += `- Envíos en Corrientes Capital: Si la compra supera los $${monto}, el envío es GRATIS. Si es menor, tiene un pequeño costo dependiendo de la dirección.\n`;
+    } else {
+      shippingRules += `- Envíos en Corrientes Capital: Tienen un pequeño costo de envío dependiendo de la dirección.\n`;
     }
-    return "";
+    
+    shippingRules += `- Si la app no toma la dirección del usuario en Corrientes Capital, indicale que puede coordinar el envío contactándose por [Instagram](https://www.instagram.com/alfajorescorrentinos/), [WhatsApp](https://wa.me/5493794632610?text=Hola,%20buenas%20te%20quiero%20consultar%20sobre%20....) o [Mensajes](/mensajes).
+- Envíos a otras ciudades o provincias: Se debe consultar disponibilidad y costos contactándose directamente por mensajería de la app, Instagram o WhatsApp.`;
+
+    return shippingRules;
   } catch (error) {
     console.error("[ai-chat] Error fetching config context", error);
     return "";
