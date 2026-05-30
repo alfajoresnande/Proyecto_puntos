@@ -208,7 +208,7 @@ export function Home() {
 
     items.forEach((item) => observer.observe(item));
     return () => observer.disconnect();
-  }, []);
+  }, [timelineEntries.length]);
 
   return (
     <div className="home-page">

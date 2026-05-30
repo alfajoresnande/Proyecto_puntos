@@ -1578,21 +1578,21 @@ async function ensureLayoutTimelineSchema() {
                 badge_text: "2025",
                 titulo: "Representación regional en La Rural Palermo",
                 descripcion: "Ñandé participó como representante regional de Corrientes dentro del universo de alfajores en Buenos Aires.",
-                imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056525166-d4bd8293-16ea-4f9e-a89e-4a6c8e3cc5ff.png",
+                imagen_url: "/rural-palermo.webp",
                 orden: 10
             },
             {
-                badge_text: "CONFEDERACIÓN ARGENTINA DE LA MEDIANA EMPRESA",
+                badge_text: "2025",
                 titulo: "Representando a Corrientes en alfajores",
                 descripcion: "Ñandé participó en CAME, la Confederación Argentina de la Mediana Empresa, representando a Corrientes dentro del universo de los alfajores.\n\nUn espacio para mostrar identidad regional, producto y presencia correntina frente a referentes de todo el país.",
-                imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056636737-0248d28e-59ee-47e2-aa5f-3af12a4484b9.png",
+                imagen_url: "/came.webp",
                 orden: 20
             },
             {
-                badge_text: "FERIAS",
+                badge_text: "2025",
                 titulo: "Fiesta Nacional del Alfajor en La Falda",
-                descripcion: "Ñandé participó en La Falda, Córdoba, dentro de la Fiesta Nacional del Alfajor, llevando la identidad correntina al encuentro.\n\nUn espacio para compartir producto, historia y presencia regional junto a referentes alfajoreros de todo el país.",
-                imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056700518-809ff43e-a74f-4d32-aa90-b986ccf2f534.png",
+                descripcion: "Presentes en la Fiesta Nacional del Alfajor en La Falda, Córdoba, llevando los sabores correntinos a uno de los eventos más importantes del país.",
+                imagen_url: "/lafalta.webp",
                 orden: 30
             }
         ];
@@ -1600,6 +1600,10 @@ async function ensureLayoutTimelineSchema() {
             await exports.pool.query("INSERT INTO layout_timeline_eventos (badge_text, titulo, descripcion, imagen_url, orden) VALUES (?, ?, ?, ?, ?)", [ev.badge_text, ev.titulo, ev.descripcion, ev.imagen_url, ev.orden]);
         }
     }
+    // Auto-fix para URLs rotas en la DB
+    await exports.pool.query("UPDATE layout_timeline_eventos SET imagen_url = '/rural-palermo.webp' WHERE titulo LIKE '%Palermo%' AND imagen_url LIKE '%alfajorescorrentinos.com%'");
+    await exports.pool.query("UPDATE layout_timeline_eventos SET imagen_url = '/came.webp' WHERE (titulo LIKE '%CAME%' OR titulo LIKE '%Corrientes en alfajores%') AND imagen_url LIKE '%alfajorescorrentinos.com%'");
+    await exports.pool.query("UPDATE layout_timeline_eventos SET imagen_url = '/lafalta.webp' WHERE titulo LIKE '%La Falda%' AND imagen_url LIKE '%alfajorescorrentinos.com%'");
 }
 exports.pool
     .getConnection()
