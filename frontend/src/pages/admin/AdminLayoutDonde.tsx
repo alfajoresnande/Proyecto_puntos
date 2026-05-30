@@ -108,7 +108,7 @@ export function AdminLayoutDonde() {
     }
   };
 
-  const img1 = draft.home_ubicacion_imagen_1_src ? (draft.home_ubicacion_imagen_1_src.startsWith("http") ? draft.home_ubicacion_imagen_1_src : mediaUrl(draft.home_ubicacion_imagen_1_src)) : "/location-main.webp";
+  const img1 = draft.home_ubicacion_imagen_1_src ? (draft.home_ubicacion_imagen_1_src.startsWith("http") ? draft.home_ubicacion_imagen_1_src : mediaUrl(draft.home_ubicacion_imagen_1_src)) : "/mercado-sabores-frente.jpg";
   const img2 = draft.home_ubicacion_imagen_2_src ? (draft.home_ubicacion_imagen_2_src.startsWith("http") ? draft.home_ubicacion_imagen_2_src : mediaUrl(draft.home_ubicacion_imagen_2_src)) : "/nande-la-unidad-puesto.jpg";
   const img3 = draft.home_ubicacion_imagen_3_src ? (draft.home_ubicacion_imagen_3_src.startsWith("http") ? draft.home_ubicacion_imagen_3_src : mediaUrl(draft.home_ubicacion_imagen_3_src)) : "/nande-la-unidad-productos.jpg";
 
