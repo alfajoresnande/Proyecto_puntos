@@ -20,6 +20,7 @@ import postulacionesRoutes from "./routes/postulaciones";
 import meAddressesRoutes from "./routes/meAddresses";
 import presenciaRoutes from "./routes/presencia";
 import aiChatRoutes from "./routes/aiChat.routes";
+import layoutRoutes from "./routes/layout";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
@@ -244,6 +245,7 @@ app.use("/api/diagnostico", diagnosticoRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/productos", productosRoutes); // publico (catalogo)
 app.use("/api/paginas", paginasRoutes); // publico (sobre nosotros, terminos)
+app.use("/api/layout", layoutRoutes);
 app.use("/api/ubicaciones", ubicacionesRoutes);
 app.use("/api/presencia", presenciaRoutes);
 app.use("/api/me/addresses", meAddressesRoutes);

@@ -3338,4 +3338,67 @@ router.post("/puntos/reconciliar-saldos", requireAuth, requireRole("admin"), asy
   }
 });
 
+// ════════════════════════════════════════════════════════
+//  LAYOUT Y DISEÑO
+// ════════════════════════════════════════════════════════
+
+router.get("/layout/timeline", async (_req, res) => {
+  const rows = await qAll(pool, "SELECT * FROM layout_timeline_eventos ORDER BY orden ASC");
+  res.json(rows);
+});
+
+router.post("/layout/timeline", async (req, res) => {
+  const schema = z.object({
+    badge_text:  z.string().nullable(),
+    titulo:      z.string().min(1).max(255),
+    descripcion: z.string().nullable(),
+    imagen_url:  z.string().nullable(),
+    orden:       z.number().int(),
+    activo:      z.boolean().default(true),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
+
+  const { badge_text, titulo, descripcion, imagen_url, orden, activo } = parsed.data;
+  
+  const { insertId } = await qRun(pool,
+    `INSERT INTO layout_timeline_eventos (badge_text, titulo, descripcion, imagen_url, orden, activo)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [badge_text, titulo, descripcion, imagen_url, orden, activo ? 1 : 0]
+  );
+  res.json({ ok: true, id: insertId });
+});
+
+router.put("/layout/timeline/:id", async (req, res) => {
+  const schema = z.object({
+    badge_text:  z.string().nullable(),
+    titulo:      z.string().min(1).max(255),
+    descripcion: z.string().nullable(),
+    imagen_url:  z.string().nullable(),
+    orden:       z.number().int(),
+    activo:      z.boolean(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
+
+  const { badge_text, titulo, descripcion, imagen_url, orden, activo } = parsed.data;
+
+  const { affectedRows } = await qRun(pool,
+    `UPDATE layout_timeline_eventos
+     SET badge_text = ?, titulo = ?, descripcion = ?, imagen_url = ?, orden = ?, activo = ?
+     WHERE id = ?`,
+    [badge_text, titulo, descripcion, imagen_url, orden, activo ? 1 : 0, req.params.id]
+  );
+  if (affectedRows === 0) { res.status(404).json({ error: "Evento no encontrado" }); return; }
+  res.json({ ok: true });
+});
+
+router.delete("/layout/timeline/:id", async (req, res) => {
+  const { affectedRows } = await qRun(pool, "DELETE FROM layout_timeline_eventos WHERE id = ?", [req.params.id]);
+  if (affectedRows === 0) { res.status(404).json({ error: "Evento no encontrado" }); return; }
+  res.json({ ok: true });
+});
+
 export default router;

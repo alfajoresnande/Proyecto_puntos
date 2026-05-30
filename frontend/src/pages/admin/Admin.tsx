@@ -12,6 +12,7 @@ import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasVie
 import { AreaExplanation } from "./components/AreaExplanation";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto, Rol, TipoCliente } from "../../types";
+import { AdminLayoutTimeline } from "./AdminLayoutTimeline";
 
 type AdminTab =
   | "inicio"
@@ -35,7 +36,8 @@ type AdminTab =
   | "codigos"
   | "crear"
   | "sobre-nosotros"
-  | "terminos";
+  | "terminos"
+  | "layout-timeline";
 
 const ADMIN_TABS: AdminTab[] = [
   "inicio",
@@ -60,6 +62,7 @@ const ADMIN_TABS: AdminTab[] = [
   "crear",
   "sobre-nosotros",
   "terminos",
+  "layout-timeline",
 ];
 
 const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
@@ -172,6 +175,10 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se editan los Terminos y Condiciones que ven los clientes.",
     "Conviene mantener esta pagina clara para explicar canjes, pedidos, retiros, vencimientos y condiciones de uso.",
     "El editor permite guardar texto e imagenes sin tocar codigo.",
+  ],
+  "layout-timeline": [
+    "Aca se editan los eventos de la Línea de Tiempo de la página principal.",
+    "Podes subir una foto, agregar textos, insignias, elegir el orden en el que se muestran y decidir cuáles están activos o pausados.",
   ],
 };
 
@@ -4860,6 +4867,9 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => seleccionarTab("terminos")}>
             {renderAdminNavLabel("Terminos")}
           </button>
+          <button className={`admin-nav-btn ${tab === "layout-timeline" ? "active" : ""}`} onClick={() => seleccionarTab("layout-timeline")}>
+            {renderAdminNavLabel("Línea de Tiempo")}
+          </button>
         </nav>
       </aside>
 
@@ -8552,6 +8562,10 @@ export function Admin() {
                 </div>
               </div>
             </>
+          ) : null}
+
+          {tab === "layout-timeline" ? (
+            <AdminLayoutTimeline />
           ) : null}
         </div>
       </main>

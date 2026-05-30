@@ -1957,6 +1957,56 @@ async function ensureAppPresenceSchema() {
   );
 }
 
+async function ensureLayoutTimelineSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS layout_timeline_eventos (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      badge_text VARCHAR(100) NULL,
+      titulo VARCHAR(255) NOT NULL,
+      descripcion TEXT NULL,
+      imagen_url VARCHAR(255) NULL,
+      orden INT NOT NULL DEFAULT 0,
+      activo TINYINT(1) NOT NULL DEFAULT 1,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  const [rows] = await pool.query("SELECT COUNT(*) as count FROM layout_timeline_eventos") as [Array<{ count: number }>, any];
+  if (rows[0].count === 0) {
+    const defaultEvents = [
+      {
+        badge_text: "2025",
+        titulo: "Representación regional en La Rural Palermo",
+        descripcion: "Ñandé participó como representante regional de Corrientes dentro del universo de alfajores en Buenos Aires.",
+        imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056525166-d4bd8293-16ea-4f9e-a89e-4a6c8e3cc5ff.png",
+        orden: 10
+      },
+      {
+        badge_text: "CONFEDERACIÓN ARGENTINA DE LA MEDIANA EMPRESA",
+        titulo: "Representando a Corrientes en alfajores",
+        descripcion: "Ñandé participó en CAME, la Confederación Argentina de la Mediana Empresa, representando a Corrientes dentro del universo de los alfajores.\n\nUn espacio para mostrar identidad regional, producto y presencia correntina frente a referentes de todo el país.",
+        imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056636737-0248d28e-59ee-47e2-aa5f-3af12a4484b9.png",
+        orden: 20
+      },
+      {
+        badge_text: "FERIAS",
+        titulo: "Fiesta Nacional del Alfajor en La Falda",
+        descripcion: "Ñandé participó en La Falda, Córdoba, dentro de la Fiesta Nacional del Alfajor, llevando la identidad correntina al encuentro.\n\nUn espacio para compartir producto, historia y presencia regional junto a referentes alfajoreros de todo el país.",
+        imagen_url: "https://www.alfajorescorrentinos.com/uploads/1726056700518-809ff43e-a74f-4d32-aa90-b986ccf2f534.png",
+        orden: 30
+      }
+    ];
+
+    for (const ev of defaultEvents) {
+      await pool.query(
+        "INSERT INTO layout_timeline_eventos (badge_text, titulo, descripcion, imagen_url, orden) VALUES (?, ?, ?, ?, ?)",
+        [ev.badge_text, ev.titulo, ev.descripcion, ev.imagen_url, ev.orden]
+      );
+    }
+  }
+}
+
 pool
   .getConnection()
   .then(async (conn) => {
@@ -2111,6 +2161,11 @@ pool
       await ensureAppPresenceSchema();
     } catch (err: any) {
       console.error("Migracion presencia en app:", err.message);
+    }
+    try {
+      await ensureLayoutTimelineSchema();
+    } catch (err: any) {
+      console.error("Migracion layout timeline:", err.message);
     }
   })
   .catch((err) => {

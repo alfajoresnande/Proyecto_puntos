@@ -7,11 +7,12 @@ import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
 type TimelineEntry = {
-  year: string;
-  title: string;
-  text: string;
-  detail: string;
-  image: string;
+  id: number;
+  badge_text: string | null;
+  titulo: string;
+  descripcion: string | null;
+  imagen_url: string | null;
+  orden: number;
 };
 
 type LocationImage = {
@@ -152,6 +153,14 @@ export function Home() {
     refetchOnWindowFocus: false,
   });
 
+  const timelineQuery = useQuery({
+    queryKey: ["home", "timeline"],
+    queryFn: () => api.get<TimelineEntry[]>("/layout/timeline"),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const productosDestacados = useMemo(() => {
     const productos = productosDestacadosQuery.data ?? [];
     return productos.filter(hasProductImage);
@@ -175,29 +184,7 @@ export function Home() {
     [homeLayoutConfigQuery.data?.location_image_links],
   );
 
-  const timelineEntries: TimelineEntry[] = [
-    {
-      year: "2025",
-      title: "Representación regional en La Rural Palermo",
-      text: "Ñandé participó como representante regional de Corrientes dentro del universo de alfajores en Buenos Aires.",
-      detail: "",
-      image: "/rural-palermo.webp",
-    },
-    {
-      year: "Confederación Argentina de la Mediana Empresa",
-      title: "Representando a Corrientes en alfajores",
-      text: "Ñandé participó en CAME, la Confederación Argentina de la Mediana Empresa, representando a Corrientes dentro del universo de los alfajores.",
-      detail: "Un espacio para mostrar identidad regional, producto y presencia correntina frente a referentes de todo el país.",
-      image: "/came.webp",
-    },
-    {
-      year: "Ferias",
-      title: "Fiesta Nacional del Alfajor en La Falda",
-      text: "Ñandé participó en La Falda, Córdoba, dentro de la Fiesta Nacional del Alfajor, llevando la identidad correntina al encuentro.",
-      detail: "Un espacio para compartir producto, historia y presencia regional junto a referentes alfajoreros de todo el país.",
-      image: "/lafalta.webp",
-    },
-  ];
+  const timelineEntries: TimelineEntry[] = timelineQuery.data ?? [];
 
   useEffect(() => {
     const items = Array.from(document.querySelectorAll<HTMLElement>(".home-timeline-card"));
@@ -433,16 +420,21 @@ export function Home() {
           <div className="home-timeline">
             <div className="home-timeline-line" aria-hidden="true" />
             {timelineEntries.map((entry, index) => (
-              <div key={`${entry.year}-${entry.title}`} className={`home-timeline-row${index % 2 === 1 ? " is-right" : " is-left"}`}>
+              <div key={entry.id} className={`home-timeline-row${index % 2 === 1 ? " is-right" : " is-left"}`}>
                 <article className="home-timeline-card">
                   <div className="home-timeline-media">
-                    <img src={entry.image} alt={entry.title} />
+                    {entry.imagen_url ? (
+                      <img src={entry.imagen_url.startsWith("http") ? entry.imagen_url : mediaUrl(entry.imagen_url)} alt={entry.titulo} />
+                    ) : (
+                      <div className="home-timeline-media-placeholder"></div>
+                    )}
                   </div>
                   <div className="home-timeline-copy">
-                    <span className="home-timeline-year">{entry.year}</span>
-                    <h3>{entry.title}</h3>
-                    <p>{entry.text}</p>
-                    {entry.detail ? <p>{entry.detail}</p> : null}
+                    {entry.badge_text ? <span className="home-timeline-year">{entry.badge_text}</span> : null}
+                    <h3>{entry.titulo}</h3>
+                    {entry.descripcion ? (
+                      <div style={{ whiteSpace: "pre-wrap" }}>{entry.descripcion}</div>
+                    ) : null}
                   </div>
                 </article>
                 <span className="home-timeline-dot" aria-hidden="true" />
