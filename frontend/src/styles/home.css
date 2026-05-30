@@ -1272,7 +1272,7 @@
   }
 
   .home-timeline-media {
-    aspect-ratio: 16 / 10;
+    aspect-ratio: 4 / 3;
     min-height: 0;
     border-radius: 16px;
   }
