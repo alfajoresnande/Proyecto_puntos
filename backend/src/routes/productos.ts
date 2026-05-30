@@ -12,6 +12,12 @@ const HOME_LOCATION_LINK_KEYS = [
   "home_ubicacion_imagen_3_link",
 ] as const;
 
+const HOME_LOCATION_SRC_KEYS = [
+  "home_ubicacion_imagen_1_src",
+  "home_ubicacion_imagen_2_src",
+  "home_ubicacion_imagen_3_src",
+] as const;
+
 function hasOwnProductImage(imagenUrl: string | null, imagenes: string[]): boolean {
   const image = imagenes.find(Boolean) || imagenUrl || "";
   return Boolean(image && !image.endsWith("/logo.png") && image !== "logo.png");
@@ -20,18 +26,22 @@ function hasOwnProductImage(imagenUrl: string | null, imagenes: string[]): boole
 router.get("/home-layout-config", async (_req, res) => {
   try {
     res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-    const placeholders = HOME_LOCATION_LINK_KEYS.map(() => "?").join(", ");
+    const allKeys = [...HOME_LOCATION_LINK_KEYS, ...HOME_LOCATION_SRC_KEYS];
+    const placeholders = allKeys.map(() => "?").join(", ");
     const [rowsRaw] = await pool.query(
       `SELECT clave, valor
        FROM configuracion
        WHERE clave IN (${placeholders})`,
-      [...HOME_LOCATION_LINK_KEYS],
+      allKeys,
     );
     const rows = rowsRaw as Array<{ clave: string; valor: string | null }>;
-    const byKey = new Map(rows.map((row) => [row.clave, normalizeSafeNavigationUrl(row.valor)]));
+    
+    // Normalize links, but do not normalize safe src if it's just a raw URL or path
+    const byKey = new Map(rows.map((row) => [row.clave, row.valor]));
 
     res.json({
-      location_image_links: HOME_LOCATION_LINK_KEYS.map((key) => byKey.get(key) ?? null),
+      location_image_links: HOME_LOCATION_LINK_KEYS.map((key) => normalizeSafeNavigationUrl(byKey.get(key) ?? null)),
+      location_image_srcs: HOME_LOCATION_SRC_KEYS.map((key) => byKey.get(key) ?? null),
     });
   } catch (error) {
     console.error("Home layout config:", error);

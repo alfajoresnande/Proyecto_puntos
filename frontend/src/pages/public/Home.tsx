@@ -23,6 +23,7 @@ type LocationImage = {
 
 type HomeLayoutConfigResponse = {
   location_image_links: Array<string | null>;
+  location_image_srcs: Array<string | null>;
 };
 
 const HOME_LOCATION_GALLERY_BASE: LocationImage[] = [
@@ -177,11 +178,15 @@ export function Home() {
   ]);
   const locationGallery = useMemo(
     () =>
-      locationGalleryBase.map((image, index) => ({
-        ...image,
-        link: homeLayoutConfigQuery.data?.location_image_links?.[index] ?? null,
-      })),
-    [homeLayoutConfigQuery.data?.location_image_links],
+      locationGalleryBase.map((image, index) => {
+        const customSrc = homeLayoutConfigQuery.data?.location_image_srcs?.[index];
+        return {
+          ...image,
+          src: customSrc ? (customSrc.startsWith("http") ? customSrc : mediaUrl(customSrc)) : image.src,
+          link: homeLayoutConfigQuery.data?.location_image_links?.[index] ?? null,
+        };
+      }),
+    [homeLayoutConfigQuery.data?.location_image_links, homeLayoutConfigQuery.data?.location_image_srcs],
   );
 
   const timelineEntries: TimelineEntry[] = timelineQuery.data ?? [];

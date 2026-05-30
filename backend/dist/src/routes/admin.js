@@ -2827,4 +2827,62 @@ router.post("/puntos/reconciliar-saldos", auth_1.requireAuth, (0, auth_1.require
         conn.release();
     }
 });
+// ════════════════════════════════════════════════════════
+//  LAYOUT Y DISEÑO
+// ════════════════════════════════════════════════════════
+router.get("/layout/timeline", async (_req, res) => {
+    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT * FROM layout_timeline_eventos ORDER BY orden ASC");
+    res.json(rows);
+});
+router.post("/layout/timeline", async (req, res) => {
+    const schema = zod_1.z.object({
+        badge_text: zod_1.z.string().nullable(),
+        titulo: zod_1.z.string().min(1).max(255),
+        descripcion: zod_1.z.string().nullable(),
+        imagen_url: zod_1.z.string().nullable(),
+        orden: zod_1.z.number().int(),
+        activo: zod_1.z.boolean().default(true),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const { badge_text, titulo, descripcion, imagen_url, orden, activo } = parsed.data;
+    const { insertId } = await (0, db_1.qRun)(db_1.pool, `INSERT INTO layout_timeline_eventos (badge_text, titulo, descripcion, imagen_url, orden, activo)
+     VALUES (?, ?, ?, ?, ?, ?)`, [badge_text, titulo, descripcion, imagen_url, orden, activo ? 1 : 0]);
+    res.json({ ok: true, id: insertId });
+});
+router.put("/layout/timeline/:id", async (req, res) => {
+    const schema = zod_1.z.object({
+        badge_text: zod_1.z.string().nullable(),
+        titulo: zod_1.z.string().min(1).max(255),
+        descripcion: zod_1.z.string().nullable(),
+        imagen_url: zod_1.z.string().nullable(),
+        orden: zod_1.z.number().int(),
+        activo: zod_1.z.boolean(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const { badge_text, titulo, descripcion, imagen_url, orden, activo } = parsed.data;
+    const { affectedRows } = await (0, db_1.qRun)(db_1.pool, `UPDATE layout_timeline_eventos
+     SET badge_text = ?, titulo = ?, descripcion = ?, imagen_url = ?, orden = ?, activo = ?
+     WHERE id = ?`, [badge_text, titulo, descripcion, imagen_url, orden, activo ? 1 : 0, req.params.id]);
+    if (affectedRows === 0) {
+        res.status(404).json({ error: "Evento no encontrado" });
+        return;
+    }
+    res.json({ ok: true });
+});
+router.delete("/layout/timeline/:id", async (req, res) => {
+    const { affectedRows } = await (0, db_1.qRun)(db_1.pool, "DELETE FROM layout_timeline_eventos WHERE id = ?", [req.params.id]);
+    if (affectedRows === 0) {
+        res.status(404).json({ error: "Evento no encontrado" });
+        return;
+    }
+    res.json({ ok: true });
+});
 exports.default = router;

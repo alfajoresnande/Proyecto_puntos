@@ -13,6 +13,7 @@ import { AreaExplanation } from "./components/AreaExplanation";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto, Rol, TipoCliente } from "../../types";
 import { AdminLayoutTimeline } from "./AdminLayoutTimeline";
+import { AdminLayoutDonde } from "./AdminLayoutDonde";
 
 type AdminTab =
   | "inicio"
@@ -37,7 +38,8 @@ type AdminTab =
   | "crear"
   | "sobre-nosotros"
   | "terminos"
-  | "layout-timeline";
+  | "layout-timeline"
+  | "layout-donde";
 
 const ADMIN_TABS: AdminTab[] = [
   "inicio",
@@ -179,6 +181,10 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
   "layout-timeline": [
     "Aca se editan los eventos de la Línea de Tiempo de la página principal.",
     "Podes subir una foto, agregar textos, insignias, elegir el orden en el que se muestran y decidir cuáles están activos o pausados.",
+  ],
+  "layout-donde": [
+    "Aca se edita la seccion Dónde encontrarnos del inicio.",
+    "Podes subir las fotos que se ven y poner a qué link dirigen cuando alguien hace clic.",
   ],
 };
 
@@ -559,9 +565,6 @@ type ConfiguracionDraft = {
   puntos_vencimiento_meses: string;
   puntos_alerta_pre_vencimiento_valor: string;
   puntos_alerta_pre_vencimiento_unidad: PuntosAlertaUnidad;
-  home_ubicacion_imagen_1_link: string;
-  home_ubicacion_imagen_2_link: string;
-  home_ubicacion_imagen_3_link: string;
   puntos_referido_invitador: string;
   puntos_referido_invitado: string;
   longitud_codigo_invitacion: string;
@@ -1657,9 +1660,6 @@ export function Admin() {
     puntos_vencimiento_meses: "6",
     puntos_alerta_pre_vencimiento_valor: "1",
     puntos_alerta_pre_vencimiento_unidad: "meses",
-    home_ubicacion_imagen_1_link: "",
-    home_ubicacion_imagen_2_link: "",
-    home_ubicacion_imagen_3_link: "",
     puntos_referido_invitador: "50",
     puntos_referido_invitado: "30",
     longitud_codigo_invitacion: "9",
@@ -1991,9 +1991,6 @@ export function Admin() {
       puntos_vencimiento_meses: getConfig("puntos_vencimiento_meses", "6"),
       puntos_alerta_pre_vencimiento_valor: getConfig("puntos_alerta_pre_vencimiento_valor", "1"),
       puntos_alerta_pre_vencimiento_unidad: getConfig("puntos_alerta_pre_vencimiento_unidad", "meses") === "semanas" ? "semanas" : "meses",
-      home_ubicacion_imagen_1_link: getConfig("home_ubicacion_imagen_1_link", ""),
-      home_ubicacion_imagen_2_link: getConfig("home_ubicacion_imagen_2_link", ""),
-      home_ubicacion_imagen_3_link: getConfig("home_ubicacion_imagen_3_link", ""),
       puntos_referido_invitador: getConfig("puntos_referido_invitador", "50"),
       puntos_referido_invitado: getConfig("puntos_referido_invitado", "30"),
       longitud_codigo_invitacion: getConfig("longitud_codigo_invitacion", "9"),
@@ -4297,9 +4294,6 @@ export function Admin() {
     const puntosAlertaPreVencimientoUnidad = configDraft.puntos_alerta_pre_vencimiento_unidad === "semanas"
       ? "semanas"
       : "meses";
-    const homeUbicacionImagen1Link = configDraft.home_ubicacion_imagen_1_link.trim();
-    const homeUbicacionImagen2Link = configDraft.home_ubicacion_imagen_2_link.trim();
-    const homeUbicacionImagen3Link = configDraft.home_ubicacion_imagen_3_link.trim();
     const puntosInvitador = Number(configDraft.puntos_referido_invitador);
     const puntosInvitado = Number(configDraft.puntos_referido_invitado);
     const longitudCodigoInvitacion = Number(configDraft.longitud_codigo_invitacion);
@@ -4331,10 +4325,6 @@ export function Admin() {
     }
     if (!Number.isInteger(puntosAlertaPreVencimientoValor) || puntosAlertaPreVencimientoValor < 1 || puntosAlertaPreVencimientoValor > 120) {
       setConfigErr("La anticipacion del aviso de puntos debe ser un numero entero entre 1 y 120.");
-      return;
-    }
-    if (!isValidConfigNavigationLink(homeUbicacionImagen1Link) || !isValidConfigNavigationLink(homeUbicacionImagen2Link) || !isValidConfigNavigationLink(homeUbicacionImagen3Link)) {
-      setConfigErr("Los links del home deben estar vacios o comenzar con /, #, http:// o https://.");
       return;
     }
     if (!Number.isInteger(puntosInvitador) || puntosInvitador < 0 || puntosInvitador > 100000) {
@@ -4412,21 +4402,6 @@ export function Admin() {
           clave: "puntos_alerta_pre_vencimiento_unidad",
           valor: puntosAlertaPreVencimientoUnidad,
           descripcion: "Unidad de anticipacion para avisar puntos por vencer: semanas o meses.",
-        },
-        {
-          clave: "home_ubicacion_imagen_1_link",
-          valor: homeUbicacionImagen1Link,
-          descripcion: "Link opcional para la imagen principal izquierda de la seccion Donde encontrarnos del home.",
-        },
-        {
-          clave: "home_ubicacion_imagen_2_link",
-          valor: homeUbicacionImagen2Link,
-          descripcion: "Link opcional para la imagen superior derecha de la seccion Donde encontrarnos del home.",
-        },
-        {
-          clave: "home_ubicacion_imagen_3_link",
-          valor: homeUbicacionImagen3Link,
-          descripcion: "Link opcional para la imagen inferior derecha de la seccion Donde encontrarnos del home.",
         },
         {
           clave: "puntos_referido_invitador",
@@ -4634,6 +4609,19 @@ export function Admin() {
       await queryClient.invalidateQueries({ queryKey: ["admin", "paginas", slug] });
     } catch (error) {
       setDraft((prev) => ({ ...prev, errMsg: (error as Error).message }));
+    }
+  }
+  async function subirImagenConfig(key: keyof ConfiguracionDraft, file: File) {
+    const formData = new FormData();
+    formData.append("imagen", file);
+    setBusy(true);
+    try {
+      const { url } = await api.post<{ url: string }>("/admin/productos/upload", formData);
+      setConfigDraft((prev) => ({ ...prev, [key]: url }));
+    } catch (err) {
+      alert("Error al subir imagen");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -4869,6 +4857,9 @@ export function Admin() {
           </button>
           <button className={`admin-nav-btn ${tab === "layout-timeline" ? "active" : ""}`} onClick={() => seleccionarTab("layout-timeline")}>
             {renderAdminNavLabel("Línea de Tiempo")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "layout-donde" ? "active" : ""}`} onClick={() => seleccionarTab("layout-donde")}>
+            {renderAdminNavLabel("Dónde encontrarnos")}
           </button>
         </nav>
       </aside>
@@ -5128,36 +5119,6 @@ export function Admin() {
                       <option value="semanas">Semanas</option>
                     </select>
                     <p className="adm-field-help">Puedes elegir si el aviso sale meses antes o semanas antes del vencimiento.</p>
-                  </div>
-                  <div className="adm-field">
-                    <label className="adm-label">Link imagen home izquierda</label>
-                    <input
-                      className="adm-input"
-                      value={configDraft.home_ubicacion_imagen_1_link}
-                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_1_link: event.target.value }))}
-                      placeholder="Ej: /tienda o https://..."
-                    />
-                    <p className="adm-field-help">Imagen grande izquierda de Donde encontrarnos. Dejalo vacio si no quieres que sea clickeable.</p>
-                  </div>
-                  <div className="adm-field">
-                    <label className="adm-label">Link imagen home superior derecha</label>
-                    <input
-                      className="adm-input"
-                      value={configDraft.home_ubicacion_imagen_2_link}
-                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_2_link: event.target.value }))}
-                      placeholder="Ej: /catalogo o https://..."
-                    />
-                    <p className="adm-field-help">Imagen de arriba a la derecha. Acepta rutas internas, anchors o links completos.</p>
-                  </div>
-                  <div className="adm-field">
-                    <label className="adm-label">Link imagen home inferior derecha</label>
-                    <input
-                      className="adm-input"
-                      value={configDraft.home_ubicacion_imagen_3_link}
-                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, home_ubicacion_imagen_3_link: event.target.value }))}
-                      placeholder="Ej: https://maps.app.goo.gl/..."
-                    />
-                    <p className="adm-field-help">Imagen de abajo a la derecha. Usa /ruta, #seccion o http/https.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Puntos para quien invita</label>
@@ -8566,6 +8527,10 @@ export function Admin() {
 
           {tab === "layout-timeline" ? (
             <AdminLayoutTimeline />
+          ) : null}
+
+          {tab === "layout-donde" ? (
+            <AdminLayoutDonde />
           ) : null}
         </div>
       </main>

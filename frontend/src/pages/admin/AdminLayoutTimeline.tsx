@@ -31,7 +31,6 @@ export function AdminLayoutTimeline() {
     titulo: "",
     descripcion: "",
     imagen_url: "",
-    orden: 0,
     activo: true,
   });
   
@@ -41,7 +40,7 @@ export function AdminLayoutTimeline() {
     mutationFn: (data: Partial<TimelineEvento>) => api.post("/admin/layout/timeline", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "layout-timeline"] });
-      setEventoNuevo({ badge_text: "", titulo: "", descripcion: "", imagen_url: "", orden: 0, activo: true });
+      setEventoNuevo({ badge_text: "", titulo: "", descripcion: "", imagen_url: "", activo: true });
     },
   });
 
@@ -82,7 +81,7 @@ export function AdminLayoutTimeline() {
       <SectionTitle title="Línea de Tiempo Dinámica" />
       <p className="adm-page-desc">
         Configura los eventos de la línea de tiempo que se muestran en el inicio de la página. 
-        Puedes cambiar textos, imágenes y orden.
+        Puedes cambiar textos, imágenes y el orden en el que aparecen.
       </p>
 
       <div className="admin-card" style={{ padding: "1.5rem", marginBottom: "2rem" }}>
@@ -101,8 +100,8 @@ export function AdminLayoutTimeline() {
             <textarea className="adm-input" rows={3} value={eventoNuevo.descripcion ?? ""} onChange={(e) => setEventoNuevo({ ...eventoNuevo, descripcion: e.target.value })} />
           </label>
           <label>
-            <span className="adm-label">Orden (Menor a mayor)</span>
-            <input className="adm-input" type="number" value={eventoNuevo.orden ?? 0} onChange={(e) => setEventoNuevo({ ...eventoNuevo, orden: Number(e.target.value) })} />
+            <span className="adm-label">Orden</span>
+            <div style={{ color: "#666", fontSize: "0.9rem", padding: "0.4rem 0" }}>Se asignará al final automáticamente</div>
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <input type="checkbox" checked={eventoNuevo.activo ?? true} onChange={(e) => setEventoNuevo({ ...eventoNuevo, activo: e.target.checked })} />
@@ -110,7 +109,7 @@ export function AdminLayoutTimeline() {
           </label>
           
           <label style={{ gridColumn: "1 / -1" }}>
-            <span className="adm-label">Imagen</span>
+            <span className="adm-label">Imagen (Recomendado 16:9 / Ej: 1280x720px)</span>
             <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
               <input type="file" accept="image/*" onChange={(e) => {
                 if (e.target.files?.[0]) subirImagen(e.target.files[0], false);
@@ -123,7 +122,10 @@ export function AdminLayoutTimeline() {
           className="adm-btn-primary" 
           style={{ marginTop: "1rem" }}
           disabled={!eventoNuevo.titulo || crearMutation.isPending}
-          onClick={() => crearMutation.mutate(eventoNuevo)}
+          onClick={() => {
+            const maxOrden = eventos.length > 0 ? Math.max(...eventos.map(e => e.orden)) : 0;
+            crearMutation.mutate({ ...eventoNuevo, orden: maxOrden + 1 });
+          }}
         >
           {crearMutation.isPending ? "Guardando..." : "Crear evento"}
         </button>
@@ -161,6 +163,18 @@ export function AdminLayoutTimeline() {
             ) : (
               <div style={{ flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginRight: "0.5rem" }}>
+                    <button 
+                      onClick={() => actualizarMutation.mutate({ ...evento, orden: evento.orden - 1 })}
+                      style={{ background: "#eee", border: "none", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", fontSize: "12px" }}
+                      title="Subir"
+                    >▲</button>
+                    <button 
+                      onClick={() => actualizarMutation.mutate({ ...evento, orden: evento.orden + 1 })}
+                      style={{ background: "#eee", border: "none", borderRadius: "4px", padding: "2px 8px", cursor: "pointer", fontSize: "12px" }}
+                      title="Bajar"
+                    >▼</button>
+                  </div>
                   <span style={{ background: "#eee", padding: "0.2rem 0.5rem", borderRadius: "4px", fontSize: "0.8rem", fontWeight: "bold" }}>#{evento.orden}</span>
                   {evento.badge_text && <span style={{ background: "#ddd", padding: "0.2rem 0.5rem", borderRadius: "4px", fontSize: "0.8rem" }}>{evento.badge_text}</span>}
                   <h4 style={{ margin: 0 }}>{evento.titulo}</h4>
