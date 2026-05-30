@@ -95,17 +95,35 @@ async function getProductsContext(): Promise<string> {
   }
 }
 
+async function getEnvioGratisContext(): Promise<string> {
+  try {
+    const row = await qOne<{ valor: string }>(
+      pool,
+      "SELECT valor FROM configuracion WHERE clave = 'envio_gratis_monto_minimo'"
+    );
+    const monto = Number(row?.valor || 0);
+    if (monto > 0) {
+      return `- Información de envíos: Los envíos dentro de Corrientes Capital son GRATIS para compras mayores a $${monto}.`;
+    }
+    return "";
+  } catch (error) {
+    console.error("[ai-chat] Error fetching config context", error);
+    return "";
+  }
+}
+
 async function buildMessages(input: AiChatServiceInput): Promise<Groq.Chat.ChatCompletionMessageParam[]> {
   const currentPath = sanitizePromptValue(input.context?.currentPath, "desconocida");
   const userRole = input.context?.userRole ?? "anonimo";
   const message = input.message.trim().slice(0, 500);
   
   const productsContext = await getProductsContext();
+  const envioGratisContext = await getEnvioGratisContext();
 
   return [
     { 
       role: "system", 
-      content: `${AI_SYSTEM_PROMPT}\n\n${productsContext}` 
+      content: `${AI_SYSTEM_PROMPT}\n\n${envioGratisContext}\n\n${productsContext}` 
     },
     {
       role: "user",
