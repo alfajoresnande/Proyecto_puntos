@@ -864,7 +864,7 @@
   display: grid;
   grid-template-columns: minmax(210px, 0.95fr) minmax(240px, 1.05fr);
   gap: clamp(0.9rem, 1.5vw, 1.2rem);
-  align-items: center;
+  align-items: stretch;
   padding: clamp(0.95rem, 1.4vw, 1.15rem);
   border-radius: 28px;
   background: rgba(255, 251, 245, 0.96);
@@ -882,8 +882,7 @@
 }
 
 .home-timeline-media {
-  aspect-ratio: 4 / 3;
-  min-height: 0;
+  min-height: 100%;
   border-radius: 22px;
   overflow: hidden;
   background: linear-gradient(180deg, #fff7ef 0%, #f1dcc0 100%);
@@ -1125,7 +1124,7 @@
 
   .home-timeline-media {
     min-height: 0;
-    aspect-ratio: 4 / 3;
+    aspect-ratio: 16 / 10;
   }
 }
 
