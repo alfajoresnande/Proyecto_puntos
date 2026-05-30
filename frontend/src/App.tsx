@@ -11,6 +11,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RealtimeBridge } from "./components/RealtimeBridge";
 import { SeoRouteMeta } from "./components/SeoRouteMeta";
 import { scrollPageToTop } from "./lib/scrollTop";
+import { AppVersionChecker } from "./components/AppVersionChecker";
 import { Admin } from "./pages/admin/Admin";
 import { EnviosAdmin } from "./pages/admin/EnviosAdmin";
 import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
@@ -151,6 +152,7 @@ export default function App() {
     <>
       <RealtimeBridge />
       <SeoRouteMeta />
+      <AppVersionChecker />
       <ScrollToTop />
       <NumberInputGuards />
       <AppPresenceTracker />

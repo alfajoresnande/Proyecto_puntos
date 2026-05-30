@@ -16,4 +16,16 @@ router.get("/timeline", async (_req, res) => {
   }
 });
 
+router.get("/version", async (_req, res) => {
+  try {
+    const rows = await qAll<{ version: string }>(
+      pool,
+      "SELECT MAX(updated_at) as version FROM configuracion"
+    );
+    res.json({ version: rows[0]?.version || "0" });
+  } catch (err) {
+    res.status(500).json({ error: "Error interno" });
+  }
+});
+
 export default router;
