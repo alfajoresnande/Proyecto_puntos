@@ -418,15 +418,17 @@ export function Home() {
                     aria-selected={selectedCategoria === cat.nombre}
                   >
                     <span className="home-category-chip-icon" aria-hidden="true">
-                      {cat.imagen_url ? (
-                        <img
-                          src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
-                          alt=""
-                          className="home-category-chip-img"
-                        />
-                      ) : (
-                        <span className="home-category-chip-fallback">{cat.nombre.slice(0, 1).toUpperCase()}</span>
-                      )}
+                      <span className="home-category-chip-icon-inner">
+                        {cat.imagen_url ? (
+                          <img
+                            src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
+                            alt=""
+                            className="home-category-chip-img"
+                          />
+                        ) : (
+                          <span className="home-category-chip-fallback">{cat.nombre.slice(0, 1).toUpperCase()}</span>
+                        )}
+                      </span>
                     </span>
                     <span className="home-category-chip-label">{cat.nombre}</span>
                   </button>

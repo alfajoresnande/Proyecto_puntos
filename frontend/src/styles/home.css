@@ -543,11 +543,11 @@
 
 .home-category-chips {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 170px));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 190px));
   justify-content: center;
-  gap: 1.15rem;
+  gap: 1.05rem;
   max-width: 1160px;
-  margin: 0 auto 2.4rem;
+  margin: 0 auto 2.2rem;
   padding: 0 0.75rem;
 }
 
@@ -557,33 +557,42 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.7rem;
-  min-height: 116px;
-  padding: 3.15rem 1rem 1rem;
-  border: 1px solid rgba(107, 62, 38, 0.12);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(255, 253, 249, 0.98) 0%, rgba(247, 239, 229, 0.98) 100%);
+  gap: 0.55rem;
+  min-height: 104px;
+  padding: 2.6rem 0.95rem 0.8rem;
+  border: 1px solid rgba(107, 62, 38, 0.1);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 254, 251, 0.98) 0%, rgba(246, 241, 234, 0.98) 100%);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 800;
   color: #6b3e26;
   transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, border-color 0.22s ease, color 0.22s ease;
-  box-shadow: 0 10px 22px rgba(107, 62, 38, 0.1);
+  box-shadow: 0 8px 18px rgba(107, 62, 38, 0.08);
+}
+
+.home-category-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, transparent 55%);
+  pointer-events: none;
 }
 
 .home-category-chip:hover {
   border-color: rgba(168, 106, 61, 0.42);
-  transform: translateY(-3px);
-  box-shadow: 0 16px 32px rgba(107, 62, 38, 0.16);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(107, 62, 38, 0.12);
 }
 
 .home-category-chip.is-active {
   border-color: rgba(107, 62, 38, 0.28);
   background: linear-gradient(180deg, #6b3e26 0%, #4d250d 100%);
   color: #fff;
-  box-shadow: 0 18px 36px rgba(77, 37, 13, 0.26);
-  transform: translateY(-3px);
+  box-shadow: 0 16px 30px rgba(77, 37, 13, 0.22);
+  transform: translateY(-2px);
 }
 
 .home-category-chip:focus-visible {
@@ -595,44 +604,67 @@
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translate(-50%, -34%);
-  width: 84px;
-  height: 84px;
+  transform: translate(-50%, -36%);
+  width: 82px;
+  height: 82px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: linear-gradient(180deg, #8a5a33 0%, #6b3e26 100%);
-  box-shadow: 0 12px 24px rgba(107, 62, 38, 0.28);
-  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+  background: linear-gradient(180deg, #9b6338 0%, #7a4827 100%);
+  box-shadow: 0 10px 22px rgba(107, 62, 38, 0.22);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, width 0.22s ease, height 0.22s ease;
+}
+
+.home-category-chip-icon::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  pointer-events: none;
+}
+
+.home-category-chip-icon-inner {
+  position: relative;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .home-category-chip:hover .home-category-chip-icon,
 .home-category-chip.is-active .home-category-chip-icon {
-  transform: translate(-50%, -38%);
+  transform: translate(-50%, -39%);
 }
 
 .home-category-chip.is-active .home-category-chip-icon {
-  background: linear-gradient(180deg, #a86a3d 0%, #7b441f 100%);
-  box-shadow: 0 16px 30px rgba(77, 37, 13, 0.34);
+  width: 86px;
+  height: 86px;
+  background: linear-gradient(180deg, #b47747 0%, #8a542e 100%);
+  box-shadow: 0 14px 28px rgba(77, 37, 13, 0.26);
 }
 
 .home-category-chip-img {
-  width: 52px;
-  height: 52px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
   display: block;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.4));
+  mix-blend-mode: screen;
+  opacity: 0.98;
+  filter: contrast(1.12) brightness(1.15) drop-shadow(0 1px 0 rgba(255, 255, 255, 0.18));
 }
 
 .home-category-chip-fallback {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 40px;
+  height: 40px;
   color: #ffffff;
-  font-size: 1.65rem;
+  font-size: 1.45rem;
   font-weight: 900;
 }
 
@@ -640,9 +672,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.2rem;
+  min-height: 2rem;
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.18;
   text-wrap: balance;
 }
 
