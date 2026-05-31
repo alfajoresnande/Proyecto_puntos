@@ -85,7 +85,7 @@ export function AdminLayoutTimeline() {
       }
       showToast({ tone: "success", title: "Imagen subida", message: "La imagen se procesó correctamente" });
     } catch (err) {
-      showToast({ tone: "danger", title: "Error al subir la imagen", message: err instanceof Error ? err.message : "Error desconocido" });
+      showToast({ tone: "danger", title: "Error al subir la imagen", message: err instanceof Error ? err.message : "Error desconocido", duration: 15000 });
     }
   };
 

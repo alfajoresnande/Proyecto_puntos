@@ -47,7 +47,7 @@ async function safeDelete(filePath: string): Promise<void> {
 
 export async function verifyUploadedImageFile(
   file: Express.Multer.File
-): Promise<{ ok: boolean; detectedMime: string | null }> {
+): Promise<{ ok: boolean; detectedMime: string | null; errorMessage?: string }> {
   try {
     const fd = await fs.open(file.path, "r");
     try {
@@ -57,11 +57,25 @@ export async function verifyUploadedImageFile(
       const originalExt = file.originalname.toLowerCase().match(/\.(jpe?g|png|webp)$/)?.[0] ?? "";
       const expectedMime = IMAGE_EXT_TO_MIME[originalExt] ?? null;
       
-      const VALID_IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"];
-      const ok = detectedMime !== null && VALID_IMAGE_MIMES.includes(detectedMime);
+      const declaredMimeMatches = Boolean(detectedMime && detectedMime === file.mimetype);
+      const extensionMatches = Boolean(detectedMime && expectedMime && detectedMime === expectedMime);
+      const ok = declaredMimeMatches || extensionMatches;
       
-      if (!ok) await safeDelete(file.path);
-      return { ok, detectedMime };
+      let errorMessage: string | undefined;
+      if (!ok) {
+        await safeDelete(file.path);
+        if (!detectedMime) {
+          errorMessage = "El archivo no parece ser una imagen válida.";
+        } else if (expectedMime && detectedMime !== expectedMime) {
+          const formatNames: Record<string, string> = { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WEBP" };
+          const originalName = formatNames[detectedMime] || detectedMime;
+          const attemptedName = formatNames[expectedMime] || expectedMime;
+          errorMessage = `El archivo está en formato original ${originalName}, y usted está intentando subirlo como ${attemptedName} (extensión ${originalExt.toUpperCase()}). Como protección, el sistema rechaza este tipo de archivos por comprobar que no vengan archivos maliciosos renombrados. Debe realizar una conversión al formato correcto.`;
+        } else {
+          errorMessage = "El formato interno del archivo no coincide con su extensión. Como protección de seguridad, fue rechazado.";
+        }
+      }
+      return { ok, detectedMime, errorMessage };
     } finally {
       await fd.close();
     }

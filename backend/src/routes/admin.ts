@@ -2487,7 +2487,7 @@ router.post("/productos/upload", (req, res, next) => {
         mimeDeclarado: req.file.mimetype,
         mimeDetectado: check.detectedMime,
       });
-      res.status(400).json({ error: "Archivo de imagen inválido" });
+      res.status(400).json({ error: check.errorMessage || "Archivo de imagen inválido" });
       return;
     }
 
