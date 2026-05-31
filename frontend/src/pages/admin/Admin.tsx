@@ -147,6 +147,7 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se organizan las lineas de producto, como alfajores, cajas, bebidas o confites.",
     "Las categorias ayudan a filtrar la tienda, ordenar el catalogo y aplicar descuentos por tipo de cliente.",
     "Antes de crear muchos productos, conviene tener bien definidas las categorias principales.",
+    "Si una categoria va en Home, conviene subir un icono cuadrado y simple para que el circulo celeste del frontend la muestre prolija.",
   ],
   transacciones: [
     "Aca se ve el historial de movimientos de puntos de los clientes.",
@@ -187,6 +188,51 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Podes subir las fotos que se ven y poner a qué link dirigen cuando alguien hace clic.",
   ],
 };
+
+const CATEGORY_IMAGE_GUIDE_ITEMS = [
+  {
+    label: "Tamano recomendado",
+    text: "1024 x 1024 px. Siempre cuadrada para que el recorte circular en Home quede centrado y limpio.",
+  },
+  {
+    label: "Formato ideal",
+    text: "PNG o WebP con fondo transparente. JPG sirve, pero para el estilo icono premium conviene transparente.",
+  },
+  {
+    label: "Estilo visual",
+    text: "Un solo objeto, centrado, simple, sin texto y sin fondo. El circulo marron y la base visual los agrega el frontend.",
+  },
+  {
+    label: "Que evitar",
+    text: "Fotos reales, fondos beige, varios objetos, sombras pesadas o composiciones complejas.",
+  },
+];
+
+const CATEGORY_IMAGE_PROMPT_TEMPLATE =
+  "Minimalist white line icon of [CATEGORIA], centered, premium artisanal bakery branding, clean vector look, transparent background, no text, no mockup, no extra objects, designed to sit inside a dark brown circular badge, square composition.";
+
+const CATEGORY_IMAGE_PROMPTS = [
+  {
+    nombre: "Alfajores",
+    prompt:
+      "Minimalist white line icon of an artisanal alfajor cookie sandwich, centered, premium artisanal bakery branding, transparent background, no text, no plate, no extra objects, designed to sit inside a dark brown circular badge, square composition.",
+  },
+  {
+    nombre: "Bebidas",
+    prompt:
+      "Minimalist white line icon of a cold drink cup or bottle for a cafe menu, centered, premium artisanal bakery branding, transparent background, no text, no extra objects, designed to sit inside a dark brown circular badge, square composition.",
+  },
+  {
+    nombre: "Cafeteria",
+    prompt:
+      "Minimalist white line icon of a takeaway coffee cup with subtle steam, centered, elegant artisanal bakery cafe style, transparent background, no text, no extra objects, designed to sit inside a dark brown circular badge, square composition.",
+  },
+  {
+    nombre: "Confiteria",
+    prompt:
+      "Minimalist white line icon of assorted pastry sweets, centered, elegant artisanal confectionery style, transparent background, no text, no extra objects, designed to sit inside a dark brown circular badge, square composition.",
+  },
+];
 
 const KARDEX_STOCK_EXPLANATION = [
   "El kardex es el historial del stock: muestra cada entrada, reserva, salida, liberacion o ajuste que hizo cambiar las unidades.",
@@ -7886,6 +7932,39 @@ export function Admin() {
           {tab === "categorias" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Nueva categoria" />
+              <div className="admin-card admin-card-padded adm-category-guide">
+                <div className="adm-category-guide-head">
+                  <div>
+                    <p className="adm-category-guide-eyebrow">Guia para imagenes IA</p>
+                    <h3 className="adm-category-guide-title">Como preparar iconos para que se vean como las categorias de marca del Home</h3>
+                  </div>
+                  <div className="adm-category-guide-badge">Home</div>
+                </div>
+
+                <div className="adm-category-guide-grid">
+                  {CATEGORY_IMAGE_GUIDE_ITEMS.map((item) => (
+                    <div key={item.label} className="adm-category-guide-item">
+                      <p className="adm-category-guide-item-label">{item.label}</p>
+                      <p className="adm-category-guide-item-text">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="adm-category-guide-prompt-box">
+                  <p className="adm-category-guide-item-label">Prompt base para categorias nuevas</p>
+                  <p className="adm-category-guide-code">{CATEGORY_IMAGE_PROMPT_TEMPLATE}</p>
+                </div>
+
+                <div className="adm-category-guide-prompts">
+                  {CATEGORY_IMAGE_PROMPTS.map((item) => (
+                    <div key={item.nombre} className="adm-category-guide-prompt-card">
+                      <p className="adm-category-guide-item-label">{item.nombre}</p>
+                      <p className="adm-category-guide-code">{item.prompt}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <div className="adm-form-grid">
                   <div className="adm-field">
@@ -7897,12 +7976,13 @@ export function Admin() {
                     <input className="adm-input" type="number" value={nuevaCategoria.orden} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, orden: Number(event.target.value) }))} />
                   </div>
                   <div className="adm-field">
-                    <label className="adm-label">Imagen para la matriz</label>
+                    <label className="adm-label">Imagen / icono para Home</label>
                     <label className="adm-upload-zone">
                       <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "nuevo"); }} />
-                      <span className="adm-upload-btn">Elegir foto</span>
+                      <span className="adm-upload-btn">Elegir imagen</span>
                       {nuevaCategoria.imagen_url && <img src={nuevaCategoria.imagen_url} alt="Preview" style={{ height: "40px", borderRadius: "4px" }} />}
                     </label>
+                    <p className="adm-field-help">Ideal: PNG o WebP cuadrado, fondo transparente y un solo icono centrado.</p>
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
                     <input
@@ -8015,7 +8095,7 @@ export function Admin() {
                                     />
                                     <label className="adm-upload-zone" style={{ margin: 0, padding: "0.4rem", minHeight: "44px" }}>
                                       <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "edit"); }} />
-                                      <span className="adm-upload-btn" style={{ padding: "0.2rem 0.5rem" }}>Elegir foto</span>
+                                      <span className="adm-upload-btn" style={{ padding: "0.2rem 0.5rem" }}>Elegir imagen</span>
                                       {categoriaEditDraft.imagen_url && <img src={categoriaEditDraft.imagen_url} alt="Preview" style={{ height: "30px", borderRadius: "4px" }} />}
                                     </label>
                                     <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>

@@ -914,6 +914,43 @@
   background: #FEF0DC;
 }
 
+.adm-upload-zone {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 52px;
+  padding: 0.55rem 0.7rem;
+  border: 1.5px dashed rgba(180,84,20,0.28);
+  border-radius: 12px;
+  background: #fffdf8;
+  cursor: pointer;
+}
+
+.adm-upload-zone input {
+  display: none;
+}
+
+.adm-upload-zone img {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: cover;
+  display: block;
+}
+
+.adm-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  background: #6B3E26;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .adm-upload-dropzone {
   display: flex;
   flex-direction: column;
@@ -968,6 +1005,93 @@
 .adm-area-explanation-body {
   display: grid;
   gap: 0.55rem;
+}
+
+.adm-category-guide {
+  display: grid;
+  gap: 1rem;
+  background: linear-gradient(180deg, #fffaf5 0%, #fff4ea 100%);
+}
+
+.adm-category-guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.adm-category-guide-eyebrow {
+  margin: 0 0 0.3rem;
+  color: #8a5a33;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.adm-category-guide-title {
+  margin: 0;
+  color: #3D1A02;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.35;
+  max-width: 760px;
+}
+
+.adm-category-guide-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(107, 62, 38, 0.12);
+  color: #6b3e26;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.adm-category-guide-grid,
+.adm-category-guide-prompts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.adm-category-guide-item,
+.adm-category-guide-prompt-box,
+.adm-category-guide-prompt-card {
+  border: 1px solid rgba(180,84,20,0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.85rem 0.9rem;
+}
+
+.adm-category-guide-item-label {
+  margin: 0;
+  color: #6B3E26;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.adm-category-guide-item-text {
+  margin: 0.35rem 0 0;
+  color: #7A5A3C;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.adm-category-guide-code {
+  margin: 0.45rem 0 0;
+  color: #4A2C1A;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .adm-sales-shell {
@@ -1771,6 +1895,9 @@
   .adm-floating-note { right: 10px; top: 76px; max-width: calc(100vw - 1.25rem); }
   .admin-pagination { justify-content: space-between; gap: 0.4rem; }
   .adm-code-guide-grid { grid-template-columns: 1fr; }
+  .adm-category-guide-head { flex-direction: column; }
+  .adm-category-guide-grid,
+  .adm-category-guide-prompts { grid-template-columns: 1fr; }
   .adm-mobile-list { display: grid; gap: 0.55rem; padding: 0.75rem; }
   .adm-desktop-table { display: none; }
 }

@@ -193,6 +193,16 @@ export function Home() {
     return productos.filter(hasProductImage);
   }, [productosDestacadosQuery.data]);
 
+  const categoriasHome = categoriasQuery.data ?? [];
+
+  useEffect(() => {
+    if (!categoriasHome.length) return;
+    if (categoriasHome.some((categoria) => categoria.nombre === selectedCategoria)) return;
+
+    const alfajores = categoriasHome.find((categoria) => categoria.nombre.trim().toLowerCase() === "alfajores");
+    setSelectedCategoria(alfajores?.nombre ?? categoriasHome[0].nombre);
+  }, [categoriasHome, selectedCategoria]);
+
   const productosCategoria = useMemo(() => {
     const productos = productosCategoriaQuery.data ?? [];
     return productos.filter(hasProductImage);
@@ -390,29 +400,35 @@ export function Home() {
           </div>
         </section>
 
-        {(categoriasQuery.data && categoriasQuery.data.length > 0) || productosCarouselSource.length > 0 ? (
+        {categoriasHome.length > 0 || productosCarouselSource.length > 0 ? (
           <section id="productos-destacados" className="home-section home-section-products">
-            <div className="home-section-head">
-              <span className="home-kicker">Explorar Catalogo</span>
-              <h2>Nuestros Productos</h2>
+            <div className="home-section-head home-products-head">
+              <h2>Descubri nuestros productos</h2>
             </div>
 
-            {(categoriasQuery.data && categoriasQuery.data.length > 0) ? (
-              <div className="home-category-chips">
-                {categoriasQuery.data.map((cat) => (
+            {categoriasHome.length > 0 ? (
+              <div className="home-category-chips" role="tablist" aria-label="Categorias destacadas">
+                {categoriasHome.map((cat) => (
                   <button
                     key={cat.id}
                     className={`home-category-chip${selectedCategoria === cat.nombre ? " is-active" : ""}`}
                     onClick={() => setSelectedCategoria(cat.nombre)}
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedCategoria === cat.nombre}
                   >
-                    {cat.imagen_url && (
-                      <img
-                        src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
-                        alt=""
-                        className="home-category-chip-img"
-                      />
-                    )}
-                    <span>{cat.nombre}</span>
+                    <span className="home-category-chip-icon" aria-hidden="true">
+                      {cat.imagen_url ? (
+                        <img
+                          src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
+                          alt=""
+                          className="home-category-chip-img"
+                        />
+                      ) : (
+                        <span className="home-category-chip-fallback">{cat.nombre.slice(0, 1).toUpperCase()}</span>
+                      )}
+                    </span>
+                    <span className="home-category-chip-label">{cat.nombre}</span>
                   </button>
                 ))}
               </div>
@@ -474,7 +490,7 @@ export function Home() {
               <div style={{ textAlign: "center", padding: "2rem", color: "#7a5a45" }}>No hay productos en esta categoría.</div>
             )}
 
-            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+            <div className="home-products-footer">
               <Link to={selectedCategoria ? `/tienda?categoria=${encodeURIComponent(selectedCategoria)}` : "/tienda"} className="home-flow-action">
                 Ver todos los productos{selectedCategoria ? ` de ${selectedCategoria}` : ""}
               </Link>
