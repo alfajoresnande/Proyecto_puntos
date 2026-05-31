@@ -2365,11 +2365,14 @@ router.patch("/productos/:id/activo", async (req, res) => {
 const categoriaSchema = zod_1.z.object({
     nombre: zod_1.z.string().trim().min(1).max(100),
     descripcion: zod_1.z.string().max(1000).optional().nullable(),
+    imagen_url: zod_1.z.string().optional().nullable(),
+    orden: zod_1.z.number().int().optional(),
+    mostrar_en_home: zod_1.z.boolean().optional(),
     activo: zod_1.z.boolean().optional(),
 });
 router.get("/categorias", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT id, nombre, descripcion, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, nombre ASC, id ASC");
-    res.json(rows.map((row) => ({ ...row, activo: Boolean(row.activo) })));
+    const rows = await (0, db_1.qAll)(db_1.pool, "SELECT id, nombre, descripcion, imagen_url, orden, mostrar_en_home, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, orden ASC, nombre ASC, id ASC");
+    res.json(rows.map((row) => ({ ...row, activo: Boolean(row.activo), mostrar_en_home: Boolean(row.mostrar_en_home) })));
 });
 router.get("/descuentos-categorias", async (_req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, tipo_cliente, categoria, descuento_porcentaje, activo, created_at, updated_at
@@ -2401,9 +2404,12 @@ router.post("/categorias", async (req, res) => {
         return;
     }
     try {
-        const { insertId } = await (0, db_1.qRun)(db_1.pool, "INSERT INTO categorias (nombre, descripcion, activo) VALUES (?, ?, ?)", [
+        const { insertId } = await (0, db_1.qRun)(db_1.pool, "INSERT INTO categorias (nombre, descripcion, imagen_url, orden, mostrar_en_home, activo) VALUES (?, ?, ?, ?, ?, ?)", [
             parsed.data.nombre.trim(),
             parsed.data.descripcion?.trim() || null,
+            parsed.data.imagen_url?.trim() || null,
+            parsed.data.orden ?? 0,
+            parsed.data.mostrar_en_home ? 1 : 0,
             parsed.data.activo === false ? 0 : 1,
         ]);
         (0, realtime_1.emitRealtime)(["categorias", "productos"]);
@@ -2430,6 +2436,9 @@ router.put("/categorias/:id", async (req, res) => {
     }
     const nombre = parsed.data.nombre.trim();
     const descripcion = parsed.data.descripcion?.trim() || null;
+    const imagen_url = parsed.data.imagen_url?.trim() || null;
+    const orden = parsed.data.orden ?? 0;
+    const mostrar_en_home = parsed.data.mostrar_en_home ? 1 : 0;
     const activo = parsed.data.activo === false ? 0 : 1;
     const conn = await db_1.pool.getConnection();
     try {
@@ -2440,7 +2449,7 @@ router.put("/categorias/:id", async (req, res) => {
             res.status(404).json({ error: "Categoria no encontrada" });
             return;
         }
-        await (0, db_1.qRun)(conn, "UPDATE categorias SET nombre = ?, descripcion = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nombre, descripcion, activo, id]);
+        await (0, db_1.qRun)(conn, "UPDATE categorias SET nombre = ?, descripcion = ?, imagen_url = ?, orden = ?, mostrar_en_home = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [nombre, descripcion, imagen_url, orden, mostrar_en_home, activo, id]);
         if (current.nombre !== nombre) {
             await (0, db_1.qRun)(conn, "UPDATE productos SET categoria = ? WHERE categoria = ?", [nombre, current.nombre]);
             await (0, db_1.qRun)(conn, "UPDATE descuentos_tipo_categoria SET categoria = ?, updated_at = CURRENT_TIMESTAMP WHERE categoria = ?", [nombre, current.nombre]);

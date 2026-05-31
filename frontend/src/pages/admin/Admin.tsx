@@ -443,6 +443,9 @@ type Categoria = {
   id: number;
   nombre: string;
   descripcion: string | null;
+  imagen_url: string | null;
+  orden: number;
+  mostrar_en_home: boolean;
   activo: boolean;
   created_at: string;
   updated_at?: string;
@@ -451,6 +454,9 @@ type Categoria = {
 type CategoriaDraft = {
   nombre: string;
   descripcion: string;
+  imagen_url: string;
+  orden: number;
+  mostrar_en_home: boolean;
   activo: boolean;
 };
 
@@ -1522,9 +1528,9 @@ export function Admin() {
   });
   const [adminHint, setAdminHint] = useState("");
 
-  const [nuevaCategoria, setNuevaCategoria] = useState<CategoriaDraft>({ nombre: "", descripcion: "", activo: true });
+  const [nuevaCategoria, setNuevaCategoria] = useState<CategoriaDraft>({ nombre: "", descripcion: "", imagen_url: "", orden: 0, mostrar_en_home: false, activo: true });
   const [categoriaEditId, setCategoriaEditId] = useState<number | null>(null);
-  const [categoriaEditDraft, setCategoriaEditDraft] = useState<CategoriaDraft>({ nombre: "", descripcion: "", activo: true });
+  const [categoriaEditDraft, setCategoriaEditDraft] = useState<CategoriaDraft>({ nombre: "", descripcion: "", imagen_url: "", orden: 0, mostrar_en_home: false, activo: true });
   const [nuevoCodigo, setNuevoCodigo] = useState<{
     codigo: string;
     puntos_valor: number | null;
@@ -2652,6 +2658,34 @@ export function Admin() {
       setAdminHint("Imagen cargada. Puedes arrastrar otra foto o guardar el producto.");
     } catch (error) {
       setErrMsg(
+        error instanceof Error
+          ? error.message
+          : "No se pudo procesar la imagen en el servidor. Intenta con otra imagen o revisa el tamaño (máx 5MB).",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function subirImagenCategoria(file: File, target: "nuevo" | "edit") {
+    if (!file) return;
+    if (!isAllowedImageFile(file)) {
+      setErrMsg("Solo puedes subir imagenes JPG, PNG o WEBP.");
+      return;
+    }
+    setBusy(true);
+    setErrMsg("");
+    try {
+      const upload = await uploadImageMutation.mutateAsync(file);
+      if (target === "nuevo") {
+        setNuevaCategoria((prev) => ({ ...prev, imagen_url: upload.url }));
+      } else {
+        setCategoriaEditDraft((prev) => ({ ...prev, imagen_url: upload.url }));
+      }
+      setAdminHint("Imagen cargada con exito.");
+    } catch (error) {
+      setErrMsg(
+
         formatActionError(
           "subir la imagen",
           error,
@@ -3816,6 +3850,9 @@ export function Admin() {
     setCategoriaEditDraft({
       nombre: categoria.nombre,
       descripcion: categoria.descripcion ?? "",
+      imagen_url: categoria.imagen_url ?? "",
+      orden: categoria.orden ?? 0,
+      mostrar_en_home: Boolean(categoria.mostrar_en_home),
       activo: categoria.activo !== false,
     });
   }
@@ -7849,6 +7886,18 @@ export function Admin() {
                     <label className="adm-label">Nombre</label>
                     <input className="adm-input" placeholder="Ej: Alfajores" value={nuevaCategoria.nombre} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, nombre: event.target.value }))} />
                   </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Orden (Home)</label>
+                    <input className="adm-input" type="number" value={nuevaCategoria.orden} onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, orden: Number(event.target.value) }))} />
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Imagen para la matriz</label>
+                    <label className="adm-upload-zone">
+                      <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "nuevo"); }} />
+                      <span className="adm-upload-btn">Elegir foto</span>
+                      {nuevaCategoria.imagen_url && <img src={nuevaCategoria.imagen_url} alt="Preview" style={{ height: "40px", borderRadius: "4px" }} />}
+                    </label>
+                  </div>
                   <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
                     <input
                       type="checkbox"
@@ -7856,6 +7905,14 @@ export function Admin() {
                       onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, activo: event.target.checked }))}
                     />
                     Activa
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={nuevaCategoria.mostrar_en_home}
+                      onChange={(event) => setNuevaCategoria((prev) => ({ ...prev, mostrar_en_home: event.target.checked }))}
+                    />
+                    Mostrar en Home
                   </label>
                 </div>
                 <div className="adm-field">
@@ -7879,8 +7936,8 @@ export function Admin() {
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Nombre</th>
-                        <th>Descripcion</th>
+                        <th>Categoría</th>
+                        <th>Matriz</th>
                         <th>Estado</th>
                         <th>Creada</th>
                         <th>Acciones</th>
@@ -7897,8 +7954,19 @@ export function Admin() {
                       {categoriasPagina.map((categoria) => (
                         <Fragment key={categoria.id}>
                           <tr>
-                            <td>{categoria.nombre}</td>
-                            <td>{categoria.descripcion || "-"}</td>
+                            <td>
+                              <strong>{categoria.nombre}</strong>
+                              <div style={{ fontSize: "0.85em", color: "#666" }}>{categoria.descripcion || "-"}</div>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                {categoria.imagen_url && <img src={categoria.imagen_url} alt="" style={{ height: "30px", borderRadius: "4px" }} />}
+                                <div style={{ display: "flex", flexDirection: "column" }}>
+                                  <span style={{ fontSize: "0.85em" }}>Orden: {categoria.orden ?? 0}</span>
+                                  {categoria.mostrar_en_home ? <span className="adm-badge adm-badge-active" style={{ padding: "0.1rem 0.3rem", fontSize: "0.7em" }}>En Home</span> : null}
+                                </div>
+                              </div>
+                            </td>
                             <td>
                               <span className={`adm-badge ${categoria.activo !== false ? "adm-badge-active" : "adm-badge-inactive"}`}>
                                 {categoria.activo !== false ? "Activa" : "Inactiva"}
@@ -7925,13 +7993,25 @@ export function Admin() {
                               <td colSpan={5}>
                                 <div className="adm-inline-points-box">
                                   <p className="adm-inline-points-title">Editar categoria: {categoria.nombre}</p>
-                                  <div className="adm-form-grid">
+                                  <div className="adm-form-grid" style={{ marginBottom: "0.6rem" }}>
                                     <input
                                       className="adm-input"
                                       placeholder="Nombre"
                                       value={categoriaEditDraft.nombre}
                                       onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, nombre: event.target.value }))}
                                     />
+                                    <input
+                                      className="adm-input"
+                                      type="number"
+                                      placeholder="Orden"
+                                      value={categoriaEditDraft.orden}
+                                      onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, orden: Number(event.target.value) }))}
+                                    />
+                                    <label className="adm-upload-zone" style={{ margin: 0, padding: "0.4rem", minHeight: "44px" }}>
+                                      <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "edit"); }} />
+                                      <span className="adm-upload-btn" style={{ padding: "0.2rem 0.5rem" }}>Elegir foto</span>
+                                      {categoriaEditDraft.imagen_url && <img src={categoriaEditDraft.imagen_url} alt="Preview" style={{ height: "30px", borderRadius: "4px" }} />}
+                                    </label>
                                     <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
                                       <input
                                         type="checkbox"
@@ -7939,6 +8019,14 @@ export function Admin() {
                                         onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, activo: event.target.checked }))}
                                       />
                                       Activa
+                                    </label>
+                                    <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={categoriaEditDraft.mostrar_en_home}
+                                        onChange={(event) => setCategoriaEditDraft((prev) => ({ ...prev, mostrar_en_home: event.target.checked }))}
+                                      />
+                                      En Home
                                     </label>
                                   </div>
                                   <textarea

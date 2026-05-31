@@ -513,6 +513,15 @@ async function ensureCategoriasSchema() {
     if (!(await categoriaColumnExists("updated_at"))) {
         await exports.pool.query("ALTER TABLE categorias ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at");
     }
+    if (!(await categoriaColumnExists("imagen_url"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN imagen_url VARCHAR(255) NULL");
+    }
+    if (!(await categoriaColumnExists("orden"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN orden INT NOT NULL DEFAULT 0");
+    }
+    if (!(await categoriaColumnExists("mostrar_en_home"))) {
+        await exports.pool.query("ALTER TABLE categorias ADD COLUMN mostrar_en_home TINYINT(1) NOT NULL DEFAULT 0");
+    }
 }
 async function ensureProductosEcommerceSchema() {
     const [tipoColRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS

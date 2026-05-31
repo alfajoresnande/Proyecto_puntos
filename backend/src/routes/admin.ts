@@ -2801,12 +2801,15 @@ router.patch("/productos/:id/activo", async (req, res) => {
 const categoriaSchema = z.object({
   nombre: z.string().trim().min(1).max(100),
   descripcion: z.string().max(1000).optional().nullable(),
+  imagen_url: z.string().optional().nullable(),
+  orden: z.number().int().optional(),
+  mostrar_en_home: z.boolean().optional(),
   activo: z.boolean().optional(),
 });
 
 router.get("/categorias", async (_req, res) => {
-  const rows = await qAll(pool, "SELECT id, nombre, descripcion, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, nombre ASC, id ASC");
-  res.json(rows.map((row: any) => ({ ...row, activo: Boolean(row.activo) })));
+  const rows = await qAll(pool, "SELECT id, nombre, descripcion, imagen_url, orden, mostrar_en_home, activo, created_at, updated_at FROM categorias ORDER BY activo DESC, orden ASC, nombre ASC, id ASC");
+  res.json(rows.map((row: any) => ({ ...row, activo: Boolean(row.activo), mostrar_en_home: Boolean(row.mostrar_en_home) })));
 });
 
 router.get("/descuentos-categorias", async (_req, res) => {
@@ -2849,10 +2852,13 @@ router.post("/categorias", async (req, res) => {
   try {
     const { insertId } = await qRun(
       pool,
-      "INSERT INTO categorias (nombre, descripcion, activo) VALUES (?, ?, ?)",
+      "INSERT INTO categorias (nombre, descripcion, imagen_url, orden, mostrar_en_home, activo) VALUES (?, ?, ?, ?, ?, ?)",
       [
         parsed.data.nombre.trim(),
         parsed.data.descripcion?.trim() || null,
+        parsed.data.imagen_url?.trim() || null,
+        parsed.data.orden ?? 0,
+        parsed.data.mostrar_en_home ? 1 : 0,
         parsed.data.activo === false ? 0 : 1,
       ],
     );
@@ -2875,6 +2881,9 @@ router.put("/categorias/:id", async (req, res) => {
 
   const nombre = parsed.data.nombre.trim();
   const descripcion = parsed.data.descripcion?.trim() || null;
+  const imagen_url = parsed.data.imagen_url?.trim() || null;
+  const orden = parsed.data.orden ?? 0;
+  const mostrar_en_home = parsed.data.mostrar_en_home ? 1 : 0;
   const activo = parsed.data.activo === false ? 0 : 1;
   const conn = await pool.getConnection();
   try {
@@ -2891,8 +2900,8 @@ router.put("/categorias/:id", async (req, res) => {
     }
     await qRun(
       conn,
-      "UPDATE categorias SET nombre = ?, descripcion = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [nombre, descripcion, activo, id],
+      "UPDATE categorias SET nombre = ?, descripcion = ?, imagen_url = ?, orden = ?, mostrar_en_home = ?, activo = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [nombre, descripcion, imagen_url, orden, mostrar_en_home, activo, id],
     );
     if (current.nombre !== nombre) {
       await qRun(conn, "UPDATE productos SET categoria = ? WHERE categoria = ?", [nombre, current.nombre]);

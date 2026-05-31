@@ -15,6 +15,13 @@ type TimelineEntry = {
   orden: number;
 };
 
+type CategoriaHome = {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  imagen_url: string | null;
+};
+
 type LocationImage = {
   src: string;
   alt: string;
@@ -157,6 +164,14 @@ export function Home() {
   const timelineQuery = useQuery({
     queryKey: ["home", "timeline"],
     queryFn: () => api.get<TimelineEntry[]>("/layout/timeline"),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const categoriasQuery = useQuery({
+    queryKey: ["home", "categorias"],
+    queryFn: () => api.get<CategoriaHome[]>("/layout/categorias"),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -356,6 +371,26 @@ export function Home() {
             </div>
           </div>
         </section>
+
+        {(categoriasQuery.data && categoriasQuery.data.length > 0) ? (
+          <section className="home-section home-section-categories">
+            <div className="home-section-head">
+              <span className="home-kicker">Explorar Catalogo</span>
+              <h2>Nuestras Categorias</h2>
+            </div>
+            <div className="home-categories-grid">
+              {categoriasQuery.data.map((cat) => (
+                <Link key={cat.id} to={`/tienda?categoria=${encodeURIComponent(cat.nombre)}`} className="home-category-card">
+                  <div className="home-category-bg" style={{ backgroundImage: `url(${cat.imagen_url ? (cat.imagen_url.startsWith('http') ? cat.imagen_url : mediaUrl(cat.imagen_url)) : ''})` }} />
+                  <div className="home-category-overlay" />
+                  <div className="home-category-content">
+                    <h3>{cat.nombre}</h3>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {productosDestacados.length ? (
           <section id="productos-destacados" className="home-section home-section-products">
