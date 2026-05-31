@@ -619,8 +619,8 @@
 }
 
 .home-category-chip-img {
-  width: 44px;
-  height: 44px;
+  width: 54px;
+  height: 54px;
   object-fit: contain;
   display: block;
   background: transparent;
@@ -632,10 +632,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 54px;
+  height: 54px;
   color: #ffffff;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   font-weight: 900;
 }
 
@@ -1553,14 +1553,14 @@
   }
 
   .home-category-chip-img {
-    width: 28px;
-    height: 28px;
+    width: 34px;
+    height: 34px;
   }
 
   .home-category-chip-fallback {
-    width: 28px;
-    height: 28px;
-    font-size: 1.1rem;
+    width: 34px;
+    height: 34px;
+    font-size: 1.3rem;
   }
 
   .home-category-chip-label {
