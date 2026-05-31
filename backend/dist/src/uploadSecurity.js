@@ -54,9 +54,8 @@ async function verifyUploadedImageFile(file) {
             const detectedMime = detectMimeByMagic(probe);
             const originalExt = file.originalname.toLowerCase().match(/\.(jpe?g|png|webp)$/)?.[0] ?? "";
             const expectedMime = IMAGE_EXT_TO_MIME[originalExt] ?? null;
-            const declaredMimeMatches = Boolean(detectedMime && detectedMime === file.mimetype);
-            const extensionMatches = Boolean(detectedMime && expectedMime && detectedMime === expectedMime);
-            const ok = declaredMimeMatches || extensionMatches;
+            const VALID_IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"];
+            const ok = detectedMime !== null && VALID_IMAGE_MIMES.includes(detectedMime);
             if (!ok)
                 await safeDelete(file.path);
             return { ok, detectedMime };
