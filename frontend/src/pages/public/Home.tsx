@@ -145,6 +145,8 @@ export function Home() {
     }
   }
 
+  const [selectedCategoria, setSelectedCategoria] = useState<string>("Alfajores");
+
   const productosDestacadosQuery = useQuery({
     queryKey: ["home", "productos", "destacados"],
     queryFn: () => api.get<Producto[]>("/productos/destacados?limit=12"),
@@ -177,14 +179,30 @@ export function Home() {
     refetchOnWindowFocus: false,
   });
 
+  const productosCategoriaQuery = useQuery({
+    queryKey: ["home", "productos", "categoria", selectedCategoria],
+    queryFn: () => api.get<Producto[]>(`/productos?categoria=${encodeURIComponent(selectedCategoria)}&modo=venta`),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    enabled: Boolean(selectedCategoria),
+  });
+
   const productosDestacados = useMemo(() => {
     const productos = productosDestacadosQuery.data ?? [];
     return productos.filter(hasProductImage);
   }, [productosDestacadosQuery.data]);
 
+  const productosCategoria = useMemo(() => {
+    const productos = productosCategoriaQuery.data ?? [];
+    return productos.filter(hasProductImage);
+  }, [productosCategoriaQuery.data]);
+
+  const productosCarouselSource = selectedCategoria ? productosCategoria : productosDestacados;
+
   const productosDestacadosCarousel = useMemo(() => {
-    return productosDestacados.length > 1 ? [...productosDestacados, ...productosDestacados] : productosDestacados;
-  }, [productosDestacados]);
+    return productosCarouselSource.length > 1 ? [...productosCarouselSource, ...productosCarouselSource] : productosCarouselSource;
+  }, [productosCarouselSource]);
 
   const heroImage = "/hero.webp";
   const locationGalleryBase: LocationImage[] = HOME_LOCATION_GALLERY_BASE.slice(0, 1).concat([
@@ -372,80 +390,94 @@ export function Home() {
           </div>
         </section>
 
-        {(categoriasQuery.data && categoriasQuery.data.length > 0) ? (
-          <section className="home-section home-section-categories">
-            <div className="home-section-head">
-              <span className="home-kicker">Explorar Catalogo</span>
-              <h2>Nuestras Categorias</h2>
-            </div>
-            <div className="home-categories-grid">
-              {categoriasQuery.data.map((cat) => (
-                <Link key={cat.id} to={`/tienda?categoria=${encodeURIComponent(cat.nombre)}`} className="home-category-card">
-                  <div className="home-category-bg" style={{ backgroundImage: `url(${cat.imagen_url ? (cat.imagen_url.startsWith('http') ? cat.imagen_url : mediaUrl(cat.imagen_url)) : ''})` }} />
-                  <div className="home-category-overlay" />
-                  <div className="home-category-content">
-                    <h3>{cat.nombre}</h3>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {productosDestacados.length ? (
+        {(categoriasQuery.data && categoriasQuery.data.length > 0) || productosCarouselSource.length > 0 ? (
           <section id="productos-destacados" className="home-section home-section-products">
             <div className="home-section-head">
-              <span className="home-kicker">Productos destacados</span>
+              <span className="home-kicker">Explorar Catalogo</span>
+              <h2>Nuestros Productos</h2>
             </div>
 
-            <div className="home-products-carousel" aria-label="Productos destacados">
-              <div className={`home-products-grid${productosDestacados.length > 1 ? " is-animated" : ""}`}>
-                {productosDestacadosCarousel.map((producto, index) => {
-                  const isDuplicate = index >= productosDestacados.length;
-                  const duplicateTabIndex = isDuplicate ? -1 : undefined;
-
-                  return (
-                    <article key={`${producto.id}-${index}`} className="home-product-card" aria-hidden={isDuplicate || undefined}>
-                  <div className="home-product-media">
-                    <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
-                    <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
-                  </div>
-                  <div className="home-product-body">
-                    <h3>{producto.nombre}</h3>
-                    <p>{producto.descripcion || "Producto disponible para comprar online."}</p>
-                    <div className="home-product-meta home-product-meta-static">
-                      <div className="home-product-price-row">
-                        <span>Precio</span>
-                        <strong>{money(producto.precio_dinero)}</strong>
-                      </div>
-                      {hasFreeShipping(producto) ? (
-                        <span className="home-product-free-shipping">Envio gratis</span>
-                      ) : null}
-                      {canEarnPurchasePoints(producto) ? (
-                        <span className="home-product-earned-points">Suma puntos segun el total de la compra</span>
-                      ) : null}
-                    </div>
-                    <div className="home-product-actions">
-                      <Link
-                        to={`/tienda?producto=${producto.id}`}
-                        className="home-product-action home-product-action-secondary"
-                        tabIndex={duplicateTabIndex}
-                      >
-                        Ver producto
-                      </Link>
-                      <Link
-                        to={user ? `/tienda?producto=${producto.id}` : "/login"}
-                        className="home-product-action home-product-action-primary"
-                        tabIndex={duplicateTabIndex}
-                      >
-                        Agregar al carrito de compras
-                      </Link>
-                    </div>
-                  </div>
-                    </article>
-                  );
-                })}
+            {(categoriasQuery.data && categoriasQuery.data.length > 0) ? (
+              <div className="home-category-chips">
+                {categoriasQuery.data.map((cat) => (
+                  <button
+                    key={cat.id}
+                    className={`home-category-chip${selectedCategoria === cat.nombre ? " is-active" : ""}`}
+                    onClick={() => setSelectedCategoria(cat.nombre)}
+                  >
+                    {cat.imagen_url && (
+                      <img
+                        src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
+                        alt=""
+                        className="home-category-chip-img"
+                      />
+                    )}
+                    <span>{cat.nombre}</span>
+                  </button>
+                ))}
               </div>
+            ) : null}
+
+            {productosCarouselSource.length > 0 ? (
+              <div className="home-products-carousel" aria-label={selectedCategoria || "Productos destacados"} key={selectedCategoria}>
+                <div className={`home-products-grid${productosCarouselSource.length > 1 ? " is-animated" : ""}`}>
+                  {productosDestacadosCarousel.map((producto, index) => {
+                    const isDuplicate = index >= productosCarouselSource.length;
+                    const duplicateTabIndex = isDuplicate ? -1 : undefined;
+
+                    return (
+                      <article key={`${producto.id}-${index}`} className="home-product-card" aria-hidden={isDuplicate || undefined}>
+                    <div className="home-product-media">
+                      <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
+                      <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
+                    </div>
+                    <div className="home-product-body">
+                      <h3>{producto.nombre}</h3>
+                      <p>{producto.descripcion || "Producto disponible para comprar online."}</p>
+                      <div className="home-product-meta home-product-meta-static">
+                        <div className="home-product-price-row">
+                          <span>Precio</span>
+                          <strong>{money(producto.precio_dinero)}</strong>
+                        </div>
+                        {hasFreeShipping(producto) ? (
+                          <span className="home-product-free-shipping">Envio gratis</span>
+                        ) : null}
+                        {canEarnPurchasePoints(producto) ? (
+                          <span className="home-product-earned-points">Suma puntos segun el total de la compra</span>
+                        ) : null}
+                      </div>
+                      <div className="home-product-actions">
+                        <Link
+                          to={`/tienda?producto=${producto.id}`}
+                          className="home-product-action home-product-action-secondary"
+                          tabIndex={duplicateTabIndex}
+                        >
+                          Ver producto
+                        </Link>
+                        <Link
+                          to={user ? `/tienda?producto=${producto.id}` : "/login"}
+                          className="home-product-action home-product-action-primary"
+                          tabIndex={duplicateTabIndex}
+                        >
+                          Agregar al carrito de compras
+                        </Link>
+                      </div>
+                    </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : productosCategoriaQuery.isFetching ? (
+              <div style={{ textAlign: "center", padding: "2rem", color: "#7a5a45" }}>Cargando productos...</div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "2rem", color: "#7a5a45" }}>No hay productos en esta categoría.</div>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+              <Link to={selectedCategoria ? `/tienda?categoria=${encodeURIComponent(selectedCategoria)}` : "/tienda"} className="home-flow-action">
+                Ver todos los productos{selectedCategoria ? ` de ${selectedCategoria}` : ""}
+              </Link>
             </div>
           </section>
         ) : null}
