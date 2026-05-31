@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
 import { mediaUrl } from "../../lib/apiBase";
+import { useToast } from "../../components/ToastProvider";
 function SectionTitle({ title }: { title: string }) {
   return (
     <div className="admin-section-header">
@@ -21,6 +22,7 @@ type TimelineEvento = {
 
 export function AdminLayoutTimeline() {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const timelineQuery = useQuery({
     queryKey: ["admin", "layout-timeline"],
     queryFn: () => api.get<TimelineEvento[]>("/admin/layout/timeline"),
@@ -41,7 +43,11 @@ export function AdminLayoutTimeline() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "layout-timeline"] });
       setEventoNuevo({ badge_text: "", titulo: "", descripcion: "", imagen_url: "", activo: true });
+      showToast({ tone: "success", title: "Evento creado", message: "El evento se guardó correctamente" });
     },
+    onError: (err) => {
+      showToast({ tone: "danger", title: "Error al crear evento", message: err instanceof Error ? err.message : "Error desconocido" });
+    }
   });
 
   const actualizarMutation = useMutation({
@@ -49,14 +55,22 @@ export function AdminLayoutTimeline() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "layout-timeline"] });
       setEventoEditando(null);
+      showToast({ tone: "success", title: "Evento actualizado", message: "Los cambios se guardaron correctamente" });
     },
+    onError: (err) => {
+      showToast({ tone: "danger", title: "Error al actualizar", message: err instanceof Error ? err.message : "Error desconocido" });
+    }
   });
 
   const eliminarMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/admin/layout/timeline/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "layout-timeline"] });
+      showToast({ tone: "success", title: "Evento eliminado" });
     },
+    onError: (err) => {
+      showToast({ tone: "danger", title: "Error al eliminar", message: err instanceof Error ? err.message : "Error desconocido" });
+    }
   });
 
   const subirImagen = async (file: File, esEdicion: boolean) => {
@@ -69,8 +83,9 @@ export function AdminLayoutTimeline() {
       } else {
         setEventoNuevo({ ...eventoNuevo, imagen_url: url });
       }
+      showToast({ tone: "success", title: "Imagen subida", message: "La imagen se procesó correctamente" });
     } catch (err) {
-      alert("Error al subir la imagen");
+      showToast({ tone: "danger", title: "Error al subir la imagen", message: err instanceof Error ? err.message : "Error desconocido" });
     }
   };
 
