@@ -619,8 +619,8 @@
 }
 
 .home-category-chip-img {
-  width: 54px;
-  height: 54px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
   display: block;
   background: transparent;
@@ -1553,8 +1553,8 @@
   }
 
   .home-category-chip-img {
-    width: 34px;
-    height: 34px;
+    width: 50px;
+    height: 50px;
   }
 
   .home-category-chip-fallback {
