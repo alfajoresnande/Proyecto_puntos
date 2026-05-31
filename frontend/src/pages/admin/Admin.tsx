@@ -3830,10 +3830,13 @@ export function Admin() {
         body: {
           nombre: nuevaCategoria.nombre.trim(),
           descripcion: nuevaCategoria.descripcion.trim() || null,
+          imagen_url: nuevaCategoria.imagen_url?.trim() || null,
+          orden: nuevaCategoria.orden ?? 0,
+          mostrar_en_home: nuevaCategoria.mostrar_en_home,
           activo: nuevaCategoria.activo,
         },
       });
-      setNuevaCategoria({ nombre: "", descripcion: "", activo: true });
+      setNuevaCategoria({ nombre: "", descripcion: "", imagen_url: "", orden: 0, mostrar_en_home: false, activo: true });
       setCategoriasPage(1);
       setDescuentosCategoriasLoaded(false);
       setOkMsg("Categoria creada.");
@@ -3859,7 +3862,7 @@ export function Admin() {
 
   function cancelarEditarCategoria() {
     setCategoriaEditId(null);
-    setCategoriaEditDraft({ nombre: "", descripcion: "", activo: true });
+    setCategoriaEditDraft({ nombre: "", descripcion: "", imagen_url: "", orden: 0, mostrar_en_home: false, activo: true });
   }
 
   async function guardarCategoriaEditada() {
@@ -3879,6 +3882,9 @@ export function Admin() {
         body: {
           nombre: categoriaEditDraft.nombre.trim(),
           descripcion: categoriaEditDraft.descripcion.trim() || null,
+          imagen_url: categoriaEditDraft.imagen_url?.trim() || null,
+          orden: categoriaEditDraft.orden ?? 0,
+          mostrar_en_home: categoriaEditDraft.mostrar_en_home,
           activo: categoriaEditDraft.activo,
         },
       });
