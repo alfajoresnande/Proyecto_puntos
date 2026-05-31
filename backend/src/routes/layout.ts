@@ -20,7 +20,7 @@ router.get("/version", async (_req, res) => {
   try {
     const rows = await qAll<{ version: string }>(
       pool,
-      "SELECT MAX(updated_at) as version FROM configuracion"
+      "SELECT MAX(updated_at) as version FROM layout_timeline_eventos"
     );
     res.json({ version: rows[0]?.version || "0" });
   } catch (err) {

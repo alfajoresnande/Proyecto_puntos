@@ -15,7 +15,7 @@ router.get("/timeline", async (_req, res) => {
 });
 router.get("/version", async (_req, res) => {
     try {
-        const rows = await (0, db_1.qAll)(db_1.pool, "SELECT MAX(updated_at) as version FROM configuracion");
+        const rows = await (0, db_1.qAll)(db_1.pool, "SELECT MAX(updated_at) as version FROM layout_timeline_eventos");
         res.json({ version: rows[0]?.version || "0" });
     }
     catch (err) {

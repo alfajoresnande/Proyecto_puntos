@@ -3354,7 +3354,7 @@ router.post("/layout/timeline", async (req, res) => {
     descripcion: z.string().nullable(),
     imagen_url:  z.string().nullable(),
     orden:       z.number().int(),
-    activo:      z.boolean().default(true),
+    activo:      z.union([z.boolean(), z.number()]).default(true),
   });
 
   const parsed = schema.safeParse(req.body);
@@ -3377,7 +3377,7 @@ router.put("/layout/timeline/:id", async (req, res) => {
     descripcion: z.string().nullable(),
     imagen_url:  z.string().nullable(),
     orden:       z.number().int(),
-    activo:      z.boolean(),
+    activo:      z.union([z.boolean(), z.number()]),
   });
 
   const parsed = schema.safeParse(req.body);
