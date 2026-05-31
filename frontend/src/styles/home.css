@@ -810,7 +810,7 @@
   display: grid;
   gap: clamp(1.25rem, 2.1vw, 1.9rem);
   padding: 0.35rem 0 0.5rem;
-  max-width: 1440px;
+  max-width: 1240px;
   margin: 0 auto;
 }
 
@@ -860,11 +860,11 @@
 .home-timeline-card {
   position: relative;
   grid-row: 1;
-  width: min(100%, 650px);
+  width: min(100%, 520px);
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(0.9rem, 1.5vw, 1.2rem);
-  align-items: stretch;
+  align-items: start;
   padding: clamp(0.95rem, 1.4vw, 1.15rem);
   border-radius: 28px;
   background: rgba(255, 251, 245, 0.96);
@@ -882,7 +882,8 @@
 }
 
 .home-timeline-media {
-  min-height: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 0;
   border-radius: 22px;
   overflow: hidden;
   background: linear-gradient(180deg, #fff7ef 0%, #f1dcc0 100%);
