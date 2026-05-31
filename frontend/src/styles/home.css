@@ -732,9 +732,11 @@
   will-change: transform;
 }
 
-.home-products-carousel:hover .home-products-grid.is-animated,
-.home-products-carousel:focus-within .home-products-grid.is-animated {
-  animation-play-state: paused;
+@media (hover: hover) and (pointer: fine) {
+  .home-products-carousel:hover .home-products-grid.is-animated,
+  .home-products-carousel:focus-within .home-products-grid.is-animated {
+    animation-play-state: paused;
+  }
 }
 
 @keyframes home-products-marquee {
@@ -1563,18 +1565,62 @@
   }
 
   .home-category-chips {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(146px, 1fr);
-    grid-template-columns: none;
-    justify-content: flex-start;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding-bottom: 0.4rem;
-    scroll-snap-type: x proximity;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+    max-width: 100%;
+    justify-content: stretch;
+    overflow: visible;
+    padding: 0 0.1rem;
   }
 
   .home-category-chip {
-    scroll-snap-align: center;
+    min-width: 0;
+    min-height: 66px;
+    padding: 1.45rem 0.32rem 0.45rem;
+    gap: 0.28rem;
+    border-radius: 8px;
+  }
+
+  .home-category-chip-icon {
+    width: 58px;
+    height: 58px;
+    transform: translate(-50%, -46%);
+  }
+
+  .home-category-chip:hover .home-category-chip-icon,
+  .home-category-chip.is-active .home-category-chip-icon {
+    transform: translate(-50%, -47%);
+  }
+
+  .home-category-chip-icon::before {
+    inset: 5px;
+  }
+
+  .home-category-chip-icon::after {
+    inset: 12px;
+  }
+
+  .home-category-chip-icon-inner {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+  }
+
+  .home-category-chip-img {
+    width: 16px;
+    height: 16px;
+  }
+
+  .home-category-chip-fallback {
+    width: 16px;
+    height: 16px;
+    font-size: 0.82rem;
+  }
+
+  .home-category-chip-label {
+    min-height: 1.45rem;
+    font-size: 0.68rem;
+    line-height: 1.1;
   }
 
   .home-product-media {
