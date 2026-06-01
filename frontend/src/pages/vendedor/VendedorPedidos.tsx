@@ -4,6 +4,14 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
+import {
+  buildLocalSaleQuickProducts,
+  getLocalSaleQuickProductImage,
+  getLocalSaleQuickProductSubtitle,
+  readLocalSaleQuickProductClicks,
+  writeLocalSaleQuickProductClicks,
+  type LocalSaleQuickClickMap,
+} from "../../lib/localSaleQuickProducts";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
 
@@ -273,7 +281,6 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
 const ORDENES_POR_PAGINA = 5;
-const MAX_QUICK_LOCAL_PRODUCTS = 8;
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
@@ -345,6 +352,8 @@ export function VendedorPedidos() {
   const [ventaCantidad, setVentaCantidad] = useState("1");
   const [ventaSabores, setVentaSabores] = useState<Record<string, string>>({});
   const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
+  const [ventaQuickCantidades, setVentaQuickCantidades] = useState<Record<string, number>>({});
+  const [ventaQuickClicks, setVentaQuickClicks] = useState<LocalSaleQuickClickMap>(() => readLocalSaleQuickProductClicks());
   const [ventaNotas, setVentaNotas] = useState("");
   const [ventaEditId, setVentaEditId] = useState<number | null>(null);
 
@@ -431,38 +440,10 @@ export function VendedorPedidos() {
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
   );
-  const productosFrecuentesVenta = useMemo(() => {
-    const scoreByProduct = new Map<number, number>();
-    for (const orden of ordenes) {
-      if (orden.canal !== "vendedor" || orden.tipo_orden !== "venta") continue;
-      for (const item of orden.items ?? []) {
-        const productId = Number(item.producto_id);
-        if (!Number.isInteger(productId) || productId <= 0) continue;
-        scoreByProduct.set(productId, (scoreByProduct.get(productId) ?? 0) + Math.max(1, Number(item.cantidad) || 0));
-      }
-    }
-
-    const productsById = new Map(productosLocales.map((producto) => [Number(producto.id), producto]));
-    const used = new Set<number>();
-    const ranked = [...scoreByProduct.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .map(([productId]) => productsById.get(productId))
-      .filter((producto): producto is Producto => Boolean(producto))
-      .filter((producto) => {
-        if (used.has(Number(producto.id))) return false;
-        used.add(Number(producto.id));
-        return true;
-      });
-
-    for (const producto of productosLocales) {
-      if (used.has(Number(producto.id))) continue;
-      ranked.push(producto);
-      used.add(Number(producto.id));
-      if (ranked.length >= MAX_QUICK_LOCAL_PRODUCTS) break;
-    }
-
-    return ranked.slice(0, MAX_QUICK_LOCAL_PRODUCTS);
-  }, [ordenes, productosLocales]);
+  const productosFrecuentesVenta = useMemo(
+    () => buildLocalSaleQuickProducts(productosLocales, ordenes, { channel: "vendedor", clickCounts: ventaQuickClicks }),
+    [ordenes, productosLocales, ventaQuickClicks],
+  );
 
   useEffect(() => {
     if (!params.ventasPage || isVendedorVentasPage(params.ventasPage)) return;
@@ -496,9 +477,36 @@ export function VendedorPedidos() {
     }
   }, [ventaAcreditarPuntos, ventaCliente]);
 
+  useEffect(() => {
+    writeLocalSaleQuickProductClicks(ventaQuickClicks);
+  }, [ventaQuickClicks]);
+
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
+  }
+
+  function getQuickProductCantidad(productId: number): number {
+    const value = Math.floor(Number(ventaQuickCantidades[String(productId)] ?? 1));
+    return Number.isInteger(value) && value > 0 ? value : 1;
+  }
+
+  function updateQuickProductCantidad(productId: number, delta: number) {
+    setVentaQuickCantidades((prev) => {
+      const current = Math.floor(Number(prev[String(productId)] ?? 1));
+      const next = Math.max(1, (Number.isInteger(current) && current > 0 ? current : 1) + delta);
+      return {
+        ...prev,
+        [String(productId)]: next,
+      };
+    });
+  }
+
+  function registrarQuickProductClick(productId: number) {
+    setVentaQuickClicks((prev) => ({
+      ...prev,
+      [String(productId)]: Math.max(1, Number(prev[String(productId)] ?? 0) + 1),
+    }));
   }
 
   function upsertVentaItemDraft(nextItem: VentaLocalItemDraft) {
@@ -530,6 +538,7 @@ export function VendedorPedidos() {
   function agregarProductoRapido(producto: Producto) {
     setOrdenErr("");
     setOrdenMsg("");
+    registrarQuickProductClick(Number(producto.id));
     if (producto.configuracion_tipo === "caja_sabores") {
       setVentaProductoId(String(producto.id));
       setVentaCantidad("1");
@@ -539,7 +548,7 @@ export function VendedorPedidos() {
     upsertVentaItemDraft({
       producto_id: Number(producto.id),
       nombre: producto.nombre,
-      cantidad: 1,
+      cantidad: getQuickProductCantidad(Number(producto.id)),
       precio_dinero: Number(producto.precio_dinero ?? 0),
       sabores: [],
     });
@@ -1539,19 +1548,58 @@ export function VendedorPedidos() {
                 <p className="text-xs uppercase font-bold tracking-wider" style={{ color: "#A08060", margin: 0 }}>
                   Productos rapidos
                 </p>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  {productosFrecuentesVenta.map((producto) => (
-                    <button
-                      key={`quick-${producto.id}`}
-                      type="button"
-                      className="ios-btn-secondary"
-                      style={{ width: "auto", padding: "0.55rem 0.75rem" }}
-                      onClick={() => agregarProductoRapido(producto)}
-                    >
-                      {producto.nombre} · {money(producto.precio_dinero)}
-                      {producto.configuracion_tipo === "caja_sabores" ? " · elegir sabores" : " · agregar 1"}
-                    </button>
-                  ))}
+                <div className="local-quick-grid">
+                  {productosFrecuentesVenta.map((producto, index) => {
+                    const image = getLocalSaleQuickProductImage(producto);
+                    const quickQuantity = getQuickProductCantidad(Number(producto.id));
+                    const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
+                    const isSelected = ventaProductoId === String(producto.id);
+                    return (
+                      <article key={`quick-${producto.id}`} className={`local-quick-card${isSelected ? " is-active" : ""}`}>
+                        <span className="local-quick-rank-badge">#{index + 1}</span>
+                        <div className="local-quick-media">
+                          {image ? (
+                            <img src={image} alt={producto.nombre} className="local-quick-image" loading="lazy" />
+                          ) : (
+                            <div className="local-quick-image-placeholder">Sin foto</div>
+                          )}
+                        </div>
+                        <div className="local-quick-body">
+                          <p className="local-quick-title">{producto.nombre}</p>
+                          <p className="local-quick-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
+                          <strong className="local-quick-price">{money(producto.precio_dinero)}</strong>
+                          {isFlavorBox ? (
+                            <button
+                              type="button"
+                              className="local-quick-primary-btn"
+                              onClick={() => agregarProductoRapido(producto)}
+                            >
+                              Elegir sabores
+                            </button>
+                          ) : (
+                            <div className="local-quick-actions">
+                              <div className="local-quick-stepper">
+                                <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickProductCantidad(Number(producto.id), -1)}>
+                                  -
+                                </button>
+                                <span className="local-quick-stepper-value">{quickQuantity}</span>
+                                <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickProductCantidad(Number(producto.id), 1)}>
+                                  +
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                className="local-quick-primary-btn"
+                                onClick={() => agregarProductoRapido(producto)}
+                              >
+                                Agregar
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
             ) : null}

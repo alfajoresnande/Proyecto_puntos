@@ -7,6 +7,14 @@ import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl, mediaUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
+import {
+  buildLocalSaleQuickProducts,
+  getLocalSaleQuickProductImage,
+  getLocalSaleQuickProductSubtitle,
+  readLocalSaleQuickProductClicks,
+  writeLocalSaleQuickProductClicks,
+  type LocalSaleQuickClickMap,
+} from "../../lib/localSaleQuickProducts";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { AreaExplanation } from "./components/AreaExplanation";
@@ -848,7 +856,6 @@ const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
-const MAX_QUICK_LOCAL_PRODUCTS = 8;
 const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
@@ -1698,6 +1705,8 @@ export function Admin() {
   const [ventaLocalCantidad, setVentaLocalCantidad] = useState("1");
   const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, string>>({});
   const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
+  const [ventaLocalQuickCantidades, setVentaLocalQuickCantidades] = useState<Record<string, number>>({});
+  const [ventaLocalQuickClicks, setVentaLocalQuickClicks] = useState<LocalSaleQuickClickMap>(() => readLocalSaleQuickProductClicks());
   const [ventaLocalNotas, setVentaLocalNotas] = useState("");
   const [ventaLocalEditOrdenId, setVentaLocalEditOrdenId] = useState<number | null>(null);
   const [ventasExportCanal, setVentasExportCanal] = useState("");
@@ -2404,42 +2413,45 @@ export function Admin() {
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
   );
-  const productosFrecuentesVentaLocal = useMemo(() => {
-    const scoreByProduct = new Map<number, number>();
-    for (const orden of ordenes) {
-      if (!isOrdenVentaLocal(orden)) continue;
-      for (const item of orden.items ?? []) {
-        const productId = Number(item.producto_id);
-        if (!Number.isInteger(productId) || productId <= 0) continue;
-        scoreByProduct.set(productId, (scoreByProduct.get(productId) ?? 0) + Math.max(1, Number(item.cantidad) || 0));
-      }
-    }
-
-    const productsById = new Map(productosVentaLocal.map((producto) => [Number(producto.id), producto]));
-    const used = new Set<number>();
-    const ranked = [...scoreByProduct.entries()]
-      .sort((left, right) => right[1] - left[1])
-      .map(([productId]) => productsById.get(productId))
-      .filter((producto): producto is typeof productosVentaLocal[number] => Boolean(producto))
-      .filter((producto) => {
-        if (used.has(Number(producto.id))) return false;
-        used.add(Number(producto.id));
-        return true;
-      });
-
-    for (const producto of productosVentaLocal) {
-      if (used.has(Number(producto.id))) continue;
-      ranked.push(producto);
-      used.add(Number(producto.id));
-      if (ranked.length >= MAX_QUICK_LOCAL_PRODUCTS) break;
-    }
-
-    return ranked.slice(0, MAX_QUICK_LOCAL_PRODUCTS);
-  }, [ordenes, productosVentaLocal]);
+  const productosFrecuentesVentaLocal = useMemo(
+    () => buildLocalSaleQuickProducts(
+      productosVentaLocal,
+      ordenes.filter((orden) => orden.canal !== "web"),
+      { clickCounts: ventaLocalQuickClicks },
+    ),
+    [ordenes, productosVentaLocal, ventaLocalQuickClicks],
+  );
 
   function getMaxSaborVentaLocal(saborId: number): number {
     const actual = Number(ventaLocalSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVentaLocal - (totalSaboresVentaLocal - actual));
+  }
+
+  useEffect(() => {
+    writeLocalSaleQuickProductClicks(ventaLocalQuickClicks);
+  }, [ventaLocalQuickClicks]);
+
+  function getQuickVentaLocalCantidad(productId: number): number {
+    const value = Math.floor(Number(ventaLocalQuickCantidades[String(productId)] ?? 1));
+    return Number.isInteger(value) && value > 0 ? value : 1;
+  }
+
+  function updateQuickVentaLocalCantidad(productId: number, delta: number) {
+    setVentaLocalQuickCantidades((prev) => {
+      const current = Math.floor(Number(prev[String(productId)] ?? 1));
+      const next = Math.max(1, (Number.isInteger(current) && current > 0 ? current : 1) + delta);
+      return {
+        ...prev,
+        [String(productId)]: next,
+      };
+    });
+  }
+
+  function registrarQuickVentaLocalClick(productId: number) {
+    setVentaLocalQuickClicks((prev) => ({
+      ...prev,
+      [String(productId)]: Math.max(1, Number(prev[String(productId)] ?? 0) + 1),
+    }));
   }
 
   function upsertVentaLocalItemDraft(nextItem: VentaLocalItemDraft) {
@@ -2471,6 +2483,7 @@ export function Admin() {
   function agregarProductoRapidoVentaLocal(producto: typeof productosVentaLocal[number]) {
     setErrMsg("");
     setOkMsg("");
+    registrarQuickVentaLocalClick(Number(producto.id));
     if (producto.configuracion_tipo === "caja_sabores") {
       setVentaLocalProductoId(String(producto.id));
       setVentaLocalCantidad("1");
@@ -2480,7 +2493,7 @@ export function Admin() {
     upsertVentaLocalItemDraft({
       producto_id: Number(producto.id),
       nombre: producto.nombre,
-      cantidad: 1,
+      cantidad: getQuickVentaLocalCantidad(Number(producto.id)),
       precio_dinero: Number(producto.precio_dinero ?? 0),
       sabores: [],
     });
@@ -7052,19 +7065,58 @@ export function Admin() {
                       <p className="adm-inline-points-title" style={{ margin: 0 }}>
                         Productos rapidos
                       </p>
-                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                        {productosFrecuentesVentaLocal.map((producto) => (
-                          <button
-                            key={`quick-local-${producto.id}`}
-                            type="button"
-                            className="adm-btn-secondary"
-                            style={{ width: "auto", padding: "0.55rem 0.75rem" }}
-                            onClick={() => agregarProductoRapidoVentaLocal(producto)}
-                          >
-                            {producto.nombre} · {formatMoney(producto.precio_dinero)}
-                            {producto.configuracion_tipo === "caja_sabores" ? " · elegir sabores" : " · agregar 1"}
-                          </button>
-                        ))}
+                      <div className="local-quick-grid">
+                        {productosFrecuentesVentaLocal.map((producto, index) => {
+                          const image = getLocalSaleQuickProductImage(producto);
+                          const quickQuantity = getQuickVentaLocalCantidad(Number(producto.id));
+                          const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
+                          const isSelected = ventaLocalProductoId === String(producto.id);
+                          return (
+                            <article key={`quick-local-${producto.id}`} className={`local-quick-card${isSelected ? " is-active" : ""}`}>
+                              <span className="local-quick-rank-badge">#{index + 1}</span>
+                              <div className="local-quick-media">
+                                {image ? (
+                                  <img src={image} alt={producto.nombre} className="local-quick-image" loading="lazy" />
+                                ) : (
+                                  <div className="local-quick-image-placeholder">Sin foto</div>
+                                )}
+                              </div>
+                              <div className="local-quick-body">
+                                <p className="local-quick-title">{producto.nombre}</p>
+                                <p className="local-quick-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
+                                <strong className="local-quick-price">{formatMoney(producto.precio_dinero)}</strong>
+                                {isFlavorBox ? (
+                                  <button
+                                    type="button"
+                                    className="local-quick-primary-btn"
+                                    onClick={() => agregarProductoRapidoVentaLocal(producto)}
+                                  >
+                                    Elegir sabores
+                                  </button>
+                                ) : (
+                                  <div className="local-quick-actions">
+                                    <div className="local-quick-stepper">
+                                      <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), -1)}>
+                                        -
+                                      </button>
+                                      <span className="local-quick-stepper-value">{quickQuantity}</span>
+                                      <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), 1)}>
+                                        +
+                                      </button>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="local-quick-primary-btn"
+                                      onClick={() => agregarProductoRapidoVentaLocal(producto)}
+                                    >
+                                      Agregar
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </article>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}
