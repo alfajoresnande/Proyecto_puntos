@@ -16,6 +16,7 @@ const customerPricing_1 = require("../services/customerPricing");
 const paymentFees_1 = require("../services/paymentFees");
 const email_1 = require("../services/email");
 const paymentProviders_1 = require("../services/paymentProviders");
+const pendingCheckout_1 = require("../services/pendingCheckout");
 const purchaseLimits_1 = require("../services/purchaseLimits");
 const userAddresses_1 = require("../services/userAddresses");
 const shippingZones_1 = require("../services/shippingZones");
@@ -217,6 +218,13 @@ function parseOrderIdFromReference(reference) {
         return null;
     const parsed = Number(match[1]);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function parseCheckoutRouteParam(rawValue) {
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed === 0) {
+        throw new HttpError(400, "ID invalido.");
+    }
+    return parsed;
 }
 function normalizeMercadoPagoStatus(status) {
     const normalized = (status || "").trim().toLowerCase();
@@ -575,6 +583,43 @@ function queueOrderReceiptEmail(orderId) {
     void (0, email_1.sendOrderReceiptEmail)(orderId).catch((err) => {
         console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
     });
+}
+function buildPendingCheckoutResponse(checkout, { shippingQuote = null, setupStatus = "ready", setupMessage = null, publicKey = null, preferenceId = null, qrData = null, qrImage = null, expiresAt = null, providerPaymentId = checkout.provider_payment_id, } = {}) {
+    const payload = parseJsonField(checkout.payload_json);
+    const payloadRecord = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? payload
+        : {};
+    const storedPreferenceId = firstNonEmptyString(payloadRecord.id, payloadRecord.preference_id);
+    const storedQrData = firstNonEmptyString(payloadRecord.qr_data);
+    const storedQrImage = firstNonEmptyString(payloadRecord.qr_image);
+    return {
+        ok: true,
+        orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+        estado: checkout.estado === "pendiente_pago" ? "pendiente_pago" : checkout.estado,
+        total_dinero: Number(checkout.total_dinero ?? 0),
+        total_dinero_productos: toMoney(Number(checkout.total_dinero ?? 0) - Number(checkout.envio_costo ?? 0)),
+        costo_envio: Number(checkout.envio_costo ?? 0),
+        total_puntos: Number(checkout.total_puntos ?? 0),
+        total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+        pago_pendiente: checkout.estado === "pendiente_pago",
+        metodo_entrega: checkout.metodo_entrega,
+        direccion_envio: parseJsonField(checkout.direccion_envio_json),
+        envio: shippingQuote,
+        pago: {
+            proveedor: checkout.proveedor,
+            metodo: checkout.metodo,
+            estado: checkout.pago_estado,
+            checkout_url: checkout.checkout_url,
+            preference_id: preferenceId ?? storedPreferenceId,
+            public_key: publicKey ?? (checkout.metodo === "brick" ? (0, paymentProviders_1.getMercadoPagoPublicKey)() : null),
+            qr_data: qrData ?? storedQrData,
+            qr_image: qrImage ?? storedQrImage,
+            expires_at: expiresAt ?? null,
+            provider_payment_id: providerPaymentId ?? null,
+            setup_status: setupStatus,
+            setup_message: setupMessage,
+        },
+    };
 }
 async function resolveSucursalSeleccionada(conn, sucursalId) {
     const sucursalesActivas = await (0, db_1.qAll)(conn, `SELECT id, nombre, direccion, piso, localidad, provincia
@@ -1601,14 +1646,139 @@ router.post("/checkout/confirm", async (req, res) => {
                 throw new HttpError(400, availability.reason || "Medio de pago no disponible.");
             }
         }
-        const tipoOrden = "venta";
-        const estadoOrden = totalDinero > 0
-            ? metodoEntrega === "envio" ? "borrador" : "pendiente_pago"
-            : "preparada";
         const envioCotizacionSnapshot = shippingQuote ? (0, shippingZones_1.buildShippingQuoteSnapshot)(shippingQuote) : null;
         const direccionEnvioSnapshot = direccionEnvio && shippingQuote
             ? buildShippingAddressOrderSnapshot(direccionEnvio, shippingQuote)
             : direccionEnvio;
+        if (totalDinero > 0 && paymentChoice && paymentChoice.provider !== "efectivo") {
+            await (0, pendingCheckout_1.cancelOpenPendingCheckoutsForUser)(conn, req.user.id);
+            const checkoutId = await (0, pendingCheckout_1.createPendingCheckout)(conn, {
+                usuarioId: req.user.id,
+                carritoId,
+                metodoEntrega,
+                sucursalRetiroId: sucursalSeleccionada?.id ?? null,
+                direccionEnvioJson: direccionEnvioSnapshot ? JSON.stringify({ metodo_entrega: "envio", ...direccionEnvioSnapshot }) : null,
+                envioZonaId: shippingQuote?.zona?.id ?? null,
+                envioCosto: costoEnvio,
+                envioCotizacionJson: envioCotizacionSnapshot ? JSON.stringify(envioCotizacionSnapshot) : null,
+                notas: parsed.data.notas ?? null,
+                moneda: "ARS",
+                totalDinero,
+                totalPuntos,
+                totalPuntosGanados,
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                items: itemsNormalizados,
+            });
+            if (sucursalSeleccionada) {
+                await (0, stock_1.reserveStockForCheckoutItems)(conn, {
+                    sucursalId: sucursalSeleccionada.id,
+                    items: itemsNormalizados
+                        .filter((item) => item.track_stock === 1)
+                        .map((item) => ({
+                        producto_id: item.producto_id,
+                        cantidad: item.cantidad,
+                        origen: "compra",
+                        descripcion: `Reserva checkout #${checkoutId}`,
+                    })),
+                    referencia: `checkout #${checkoutId}`,
+                    creadoPor: req.user.id,
+                    ordenId: null,
+                });
+                await (0, stock_1.reserveFlavorStockForCheckoutItems)(conn, {
+                    sucursalId: sucursalSeleccionada.id,
+                    items: itemsNormalizados.flatMap((item) => item.sabores.map((sabor) => ({
+                        sabor_id: sabor.sabor_id,
+                        cantidad: sabor.cantidad,
+                        origen: "compra",
+                        descripcion: `Reserva checkout #${checkoutId}`,
+                    }))),
+                    referencia: `checkout #${checkoutId}`,
+                    creadoPor: req.user.id,
+                    ordenId: null,
+                });
+            }
+            const paymentFee = await (0, paymentFees_1.resolvePaymentFee)(conn, {
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                monto: totalDinero,
+            });
+            const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
+                choice: paymentChoice,
+                referenceId: checkoutId,
+                externalReference: (0, pendingCheckout_1.buildPendingCheckoutExternalReference)(checkoutId),
+                amount: totalDinero,
+                currency: "ARS",
+                buyerName: usuario?.nombre || `Cliente #${req.user.id}`,
+                buyerEmail: usuario?.email || "",
+                description: `Compra web ${checkoutId}`,
+            });
+            await (0, pendingCheckout_1.updatePendingCheckoutPayment)(conn, {
+                checkoutId,
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                pagoEstado: "iniciado",
+                comisionPorcentaje: paymentFee.porcentaje,
+                comisionMonto: paymentFee.montoComision,
+                montoNeto: paymentFee.montoNeto,
+                providerPaymentId: paymentSession.providerPaymentId,
+                checkoutUrl: paymentSession.checkoutUrl,
+                payload: {
+                    ...(paymentSession.payload ?? {}),
+                    comision: paymentFee,
+                },
+            });
+            await conn.commit();
+            (0, realtime_1.emitRealtime)(["inventario", "productos", "stats"]);
+            res.status(201).json(buildPendingCheckoutResponse({
+                id: checkoutId,
+                usuario_id: req.user.id,
+                carrito_id: carritoId,
+                orden_id: null,
+                estado: "pendiente_pago",
+                metodo_entrega: metodoEntrega,
+                sucursal_retiro_id: sucursalSeleccionada?.id ?? null,
+                direccion_envio_json: direccionEnvioSnapshot ? JSON.stringify({ metodo_entrega: "envio", ...direccionEnvioSnapshot }) : null,
+                envio_zona_id: shippingQuote?.zona?.id ?? null,
+                envio_costo: costoEnvio,
+                envio_cotizacion_json: envioCotizacionSnapshot ? JSON.stringify(envioCotizacionSnapshot) : null,
+                notas: parsed.data.notas ?? null,
+                moneda: "ARS",
+                total_dinero: totalDinero,
+                total_puntos: totalPuntos,
+                total_puntos_ganados: totalPuntosGanados,
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                pago_estado: "iniciado",
+                comision_porcentaje: paymentFee.porcentaje,
+                comision_monto: paymentFee.montoComision,
+                monto_neto: paymentFee.montoNeto,
+                provider_payment_id: paymentSession.providerPaymentId,
+                checkout_url: paymentSession.checkoutUrl,
+                payload_json: JSON.stringify({
+                    ...(paymentSession.payload ?? {}),
+                    comision: paymentFee,
+                }),
+                items_json: JSON.stringify(itemsNormalizados),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            }, {
+                shippingQuote,
+                setupStatus: paymentSession.status,
+                setupMessage: paymentSession.message,
+                publicKey: paymentSession.publicKey,
+                preferenceId: paymentSession.preferenceId,
+                qrData: paymentSession.qrData ?? null,
+                qrImage: paymentSession.qrImage ?? null,
+                expiresAt: paymentSession.expiresAt ?? null,
+                providerPaymentId: paymentSession.providerPaymentId,
+            }));
+            return;
+        }
+        const tipoOrden = "venta";
+        const estadoOrden = totalDinero > 0
+            ? metodoEntrega === "envio" ? "borrador" : "pendiente_pago"
+            : "preparada";
         const { insertId: ordenId } = await (0, db_1.qRun)(conn, `INSERT INTO ordenes
         (usuario_id, carrito_id, canal, tipo_orden, estado, moneda, total_dinero, total_puntos,
          direccion_envio_json, sucursal_retiro_id, envio_zona_id, envio_costo, envio_cotizacion_json, notas)
@@ -1694,7 +1864,8 @@ router.post("/checkout/confirm", async (req, res) => {
             });
             const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
                 choice,
-                orderId: Number(ordenId),
+                referenceId: Number(ordenId),
+                externalReference: `orden_${Number(ordenId)}`,
                 amount: totalDinero,
                 currency: "ARS",
                 buyerName: usuario?.nombre || `Cliente #${req.user.id}`,
@@ -1802,9 +1973,12 @@ router.post("/checkout/confirm", async (req, res) => {
     }
 });
 router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
-    const ordenId = Number(req.params.id);
-    if (!Number.isInteger(ordenId) || ordenId <= 0) {
-        res.status(400).json({ error: "ID de orden invalido." });
+    let ordenId = 0;
+    try {
+        ordenId = parseCheckoutRouteParam(req.params.id);
+    }
+    catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "ID invalido." });
         return;
     }
     const schema = zod_1.z.object({
@@ -1820,6 +1994,81 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        if ((0, pendingCheckout_1.isPendingCheckoutRouteId)(ordenId)) {
+            const checkoutId = (0, pendingCheckout_1.routeIdToPendingCheckoutId)(ordenId);
+            const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, checkoutId, req.user.id, { forUpdate: true });
+            if (!checkout) {
+                throw new HttpError(404, "Checkout pendiente no encontrado.");
+            }
+            if (checkout.orden_id) {
+                await conn.commit();
+                queueOrderReceiptEmail(checkout.orden_id);
+                res.json({ ok: true, orden_id: checkout.orden_id, estado: "pagada", already_paid: true });
+                return;
+            }
+            if (checkout.estado !== "pendiente_pago") {
+                throw new HttpError(400, `No se puede pagar un checkout en estado '${checkout.estado}'.`);
+            }
+            if (checkout.proveedor !== "mercadopago" || checkout.metodo !== "brick") {
+                throw new HttpError(400, "Este checkout no fue iniciado para pago con tarjeta en Mercado Pago.");
+            }
+            if (checkout.pago_estado !== "iniciado") {
+                throw new HttpError(400, `El pago de este checkout esta en estado '${checkout.pago_estado}'.`);
+            }
+            const total = toMoney(Number(checkout.total_dinero ?? 0));
+            const mpResult = await (0, paymentProviders_1.processMercadoPagoApiPayment)({
+                referenceId: checkout.id,
+                externalReference: (0, pendingCheckout_1.buildPendingCheckoutExternalReference)(checkout.id),
+                amount: total,
+                currency: checkout.moneda || "ARS",
+                buyerEmail: req.user.email || "",
+                description: `Compra web ${checkout.id}`,
+                formData: parsed.data.form_data,
+            });
+            const payload = {
+                mercado_pago: mpResult.payload,
+                selected_payment_method: parsed.data.selected_payment_method ?? null,
+                additional_data: parsed.data.additional_data ?? null,
+            };
+            if (mpResult.status === "approved") {
+                const result = await (0, pendingCheckout_1.approvePendingCheckoutAndCreateOrder)(conn, {
+                    checkoutId: checkout.id,
+                    providerPaymentId: mpResult.providerPaymentId,
+                    payload,
+                });
+                await conn.commit();
+                (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
+                queueOrderReceiptEmail(result.orderId);
+                res.json({
+                    ok: true,
+                    orden_id: result.orderId,
+                    estado: "pagada",
+                    pago_estado: "aprobado",
+                    provider_payment_id: mpResult.providerPaymentId,
+                    status_detail: mpResult.statusDetail,
+                });
+                return;
+            }
+            await (0, pendingCheckout_1.updatePendingCheckoutPayment)(conn, {
+                checkoutId: checkout.id,
+                proveedor: checkout.proveedor,
+                metodo: checkout.metodo,
+                pagoEstado: ["rejected", "cancelled", "canceled"].includes(mpResult.status) ? "rechazado" : "iniciado",
+                providerPaymentId: mpResult.providerPaymentId,
+                checkoutUrl: checkout.checkout_url,
+                payload,
+            });
+            await conn.commit();
+            res.json({
+                ok: false,
+                orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+                estado: "pendiente_pago",
+                pago_estado: mpResult.status,
+                provider_payment_id: mpResult.providerPaymentId,
+                status_detail: mpResult.statusDetail,
+            });
+            return;
+        }
         const orden = await (0, db_1.qOne)(conn, `SELECT o.id, o.usuario_id, o.estado, o.total_dinero, o.moneda, u.email AS comprador_email
        FROM ordenes o
        JOIN usuarios u ON u.id = o.usuario_id
@@ -1856,7 +2105,8 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
         }
         const totalPuntosGanados = await (0, points_1.calcularPuntosPorMonto)(conn, total);
         const mpResult = await (0, paymentProviders_1.processMercadoPagoApiPayment)({
-            orderId: ordenId,
+            referenceId: ordenId,
+            externalReference: `orden_${ordenId}`,
             amount: total,
             currency: orden.moneda || "ARS",
             buyerEmail: orden.comprador_email || "",
@@ -1920,9 +2170,12 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
     }
 });
 router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
-    const ordenId = Number(req.params.id);
-    if (!Number.isInteger(ordenId) || ordenId <= 0) {
-        res.status(400).json({ error: "ID de orden invalido." });
+    let ordenId = 0;
+    try {
+        ordenId = parseCheckoutRouteParam(req.params.id);
+    }
+    catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "ID invalido." });
         return;
     }
     const schema = zod_1.z.object({
@@ -1939,6 +2192,83 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        if ((0, pendingCheckout_1.isPendingCheckoutRouteId)(ordenId)) {
+            const checkoutId = (0, pendingCheckout_1.routeIdToPendingCheckoutId)(ordenId);
+            const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, checkoutId, req.user.id, { forUpdate: true });
+            if (!checkout) {
+                throw new HttpError(404, "Checkout pendiente no encontrado.");
+            }
+            if (checkout.orden_id) {
+                throw new HttpError(400, "Este pago ya fue aprobado y no permite cambiar el medio.");
+            }
+            if (checkout.estado !== "pendiente_pago") {
+                throw new HttpError(400, `El checkout esta en estado '${checkout.estado}' y no permite cambiar el medio de pago.`);
+            }
+            const paymentChoice = (0, paymentProviders_1.resolvePaymentChoice)(parsed.data.pago);
+            if (paymentChoice.provider === "efectivo" && checkout.metodo_entrega === "envio") {
+                throw new HttpError(400, "El pago en efectivo no esta disponible para envios.");
+            }
+            const availability = (0, paymentProviders_1.isPaymentChoiceAvailable)(paymentChoice);
+            if (!availability.ok) {
+                throw new HttpError(400, availability.reason || "Medio de pago no disponible.");
+            }
+            const paymentFee = await (0, paymentFees_1.resolvePaymentFee)(conn, {
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                monto: Number(checkout.total_dinero ?? 0),
+            });
+            const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
+                choice: paymentChoice,
+                referenceId: checkout.id,
+                externalReference: (0, pendingCheckout_1.buildPendingCheckoutExternalReference)(checkout.id),
+                amount: Number(checkout.total_dinero ?? 0),
+                currency: checkout.moneda || "ARS",
+                buyerName: `Cliente #${req.user.id}`,
+                buyerEmail: req.user.email || "",
+                description: `Compra web ${checkout.id}`,
+            });
+            await (0, pendingCheckout_1.updatePendingCheckoutPayment)(conn, {
+                checkoutId: checkout.id,
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                pagoEstado: "iniciado",
+                comisionPorcentaje: paymentFee.porcentaje,
+                comisionMonto: paymentFee.montoComision,
+                montoNeto: paymentFee.montoNeto,
+                providerPaymentId: paymentSession.providerPaymentId,
+                checkoutUrl: paymentSession.checkoutUrl,
+                payload: {
+                    ...(paymentSession.payload ?? {}),
+                    comision: paymentFee,
+                },
+            });
+            await conn.commit();
+            res.json(buildPendingCheckoutResponse({
+                ...checkout,
+                proveedor: paymentChoice.provider,
+                metodo: paymentChoice.method,
+                pago_estado: "iniciado",
+                comision_porcentaje: paymentFee.porcentaje,
+                comision_monto: paymentFee.montoComision,
+                monto_neto: paymentFee.montoNeto,
+                provider_payment_id: paymentSession.providerPaymentId,
+                checkout_url: paymentSession.checkoutUrl,
+                payload_json: JSON.stringify({
+                    ...(paymentSession.payload ?? {}),
+                    comision: paymentFee,
+                }),
+            }, {
+                setupStatus: paymentSession.status,
+                setupMessage: paymentSession.message,
+                publicKey: paymentSession.publicKey,
+                preferenceId: paymentSession.preferenceId,
+                qrData: paymentSession.qrData ?? null,
+                qrImage: paymentSession.qrImage ?? null,
+                expiresAt: paymentSession.expiresAt ?? null,
+                providerPaymentId: paymentSession.providerPaymentId,
+            }));
+            return;
+        }
         const orden = await (0, db_1.qOne)(conn, `SELECT o.id, o.usuario_id, o.estado, o.total_dinero, o.moneda, o.direccion_envio_json,
               u.nombre AS comprador_nombre, u.email AS comprador_email,
               (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
@@ -1977,7 +2307,8 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
         });
         const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
             choice: paymentChoice,
-            orderId: ordenId,
+            referenceId: ordenId,
+            externalReference: `orden_${ordenId}`,
             amount: total,
             currency: orden.moneda || "ARS",
             buyerName: orden.comprador_nombre || `Cliente #${req.user.id}`,
@@ -2057,9 +2388,29 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
     }
 });
 router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
-    const ordenId = Number(req.params.id);
-    if (!Number.isInteger(ordenId) || ordenId <= 0) {
-        res.status(400).json({ error: "ID de orden invalido." });
+    let ordenId = 0;
+    try {
+        ordenId = parseCheckoutRouteParam(req.params.id);
+    }
+    catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "ID invalido." });
+        return;
+    }
+    if ((0, pendingCheckout_1.isPendingCheckoutRouteId)(ordenId)) {
+        const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(db_1.pool, (0, pendingCheckout_1.routeIdToPendingCheckoutId)(ordenId), req.user.id);
+        if (!checkout) {
+            res.status(404).json({ error: "Checkout pendiente no encontrado." });
+            return;
+        }
+        if (checkout.orden_id) {
+            res.status(400).json({ error: "Este checkout ya fue aprobado." });
+            return;
+        }
+        if (checkout.estado !== "pendiente_pago") {
+            res.status(400).json({ error: `El checkout esta en estado '${checkout.estado}' y no tiene un pago pendiente para reanudar.` });
+            return;
+        }
+        res.json(buildPendingCheckoutResponse(checkout));
         return;
     }
     const orden = await (0, db_1.qOne)(db_1.pool, `SELECT id, estado, total_dinero, direccion_envio_json,
@@ -2124,14 +2475,118 @@ router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
     });
 });
 router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
-    const ordenId = Number(req.params.id);
-    if (!Number.isInteger(ordenId) || ordenId <= 0) {
-        res.status(400).json({ error: "ID de orden invalido." });
+    let ordenId = 0;
+    try {
+        ordenId = parseCheckoutRouteParam(req.params.id);
+    }
+    catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "ID invalido." });
         return;
     }
     const conn = await db_1.pool.getConnection();
     let transactionOpen = false;
     try {
+        if ((0, pendingCheckout_1.isPendingCheckoutRouteId)(ordenId)) {
+            const checkoutId = (0, pendingCheckout_1.routeIdToPendingCheckoutId)(ordenId);
+            const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, checkoutId, req.user.id);
+            if (!checkout) {
+                throw new HttpError(404, "Checkout pendiente no encontrado.");
+            }
+            if (checkout.orden_id) {
+                queueOrderReceiptEmail(checkout.orden_id);
+                res.json({
+                    ok: true,
+                    orden_id: checkout.orden_id,
+                    estado: "pagada",
+                    total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                    pago_estado: "aprobado",
+                    provider_payment_id: checkout.provider_payment_id ?? null,
+                    status_detail: null,
+                });
+                return;
+            }
+            if (checkout.estado !== "pendiente_pago") {
+                res.json({
+                    ok: false,
+                    orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+                    estado: checkout.estado,
+                    total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                    pago_estado: checkout.pago_estado,
+                    provider_payment_id: checkout.provider_payment_id ?? null,
+                    status_detail: null,
+                });
+                return;
+            }
+            if (checkout.proveedor !== "mercadopago" || checkout.metodo !== "qr" || !checkout.provider_payment_id) {
+                res.json({
+                    ok: false,
+                    orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+                    estado: "pendiente_pago",
+                    total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                    pago_estado: checkout.pago_estado,
+                    provider_payment_id: checkout.provider_payment_id ?? null,
+                    status_detail: null,
+                });
+                return;
+            }
+            const mpOrder = await (0, paymentProviders_1.getMercadoPagoQrOrder)(checkout.provider_payment_id);
+            const status = normalizeMercadoPagoStatus(mpOrder.status === "processed" ? "approved" : mpOrder.status);
+            await conn.beginTransaction();
+            transactionOpen = true;
+            if (status === "approved") {
+                const result = await (0, pendingCheckout_1.approvePendingCheckoutAndCreateOrder)(conn, {
+                    checkoutId: checkout.id,
+                    providerPaymentId: mpOrder.providerPaymentId ?? checkout.provider_payment_id,
+                    payload: { qr_order_lookup: mpOrder.payload },
+                });
+                await conn.commit();
+                (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
+                transactionOpen = false;
+                queueOrderReceiptEmail(result.orderId);
+                res.json({
+                    ok: true,
+                    orden_id: result.orderId,
+                    estado: "pagada",
+                    total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                    pago_estado: mpOrder.status,
+                    provider_payment_id: mpOrder.providerPaymentId ?? checkout.provider_payment_id,
+                    status_detail: mpOrder.statusDetail,
+                });
+                return;
+            }
+            if (status === "rejected" || status === "expired") {
+                await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
+                    checkoutId: checkout.id,
+                    nextState: status === "expired" ? "expirada" : "cancelada",
+                    providerPaymentId: mpOrder.providerPaymentId ?? checkout.provider_payment_id,
+                    payload: { qr_order_lookup: mpOrder.payload },
+                });
+                await conn.commit();
+                transactionOpen = false;
+                res.json({
+                    ok: false,
+                    orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+                    estado: status === "expired" ? "expirada" : "cancelada",
+                    total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                    pago_estado: mpOrder.status,
+                    provider_payment_id: mpOrder.providerPaymentId ?? checkout.provider_payment_id,
+                    status_detail: mpOrder.statusDetail,
+                });
+                return;
+            }
+            await conn.commit();
+            transactionOpen = false;
+            res.json({
+                ok: false,
+                orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkout.id),
+                estado: "pendiente_pago",
+                total_puntos_ganados: Number(checkout.total_puntos_ganados ?? 0),
+                pago_estado: mpOrder.status,
+                provider_payment_id: mpOrder.providerPaymentId ?? checkout.provider_payment_id,
+                status_detail: mpOrder.statusDetail,
+            });
+            return;
+        }
         const orden = await (0, db_1.qOne)(conn, `SELECT id, usuario_id, estado, total_dinero,
               (SELECT COALESCE(SUM(cantidad * puntaje_al_comprar_unitario), 0)
                FROM orden_items
@@ -2249,6 +2704,51 @@ router.get("/checkout/ordenes/:id/payment-status", async (req, res) => {
         conn.release();
     }
 });
+router.post("/checkout/ordenes/:id/cancelar", async (req, res) => {
+    let checkoutRefId = 0;
+    try {
+        checkoutRefId = parseCheckoutRouteParam(req.params.id);
+    }
+    catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "ID invalido." });
+        return;
+    }
+    if (!(0, pendingCheckout_1.isPendingCheckoutRouteId)(checkoutRefId)) {
+        res.status(400).json({ error: "Este endpoint solo cancela checkouts pendientes." });
+        return;
+    }
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const checkoutId = (0, pendingCheckout_1.routeIdToPendingCheckoutId)(checkoutRefId);
+        const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, checkoutId, req.user.id, { forUpdate: true });
+        if (!checkout) {
+            throw new HttpError(404, "Checkout pendiente no encontrado.");
+        }
+        if (checkout.orden_id) {
+            throw new HttpError(400, "Esta compra ya fue aprobada y no se puede cancelar como checkout pendiente.");
+        }
+        await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
+            checkoutId,
+            nextState: "cancelada",
+        });
+        await conn.commit();
+        (0, realtime_1.emitRealtime)(["inventario", "productos", "stats"]);
+        res.json({ ok: true, orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(checkoutId), estado: "cancelada" });
+    }
+    catch (err) {
+        await conn.rollback();
+        if (err instanceof HttpError) {
+            res.status(err.status).json({ error: err.message });
+            return;
+        }
+        const msg = err instanceof Error ? err.message : "No se pudo cancelar el checkout pendiente.";
+        res.status(400).json({ error: msg });
+    }
+    finally {
+        conn.release();
+    }
+});
 router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
     const schema = zod_1.z.object({
         payment_id: zod_1.z.union([zod_1.z.string(), zod_1.z.number()]).optional().nullable(),
@@ -2261,7 +2761,9 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
         return;
     }
     const externalReference = firstNonEmptyString(parsed.data.external_reference);
-    const fallbackOrderId = parseOrderIdFromReference(externalReference);
+    const fallbackReference = (0, paymentProviders_1.parseMercadoPagoReference)(externalReference);
+    const fallbackOrderId = fallbackReference?.kind === "orden" ? fallbackReference.id : null;
+    const fallbackCheckoutId = fallbackReference?.kind === "checkout" ? fallbackReference.id : null;
     const hintedStatus = normalizeMercadoPagoStatus(parsed.data.status ?? null);
     const conn = await db_1.pool.getConnection();
     let transactionOpen = false;
@@ -2276,32 +2778,129 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
          LIMIT 1`, [fallbackOrderId, req.user.id]);
             paymentId = firstNonEmptyString(existingPayment?.provider_payment_id);
         }
-        if (!paymentId && !fallbackOrderId) {
+        if (!paymentId && fallbackCheckoutId) {
+            const existingCheckout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, fallbackCheckoutId, req.user.id);
+            paymentId = firstNonEmptyString(existingCheckout?.provider_payment_id);
+        }
+        if (!paymentId && !fallbackOrderId && !fallbackCheckoutId) {
             throw new HttpError(400, "No pudimos identificar el pago devuelto por Mercado Pago.");
         }
         const payment = paymentId ? await (0, paymentProviders_1.getMercadoPagoPayment)(paymentId) : null;
         const resolvedOrderId = payment?.orderId ?? fallbackOrderId;
+        const resolvedCheckoutId = payment?.checkoutId ?? fallbackCheckoutId;
         const resolvedStatus = normalizeMercadoPagoStatus(payment?.status ?? hintedStatus);
-        if (!resolvedOrderId) {
-            throw new HttpError(400, "Mercado Pago no devolvio una referencia valida de la orden.");
+        if (!resolvedOrderId && !resolvedCheckoutId) {
+            throw new HttpError(400, "Mercado Pago no devolvio una referencia valida para completar la compra.");
         }
         await conn.beginTransaction();
         transactionOpen = true;
+        if (!resolvedOrderId && resolvedCheckoutId) {
+            const checkout = await (0, pendingCheckout_1.getPendingCheckoutForUser)(conn, resolvedCheckoutId, req.user.id, { forUpdate: true });
+            if (!checkout) {
+                throw new HttpError(404, "Checkout pendiente no encontrado.");
+            }
+            if (checkout.orden_id) {
+                await conn.commit();
+                transactionOpen = false;
+                queueOrderReceiptEmail(checkout.orden_id);
+                res.json({
+                    ok: true,
+                    orden_id: checkout.orden_id,
+                    estado: "pagada",
+                    already_paid: true,
+                    pago_estado: payment?.status ?? hintedStatus ?? "approved",
+                    provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+                    status_detail: payment?.statusDetail ?? null,
+                });
+                return;
+            }
+            if (!payment) {
+                await conn.commit();
+                transactionOpen = false;
+                res.json({
+                    ok: false,
+                    orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(resolvedCheckoutId),
+                    estado: checkout.estado,
+                    pago_estado: hintedStatus ?? "pending",
+                    provider_payment_id: paymentId ?? null,
+                    status_detail: null,
+                    pending_lookup: true,
+                });
+                return;
+            }
+            if (resolvedStatus === "approved") {
+                const result = await (0, pendingCheckout_1.approvePendingCheckoutAndCreateOrder)(conn, {
+                    checkoutId: resolvedCheckoutId,
+                    providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
+                    payload: {
+                        return_params: parsed.data,
+                        payment_lookup: payment?.payload ?? null,
+                    },
+                });
+                await conn.commit();
+                transactionOpen = false;
+                (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
+                queueOrderReceiptEmail(result.orderId);
+                res.json({
+                    ok: true,
+                    orden_id: result.orderId,
+                    estado: "pagada",
+                    pago_estado: "approved",
+                    provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+                    status_detail: payment?.statusDetail ?? null,
+                });
+                return;
+            }
+            if (resolvedStatus === "rejected" || resolvedStatus === "expired") {
+                await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
+                    checkoutId: resolvedCheckoutId,
+                    nextState: resolvedStatus === "expired" ? "expirada" : "cancelada",
+                    providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
+                    payload: {
+                        return_params: parsed.data,
+                        payment_lookup: payment?.payload ?? null,
+                    },
+                });
+                await conn.commit();
+                transactionOpen = false;
+                res.json({
+                    ok: false,
+                    orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(resolvedCheckoutId),
+                    estado: resolvedStatus === "expired" ? "expirada" : "cancelada",
+                    pago_estado: payment?.status ?? hintedStatus ?? resolvedStatus,
+                    provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+                    status_detail: payment?.statusDetail ?? null,
+                });
+                return;
+            }
+            await conn.commit();
+            transactionOpen = false;
+            res.json({
+                ok: false,
+                orden_id: (0, pendingCheckout_1.toPendingCheckoutRouteId)(resolvedCheckoutId),
+                estado: checkout.estado,
+                pago_estado: payment?.status ?? hintedStatus ?? "pending",
+                provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
+                status_detail: payment?.statusDetail ?? null,
+            });
+            return;
+        }
+        const confirmedOrderId = Number(resolvedOrderId);
         const orden = await (0, db_1.qOne)(conn, `SELECT id, estado
        FROM ordenes
        WHERE id = ? AND usuario_id = ?
        LIMIT 1
-       FOR UPDATE`, [resolvedOrderId, req.user.id]);
+       FOR UPDATE`, [confirmedOrderId, req.user.id]);
         if (!orden) {
             throw new HttpError(404, "Orden no encontrada.");
         }
         if (orden.estado === "pagada") {
             await conn.commit();
             transactionOpen = false;
-            queueOrderReceiptEmail(resolvedOrderId);
+            queueOrderReceiptEmail(confirmedOrderId);
             res.json({
                 ok: true,
-                orden_id: resolvedOrderId,
+                orden_id: confirmedOrderId,
                 estado: "pagada",
                 already_paid: true,
                 pago_estado: payment?.status ?? hintedStatus ?? "approved",
@@ -2326,7 +2925,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
         }
         if (resolvedStatus === "approved") {
             const result = await (0, orderLifecycle_1.approvePaidOrder)(conn, {
-                orderId: resolvedOrderId,
+                orderId: confirmedOrderId,
                 provider: "mercadopago",
                 providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
                 payload: {
@@ -2337,10 +2936,10 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
             await conn.commit();
             transactionOpen = false;
             (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
-            queueOrderReceiptEmail(resolvedOrderId);
+            queueOrderReceiptEmail(confirmedOrderId);
             res.json({
                 ok: true,
-                orden_id: resolvedOrderId,
+                orden_id: confirmedOrderId,
                 estado: result.state,
                 pago_estado: "approved",
                 provider_payment_id: payment?.providerPaymentId ?? paymentId ?? null,
@@ -2350,7 +2949,7 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
         }
         if (resolvedStatus === "rejected" || resolvedStatus === "expired") {
             const result = await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
-                orderId: resolvedOrderId,
+                orderId: confirmedOrderId,
                 nextState: resolvedStatus === "expired" ? "expirada" : "cancelada",
                 provider: "mercadopago",
                 providerPaymentId: payment?.providerPaymentId ?? paymentId ?? null,
@@ -2498,7 +3097,7 @@ router.get("/ordenes", async (req, res) => {
     }));
 });
 router.get("/ordenes/:id", async (req, res) => {
-    const ordenId = Number(req.params.id);
+    let ordenId = Number(req.params.id);
     if (!Number.isFinite(ordenId) || ordenId <= 0) {
         res.status(400).json({ error: "ID de orden inválido." });
         return;

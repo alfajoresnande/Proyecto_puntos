@@ -159,7 +159,7 @@ function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as CheckoutConfirmResponse | null;
-    if (!parsed || !Number.isInteger(Number(parsed.orden_id)) || String(parsed.estado).trim().toLowerCase() !== "pagada") {
+    if (!parsed || !Number.isInteger(Number(parsed.orden_id)) || Number(parsed.orden_id) <= 0 || String(parsed.estado).trim().toLowerCase() !== "pagada") {
       window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
       return null;
     }
@@ -172,7 +172,7 @@ function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
 
 function storeApprovedCheckout(checkout: CheckoutConfirmResponse | null) {
   if (typeof window === "undefined") return;
-  if (!checkout || String(checkout.estado).trim().toLowerCase() !== "pagada") {
+  if (!checkout || Number(checkout.orden_id) <= 0 || String(checkout.estado).trim().toLowerCase() !== "pagada") {
     window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
     return;
   }
@@ -559,6 +559,8 @@ export function CarritoTienda() {
     confirmed.pago?.proveedor === "mercadopago",
   );
   const isCashOrder = confirmed?.pago?.proveedor === "efectivo" || confirmed?.pago?.metodo === "cash";
+  const hasRealOrder = Number(confirmed?.orden_id ?? 0) > 0;
+  const isPendingCheckoutRef = Number(confirmed?.orden_id ?? 0) < 0;
   const confirmedEstado = confirmed?.estado.trim().toLowerCase() ?? "";
   const confirmedPendingPayment = confirmedEstado === "pendiente_pago" || confirmedEstado === "borrador";
   const confirmedTitle =
@@ -573,7 +575,7 @@ export function CarritoTienda() {
             : "Pedido pendiente de pago";
   const confirmedHasShipping = Boolean(confirmed && (confirmed.metodo_entrega === "envio" || deliveryMethod === "envio" || confirmed.envio));
   const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmed.estado === "pagada"));
-  const confirmedTrackingPath = confirmed ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
+  const confirmedTrackingPath = confirmed && hasRealOrder ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
   const currentPendingPaymentId = confirmed?.pago
     ? paymentOptions.find((option) => option.provider === confirmed.pago?.proveedor && option.method === confirmed.pago?.metodo)?.id ?? ""
     : "";
@@ -607,10 +609,24 @@ export function CarritoTienda() {
     mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
       api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
     onSuccess: async (response) => {
-      await hydrateConfirmedOrder(response.orden_id);
-      await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
-      await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
-      await queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
+      if (Number(response.orden_id) > 0) {
+        await hydrateConfirmedOrder(response.orden_id);
+        await queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+        await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
+        await queryClient.invalidateQueries({ queryKey: ["cliente", "perfil"] });
+        return;
+      }
+
+      setConfirmed((prev) =>
+        prev
+          ? {
+              ...prev,
+              orden_id: response.orden_id,
+              estado: response.estado,
+              pago_pendiente: response.estado === "pendiente_pago",
+            }
+          : prev,
+      );
     },
     onError: (error: Error) => {
       setMessage(error.message || "No pudimos recuperar el estado del pago.");
@@ -731,7 +747,13 @@ export function CarritoTienda() {
         setConfirmed((prev) => {
           const nextConfirmed =
             prev && Number(prev.orden_id) === Number(confirmed.orden_id)
-              ? { ...prev, estado: "pagada", pago_pendiente: false, total_puntos_ganados: pts }
+              ? {
+                  ...prev,
+                  orden_id: Number(currentOrder.orden_id ?? prev.orden_id),
+                  estado: "pagada",
+                  pago_pendiente: false,
+                  total_puntos_ganados: pts,
+                }
               : prev;
           storeApprovedCheckout(nextConfirmed);
           return nextConfirmed;
@@ -753,7 +775,7 @@ export function CarritoTienda() {
       });
       setConfirmed((prev) =>
         prev && Number(prev.orden_id) === Number(confirmed.orden_id)
-          ? { ...prev, estado: nextState, pago_pendiente: false }
+          ? { ...prev, orden_id: Number(currentOrder.orden_id ?? prev.orden_id), estado: nextState, pago_pendiente: false }
           : prev,
       );
     }
@@ -888,7 +910,7 @@ export function CarritoTienda() {
         msg: data.pago?.metodo === "qr"
           ? "Listo, generamos un QR nuevo para este pedido."
           : data.pago?.metodo === "wallet"
-            ? "Listo, ahora podes pagar este pedido desde Mercado Pago."
+            ? "Listo, ahora podes pagar esta compra desde Mercado Pago app."
             : "Listo, actualizamos el medio de pago de este pedido.",
       });
       setMessage(null);
@@ -901,7 +923,11 @@ export function CarritoTienda() {
   });
 
   const cancelConfirmedOrder = useMutation({
-    mutationFn: (ordenId: number) => api.post<{ ok: true; orden_id: number; estado: string }>(`/cliente/ordenes/${ordenId}/cancelar`, {}),
+    mutationFn: (ordenId: number) =>
+      api.post<{ ok: true; orden_id: number; estado: string }>(
+        ordenId < 0 ? `/cliente/checkout/ordenes/${ordenId}/cancelar` : `/cliente/ordenes/${ordenId}/cancelar`,
+        {},
+      ),
     onSuccess: async (data) => {
       setConfirmed((prev) =>
         prev && Number(prev.orden_id) === Number(data.orden_id)
@@ -971,13 +997,16 @@ export function CarritoTienda() {
   if (confirmed) {
     const estadoLabel = estadoPedidoLabel(confirmed.estado);
     const isShippingConfirmed = deliveryMethod === "envio" || Boolean(confirmed.envio);
+    const confirmedReferenceLabel = hasRealOrder
+      ? `Orden #${confirmed.orden_id}`
+      : `Referencia de pago #${Math.abs(Number(confirmed.orden_id ?? 0))}`;
     if (paymentApproved || confirmed.estado === "pagada") {
       return (
         <section className="catalog-page catalog-canje-page">
           <div className="catalog-products-shell">
             <div className="catalog-header">
               <h1 className="catalog-title">Pago aprobado</h1>
-              <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
+              <p className="catalog-subtitle">{confirmedReferenceLabel} - {money(confirmed.total_dinero)}</p>
             </div>
 
             <div className="checkout-approved-card" role="status" aria-live="polite">
@@ -1019,13 +1048,13 @@ export function CarritoTienda() {
         <div className="catalog-products-shell">
           <div className="catalog-header">
             <h1 className="catalog-title">{confirmedTitle}</h1>
-            <p className="catalog-subtitle">Orden #{confirmed.orden_id} - {money(confirmed.total_dinero)}</p>
+            <p className="catalog-subtitle">{confirmedReferenceLabel} - {money(confirmed.total_dinero)}</p>
           </div>
           {paymentNotice ? (
             <div className="catalog-canje-block" role="status" aria-live="polite">
               <p>{paymentNotice.msg}</p>
               <div className="catalog-float-toast-actions catalog-canje-actions">
-                {paymentNotice.variant === "success" ? (
+                {paymentNotice.variant === "success" && hasRealOrder ? (
                   <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">
                     {isShippingConfirmed ? "Ver seguimiento" : "Ver mis pedidos"}
                   </Link>
@@ -1125,7 +1154,7 @@ export function CarritoTienda() {
             ) : confirmedPendingPayment && confirmed.pago?.metodo === "qr" && confirmed.pago.qr_image ? (
               <div className="store-qr-payment-card">
                 <p className="store-qr-payment-title">Escanea este QR con Mercado Pago</p>
-                <img src={confirmed.pago.qr_image} alt={`QR de pago para orden ${confirmed.orden_id}`} />
+                <img src={confirmed.pago.qr_image} alt={`QR de pago para la referencia ${Math.abs(Number(confirmed.orden_id))}`} />
                 <p className="catalog-confirm-hint">
                   Cuando Mercado Pago apruebe el pago, el pedido se confirma automaticamente.
                   {confirmed.pago.expires_at ? " Si vence, genera una compra nueva." : ""}
@@ -1135,9 +1164,11 @@ export function CarritoTienda() {
               <p>{confirmed.pago.setup_message}</p>
             ) : null}
             <div className="catalog-float-toast-actions catalog-canje-actions">
-              <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">
-                {isShippingConfirmed && confirmedPaymentApproved ? "Ver seguimiento" : "Ver en Mis pedidos"}
-              </Link>
+              {hasRealOrder ? (
+                <Link to={isShippingConfirmed ? confirmedTrackingPath : "/mis-pedidos"} className="catalog-float-toast-btn-primary">
+                  {isShippingConfirmed && confirmedPaymentApproved ? "Ver seguimiento" : "Ver en Mis pedidos"}
+                </Link>
+              ) : null}
               {confirmedPendingPayment ? (
                 <button
                   type="button"
@@ -1165,15 +1196,20 @@ export function CarritoTienda() {
               confirmed={confirmed}
               buyerEmail={user?.email ?? ""}
               onPaid={(response) =>
-                setConfirmed((prev) =>
-                  prev
+                setConfirmed((prev) => {
+                  const nextConfirmed = prev
                     ? {
                         ...prev,
+                        orden_id: response.orden_id,
                         estado: response.estado,
                         pago_pendiente: response.estado !== "pagada",
                       }
-                    : prev,
-                )
+                    : prev;
+                  if (nextConfirmed && response.estado === "pagada" && response.orden_id > 0) {
+                    storeApprovedCheckout(nextConfirmed);
+                  }
+                  return nextConfirmed;
+                })
               }
               onApproved={() => {
                 setPaymentApproved(true);
@@ -1435,7 +1471,7 @@ export function CarritoTienda() {
                 {selectedPayment?.provider === "efectivo" ? (
                   <p className="catalog-confirm-hint">Se reserva el pedido para retiro. El equipo no lo toma como pago aprobado hasta cobrarlo en sucursal.</p>
                 ) : selectedPayment?.method === "brick" ? (
-                  <p className="catalog-confirm-hint">Esta opcion deja el pago con tarjeta dentro del sitio. Si prefieres usar tu cuenta o la app, elige "Pagar con Mercado Pago".</p>
+                  <p className="catalog-confirm-hint">Esta opcion deja el pago con tarjeta dentro del sitio. Si prefieres usar tu cuenta o la app, elige "Mercado Pago app".</p>
                 ) : selectedPayment?.method === "qr" ? (
                   <p className="catalog-confirm-hint">Te vamos a mostrar un QR de Mercado Pago para escanear y pagar desde la app.</p>
                 ) : null}

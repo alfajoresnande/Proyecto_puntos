@@ -35,6 +35,43 @@ function normalizePaymentMethod(value) {
     const method = value.trim().toLowerCase();
     return VALID_PAYMENT_METHODS.has(method) ? method : "cash";
 }
+function formatLocalPaymentMethod(method) {
+    const labels = {
+        cash: "Dinero en efectivo",
+        transferencia: "Transferencia bancaria",
+        tarjeta: "Tarjeta de credito o debito",
+        qr: "Codigo QR",
+        otro: "Otro",
+        brick: "Tarjeta de credito o debito",
+        wallet: "Mercado Pago app",
+    };
+    return method ? labels[method] ?? method : "-";
+}
+function formatSalePaymentLabel(provider, method) {
+    const normalizedProvider = String(provider ?? "").trim().toLowerCase();
+    const normalizedMethod = String(method ?? "").trim().toLowerCase();
+    if (!normalizedProvider && !normalizedMethod)
+        return "-";
+    if (normalizedProvider === "mercadopago") {
+        if (normalizedMethod === "wallet")
+            return "Mercado Pago app";
+        if (normalizedMethod === "qr")
+            return "Mercado Pago / Codigo QR";
+        if (normalizedMethod === "brick")
+            return "Mercado Pago / Tarjeta de credito o debito";
+        return "Mercado Pago";
+    }
+    if (normalizedProvider === "efectivo") {
+        return "Dinero en efectivo";
+    }
+    if (normalizedProvider === "local") {
+        return formatLocalPaymentMethod(normalizedMethod);
+    }
+    if (normalizedMethod) {
+        return formatLocalPaymentMethod(normalizedMethod);
+    }
+    return provider || "-";
+}
 function normalizeManualDni(value) {
     const dni = value.trim();
     if (!/^\d{6,10}$/.test(dni)) {
@@ -702,6 +739,7 @@ function normalizeDateEnd(value) {
 }
 async function getVentasReporteRows(conn, filters = {}) {
     const where = ["o.tipo_orden IN ('venta', 'mixta')"];
+    where.push("o.estado <> 'expirada'");
     const params = [];
     const desde = normalizeDateStart(filters.desde);
     const hasta = normalizeDateEnd(filters.hasta);
@@ -799,7 +837,7 @@ async function getVentasReporteRows(conn, filters = {}) {
             cliente: row.cliente,
             email: row.email,
             sucursal: row.sucursal || "-",
-            metodo_pago: [row.proveedor, row.metodo].filter(Boolean).join(" / ") || "-",
+            metodo_pago: formatSalePaymentLabel(row.proveedor, row.metodo),
             total_bruto: totalBruto,
             comision_porcentaje: paymentFee.porcentaje,
             total_comision: paymentFee.montoComision,

@@ -835,6 +835,55 @@ async function ensureOrderCoreSchema() {
       INDEX idx_pagos_orden_estado (orden_id, estado),
       INDEX idx_pagos_provider_id (provider_payment_id)
     )`);
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS checkout_pendientes (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NOT NULL,
+      carrito_id BIGINT UNSIGNED NOT NULL,
+      orden_id BIGINT UNSIGNED NULL,
+      estado ENUM('pendiente_pago','pagada','cancelada','expirada') NOT NULL DEFAULT 'pendiente_pago',
+      metodo_entrega ENUM('retiro','envio') NOT NULL DEFAULT 'retiro',
+      sucursal_retiro_id INT NULL,
+      direccion_envio_json JSON NULL,
+      envio_zona_id INT NULL,
+      envio_costo DECIMAL(10,2) NOT NULL DEFAULT 0,
+      envio_cotizacion_json JSON NULL,
+      notas TEXT NULL,
+      moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
+      total_dinero DECIMAL(10,2) NOT NULL DEFAULT 0,
+      total_puntos INT NOT NULL DEFAULT 0,
+      total_puntos_ganados INT NOT NULL DEFAULT 0,
+      proveedor VARCHAR(40) NOT NULL,
+      metodo VARCHAR(40) NULL,
+      pago_estado ENUM('iniciado','aprobado','rechazado','reembolsado') NOT NULL DEFAULT 'iniciado',
+      comision_porcentaje DECIMAL(8,4) NULL,
+      comision_monto DECIMAL(10,2) NULL,
+      monto_neto DECIMAL(10,2) NULL,
+      provider_payment_id VARCHAR(120) NULL,
+      checkout_url VARCHAR(700) NULL,
+      payload_json JSON NULL,
+      items_json JSON NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_checkout_pendientes_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_checkout_pendientes_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE CASCADE,
+      CONSTRAINT fk_checkout_pendientes_orden
+        FOREIGN KEY (orden_id) REFERENCES ordenes(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_checkout_pendientes_sucursal
+        FOREIGN KEY (sucursal_retiro_id) REFERENCES sucursales(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_checkout_pendientes_envio_zona
+        FOREIGN KEY (envio_zona_id) REFERENCES envio_zonas(id)
+        ON DELETE SET NULL,
+      INDEX idx_checkout_pendientes_usuario_estado (usuario_id, estado, updated_at),
+      INDEX idx_checkout_pendientes_carrito_estado (carrito_id, estado, updated_at),
+      INDEX idx_checkout_pendientes_provider_payment (provider_payment_id),
+      INDEX idx_checkout_pendientes_orden (orden_id)
+    )`);
     await exports.pool.query(`CREATE TABLE IF NOT EXISTS movimientos_stock (
       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
       producto_id INT NOT NULL,

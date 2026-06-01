@@ -6,6 +6,7 @@ const db_1 = require("../db");
 const realtime_1 = require("../realtime");
 const orderLifecycle_1 = require("../services/orderLifecycle");
 const paymentProviders_1 = require("../services/paymentProviders");
+const pendingCheckout_1 = require("../services/pendingCheckout");
 const securityMonitor_1 = require("../securityMonitor");
 const email_1 = require("../services/email");
 const router = (0, express_1.Router)();
@@ -34,6 +35,15 @@ function parseOrderIdFromReference(reference) {
     const parsed = Number(match[1]);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
+function parseCheckoutIdFromReference(reference) {
+    if (!reference)
+        return null;
+    const match = reference.match(/(?:checkout|pago|payment)[_-]?(\d+)/i);
+    if (!match)
+        return null;
+    const parsed = Number(match[1]);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 function resolveOrderId(body, query) {
     const metadata = asRecord(body.metadata);
     const data = asRecord(body.data);
@@ -45,6 +55,18 @@ function resolveOrderId(body, query) {
     if (directId)
         return directId;
     return parseOrderIdFromReference(firstString(body.external_reference, metadata.external_reference, data.external_reference, payment.external_reference, query.external_reference));
+}
+function resolveCheckoutId(body, query) {
+    const metadata = asRecord(body.metadata);
+    const data = asRecord(body.data);
+    const dataMetadata = asRecord(data.metadata);
+    const payment = asRecord(body.payment);
+    const paymentMetadata = asRecord(payment.metadata);
+    const direct = firstString(body.checkout_id, metadata.checkout_id, dataMetadata.checkout_id, paymentMetadata.checkout_id, query.checkout_id);
+    const directId = parseCheckoutIdFromReference(direct);
+    if (directId)
+        return directId;
+    return parseCheckoutIdFromReference(firstString(body.external_reference, metadata.external_reference, data.external_reference, payment.external_reference, query.external_reference));
 }
 function resolveProviderPaymentId(body, query) {
     const data = asRecord(body.data);
@@ -125,6 +147,7 @@ router.post("/webhook/:proveedor", async (req, res) => {
     const body = asRecord(req.body);
     const query = asRecord(req.query);
     let orderId = resolveOrderId(body, query);
+    let checkoutId = resolveCheckoutId(body, query);
     let providerPaymentId = resolveProviderPaymentId(body, query);
     let status = resolvePaymentStatus(body, query);
     let resolvedPayload = { body, query };
@@ -132,6 +155,7 @@ router.post("/webhook/:proveedor", async (req, res) => {
         try {
             const order = await (0, paymentProviders_1.getMercadoPagoQrOrder)(providerPaymentId);
             orderId = orderId ?? order.orderId;
+            checkoutId = checkoutId ?? order.checkoutId;
             providerPaymentId = order.providerPaymentId ?? providerPaymentId;
             status = status ?? resolvePaymentStatus(order.payload, {});
             resolvedPayload = {
@@ -152,6 +176,7 @@ router.post("/webhook/:proveedor", async (req, res) => {
         try {
             const payment = await (0, paymentProviders_1.getMercadoPagoPayment)(providerPaymentId);
             orderId = orderId ?? payment.orderId;
+            checkoutId = checkoutId ?? payment.checkoutId;
             providerPaymentId = payment.providerPaymentId ?? providerPaymentId;
             status = status ?? resolvePaymentStatus(payment.payload, {});
             resolvedPayload = {
@@ -168,38 +193,64 @@ router.post("/webhook/:proveedor", async (req, res) => {
             });
         }
     }
-    if (!orderId) {
+    if (!orderId && !checkoutId) {
         (0, securityMonitor_1.recordSecurityEvent)("pago_webhook_sin_orden", req, { proveedor, providerPaymentId });
-        res.status(202).json({ ok: true, ignored: true, reason: "orden_no_identificada" });
+        res.status(202).json({ ok: true, ignored: true, reason: "referencia_no_identificada" });
         return;
     }
     if (!status) {
-        res.status(202).json({ ok: true, ignored: true, reason: "estado_no_accionable", orden_id: orderId });
+        res.status(202).json({ ok: true, ignored: true, reason: "estado_no_accionable", orden_id: orderId, checkout_id: checkoutId });
         return;
     }
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        const result = status === "approved"
-            ? await (0, orderLifecycle_1.approvePaidOrder)(conn, {
-                orderId,
-                provider: proveedor,
-                providerPaymentId,
-                payload: resolvedPayload,
-            })
-            : await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
-                orderId,
-                nextState: status === "expired" ? "expirada" : "cancelada",
-                provider: proveedor,
-                providerPaymentId,
-                payload: resolvedPayload,
-            });
+        const result = orderId
+            ? (status === "approved"
+                ? await (0, orderLifecycle_1.approvePaidOrder)(conn, {
+                    orderId,
+                    provider: proveedor,
+                    providerPaymentId,
+                    payload: resolvedPayload,
+                })
+                : await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
+                    orderId,
+                    nextState: status === "expired" ? "expirada" : "cancelada",
+                    provider: proveedor,
+                    providerPaymentId,
+                    payload: resolvedPayload,
+                }))
+            : (status === "approved"
+                ? await (0, pendingCheckout_1.approvePendingCheckoutAndCreateOrder)(conn, {
+                    checkoutId: Number(checkoutId),
+                    providerPaymentId,
+                    payload: resolvedPayload,
+                })
+                : await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
+                    checkoutId: Number(checkoutId),
+                    nextState: status === "expired" ? "expirada" : "cancelada",
+                    providerPaymentId,
+                    payload: resolvedPayload,
+                }));
         await conn.commit();
         (0, realtime_1.emitRealtime)(["ordenes", "inventario", "productos", "stats", "puntos"]);
         if (status === "approved") {
-            void (0, email_1.sendOrderReceiptEmail)(orderId).catch((error) => {
-                console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, error instanceof Error ? error.message : error);
+            const receiptOrderId = orderId || result.orderId || null;
+            if (receiptOrderId) {
+                void (0, email_1.sendOrderReceiptEmail)(receiptOrderId).catch((error) => {
+                    console.error(`[MAIL] Error enviando comprobante orden #${receiptOrderId}:`, error instanceof Error ? error.message : error);
+                });
+            }
+        }
+        if (!orderId && checkoutId) {
+            res.json({
+                ok: true,
+                checkout_id: checkoutId,
+                ...(status === "approved"
+                    ? { orden_id: result.orderId, estado: "pagada" }
+                    : { estado: status === "expired" ? "expirada" : "cancelada" }),
             });
+            return;
         }
         res.json(result);
     }

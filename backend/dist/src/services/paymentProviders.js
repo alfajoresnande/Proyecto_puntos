@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MercadoPagoQrOrderError = void 0;
 exports.listPaymentOptions = listPaymentOptions;
 exports.resolvePaymentChoice = resolvePaymentChoice;
+exports.parseMercadoPagoReference = parseMercadoPagoReference;
 exports.getMercadoPagoPayment = getMercadoPagoPayment;
 exports.getMercadoPagoQrOrder = getMercadoPagoQrOrder;
 exports.processMercadoPagoApiPayment = processMercadoPagoApiPayment;
@@ -196,28 +197,28 @@ function listPaymentOptions() {
             id: "mercadopago_brick",
             provider: "mercadopago",
             method: "brick",
-            label: "Pagar con tarjeta",
+            label: "Tarjeta de credito o debito",
             description: "Paga dentro de la tienda con tarjeta de credito, debito o prepaga.",
         },
         {
             id: "mercadopago_wallet",
             provider: "mercadopago",
             method: "wallet",
-            label: "Pagar con Mercado Pago",
+            label: "Mercado Pago app",
             description: "Abre Mercado Pago para pagar con tu cuenta o desde la app.",
         },
         {
             id: "mercadopago_qr",
             provider: "mercadopago",
             method: "qr",
-            label: "Pagar con QR",
+            label: "Codigo QR",
             description: "Genera un QR de Mercado Pago para escanearlo y abonar desde la app.",
         },
         {
             id: "efectivo_retiro",
             provider: "efectivo",
             method: "cash",
-            label: "Efectivo al retirar",
+            label: "Dinero en efectivo al retirar",
             description: "Reserva el pedido y paga en la sucursal antes de retirar.",
         },
     ];
@@ -260,7 +261,7 @@ async function createMercadoPagoPreferenceSession(input) {
         };
     }
     const body = {
-        external_reference: `orden_${input.orderId}`,
+        external_reference: input.externalReference,
         ...(input.choice.method === "wallet" ? { purpose: "wallet_purchase" } : {}),
         items: [
             {
@@ -271,7 +272,7 @@ async function createMercadoPagoPreferenceSession(input) {
             },
         ],
         payer: {
-            name: input.buyerName || `Cliente #${input.orderId}`,
+            name: input.buyerName || `Cliente #${input.referenceId}`,
             email: input.buyerEmail,
         },
         back_urls: {
@@ -348,8 +349,8 @@ async function createMercadoPagoQrSession(input) {
     const amount = parseMercadoPagoAmount(input.amount, "amount");
     const amountText = toMercadoPagoAmount(amount);
     const qrMode = normalizeQrMode(MERCADOPAGO_QR_MODE);
-    const externalReference = sanitizeExternalReference("pedido", input.orderId);
-    const description = cleanString(input.description, `Pedido ${input.orderId}`, 150);
+    const externalReference = input.externalReference || sanitizeExternalReference("pedido", input.referenceId);
+    const description = cleanString(input.description, `Pedido ${input.referenceId}`, 150);
     const body = removeNullish({
         type: "qr",
         total_amount: amountText,
@@ -488,16 +489,36 @@ function parseOrderIdFromReference(reference) {
     const parsed = Number(match[1]);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
+function parseCheckoutIdFromReference(reference) {
+    if (!reference)
+        return null;
+    const match = reference.match(/(?:checkout|pago|payment)[_-]?(\d+)/i);
+    if (!match)
+        return null;
+    const parsed = Number(match[1]);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+function parseMercadoPagoReference(reference) {
+    const checkoutId = parseCheckoutIdFromReference(reference);
+    if (checkoutId)
+        return { kind: "checkout", id: checkoutId };
+    const orderId = parseOrderIdFromReference(reference);
+    if (orderId)
+        return { kind: "orden", id: orderId };
+    return null;
+}
 function toMercadoPagoPaymentResult(payload) {
     const metadata = asRecord(payload.metadata);
     const externalReference = firstString(payload.external_reference, metadata.external_reference);
     const directOrderId = firstString(metadata.order_id, payload.order_id);
+    const directCheckoutId = firstString(metadata.checkout_id, payload.checkout_id);
     return {
         providerPaymentId: typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
         status: typeof payload.status === "string" ? payload.status : "unknown",
         statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
         externalReference,
         orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
+        checkoutId: parseCheckoutIdFromReference(directCheckoutId ?? externalReference),
         payload,
     };
 }
@@ -551,6 +572,7 @@ async function getMercadoPagoQrOrder(orderId) {
         statusDetail: typeof payload.status_detail === "string" ? payload.status_detail : null,
         externalReference,
         orderId: parseOrderIdFromReference(externalReference),
+        checkoutId: parseCheckoutIdFromReference(externalReference),
         paymentId: firstString(firstPayment.id),
         payload,
     };
@@ -586,10 +608,13 @@ async function processMercadoPagoApiPayment(input) {
         installments,
         payment_method_id: paymentMethodId,
         ...(issuerId ? { issuer_id: issuerId } : {}),
-        external_reference: `orden_${input.orderId}`,
+        external_reference: input.externalReference,
         metadata: {
             ...asRecord(formData.metadata),
-            order_id: input.orderId,
+            reference_id: input.referenceId,
+            ...(parseMercadoPagoReference(input.externalReference)?.kind === "checkout"
+                ? { checkout_id: input.referenceId }
+                : { order_id: input.referenceId }),
         },
         payer: {
             email: payerEmail,
@@ -636,7 +661,7 @@ async function createPaymentSession(input) {
             checkoutUrl: null,
             preferenceId: null,
             publicKey: null,
-            payload: { type: "cash_on_pickup", order_id: input.orderId },
+            payload: { type: "cash_on_pickup", reference_id: input.referenceId, external_reference: input.externalReference },
             status: "ready",
             message: "Reserva generada. El cliente paga en efectivo al retirar.",
         };

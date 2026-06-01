@@ -1230,12 +1230,12 @@ function formatCanalOrden(canal: string): string {
 
 function formatMetodoPago(metodo?: string | null): string {
   const labels: Record<string, string> = {
-    cash: "Efectivo",
-    transferencia: "Transferencia",
-    tarjeta: "Tarjeta",
-    qr: "QR",
-    brick: "Tarjeta / checkout",
-    wallet: "Wallet / link",
+    cash: "Dinero en efectivo",
+    transferencia: "Transferencia bancaria",
+    tarjeta: "Tarjeta de credito o debito",
+    qr: "Codigo QR",
+    brick: "Tarjeta de credito o debito",
+    wallet: "Mercado Pago app",
     otro: "Otro",
   };
   return metodo ? labels[metodo] ?? metodo : "-";
@@ -1244,10 +1244,30 @@ function formatMetodoPago(metodo?: string | null): string {
 function formatProveedorPago(proveedor?: string | null): string {
   const labels: Record<string, string> = {
     mercadopago: "Mercado Pago",
-    efectivo: "Efectivo",
+    efectivo: "Dinero en efectivo",
     local: "Venta local",
   };
   return proveedor ? labels[proveedor] ?? proveedor : "-";
+}
+
+function formatPagoDetallado(proveedor?: string | null, metodo?: string | null): string {
+  const normalizedProvider = String(proveedor ?? "").trim().toLowerCase();
+  if (normalizedProvider === "mercadopago") {
+    return metodo === "wallet"
+      ? "Mercado Pago app"
+      : metodo === "qr"
+        ? "Mercado Pago / Codigo QR"
+        : metodo === "brick"
+          ? "Mercado Pago / Tarjeta de credito o debito"
+          : "Mercado Pago";
+  }
+  if (normalizedProvider === "efectivo") {
+    return "Dinero en efectivo";
+  }
+  if (normalizedProvider === "local") {
+    return formatMetodoPago(metodo);
+  }
+  return metodo ? formatMetodoPago(metodo) : formatProveedorPago(proveedor);
 }
 
 function paymentFeeDraftKey(proveedor: string, metodo: string): string {
@@ -1256,7 +1276,7 @@ function paymentFeeDraftKey(proveedor: string, metodo: string): string {
 
 function formatPagoOrden(orden: OrdenAdmin): string {
   if (!orden.pago) return "-";
-  const proveedor = orden.pago.proveedor === "local" ? formatMetodoPago(orden.pago.metodo) : orden.pago.proveedor === "efectivo" ? "Efectivo" : orden.pago.proveedor;
+  const proveedor = formatPagoDetallado(orden.pago.proveedor, orden.pago.metodo);
   const estado = orden.pago.estado === "iniciado" ? "pendiente" : orden.pago.estado;
   return `${proveedor} / ${estado}`;
 }
