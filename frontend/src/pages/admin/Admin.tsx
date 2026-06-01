@@ -5691,9 +5691,6 @@ export function Admin() {
             <>
               <div className="admin-section-header">
                 <h2 className="admin-section-title">Personas en app</h2>
-                <button className="adm-btn-link" onClick={() => void appPresenceOverviewQuery.refetch()}>
-                  Actualizar
-                </button>
               </div>
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>

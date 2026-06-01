@@ -1110,14 +1110,6 @@ export function VendedorPedidos() {
               Gestiona pedidos pagados, preparacion, envio y entrega.
             </p>
           </div>
-          <button
-            type="button"
-            className="ios-btn-secondary"
-            style={{ width: "auto", padding: "0.65rem 1rem" }}
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["vendedor", "ordenes"] })}
-          >
-            Actualizar
-          </button>
         </div>
 
         <div className="vendedor-ventas-nav">
