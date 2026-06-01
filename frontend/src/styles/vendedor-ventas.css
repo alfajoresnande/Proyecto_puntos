@@ -442,6 +442,9 @@
 }
 
 .local-quick-stepper-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: transparent;
   color: #8d4c23;
@@ -450,6 +453,8 @@
   font-size: 1rem;
   font-weight: 800;
   height: 100%;
+  line-height: 1;
+  padding: 0;
 }
 
 .local-quick-stepper-value {
