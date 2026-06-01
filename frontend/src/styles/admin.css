@@ -2014,7 +2014,7 @@
 .local-quick-grid {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .local-quick-card {
@@ -2022,6 +2022,7 @@
   display: grid;
   gap: 0.7rem;
   align-content: start;
+  height: 100%;
   padding: 0.78rem;
   border-radius: 1.35rem;
   border: 1px solid #e7c8ae;
@@ -2069,6 +2070,11 @@
   justify-content: center;
 }
 
+.local-quick-media.is-empty,
+.local-quick-media.has-image-error {
+  background: linear-gradient(180deg, #fff5ea 0%, #fbe6d3 100%);
+}
+
 .local-quick-image {
   width: 100%;
   height: 100%;
@@ -2077,14 +2083,28 @@
 }
 
 .local-quick-image-placeholder {
+  display: none;
   color: #b08968;
   font-size: 0.84rem;
   font-weight: 700;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.local-quick-media.is-empty .local-quick-image-placeholder,
+.local-quick-media.has-image-error .local-quick-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
 .local-quick-body {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.32rem;
+  flex: 1;
 }
 
 .local-quick-title {
@@ -2094,6 +2114,11 @@
   font-weight: 800;
   line-height: 1.2;
   text-align: center;
+  min-height: 2.4em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .local-quick-subtitle {
@@ -2103,6 +2128,10 @@
   line-height: 1.25;
   text-align: center;
   min-height: 2.1em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .local-quick-price {
@@ -2110,6 +2139,14 @@
   font-size: 1.08rem;
   line-height: 1.2;
   text-align: center;
+  margin-top: 0.15rem;
+}
+
+.local-quick-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 0.55rem;
 }
 
 .local-quick-actions {
@@ -2178,6 +2215,10 @@
 
   .local-quick-actions {
     grid-template-columns: 1fr;
+  }
+
+  .local-quick-stepper {
+    width: 100%;
   }
 }
 

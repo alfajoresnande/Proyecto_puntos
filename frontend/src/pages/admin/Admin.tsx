@@ -7074,45 +7074,57 @@ export function Admin() {
                           return (
                             <article key={`quick-local-${producto.id}`} className={`local-quick-card${isSelected ? " is-active" : ""}`}>
                               <span className="local-quick-rank-badge">#{index + 1}</span>
-                              <div className="local-quick-media">
+                              <div className={`local-quick-media${image ? "" : " is-empty"}`}>
                                 {image ? (
-                                  <img src={image} alt={producto.nombre} className="local-quick-image" loading="lazy" />
-                                ) : (
-                                  <div className="local-quick-image-placeholder">Sin foto</div>
-                                )}
+                                  <img
+                                    src={image}
+                                    alt={producto.nombre}
+                                    className="local-quick-image"
+                                    loading="lazy"
+                                    onError={(event) => {
+                                      event.currentTarget.style.display = "none";
+                                      event.currentTarget.parentElement?.classList.add("has-image-error");
+                                    }}
+                                  />
+                                ) : null}
+                                <div className="local-quick-image-placeholder">
+                                  {image ? "Foto no disponible" : "Sin foto"}
+                                </div>
                               </div>
                               <div className="local-quick-body">
                                 <p className="local-quick-title">{producto.nombre}</p>
                                 <p className="local-quick-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
                                 <strong className="local-quick-price">{formatMoney(producto.precio_dinero)}</strong>
-                                {isFlavorBox ? (
-                                  <button
-                                    type="button"
-                                    className="local-quick-primary-btn"
-                                    onClick={() => agregarProductoRapidoVentaLocal(producto)}
-                                  >
-                                    Elegir sabores
-                                  </button>
-                                ) : (
-                                  <div className="local-quick-actions">
-                                    <div className="local-quick-stepper">
-                                      <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), -1)}>
-                                        -
-                                      </button>
-                                      <span className="local-quick-stepper-value">{quickQuantity}</span>
-                                      <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), 1)}>
-                                        +
-                                      </button>
-                                    </div>
+                                <div className="local-quick-footer">
+                                  {isFlavorBox ? (
                                     <button
                                       type="button"
                                       className="local-quick-primary-btn"
                                       onClick={() => agregarProductoRapidoVentaLocal(producto)}
                                     >
-                                      Agregar
+                                      Elegir sabores
                                     </button>
-                                  </div>
-                                )}
+                                  ) : (
+                                    <div className="local-quick-actions">
+                                      <div className="local-quick-stepper">
+                                        <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), -1)}>
+                                          -
+                                        </button>
+                                        <span className="local-quick-stepper-value">{quickQuantity}</span>
+                                        <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), 1)}>
+                                          +
+                                        </button>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="local-quick-primary-btn"
+                                        onClick={() => agregarProductoRapidoVentaLocal(producto)}
+                                      >
+                                        Agregar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </article>
                           );
