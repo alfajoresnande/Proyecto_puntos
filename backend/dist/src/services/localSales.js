@@ -739,7 +739,7 @@ function normalizeDateEnd(value) {
 }
 async function getVentasReporteRows(conn, filters = {}) {
     const where = ["o.tipo_orden IN ('venta', 'mixta')"];
-    where.push("o.estado <> 'expirada'");
+    where.push("o.estado IN ('pagada', 'preparandose', 'preparada', 'enviada', 'entregando', 'entregada')");
     const params = [];
     const desde = normalizeDateStart(filters.desde);
     const hasta = normalizeDateEnd(filters.hasta);
