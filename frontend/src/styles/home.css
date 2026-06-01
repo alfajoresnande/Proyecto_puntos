@@ -1490,7 +1490,7 @@
   .home-products-carousel {
     --home-featured-card-width: min(54vw, 210px);
     --home-featured-gap: 0.62rem;
-    --home-featured-marquee-duration: 10s;
+    --home-featured-marquee-duration: 28s;
     max-width: 100%;
     padding-inline: 0;
     mask-image: linear-gradient(90deg, transparent 0, #000 0.75rem, #000 calc(100% - 0.75rem), transparent 100%);
