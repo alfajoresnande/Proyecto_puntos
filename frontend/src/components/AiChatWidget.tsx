@@ -70,7 +70,7 @@ function getDynamicGreeting(user: User | null): string {
   }
 
   const faltanDatos = !user.dni || !user.telefono || !user.localidad;
-  if (faltanDatos) {
+  if (faltanDatos && user.rol === "cliente") {
     return `${timeGreeting} **${user.nombre}**. Noté que te faltan algunos datos en tu perfil. Te recomiendo [completarlos aquí](/perfil) para poder realizar tus pedidos sin problemas. ¿En qué te ayudo hoy?`;
   }
 
@@ -103,7 +103,7 @@ function getTooltipGreeting(user: User | null): string {
   }
 
   const faltanDatos = !user.dni || !user.telefono || !user.localidad;
-  if (faltanDatos) {
+  if (faltanDatos && user.rol === "cliente") {
     return `${timeGreeting} ${user.nombre}. ¿Completamos tu perfil para tu próximo pedido? 📝`;
   }
 
