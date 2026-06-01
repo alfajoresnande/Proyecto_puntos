@@ -153,6 +153,41 @@ function normalizePaymentMethod(value: string): string {
   return VALID_PAYMENT_METHODS.has(method) ? method : "cash";
 }
 
+function formatLocalPaymentMethod(method?: string | null): string {
+  const labels: Record<string, string> = {
+    cash: "Dinero en efectivo",
+    transferencia: "Transferencia bancaria",
+    tarjeta: "Tarjeta de credito o debito",
+    qr: "Codigo QR",
+    otro: "Otro",
+    brick: "Tarjeta de credito o debito",
+    wallet: "Mercado Pago app",
+  };
+  return method ? labels[method] ?? method : "-";
+}
+
+function formatSalePaymentLabel(provider?: string | null, method?: string | null): string {
+  const normalizedProvider = String(provider ?? "").trim().toLowerCase();
+  const normalizedMethod = String(method ?? "").trim().toLowerCase();
+  if (!normalizedProvider && !normalizedMethod) return "-";
+  if (normalizedProvider === "mercadopago") {
+    if (normalizedMethod === "wallet") return "Mercado Pago app";
+    if (normalizedMethod === "qr") return "Mercado Pago / Codigo QR";
+    if (normalizedMethod === "brick") return "Mercado Pago / Tarjeta de credito o debito";
+    return "Mercado Pago";
+  }
+  if (normalizedProvider === "efectivo") {
+    return "Dinero en efectivo";
+  }
+  if (normalizedProvider === "local") {
+    return formatLocalPaymentMethod(normalizedMethod);
+  }
+  if (normalizedMethod) {
+    return formatLocalPaymentMethod(normalizedMethod);
+  }
+  return provider || "-";
+}
+
 function normalizeManualDni(value: string): string {
   const dni = value.trim();
   if (!/^\d{6,10}$/.test(dni)) {
@@ -1057,6 +1092,7 @@ export async function getVentasReporteRows(
   filters: VentaReporteFilter = {},
 ): Promise<VentaReporteRow[]> {
   const where = ["o.tipo_orden IN ('venta', 'mixta')"];
+  where.push("o.estado IN ('pagada', 'preparandose', 'preparada', 'enviada', 'entregando', 'entregada')");
   const params: Array<string | number> = [];
 
   const desde = normalizeDateStart(filters.desde);
@@ -1194,7 +1230,7 @@ export async function getVentasReporteRows(
       cliente: row.cliente,
       email: row.email,
       sucursal: row.sucursal || "-",
-      metodo_pago: [row.proveedor, row.metodo].filter(Boolean).join(" / ") || "-",
+      metodo_pago: formatSalePaymentLabel(row.proveedor, row.metodo),
       total_bruto: totalBruto,
       comision_porcentaje: paymentFee.porcentaje,
       total_comision: paymentFee.montoComision,
