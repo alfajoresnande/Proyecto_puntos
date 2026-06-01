@@ -715,25 +715,7 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .home-products-carousel {
-    overflow-x: auto;
-    mask-image: none;
-    scroll-padding-inline: 1rem;
-  }
 
-  .home-products-grid {
-    scroll-snap-type: x mandatory;
-  }
-
-  .home-products-grid.is-animated {
-    animation: none;
-  }
-
-  .home-product-card {
-    scroll-snap-align: center;
-  }
-}
 
 .home-product-card {
   position: relative;
@@ -1585,7 +1567,7 @@
   }
 
   .home-product-card {
-    min-height: 392px;
+    min-height: auto;
   }
 
   .home-product-body {
@@ -1632,7 +1614,7 @@
   }
 
   .home-product-earned-points {
-    display: none;
+    font-size: 0.68rem;
   }
 
   .home-product-free-shipping {
