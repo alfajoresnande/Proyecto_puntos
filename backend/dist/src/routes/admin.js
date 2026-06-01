@@ -415,9 +415,43 @@ router.get("/stats", async (_req, res) => {
     });
 });
 router.get("/personas-app", async (req, res) => {
-    const requested = Number(req.query.limit ?? 80);
-    const limit = Number.isFinite(requested) ? requested : 80;
-    res.json(await (0, appPresence_1.getAppPresenceOverview)(limit));
+    const requestedLimit = Number(req.query.limit ?? 80);
+    const requestedActivePage = Number(req.query.active_page ?? 1);
+    const requestedRecentPage = Number(req.query.recent_page ?? 1);
+    const requestedPageSize = Number(req.query.page_size ?? 10);
+    const pageSize = Number.isFinite(requestedPageSize) ? Math.max(5, Math.min(50, Math.floor(requestedPageSize))) : 10;
+    const activePage = Number.isFinite(requestedActivePage) ? Math.max(1, Math.floor(requestedActivePage)) : 1;
+    const recentPage = Number.isFinite(requestedRecentPage) ? Math.max(1, Math.floor(requestedRecentPage)) : 1;
+    const computedRecentLimit = recentPage * pageSize;
+    const limit = Number.isFinite(requestedLimit)
+        ? Math.max(computedRecentLimit, requestedLimit)
+        : Math.max(80, computedRecentLimit);
+    const overview = await (0, appPresence_1.getAppPresenceOverview)(limit);
+    const activeTotal = overview.active_sessions.length;
+    const recentTotal = overview.recent_logs.length;
+    const activeTotalPages = Math.max(1, Math.ceil(activeTotal / pageSize));
+    const recentTotalPages = Math.max(1, Math.ceil(recentTotal / pageSize));
+    const safeActivePage = Math.min(activePage, activeTotalPages);
+    const safeRecentPage = Math.min(recentPage, recentTotalPages);
+    const activeStart = (safeActivePage - 1) * pageSize;
+    const recentStart = (safeRecentPage - 1) * pageSize;
+    res.json({
+        summary: overview.summary,
+        active_sessions: {
+            items: overview.active_sessions.slice(activeStart, activeStart + pageSize),
+            total: activeTotal,
+            page: safeActivePage,
+            pageSize,
+            totalPages: activeTotalPages,
+        },
+        recent_logs: {
+            items: overview.recent_logs.slice(recentStart, recentStart + pageSize),
+            total: recentTotal,
+            page: safeRecentPage,
+            pageSize,
+            totalPages: recentTotalPages,
+        },
+    });
 });
 router.get("/security/monitor", requireSuperAdmin, async (req, res) => {
     const requested = Number(req.query.limit ?? 50);
@@ -878,7 +912,7 @@ router.post("/ventas-locales", async (req, res) => {
             clienteLocal: parsed.data.cliente_local ?? null,
             sucursalId: parsed.data.sucursal_id,
             metodoPago: parsed.data.metodo_pago,
-            acreditarPuntos: parsed.data.acreditar_puntos,
+            acreditarPuntos: Boolean(parsed.data.usuario_id),
             notas: parsed.data.notas,
             items: parsed.data.items,
             creadoPor: req.user.id,
@@ -920,7 +954,7 @@ router.put("/ventas-locales/:id", async (req, res) => {
             clienteLocal: parsed.data.cliente_local ?? null,
             sucursalId: parsed.data.sucursal_id,
             metodoPago: parsed.data.metodo_pago,
-            acreditarPuntos: parsed.data.acreditar_puntos,
+            acreditarPuntos: Boolean(parsed.data.usuario_id),
             notas: parsed.data.notas,
             items: parsed.data.items,
             creadoPor: req.user.id,

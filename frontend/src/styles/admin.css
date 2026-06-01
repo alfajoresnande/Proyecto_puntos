@@ -2151,20 +2151,22 @@
 
 .local-quick-actions {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 5.75rem minmax(0, 1fr);
   gap: 0.55rem;
   align-items: center;
 }
 
 .local-quick-stepper {
   display: inline-grid;
-  grid-template-columns: 2rem minmax(1.8rem, auto) 2rem;
+  grid-template-columns: 1.8rem minmax(1.5rem, 1fr) 1.8rem;
   align-items: center;
   border: 1px solid #e3c4a7;
   border-radius: 999px;
   background: #ffffff;
   overflow: hidden;
   min-height: 2.45rem;
+  width: 5.75rem;
+  justify-self: stretch;
 }
 
 .local-quick-stepper-btn {
@@ -2180,15 +2182,20 @@
   font-weight: 800;
   height: 100%;
   line-height: 1;
+  min-width: 0;
   padding: 0;
 }
 
 .local-quick-stepper-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #4a2c1a;
   font-size: 0.95rem;
   font-weight: 700;
   text-align: center;
-  min-width: 1.75rem;
+  min-width: 0;
+  line-height: 1;
 }
 
 .local-quick-primary-btn {
@@ -2201,6 +2208,7 @@
   font-weight: 800;
   min-height: 2.45rem;
   padding: 0.65rem 0.9rem;
+  white-space: nowrap;
   width: 100%;
   box-shadow: 0 12px 24px rgba(200, 90, 20, 0.22);
 }

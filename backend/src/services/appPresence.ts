@@ -3,8 +3,8 @@ import { getBuenosAiresDateStamp } from "./localSales";
 
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const ACTIVE_WINDOW_MS = 35 * 60 * 1000;
-const RECENT_LOGS_LIMIT = 200;
-const ACTIVE_SESSION_QUERY_LIMIT = 500;
+const RECENT_LOGS_LIMIT = 1000;
+const ACTIVE_SESSION_QUERY_LIMIT = 1000;
 
 export type AppPresenceVisitorType = "anonimo" | "cliente";
 

@@ -5,12 +5,8 @@ import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import {
-  buildLocalSaleQuickProducts,
   getLocalSaleQuickProductImage,
   getLocalSaleQuickProductSubtitle,
-  readLocalSaleQuickProductClicks,
-  writeLocalSaleQuickProductClicks,
-  type LocalSaleQuickClickMap,
 } from "../../lib/localSaleQuickProducts";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
@@ -310,7 +306,6 @@ export function VendedorPedidos() {
   const [ventaClienteManualTelefono, setVentaClienteManualTelefono] = useState("");
   const [ventaSucursalId, setVentaSucursalId] = useState("");
   const [ventaMetodoPago, setVentaMetodoPago] = useState("cash");
-  const [ventaAcreditarPuntos, setVentaAcreditarPuntos] = useState(false);
   const [cajaMontoApertura, setCajaMontoApertura] = useState("");
   const [cajaMontoCierre, setCajaMontoCierre] = useState("");
   const [cajaObservacionesApertura, setCajaObservacionesApertura] = useState("");
@@ -352,8 +347,7 @@ export function VendedorPedidos() {
   const [ventaCantidad, setVentaCantidad] = useState("1");
   const [ventaSabores, setVentaSabores] = useState<Record<string, string>>({});
   const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
-  const [ventaQuickCantidades, setVentaQuickCantidades] = useState<Record<string, number>>({});
-  const [ventaQuickClicks, setVentaQuickClicks] = useState<LocalSaleQuickClickMap>(() => readLocalSaleQuickProductClicks());
+  const [ventaProductoBusqueda, setVentaProductoBusqueda] = useState("");
   const [ventaNotas, setVentaNotas] = useState("");
   const [ventaEditId, setVentaEditId] = useState<number | null>(null);
 
@@ -440,10 +434,15 @@ export function VendedorPedidos() {
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
   );
-  const productosFrecuentesVenta = useMemo(
-    () => buildLocalSaleQuickProducts(productosLocales, ordenes, { channel: "vendedor", clickCounts: ventaQuickClicks }),
-    [ordenes, productosLocales, ventaQuickClicks],
-  );
+  const productosVentaFiltrados = useMemo(() => {
+    const q = ventaProductoBusqueda.trim().toLowerCase();
+    if (!q) return productosLocales;
+    return productosLocales.filter((producto) => [
+      producto.nombre,
+      producto.categoria ?? "",
+      producto.descripcion ?? "",
+    ].some((value) => value.toLowerCase().includes(q)));
+  }, [productosLocales, ventaProductoBusqueda]);
 
   useEffect(() => {
     if (!params.ventasPage || isVendedorVentasPage(params.ventasPage)) return;
@@ -471,42 +470,9 @@ export function VendedorPedidos() {
     setCajaMontoCierre(emptyZeroInputValue(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura));
   }, [cajaActual?.id]);
 
-  useEffect(() => {
-    if (!ventaCliente && ventaAcreditarPuntos) {
-      setVentaAcreditarPuntos(false);
-    }
-  }, [ventaAcreditarPuntos, ventaCliente]);
-
-  useEffect(() => {
-    writeLocalSaleQuickProductClicks(ventaQuickClicks);
-  }, [ventaQuickClicks]);
-
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
-  }
-
-  function getQuickProductCantidad(productId: number): number {
-    const value = Math.floor(Number(ventaQuickCantidades[String(productId)] ?? 1));
-    return Number.isInteger(value) && value > 0 ? value : 1;
-  }
-
-  function updateQuickProductCantidad(productId: number, delta: number) {
-    setVentaQuickCantidades((prev) => {
-      const current = Math.floor(Number(prev[String(productId)] ?? 1));
-      const next = Math.max(1, (Number.isInteger(current) && current > 0 ? current : 1) + delta);
-      return {
-        ...prev,
-        [String(productId)]: next,
-      };
-    });
-  }
-
-  function registrarQuickProductClick(productId: number) {
-    setVentaQuickClicks((prev) => ({
-      ...prev,
-      [String(productId)]: Math.max(1, Number(prev[String(productId)] ?? 0) + 1),
-    }));
   }
 
   function upsertVentaItemDraft(nextItem: VentaLocalItemDraft) {
@@ -535,20 +501,44 @@ export function VendedorPedidos() {
     });
   }
 
-  function agregarProductoRapido(producto: Producto) {
+  function getVentaProductoCantidad(productId: number): number {
+    return ventaItems
+      .filter((item) => Number(item.producto_id) === Number(productId) && !item.sabores?.length)
+      .reduce((acc, item) => acc + item.cantidad, 0);
+  }
+
+  function prepararProductoVentaConSabores(producto: Producto) {
     setOrdenErr("");
     setOrdenMsg("");
-    registrarQuickProductClick(Number(producto.id));
+    setVentaProductoId(String(producto.id));
+    setVentaCantidad("1");
+    setVentaSabores({});
+  }
+
+  function cambiarCantidadProductoVenta(producto: Producto, delta: number) {
+    setOrdenErr("");
+    setOrdenMsg("");
     if (producto.configuracion_tipo === "caja_sabores") {
-      setVentaProductoId(String(producto.id));
-      setVentaCantidad("1");
-      setVentaSabores({});
+      prepararProductoVentaConSabores(producto);
+      return;
+    }
+    if (delta < 0) {
+      setVentaItems((prev) => {
+        let pending = Math.abs(delta);
+        return prev.flatMap((item) => {
+          if (pending <= 0 || Number(item.producto_id) !== Number(producto.id) || item.sabores?.length) return [item];
+          const remove = Math.min(item.cantidad, pending);
+          pending -= remove;
+          const nextCantidad = item.cantidad - remove;
+          return nextCantidad > 0 ? [{ ...item, cantidad: nextCantidad }] : [];
+        });
+      });
       return;
     }
     upsertVentaItemDraft({
       producto_id: Number(producto.id),
       nombre: producto.nombre,
-      cantidad: getQuickProductCantidad(Number(producto.id)),
+      cantidad: delta,
       precio_dinero: Number(producto.precio_dinero ?? 0),
       sabores: [],
     });
@@ -676,10 +666,10 @@ export function VendedorPedidos() {
     setVentaClienteManualDni("");
     setVentaClienteManualTelefono("");
     setVentaMetodoPago("cash");
-    setVentaAcreditarPuntos(false);
     setVentaProductoId("");
     setVentaCantidad("1");
     setVentaSabores({});
+    setVentaProductoBusqueda("");
   }
 
   function buildVentaLocalPayload() {
@@ -713,7 +703,7 @@ export function VendedorPedidos() {
           },
       sucursal_id: Number(ventaSucursalId),
       metodo_pago: ventaMetodoPago,
-      acreditar_puntos: ventaCliente ? ventaAcreditarPuntos : false,
+      acreditar_puntos: Boolean(ventaCliente?.id),
       notas: ventaNotas.trim() || undefined,
       items: ventaItems.map((item) => ({
         producto_id: item.producto_id,
@@ -959,9 +949,9 @@ export function VendedorPedidos() {
     setVentaProductoId("");
     setVentaCantidad("1");
     setVentaSabores({});
+    setVentaProductoBusqueda("");
     setVentaSucursalId(String(orden.sucursal?.id ?? selectedSucursalValue));
     setVentaMetodoPago(orden.pago?.metodo ?? "cash");
-    setVentaAcreditarPuntos(Boolean(orden.usuario_id && orden.puntos_acreditados));
     setVentaNotas(extractEditableSaleNotes(orden.notas));
     setVentaItems(
       (orden.items ?? []).map((item) => ({
@@ -1427,14 +1417,15 @@ export function VendedorPedidos() {
         ) : null}
 
         {currentPage === "local" ? (
-        <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
-          <div style={{ display: "grid", gap: "0.75rem" }}>
+        <div className="ios-card p-4 vendedor-ventas-panel local-sale-register-shell" style={{ marginTop: "1rem" }}>
+          <div className="local-sale-header">
             <div>
               <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>{ventaEnEdicion ? `Editar venta local #${ventaEditId}` : "Registrar venta local"}</h2>
               <p className="text-xs" style={{ color: "#A08060", margin: "0.2rem 0 0" }}>
-                Queda unida a las ventas web para reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia.
+                Venta presencial rapida: descuenta stock, suma en caja y solo acredita puntos si eliges un cliente web registrado.
               </p>
             </div>
+          </div>
             {ventaEnEdicion ? (
               <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8", display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
                 <p className="text-sm" style={{ margin: 0, color: "#7C2D12", fontWeight: 700 }}>
@@ -1451,118 +1442,39 @@ export function VendedorPedidos() {
               </div>
             ) : null}
 
-            <div className="adm-form-grid">
-              <div style={{ position: "relative" }}>
+          <div className="local-sale-pos-layout">
+            <section className="local-sale-catalog-panel" aria-label="Catalogo de productos para venta local">
+              <div className="local-sale-product-search">
                 <input
-                  className="ios-input"
-                  placeholder="Buscar cliente web por nombre o DNI"
-                  value={ventaCliente ? `${ventaCliente.nombre} - ${ventaCliente.dni}` : ventaClienteQuery}
-                  onChange={(event) => {
-                    setVentaCliente(null);
-                    setVentaClienteQuery(event.target.value);
-                  }}
+                  className="ios-input local-sale-search-input"
+                  placeholder="Buscar productos"
+                  value={ventaProductoBusqueda}
+                  onChange={(event) => setVentaProductoBusqueda(event.target.value)}
                 />
-                {!ventaCliente && clientesEncontrados.length ? (
-                  <div className="ios-card p-2" style={{ position: "absolute", zIndex: 5, width: "100%", marginTop: "0.25rem", display: "grid", gap: "0.35rem" }}>
-                    {clientesEncontrados.map((cliente) => (
-                      <button
-                        key={cliente.id}
-                        type="button"
-                        className="ios-btn-secondary"
-                        style={{ width: "100%", textAlign: "left", padding: "0.5rem 0.65rem" }}
-                        onClick={() => {
-                          setVentaCliente(cliente);
-                          setVentaClienteQuery("");
-                        }}
-                      >
-                        {cliente.nombre} - DNI {cliente.dni}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                <span className="local-sale-count-pill">
+                  {productosVentaFiltrados.length} de {productosLocales.length} productos
+                </span>
               </div>
-              <input
-                className="ios-input"
-                placeholder="Cliente manual: nombre (opcional)"
-                value={ventaCliente ? "" : ventaClienteManualNombre}
-                disabled={Boolean(ventaCliente)}
-                onChange={(event) => setVentaClienteManualNombre(event.target.value)}
-              />
-              <input
-                className="ios-input"
-                placeholder="Cliente manual: DNI (opcional)"
-                inputMode="numeric"
-                maxLength={10}
-                value={ventaCliente ? "" : ventaClienteManualDni}
-                disabled={Boolean(ventaCliente)}
-                onChange={(event) => setVentaClienteManualDni(sanitizeManualDni(event.target.value))}
-              />
-              <input
-                className="ios-input"
-                placeholder="Cliente manual: telefono (opcional)"
-                inputMode="tel"
-                maxLength={25}
-                value={ventaCliente ? "" : ventaClienteManualTelefono}
-                disabled={Boolean(ventaCliente)}
-                onChange={(event) => setVentaClienteManualTelefono(sanitizeManualPhone(event.target.value))}
-              />
-              <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length || ventaEnEdicion}>
-                {sucursales.length ? (
-                  sucursales.map((sucursal) => (
-                    <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                  ))
-                ) : (
-                  <option value="">Sin locales activos</option>
-                )}
-              </select>
-              <select className="ios-input" value={ventaMetodoPago} onChange={(event) => setVentaMetodoPago(event.target.value)}>
-                <option value="cash">Efectivo</option>
-                <option value="transferencia">Transferencia</option>
-                <option value="tarjeta">Tarjeta</option>
-                <option value="qr">QR</option>
-                <option value="otro">Otro</option>
-              </select>
-              <input className="ios-input" placeholder="Notas internas" value={ventaNotas} onChange={(event) => setVentaNotas(event.target.value)} />
-            </div>
-            <label className="text-sm" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#3D1A02", fontWeight: 700 }}>
-              <input
-                type="checkbox"
-                checked={ventaAcreditarPuntos}
-                disabled={!ventaCliente}
-                onChange={(event) => setVentaAcreditarPuntos(event.target.checked)}
-              />
-              Acreditar puntos de compra al cliente
-            </label>
-            {ventaCliente ? (
-              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                Cliente web: {ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}. Los precios se calculan por categoria segun ese perfil.
-              </p>
-            ) : (
-              <p className="text-xs" style={{ color: "#A08060", margin: 0 }}>
-                Si dejas los datos del cliente vacios, la venta se registra como Cliente generico. Si completas cliente manual, el nombre es obligatorio y el DNI es opcional. Solo los clientes web registrados pueden recibir puntos.
-              </p>
-            )}
-
-            {productosFrecuentesVenta.length ? (
-              <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8", display: "grid", gap: "0.65rem" }}>
-                <p className="text-xs uppercase font-bold tracking-wider" style={{ color: "#A08060", margin: 0 }}>
-                  Productos rapidos
-                </p>
-                <div className="local-quick-grid">
-                  {productosFrecuentesVenta.map((producto, index) => {
+              <div className="local-sale-products-grid">
+                {productosLocalesQuery.isLoading ? (
+                  <div className="local-sale-empty">Cargando productos...</div>
+                ) : null}
+                {!productosLocalesQuery.isLoading && productosVentaFiltrados.length === 0 ? (
+                  <div className="local-sale-empty">No hay productos que coincidan con la busqueda.</div>
+                ) : null}
+                {productosVentaFiltrados.map((producto) => {
                     const image = getLocalSaleQuickProductImage(producto);
-                    const quickQuantity = getQuickProductCantidad(Number(producto.id));
+                    const productQuantity = getVentaProductoCantidad(Number(producto.id));
                     const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
                     const isSelected = ventaProductoId === String(producto.id);
                     return (
-                      <article key={`quick-${producto.id}`} className={`local-quick-card${isSelected ? " is-active" : ""}`}>
-                        <span className="local-quick-rank-badge">#{index + 1}</span>
-                        <div className={`local-quick-media${image ? "" : " is-empty"}`}>
+                      <article key={`local-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}`}>
+                        <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
                           {image ? (
                             <img
                               src={image}
                               alt={producto.nombre}
-                              className="local-quick-image"
+                              className="local-sale-product-image"
                               loading="lazy"
                               onError={(event) => {
                                 event.currentTarget.style.display = "none";
@@ -1570,153 +1482,257 @@ export function VendedorPedidos() {
                               }}
                             />
                           ) : null}
-                          <div className="local-quick-image-placeholder">
+                          <div className="local-sale-product-placeholder">
                             {image ? "Foto no disponible" : "Sin foto"}
                           </div>
                         </div>
-                        <div className="local-quick-body">
-                          <p className="local-quick-title">{producto.nombre}</p>
-                          <p className="local-quick-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
-                          <strong className="local-quick-price">{money(producto.precio_dinero)}</strong>
-                          <div className="local-quick-footer">
-                            {isFlavorBox ? (
-                              <button
-                                type="button"
-                                className="local-quick-primary-btn"
-                                onClick={() => agregarProductoRapido(producto)}
-                              >
-                                Elegir sabores
-                              </button>
-                            ) : (
-                              <div className="local-quick-actions">
-                                <div className="local-quick-stepper">
-                                  <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickProductCantidad(Number(producto.id), -1)}>
-                                    -
-                                  </button>
-                                  <span className="local-quick-stepper-value">{quickQuantity}</span>
-                                  <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickProductCantidad(Number(producto.id), 1)}>
-                                    +
-                                  </button>
-                                </div>
-                                <button
-                                  type="button"
-                                  className="local-quick-primary-btn"
-                                  onClick={() => agregarProductoRapido(producto)}
-                                >
-                                  Agregar
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                        <div className="local-sale-product-info">
+                          <p className="local-sale-product-title">{producto.nombre}</p>
+                          <p className="local-sale-product-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
+                          <strong className="local-sale-product-price">{money(producto.precio_dinero)}</strong>
                         </div>
+                        {isFlavorBox ? (
+                          <button
+                            type="button"
+                            className="local-sale-product-choose-btn"
+                            onClick={() => prepararProductoVentaConSabores(producto)}
+                          >
+                            Elegir sabores
+                          </button>
+                        ) : (
+                          <div className="local-sale-product-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
+                            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
+                              -
+                            </button>
+                            <span className="local-sale-product-qty">{productQuantity}</span>
+                            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
+                              +
+                            </button>
+                          </div>
+                        )}
                       </article>
                     );
                   })}
-                </div>
               </div>
-            ) : null}
+            </section>
 
-            <div className="adm-form-grid">
-              <select
-                className="ios-input"
-                value={ventaProductoId}
-                onChange={(event) => {
-                  setVentaProductoId(event.target.value);
-                  setVentaSabores({});
-                }}
-              >
-                <option value="">Producto</option>
-                {productosLocales.map((producto) => (
-                  <option key={producto.id} value={producto.id}>{producto.nombre} - {money(producto.precio_dinero)}</option>
-                ))}
-              </select>
-              <input
-                className="ios-input"
-                type="number"
-                min={1}
-                value={ventaCantidad}
-                onChange={(event) => setVentaCantidad(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter") return;
-                  event.preventDefault();
-                  agregarItemVentaLocal();
-                }}
-              />
-              <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} onClick={agregarItemVentaLocal}>
-                Agregar
-              </button>
-            </div>
+            <aside className="local-sale-checkout-panel" aria-label="Finalizar venta local">
+              <div className="local-sale-checkout-title">
+                <span className="local-sale-checkout-badge">Venta</span>
+                <h3>Finalizar venta</h3>
+              </div>
 
-            {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
-              <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8" }}>
-                <p className="text-xs uppercase font-bold tracking-wider mb-2" style={{ color: "#A08060" }}>
-                  Sabores {totalSaboresVenta}/{totalAlfajoresVenta} alfajores para {cantidadVentaSeleccionada || 0} caja{cantidadVentaSeleccionada === 1 ? "" : "s"}
-                </p>
-                <div className="adm-form-grid">
-                  {saboresProductoVenta.map((sabor) => (
-                    <label key={sabor.id} className="text-sm" style={{ display: "grid", gap: "0.25rem", color: "#3D1A02", fontWeight: 700 }}>
-                      {sabor.nombre}
+              <div className="local-sale-checkout-fields">
+                <label className="local-sale-field">
+                  <span>Cliente web registrado</span>
+                  <div className="local-sale-client-search">
+                    <input
+                      className="ios-input"
+                      placeholder="Buscar cliente por nombre o DNI"
+                      value={ventaCliente ? `${ventaCliente.nombre} - ${ventaCliente.dni}` : ventaClienteQuery}
+                      onChange={(event) => {
+                        setVentaCliente(null);
+                        setVentaClienteQuery(event.target.value);
+                      }}
+                    />
+                    {!ventaCliente && clientesEncontrados.length ? (
+                      <div className="local-sale-client-results">
+                        {clientesEncontrados.map((cliente) => (
+                          <button
+                            key={cliente.id}
+                            type="button"
+                            className="local-sale-client-option"
+                            onClick={() => {
+                              setVentaCliente(cliente);
+                              setVentaClienteQuery("");
+                            }}
+                          >
+                            {cliente.nombre} - DNI {cliente.dni}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </label>
+                {ventaCliente ? (
+                  <button
+                    type="button"
+                    className="local-sale-inline-btn"
+                    onClick={() => {
+                      setVentaCliente(null);
+                      setVentaClienteQuery("");
+                    }}
+                  >
+                    Quitar cliente web
+                  </button>
+                ) : null}
+                <label className="local-sale-field">
+                  <span>Nombre del cliente manual</span>
+                  <input
+                    className="ios-input"
+                    placeholder="Opcional"
+                    value={ventaCliente ? "" : ventaClienteManualNombre}
+                    disabled={Boolean(ventaCliente)}
+                    onChange={(event) => setVentaClienteManualNombre(event.target.value)}
+                  />
+                </label>
+                <label className="local-sale-field">
+                  <span>DNI manual</span>
+                  <input
+                    className="ios-input"
+                    placeholder="Opcional"
+                    inputMode="numeric"
+                    maxLength={10}
+                    value={ventaCliente ? "" : ventaClienteManualDni}
+                    disabled={Boolean(ventaCliente)}
+                    onChange={(event) => setVentaClienteManualDni(sanitizeManualDni(event.target.value))}
+                  />
+                </label>
+                <label className="local-sale-field">
+                  <span>Telefono manual</span>
+                  <input
+                    className="ios-input"
+                    placeholder="Opcional"
+                    inputMode="tel"
+                    maxLength={25}
+                    value={ventaCliente ? "" : ventaClienteManualTelefono}
+                    disabled={Boolean(ventaCliente)}
+                    onChange={(event) => setVentaClienteManualTelefono(sanitizeManualPhone(event.target.value))}
+                  />
+                </label>
+                <label className="local-sale-field">
+                  <span>Sucursal</span>
+                  <select className="ios-input" value={selectedSucursalValue} onChange={(event) => setVentaSucursalId(event.target.value)} disabled={!sucursales.length || ventaEnEdicion}>
+                    {sucursales.length ? (
+                      sucursales.map((sucursal) => (
+                        <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                      ))
+                    ) : (
+                      <option value="">Sin locales activos</option>
+                    )}
+                  </select>
+                </label>
+                <label className="local-sale-field">
+                  <span>Metodo de pago</span>
+                  <select className="ios-input" value={ventaMetodoPago} onChange={(event) => setVentaMetodoPago(event.target.value)}>
+                    <option value="cash">Efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="qr">QR</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </label>
+                <label className="local-sale-field">
+                  <span>Notas internas</span>
+                  <input className="ios-input" placeholder="Opcional" value={ventaNotas} onChange={(event) => setVentaNotas(event.target.value)} />
+                </label>
+              </div>
+
+              <p className="local-sale-help-text">
+                {ventaCliente
+                  ? `Cliente web: ${ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}. La compra acredita puntos automaticamente por monto.`
+                  : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
+              </p>
+
+              {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+                <div className="local-sale-flavor-panel">
+                  <div className="local-sale-flavor-head">
+                    <div>
+                      <strong>{productoVentaSeleccionado.nombre}</strong>
+                      <span>Sabores {totalSaboresVenta}/{totalAlfajoresVenta} alfajores</span>
+                    </div>
+                    <label>
+                      Cajas
                       <input
                         className="ios-input"
                         type="number"
-                        min={0}
-                        max={getMaxSaborVenta(sabor.id)}
-                        step={1}
-                        inputMode="numeric"
-                        value={ventaSabores[String(sabor.id)] ?? ""}
-                        onChange={(event) => updateSaborVenta(sabor.id, event.target.value)}
+                        min={1}
+                        value={ventaCantidad}
+                        onChange={(event) => setVentaCantidad(event.target.value)}
                       />
                     </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div style={{ display: "grid", gap: "0.5rem" }}>
-              {ventaItems.length === 0 ? (
-                <div className="ios-row text-ios-secondary text-sm">Sin productos agregados.</div>
-              ) : null}
-              {ventaItems.map((item, index) => (
-                <div key={`${item.producto_id}-${index}`} className="ios-row" style={{ alignItems: "flex-start", gap: "0.75rem" }}>
-                  <div style={{ flex: 1 }}>
-                    <p className="text-sm font-bold" style={{ margin: 0 }}>{item.nombre} x{item.cantidad} - {money(item.precio_dinero * item.cantidad)}</p>
-                    {item.sabores?.length ? (
-                      <p className="text-xs" style={{ color: "#A08060", margin: "0.15rem 0 0" }}>
-                        {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
-                      </p>
-                    ) : null}
                   </div>
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                    {!item.sabores?.length ? (
-                      <>
-                        <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => cambiarCantidadVentaItem(index, -1)}>
-                          -1
-                        </button>
-                        <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => cambiarCantidadVentaItem(index, 1)}>
-                          +1
-                        </button>
-                      </>
-                    ) : null}
-                    <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => setVentaItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
-                      Quitar
+                  <div className="local-sale-flavors-grid">
+                    {saboresProductoVenta.map((sabor) => (
+                      <label key={sabor.id} className="local-sale-field">
+                        <span>{sabor.nombre}</span>
+                        <input
+                          className="ios-input"
+                          type="number"
+                          min={0}
+                          max={getMaxSaborVenta(sabor.id)}
+                          step={1}
+                          inputMode="numeric"
+                          value={ventaSabores[String(sabor.id)] ?? ""}
+                          onChange={(event) => updateSaborVenta(sabor.id, event.target.value)}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="local-sale-flavor-actions">
+                    <button type="button" className="ios-btn-secondary" onClick={() => {
+                      setVentaProductoId("");
+                      setVentaCantidad("1");
+                      setVentaSabores({});
+                    }}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="ios-btn-primary" onClick={agregarItemVentaLocal}>
+                      Agregar caja
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
+              ) : null}
 
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
-              <strong>Total: {money(totalVentaLocal)}</strong>
+              <div className="local-sale-cart">
+                <div className="local-sale-cart-head">
+                  <strong>Productos seleccionados</strong>
+                  <span>{ventaItems.length} item{ventaItems.length === 1 ? "" : "s"}</span>
+                </div>
+                {ventaItems.length === 0 ? (
+                  <div className="local-sale-empty">Todavia no agregaste productos.</div>
+                ) : null}
+                {ventaItems.map((item, index) => (
+                  <div key={`${item.producto_id}-${index}`} className="local-sale-cart-row">
+                    <div>
+                      <p>{item.nombre} x{item.cantidad}</p>
+                      <strong>{money(item.precio_dinero * item.cantidad)}</strong>
+                      {item.sabores?.length ? (
+                        <span>{item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}</span>
+                      ) : null}
+                    </div>
+                    <div className="local-sale-cart-actions">
+                      {!item.sabores?.length ? (
+                        <>
+                          <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaItem(index, -1)} aria-label={`Quitar ${item.nombre}`}>
+                            -
+                          </button>
+                          <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaItem(index, 1)} aria-label={`Agregar ${item.nombre}`}>
+                            +
+                          </button>
+                        </>
+                      ) : null}
+                      <button type="button" className="local-sale-mini-btn danger" onClick={() => setVentaItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
+                        Quitar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="local-sale-total-row">
+                <span>Total</span>
+                <strong>{money(totalVentaLocal)}</strong>
+              </div>
               <button
                 type="button"
-                className="ios-btn-primary"
-                style={{ width: "auto", padding: "0.65rem 1rem" }}
+                className="ios-btn-primary local-sale-confirm-btn"
                 disabled={registrarVentaLocalMutation.isPending || ventaItems.length === 0}
                 onClick={() => registrarVentaLocalMutation.mutate()}
               >
                 {registrarVentaLocalMutation.isPending ? (ventaEnEdicion ? "Guardando..." : "Registrando...") : (ventaEnEdicion ? "Guardar cambios" : "Registrar venta local")}
               </button>
-            </div>
+            </aside>
           </div>
         </div>
         ) : null}

@@ -10,6 +10,7 @@ import "./styles/login.css";
 import "./styles/layout.css";
 import "./styles/catalog.css";
 import "./styles/admin.css";
+import "./styles/local-sale-pos.css";
 import "./styles/react.css";
 import "./styles/mobile-navbar.css";
 import "./styles/store-page.css";

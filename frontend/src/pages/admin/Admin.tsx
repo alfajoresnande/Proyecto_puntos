@@ -8,12 +8,8 @@ import { apiUrl, mediaUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import {
-  buildLocalSaleQuickProducts,
   getLocalSaleQuickProductImage,
   getLocalSaleQuickProductSubtitle,
-  readLocalSaleQuickProductClicks,
-  writeLocalSaleQuickProductClicks,
-  type LocalSaleQuickClickMap,
 } from "../../lib/localSaleQuickProducts";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
@@ -329,8 +325,8 @@ type AppPresenceLog = {
 
 type AppPresenceOverviewResponse = {
   summary: AppPresenceSummary;
-  active_sessions: AppPresenceSession[];
-  recent_logs: AppPresenceLog[];
+  active_sessions: PaginatedResponse<AppPresenceSession>;
+  recent_logs: PaginatedResponse<AppPresenceLog>;
 };
 
 type Usuario = {
@@ -854,6 +850,7 @@ type StaticPageSlug = "sobre-nosotros" | "terminos";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
+const APP_PRESENCE_PAGE_SIZE = 10;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
 const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
@@ -1700,13 +1697,11 @@ export function Admin() {
   const [ventaLocalClienteManualTelefono, setVentaLocalClienteManualTelefono] = useState("");
   const [ventaLocalSucursalId, setVentaLocalSucursalId] = useState("");
   const [ventaLocalMetodoPago, setVentaLocalMetodoPago] = useState("cash");
-  const [ventaLocalAcreditarPuntos, setVentaLocalAcreditarPuntos] = useState(false);
   const [ventaLocalProductoId, setVentaLocalProductoId] = useState("");
   const [ventaLocalCantidad, setVentaLocalCantidad] = useState("1");
   const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, string>>({});
   const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
-  const [ventaLocalQuickCantidades, setVentaLocalQuickCantidades] = useState<Record<string, number>>({});
-  const [ventaLocalQuickClicks, setVentaLocalQuickClicks] = useState<LocalSaleQuickClickMap>(() => readLocalSaleQuickProductClicks());
+  const [ventaLocalProductoBusqueda, setVentaLocalProductoBusqueda] = useState("");
   const [ventaLocalNotas, setVentaLocalNotas] = useState("");
   const [ventaLocalEditOrdenId, setVentaLocalEditOrdenId] = useState<number | null>(null);
   const [ventasExportCanal, setVentasExportCanal] = useState("");
@@ -1984,8 +1979,8 @@ export function Admin() {
   });
 
   const appPresenceOverviewQuery = useQuery({
-    queryKey: ["admin", "personas-app"],
-    queryFn: () => api.get<AppPresenceOverviewResponse>("/admin/personas-app?limit=200"),
+    queryKey: ["admin", "personas-app", appPresenceActivePage, appPresenceRecentPage],
+    queryFn: () => api.get<AppPresenceOverviewResponse>(`/admin/personas-app?active_page=${appPresenceActivePage}&recent_page=${appPresenceRecentPage}&page_size=${APP_PRESENCE_PAGE_SIZE}`),
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
@@ -2054,12 +2049,6 @@ export function Admin() {
       setCajaSesionesPage(totalPages);
     }
   }, [cajaSesionesPage, cajaSesionesQuery.data?.totalPages]);
-
-  useEffect(() => {
-    if (!ventaLocalClienteId && ventaLocalAcreditarPuntos) {
-      setVentaLocalAcreditarPuntos(false);
-    }
-  }, [ventaLocalClienteId, ventaLocalAcreditarPuntos]);
 
   useEffect(() => {
     const requestedVentasPathView = ventasViewFromPath(location.pathname);
@@ -2317,8 +2306,22 @@ export function Admin() {
   const securityEvents = securityMonitorQuery.data?.persistidos ?? [];
   const appPresenceOverview = appPresenceOverviewQuery.data ?? null;
   const appPresenceSummary = appPresenceOverview?.summary ?? null;
-  const activePresenceSessions = appPresenceOverview?.active_sessions ?? [];
-  const recentPresenceLogs = appPresenceOverview?.recent_logs ?? [];
+  const activePresenceData = appPresenceOverview?.active_sessions ?? {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: APP_PRESENCE_PAGE_SIZE,
+    totalPages: 1,
+  };
+  const recentPresenceData = appPresenceOverview?.recent_logs ?? {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: APP_PRESENCE_PAGE_SIZE,
+    totalPages: 1,
+  };
+  const activePresenceSessions = activePresenceData.items;
+  const recentPresenceLogs = recentPresenceData.items;
   const blockedAccessEvents = useMemo(
     () =>
       securityEvents
@@ -2413,45 +2416,20 @@ export function Admin() {
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
   );
-  const productosFrecuentesVentaLocal = useMemo(
-    () => buildLocalSaleQuickProducts(
-      productosVentaLocal,
-      ordenes.filter((orden) => orden.canal !== "web"),
-      { clickCounts: ventaLocalQuickClicks },
-    ),
-    [ordenes, productosVentaLocal, ventaLocalQuickClicks],
-  );
+  const productosVentaLocalFiltrados = useMemo(() => {
+    const q = ventaLocalProductoBusqueda.trim().toLowerCase();
+    if (!q) return productosVentaLocal;
+    return productosVentaLocal.filter((producto) => [
+      producto.nombre,
+      producto.categoria ?? "",
+      producto.descripcion ?? "",
+      producto.sku ?? "",
+    ].some((value) => value.toLowerCase().includes(q)));
+  }, [productosVentaLocal, ventaLocalProductoBusqueda]);
 
   function getMaxSaborVentaLocal(saborId: number): number {
     const actual = Number(ventaLocalSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVentaLocal - (totalSaboresVentaLocal - actual));
-  }
-
-  useEffect(() => {
-    writeLocalSaleQuickProductClicks(ventaLocalQuickClicks);
-  }, [ventaLocalQuickClicks]);
-
-  function getQuickVentaLocalCantidad(productId: number): number {
-    const value = Math.floor(Number(ventaLocalQuickCantidades[String(productId)] ?? 1));
-    return Number.isInteger(value) && value > 0 ? value : 1;
-  }
-
-  function updateQuickVentaLocalCantidad(productId: number, delta: number) {
-    setVentaLocalQuickCantidades((prev) => {
-      const current = Math.floor(Number(prev[String(productId)] ?? 1));
-      const next = Math.max(1, (Number.isInteger(current) && current > 0 ? current : 1) + delta);
-      return {
-        ...prev,
-        [String(productId)]: next,
-      };
-    });
-  }
-
-  function registrarQuickVentaLocalClick(productId: number) {
-    setVentaLocalQuickClicks((prev) => ({
-      ...prev,
-      [String(productId)]: Math.max(1, Number(prev[String(productId)] ?? 0) + 1),
-    }));
   }
 
   function upsertVentaLocalItemDraft(nextItem: VentaLocalItemDraft) {
@@ -2480,20 +2458,44 @@ export function Admin() {
     });
   }
 
-  function agregarProductoRapidoVentaLocal(producto: typeof productosVentaLocal[number]) {
+  function getVentaLocalProductoCantidad(productId: number): number {
+    return ventaLocalItems
+      .filter((item) => Number(item.producto_id) === Number(productId) && !item.sabores?.length)
+      .reduce((acc, item) => acc + item.cantidad, 0);
+  }
+
+  function prepararProductoVentaLocalConSabores(producto: typeof productosVentaLocal[number]) {
     setErrMsg("");
     setOkMsg("");
-    registrarQuickVentaLocalClick(Number(producto.id));
+    setVentaLocalProductoId(String(producto.id));
+    setVentaLocalCantidad("1");
+    setVentaLocalSabores({});
+  }
+
+  function cambiarCantidadProductoVentaLocal(producto: typeof productosVentaLocal[number], delta: number) {
+    setErrMsg("");
+    setOkMsg("");
     if (producto.configuracion_tipo === "caja_sabores") {
-      setVentaLocalProductoId(String(producto.id));
-      setVentaLocalCantidad("1");
-      setVentaLocalSabores({});
+      prepararProductoVentaLocalConSabores(producto);
+      return;
+    }
+    if (delta < 0) {
+      setVentaLocalItems((prev) => {
+        let pending = Math.abs(delta);
+        return prev.flatMap((item) => {
+          if (pending <= 0 || Number(item.producto_id) !== Number(producto.id) || item.sabores?.length) return [item];
+          const remove = Math.min(item.cantidad, pending);
+          pending -= remove;
+          const nextCantidad = item.cantidad - remove;
+          return nextCantidad > 0 ? [{ ...item, cantidad: nextCantidad }] : [];
+        });
+      });
       return;
     }
     upsertVentaLocalItemDraft({
       producto_id: Number(producto.id),
       nombre: producto.nombre,
-      cantidad: getQuickVentaLocalCantidad(Number(producto.id)),
+      cantidad: delta,
       precio_dinero: Number(producto.precio_dinero ?? 0),
       sabores: [],
     });
@@ -2731,8 +2733,8 @@ export function Admin() {
   const totalCanjesPages = Math.max(1, Math.ceil(canjes.length / LISTA_POR_PAGINA));
   const totalCodigosPages = Math.max(1, Math.ceil(codigos.length / LISTA_POR_PAGINA));
   const totalSucursalesPages = Math.max(1, Math.ceil(sucursales.length / LISTA_POR_PAGINA));
-  const totalAppPresenceActivePages = Math.max(1, Math.ceil(activePresenceSessions.length / LISTA_POR_PAGINA));
-  const totalAppPresenceRecentPages = Math.max(1, Math.ceil(recentPresenceLogs.length / LISTA_POR_PAGINA));
+  const totalAppPresenceActivePages = activePresenceData.totalPages;
+  const totalAppPresenceRecentPages = recentPresenceData.totalPages;
 
   useEffect(() => {
     setUsuariosPage((prev) => Math.min(prev, totalUsuariosPages));
@@ -2791,15 +2793,6 @@ export function Admin() {
     return blockedAccessEvents.slice(start, start + INTENTOS_SEGURIDAD_POR_PAGINA);
   }, [blockedAccessEvents, seguridadPage]);
 
-  const activePresenceSessionsPagina = useMemo(() => {
-    const start = (appPresenceActivePage - 1) * LISTA_POR_PAGINA;
-    return activePresenceSessions.slice(start, start + LISTA_POR_PAGINA);
-  }, [activePresenceSessions, appPresenceActivePage]);
-
-  const recentPresenceLogsPagina = useMemo(() => {
-    const start = (appPresenceRecentPage - 1) * LISTA_POR_PAGINA;
-    return recentPresenceLogs.slice(start, start + LISTA_POR_PAGINA);
-  }, [recentPresenceLogs, appPresenceRecentPage]);
 
   const usuariosPagina = useMemo(() => {
     const start = (usuariosPage - 1) * LISTA_POR_PAGINA;
@@ -3339,7 +3332,7 @@ export function Admin() {
     setVentaLocalClienteManualDni("");
     setVentaLocalClienteManualTelefono("");
     setVentaLocalMetodoPago("cash");
-    setVentaLocalAcreditarPuntos(false);
+    setVentaLocalProductoBusqueda("");
     resetVentaLocalProductoDraft();
   }
 
@@ -3357,10 +3350,10 @@ export function Admin() {
     setErrMsg("");
     setOkMsg("");
     setVentaLocalEditOrdenId(orden.id);
+    setVentaLocalProductoBusqueda("");
     setVentaLocalSucursalId(String(orden.sucursal_retiro_id ?? ""));
     setVentaLocalMetodoPago(orden.pago?.metodo || "cash");
     setVentaLocalNotas(orden.notas || "");
-    setVentaLocalAcreditarPuntos(Boolean(orden.usuario_id && orden.puntos_acreditados));
     if (orden.usuario_id) {
       setVentaLocalClienteId(String(orden.usuario_id));
       setVentaLocalClienteManualNombre("");
@@ -3507,7 +3500,7 @@ export function Admin() {
               },
           sucursal_id: Number(ventaLocalSucursalId),
           metodo_pago: ventaLocalMetodoPago,
-          acreditar_puntos: clienteVentaLocalSeleccionado ? ventaLocalAcreditarPuntos : false,
+          acreditar_puntos: Boolean(clienteVentaLocalSeleccionado?.id),
           notas: ventaLocalNotas.trim() || undefined,
           items: ventaLocalItems.map((item) => ({
             producto_id: item.producto_id,
@@ -5710,7 +5703,7 @@ export function Admin() {
                   </div>
                   <div className="admin-stat-card">
                     <p className="admin-stat-label">Registros recientes</p>
-                    <p className="admin-stat-value">{recentPresenceLogs.length}</p>
+                    <p className="admin-stat-value">{recentPresenceData.total}</p>
                   </div>
                 </div>
               </div>
@@ -5731,7 +5724,7 @@ export function Admin() {
                       {activePresenceSessions.length === 0 ? (
                         <div className="adm-empty">No hay clientes o usuarios no registrados activos en este momento.</div>
                       ) : (
-                        activePresenceSessionsPagina.map((session) => (
+                        activePresenceSessions.map((session) => (
                           <div key={`${session.session_id}-${session.last_seen_at}`} className="adm-mobile-item">
                             <p className="adm-mobile-item-title">{formatPresencePerson(session)}</p>
                             <p><strong>Tipo:</strong> {formatPresenceTypeLabel(session.visitante_tipo)}</p>
@@ -5767,7 +5760,7 @@ export function Admin() {
                               </td>
                             </tr>
                           ) : (
-                            activePresenceSessionsPagina.map((session) => (
+                            activePresenceSessions.map((session) => (
                               <tr key={`${session.session_id}-${session.last_seen_at}`}>
                                 <td>{formatPresencePerson(session)}</td>
                                 <td>{formatPresenceTypeLabel(session.visitante_tipo)}</td>
@@ -5809,7 +5802,7 @@ export function Admin() {
                   {recentPresenceLogs.length === 0 ? (
                     <div className="adm-empty">Todavia no hay registros guardados.</div>
                   ) : (
-                    recentPresenceLogsPagina.map((log) => (
+                    recentPresenceLogs.map((log) => (
                       <div key={log.id} className="adm-mobile-item">
                         <p className="adm-mobile-item-title">{formatPresencePerson(log)}</p>
                         <p><strong>Tipo:</strong> {formatPresenceTypeLabel(log.visitante_tipo)}</p>
@@ -5845,7 +5838,7 @@ export function Admin() {
                           </td>
                         </tr>
                       ) : (
-                        recentPresenceLogsPagina.map((log) => (
+                        recentPresenceLogs.map((log) => (
                           <tr key={log.id}>
                             <td>{formatPresencePerson(log)}</td>
                             <td>{formatPresenceTypeLabel(log.visitante_tipo)}</td>
@@ -6970,116 +6963,52 @@ export function Admin() {
             <AdminVentasView
               currentView={ventasView}
               ventaLocalContent={
-                <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
-                  <div>
-                    <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>
+                <div className="admin-card admin-card-padded local-sale-register-shell">
+                  <div className="local-sale-header">
+                    <div>
+                      <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>
                       {ventaLocalEditOrdenId ? `Editar venta local #${ventaLocalEditOrdenId}` : "Registrar venta local"}
-                    </h3>
-                    <p className="adm-inline-tip" style={{ margin: 0 }}>
-                      {ventaLocalEditOrdenId
-                        ? "Al guardar se reemplaza el detalle de productos y se ajustan stock, caja y puntos de forma automatica."
-                        : "Esta vista queda separada de los pedidos web. La venta local entra al historial y reportes, descuenta el stock compartido de la sucursal y suma en la caja automatica del dia."}
-                    </p>
-                  </div>
-                  <div className="adm-form-grid">
-                    <FieldWithFloatingTip label="Cliente" tip="Persona a la que se le registra la venta local. Si activas puntos, se acreditan a este cliente.">
-                      <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
-                        <option value="">Cliente</option>
-                        {clientesVentaLocal.map((cliente) => (
-                          <option key={cliente.id} value={cliente.id}>
-                            {cliente.nombre} - {cliente.dni || cliente.email}
-                          </option>
-                        ))}
-                      </select>
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Cliente manual" tip="Opcional. Si lo dejas vacio, la venta se registra como Cliente generico. Si lo completas, el nombre es obligatorio y el DNI queda opcional.">
-                      <input
-                        className="adm-input"
-                        placeholder="Nombre cliente manual (opcional)"
-                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualNombre}
-                        disabled={Boolean(ventaLocalClienteId)}
-                        onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
-                      />
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="DNI manual" tip="Opcional. Si lo tienes, sirve para identificar mejor al cliente manual sin convertirlo en usuario web.">
-                      <input
-                        className="adm-input"
-                        placeholder="DNI cliente manual (opcional)"
-                        inputMode="numeric"
-                        maxLength={10}
-                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
-                        disabled={Boolean(ventaLocalClienteId)}
-                        onChange={(event) => setVentaLocalClienteManualDni(sanitizeManualDni(event.target.value))}
-                      />
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Telefono manual" tip="Dato opcional para ubicar al cliente manual si hace falta contactarlo.">
-                      <input
-                        className="adm-input"
-                        placeholder="Telefono opcional"
-                        inputMode="tel"
-                        maxLength={25}
-                        value={ventaLocalClienteId ? "" : ventaLocalClienteManualTelefono}
-                        disabled={Boolean(ventaLocalClienteId)}
-                        onChange={(event) => setVentaLocalClienteManualTelefono(sanitizeManualPhone(event.target.value))}
-                      />
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Sucursal" tip="Lugar donde se realizo la venta presencial. Ayuda a ordenar reportes por punto de venta.">
-                      <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)} disabled={Boolean(ventaLocalEditOrdenId)}>
-                        <option value="">Sucursal</option>
-                        {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                          <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                        ))}
-                      </select>
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Metodo de pago" tip="Forma en la que pago el cliente. Se guarda para reportes y control interno.">
-                      <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
-                        <option value="cash">Efectivo</option>
-                        <option value="transferencia">Transferencia</option>
-                        <option value="tarjeta">Tarjeta</option>
-                        <option value="qr">QR</option>
-                        <option value="otro">Otro</option>
-                      </select>
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Notas internas" tip="Comentario opcional para el equipo. No se muestra al cliente.">
-                      <input className="adm-input" placeholder="Notas internas" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
-                    </FieldWithFloatingTip>
-                  </div>
-                  <FieldWithFloatingTip label="Acreditar puntos" tip="Si esta marcado, el cliente gana los puntos configurados por los productos comprados. Si no, solo queda registrada la venta.">
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#4A2C1A", fontWeight: 700, minHeight: "42px", paddingRight: "3.4rem" }}>
-                      <input
-                        type="checkbox"
-                        checked={ventaLocalAcreditarPuntos}
-                        disabled={!clienteVentaLocalSeleccionado}
-                        onChange={(event) => setVentaLocalAcreditarPuntos(event.target.checked)}
-                      />
-                      Acreditar puntos de compra al cliente
-                    </label>
-                  </FieldWithFloatingTip>
-                  <p className="adm-inline-tip" style={{ margin: 0 }}>
-                    {clienteVentaLocalSeleccionado
-                      ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. Los precios se ajustan por categoria segun ese perfil.`
-                      : "Si dejas los datos del cliente vacios, la venta queda como Cliente generico y usa el perfil cliente comun. Si completas cliente manual, el nombre es obligatorio y el DNI queda opcional. Solo los clientes web registrados pueden recibir puntos."}
-                  </p>
-                  {productosFrecuentesVentaLocal.length ? (
-                    <div className="adm-inline-points-box" style={{ display: "grid", gap: "0.65rem" }}>
-                      <p className="adm-inline-points-title" style={{ margin: 0 }}>
-                        Productos rapidos
+                      </h3>
+                      <p className="adm-inline-tip" style={{ margin: 0 }}>
+                        {ventaLocalEditOrdenId
+                          ? "Al guardar se reemplaza el detalle de productos y se ajustan stock, caja y puntos de forma automatica."
+                          : "Venta presencial rapida: descuenta stock, suma en caja y solo acredita puntos si eliges un cliente web registrado."}
                       </p>
-                      <div className="local-quick-grid">
-                        {productosFrecuentesVentaLocal.map((producto, index) => {
+                    </div>
+                  </div>
+                  <div className="local-sale-pos-layout">
+                    <section className="local-sale-catalog-panel" aria-label="Catalogo de productos para venta local">
+                      <div className="local-sale-product-search">
+                        <input
+                          className="adm-input local-sale-search-input"
+                          placeholder="Buscar productos"
+                          value={ventaLocalProductoBusqueda}
+                          onChange={(event) => setVentaLocalProductoBusqueda(event.target.value)}
+                        />
+                        <span className="local-sale-count-pill">
+                          {productosVentaLocalFiltrados.length} de {productosVentaLocal.length} productos
+                        </span>
+                      </div>
+                      <div className="local-sale-products-grid">
+                        {productosQuery.isLoading ? (
+                          <div className="local-sale-empty">Cargando productos...</div>
+                        ) : null}
+                        {!productosQuery.isLoading && productosVentaLocalFiltrados.length === 0 ? (
+                          <div className="local-sale-empty">No hay productos que coincidan con la busqueda.</div>
+                        ) : null}
+                        {productosVentaLocalFiltrados.map((producto) => {
                           const image = getLocalSaleQuickProductImage(producto);
-                          const quickQuantity = getQuickVentaLocalCantidad(Number(producto.id));
+                          const productQuantity = getVentaLocalProductoCantidad(Number(producto.id));
                           const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
                           const isSelected = ventaLocalProductoId === String(producto.id);
                           return (
-                            <article key={`quick-local-${producto.id}`} className={`local-quick-card${isSelected ? " is-active" : ""}`}>
-                              <span className="local-quick-rank-badge">#{index + 1}</span>
-                              <div className={`local-quick-media${image ? "" : " is-empty"}`}>
+                            <article key={`local-admin-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}`}>
+                              <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
                                 {image ? (
                                   <img
                                     src={image}
                                     alt={producto.nombre}
-                                    className="local-quick-image"
+                                    className="local-sale-product-image"
                                     loading="lazy"
                                     onError={(event) => {
                                       event.currentTarget.style.display = "none";
@@ -7087,182 +7016,229 @@ export function Admin() {
                                     }}
                                   />
                                 ) : null}
-                                <div className="local-quick-image-placeholder">
+                                <div className="local-sale-product-placeholder">
                                   {image ? "Foto no disponible" : "Sin foto"}
                                 </div>
                               </div>
-                              <div className="local-quick-body">
-                                <p className="local-quick-title">{producto.nombre}</p>
-                                <p className="local-quick-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
-                                <strong className="local-quick-price">{formatMoney(producto.precio_dinero)}</strong>
-                                <div className="local-quick-footer">
-                                  {isFlavorBox ? (
-                                    <button
-                                      type="button"
-                                      className="local-quick-primary-btn"
-                                      onClick={() => agregarProductoRapidoVentaLocal(producto)}
-                                    >
-                                      Elegir sabores
-                                    </button>
-                                  ) : (
-                                    <div className="local-quick-actions">
-                                      <div className="local-quick-stepper">
-                                        <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), -1)}>
-                                          -
-                                        </button>
-                                        <span className="local-quick-stepper-value">{quickQuantity}</span>
-                                        <button type="button" className="local-quick-stepper-btn" onClick={() => updateQuickVentaLocalCantidad(Number(producto.id), 1)}>
-                                          +
-                                        </button>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="local-quick-primary-btn"
-                                        onClick={() => agregarProductoRapidoVentaLocal(producto)}
-                                      >
-                                        Agregar
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
+                              <div className="local-sale-product-info">
+                                <p className="local-sale-product-title">{producto.nombre}</p>
+                                <p className="local-sale-product-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
+                                <strong className="local-sale-product-price">{formatMoney(producto.precio_dinero)}</strong>
                               </div>
+                              {isFlavorBox ? (
+                                <button
+                                  type="button"
+                                  className="local-sale-product-choose-btn"
+                                  onClick={() => prepararProductoVentaLocalConSabores(producto)}
+                                >
+                                  Elegir sabores
+                                </button>
+                              ) : (
+                                <div className="local-sale-product-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
+                                  <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVentaLocal(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
+                                    -
+                                  </button>
+                                  <span className="local-sale-product-qty">{productQuantity}</span>
+                                  <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVentaLocal(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
+                                    +
+                                  </button>
+                                </div>
+                              )}
                             </article>
                           );
                         })}
                       </div>
-                    </div>
-                  ) : null}
-                  <div className="adm-form-grid">
-                    <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">
-                      <select
-                        className="adm-input"
-                        value={ventaLocalProductoId}
-                        onChange={(event) => {
-                          setVentaLocalProductoId(event.target.value);
-                          setVentaLocalSabores({});
-                        }}
-                      >
-                        <option value="">Producto</option>
-                        {productosVentaLocal.map((producto) => (
-                          <option key={producto.id} value={producto.id}>
-                            {producto.nombre} - {formatMoney(producto.precio_dinero)}
-                          </option>
-                        ))}
-                      </select>
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Cantidad" tip="Cantidad de cajas del producto seleccionado. Si la caja es de 3 o 6, luego podras repartir cantidad x capacidad entre los sabores.">
-                      <input
-                        className="adm-input"
-                        type="number"
-                        min={1}
-                        value={ventaLocalCantidad}
-                        onChange={(event) => setVentaLocalCantidad(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          agregarItemVentaLocal();
-                        }}
-                      />
-                    </FieldWithFloatingTip>
-                    <FieldWithFloatingTip label="Agregar producto" tip="Suma el producto elegido al detalle de la venta. Puedes agregar varios productos antes de registrar.">
-                      <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
-                        Agregar producto
-                      </button>
-                    </FieldWithFloatingTip>
-                  </div>
-                  {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
-                    <div className="adm-inline-points-box">
-                      <p className="adm-inline-points-title">
-                        Sabores de {productoVentaLocalSeleccionado.nombre}: {totalSaboresVentaLocal}/{totalAlfajoresVentaLocal} alfajores para {cantidadVentaLocalSeleccionada || 0} caja{cantidadVentaLocalSeleccionada === 1 ? "" : "s"}
+                    </section>
+
+                    <aside className="local-sale-checkout-panel" aria-label="Finalizar venta local">
+                      <div className="local-sale-checkout-title">
+                        <span className="local-sale-checkout-badge">Venta</span>
+                        <h3>Finalizar venta</h3>
+                      </div>
+
+                      <div className="local-sale-checkout-fields">
+                        <label className="local-sale-field">
+                          <span>Cliente web registrado</span>
+                          <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
+                            <option value="">Sin cliente web</option>
+                            {clientesVentaLocal.map((cliente) => (
+                              <option key={cliente.id} value={cliente.id}>
+                                {cliente.nombre} - {cliente.dni || cliente.email}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        {ventaLocalClienteId ? (
+                          <button
+                            type="button"
+                            className="local-sale-inline-btn"
+                            onClick={() => setVentaLocalClienteId("")}
+                          >
+                            Quitar cliente web
+                          </button>
+                        ) : null}
+                        <label className="local-sale-field">
+                          <span>Nombre del cliente manual</span>
+                          <input
+                            className="adm-input"
+                            placeholder="Opcional"
+                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualNombre}
+                            disabled={Boolean(ventaLocalClienteId)}
+                            onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
+                          />
+                        </label>
+                        <label className="local-sale-field">
+                          <span>DNI manual</span>
+                          <input
+                            className="adm-input"
+                            placeholder="Opcional"
+                            inputMode="numeric"
+                            maxLength={10}
+                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
+                            disabled={Boolean(ventaLocalClienteId)}
+                            onChange={(event) => setVentaLocalClienteManualDni(sanitizeManualDni(event.target.value))}
+                          />
+                        </label>
+                        <label className="local-sale-field">
+                          <span>Telefono manual</span>
+                          <input
+                            className="adm-input"
+                            placeholder="Opcional"
+                            inputMode="tel"
+                            maxLength={25}
+                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualTelefono}
+                            disabled={Boolean(ventaLocalClienteId)}
+                            onChange={(event) => setVentaLocalClienteManualTelefono(sanitizeManualPhone(event.target.value))}
+                          />
+                        </label>
+                        <label className="local-sale-field">
+                          <span>Sucursal</span>
+                          <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)} disabled={Boolean(ventaLocalEditOrdenId)}>
+                            <option value="">Sucursal</option>
+                            {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
+                              <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="local-sale-field">
+                          <span>Metodo de pago</span>
+                          <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
+                            <option value="cash">Efectivo</option>
+                            <option value="transferencia">Transferencia</option>
+                            <option value="tarjeta">Tarjeta</option>
+                            <option value="qr">QR</option>
+                            <option value="otro">Otro</option>
+                          </select>
+                        </label>
+                        <label className="local-sale-field">
+                          <span>Notas internas</span>
+                          <input className="adm-input" placeholder="Opcional" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
+                        </label>
+                      </div>
+
+                      <p className="local-sale-help-text">
+                        {clienteVentaLocalSeleccionado
+                          ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. La compra acredita puntos automaticamente por monto.`
+                          : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
                       </p>
-                      <div className="adm-form-grid">
-                        {saboresVentaLocalProducto.map((sabor) => (
-                          <label key={sabor.id} style={{ display: "grid", gap: "0.25rem", color: "#4A2C1A", fontWeight: 700 }}>
-                            {sabor.nombre}
-                            <FieldWithFloatingTip label={`Sabor ${sabor.nombre}`} tip="Cantidad total de este sabor para todas las cajas seleccionadas. La suma debe completar cantidad de cajas x capacidad.">
+
+                      {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+                        <div className="local-sale-flavor-panel">
+                          <div className="local-sale-flavor-head">
+                            <div>
+                              <strong>{productoVentaLocalSeleccionado.nombre}</strong>
+                              <span>Sabores {totalSaboresVentaLocal}/{totalAlfajoresVentaLocal} alfajores</span>
+                            </div>
+                            <label>
+                              Cajas
                               <input
                                 className="adm-input"
                                 type="number"
-                                min={0}
-                                max={getMaxSaborVentaLocal(sabor.id)}
-                                step={1}
-                                inputMode="numeric"
-                                value={ventaLocalSabores[String(sabor.id)] ?? ""}
-                                onChange={(event) => updateSaborVentaLocal(sabor.id, event.target.value)}
+                                min={1}
+                                value={ventaLocalCantidad}
+                                onChange={(event) => setVentaLocalCantidad(event.target.value)}
                               />
-                            </FieldWithFloatingTip>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="admin-table-wrap">
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Producto</th>
-                          <th>Cantidad</th>
-                          <th>Sabores</th>
-                          <th>Subtotal</th>
-                          <th>Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                            </label>
+                          </div>
+                          <div className="local-sale-flavors-grid">
+                            {saboresVentaLocalProducto.map((sabor) => (
+                              <label key={sabor.id} className="local-sale-field">
+                                <span>{sabor.nombre}</span>
+                                <input
+                                  className="adm-input"
+                                  type="number"
+                                  min={0}
+                                  max={getMaxSaborVentaLocal(sabor.id)}
+                                  step={1}
+                                  inputMode="numeric"
+                                  value={ventaLocalSabores[String(sabor.id)] ?? ""}
+                                  onChange={(event) => updateSaborVentaLocal(sabor.id, event.target.value)}
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          <div className="local-sale-flavor-actions">
+                            <button type="button" className="adm-btn-secondary" onClick={resetVentaLocalProductoDraft}>
+                              Cancelar
+                            </button>
+                            <button type="button" className="adm-btn-primary" onClick={agregarItemVentaLocal}>
+                              Agregar caja
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="local-sale-cart">
+                        <div className="local-sale-cart-head">
+                          <strong>Productos seleccionados</strong>
+                          <span>{ventaLocalItems.length} item{ventaLocalItems.length === 1 ? "" : "s"}</span>
+                        </div>
                         {ventaLocalItems.length === 0 ? (
-                          <tr><td colSpan={5}><div className="adm-empty">Aun no agregaste productos a la venta local.</div></td></tr>
+                          <div className="local-sale-empty">Todavia no agregaste productos.</div>
                         ) : null}
                         {ventaLocalItems.map((item, index) => (
-                          <tr key={`${item.producto_id}-${index}`}>
-                            <td>{item.nombre}</td>
-                            <td>{item.cantidad}</td>
-                            <td>{item.sabores?.length ? item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ") : "-"}</td>
-                            <td>{formatMoney(item.precio_dinero * item.cantidad)}</td>
-                            <td>
-                              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
-                                {!item.sabores?.length ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="adm-btn-secondary"
-                                      onClick={() => cambiarCantidadVentaLocalItem(index, -1)}
-                                    >
-                                      -1
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="adm-btn-secondary"
-                                      onClick={() => cambiarCantidadVentaLocalItem(index, 1)}
-                                    >
-                                      +1
-                                    </button>
-                                  </>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="adm-btn-danger"
-                                  onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
-                                >
-                                  Quitar
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
+                          <div key={`${item.producto_id}-${index}`} className="local-sale-cart-row">
+                            <div>
+                              <p>{item.nombre} x{item.cantidad}</p>
+                              <strong>{formatMoney(item.precio_dinero * item.cantidad)}</strong>
+                              {item.sabores?.length ? (
+                                <span>{item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}</span>
+                              ) : null}
+                            </div>
+                            <div className="local-sale-cart-actions">
+                              {!item.sabores?.length ? (
+                                <>
+                                  <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaLocalItem(index, -1)} aria-label={`Quitar ${item.nombre}`}>
+                                    -
+                                  </button>
+                                  <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaLocalItem(index, 1)} aria-label={`Agregar ${item.nombre}`}>
+                                    +
+                                  </button>
+                                </>
+                              ) : null}
+                              <button type="button" className="local-sale-mini-btn danger" onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
+                                Quitar
+                              </button>
+                            </div>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-                    <strong>Total venta local: {formatMoney(totalVentaLocal)}</strong>
-                    <div style={{ display: "flex", gap: "0.55rem", flexWrap: "wrap" }}>
-                      {ventaLocalEditOrdenId ? (
-                        <button type="button" className="adm-btn-secondary" onClick={cancelarEdicionVentaLocal} disabled={busy}>
-                          Cancelar edicion
+                      </div>
+
+                      <div className="local-sale-total-row">
+                        <span>Total</span>
+                        <strong>{formatMoney(totalVentaLocal)}</strong>
+                      </div>
+                      <div className="local-sale-submit-actions">
+                        {ventaLocalEditOrdenId ? (
+                          <button type="button" className="adm-btn-secondary" onClick={cancelarEdicionVentaLocal} disabled={busy}>
+                            Cancelar edicion
+                          </button>
+                        ) : null}
+                        <button type="button" className="adm-btn-primary local-sale-confirm-btn" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
+                          {busy ? "Guardando..." : ventaLocalEditOrdenId ? "Guardar cambios" : "Registrar venta local"}
                         </button>
-                      ) : null}
-                      <button className="adm-btn-primary" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
-                        {busy ? "Guardando..." : ventaLocalEditOrdenId ? "Guardar cambios" : "Registrar venta local"}
-                      </button>
-                    </div>
+                      </div>
+                    </aside>
                   </div>
                 </div>
               }
