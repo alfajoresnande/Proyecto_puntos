@@ -237,6 +237,35 @@ function extractEditableSaleNotes(value?: string | null): string {
     .trim();
 }
 
+function normalizeVentaDraftSabores(
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>,
+): Array<{
+  sabor_id: number;
+  nombre: string;
+  cantidad: number;
+}> {
+  return [...(sabores ?? [])]
+    .filter((sabor) => Number(sabor.cantidad) > 0)
+    .sort((a, b) => Number(a.sabor_id) - Number(b.sabor_id));
+}
+
+function sameVentaDraftSabores(
+  left?: Array<{ sabor_id: number; cantidad: number }>,
+  right?: Array<{ sabor_id: number; cantidad: number }>,
+): boolean {
+  const normalizedLeft = normalizeVentaDraftSabores(left as Array<{ sabor_id: number; nombre: string; cantidad: number }> | undefined);
+  const normalizedRight = normalizeVentaDraftSabores(right as Array<{ sabor_id: number; nombre: string; cantidad: number }> | undefined);
+  if (normalizedLeft.length !== normalizedRight.length) return false;
+  return normalizedLeft.every((sabor, index) => (
+    Number(sabor.sabor_id) === Number(normalizedRight[index]?.sabor_id)
+    && Number(sabor.cantidad) === Number(normalizedRight[index]?.cantidad)
+  ));
+}
+
 function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
   return !orden.usuario_id && orden.cliente_nombre.trim().toLowerCase() === "cliente" && String(orden.cliente_dni ?? "").trim() === "00000000";
 }
@@ -244,6 +273,7 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
 const ORDENES_POR_PAGINA = 5;
+const MAX_QUICK_LOCAL_PRODUCTS = 8;
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
@@ -401,6 +431,38 @@ export function VendedorPedidos() {
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
   );
+  const productosFrecuentesVenta = useMemo(() => {
+    const scoreByProduct = new Map<number, number>();
+    for (const orden of ordenes) {
+      if (orden.canal !== "vendedor" || orden.tipo_orden !== "venta") continue;
+      for (const item of orden.items ?? []) {
+        const productId = Number(item.producto_id);
+        if (!Number.isInteger(productId) || productId <= 0) continue;
+        scoreByProduct.set(productId, (scoreByProduct.get(productId) ?? 0) + Math.max(1, Number(item.cantidad) || 0));
+      }
+    }
+
+    const productsById = new Map(productosLocales.map((producto) => [Number(producto.id), producto]));
+    const used = new Set<number>();
+    const ranked = [...scoreByProduct.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .map(([productId]) => productsById.get(productId))
+      .filter((producto): producto is Producto => Boolean(producto))
+      .filter((producto) => {
+        if (used.has(Number(producto.id))) return false;
+        used.add(Number(producto.id));
+        return true;
+      });
+
+    for (const producto of productosLocales) {
+      if (used.has(Number(producto.id))) continue;
+      ranked.push(producto);
+      used.add(Number(producto.id));
+      if (ranked.length >= MAX_QUICK_LOCAL_PRODUCTS) break;
+    }
+
+    return ranked.slice(0, MAX_QUICK_LOCAL_PRODUCTS);
+  }, [ordenes, productosLocales]);
 
   useEffect(() => {
     if (!params.ventasPage || isVendedorVentasPage(params.ventasPage)) return;
@@ -437,6 +499,63 @@ export function VendedorPedidos() {
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
+  }
+
+  function upsertVentaItemDraft(nextItem: VentaLocalItemDraft) {
+    setVentaItems((prev) => {
+      const nextSabores = normalizeVentaDraftSabores(nextItem.sabores);
+      const existingIndex = prev.findIndex((item) => (
+        Number(item.producto_id) === Number(nextItem.producto_id)
+        && sameVentaDraftSabores(item.sabores, nextSabores)
+      ));
+      if (existingIndex < 0) {
+        return [
+          ...prev,
+          {
+            ...nextItem,
+            sabores: nextSabores,
+          },
+        ];
+      }
+      return prev.map((item, index) => index === existingIndex
+        ? {
+            ...item,
+            cantidad: item.cantidad + nextItem.cantidad,
+            sabores: nextSabores,
+          }
+        : item);
+    });
+  }
+
+  function agregarProductoRapido(producto: Producto) {
+    setOrdenErr("");
+    setOrdenMsg("");
+    if (producto.configuracion_tipo === "caja_sabores") {
+      setVentaProductoId(String(producto.id));
+      setVentaCantidad("1");
+      setVentaSabores({});
+      return;
+    }
+    upsertVentaItemDraft({
+      producto_id: Number(producto.id),
+      nombre: producto.nombre,
+      cantidad: 1,
+      precio_dinero: Number(producto.precio_dinero ?? 0),
+      sabores: [],
+    });
+    setVentaProductoId("");
+    setVentaCantidad("1");
+    setVentaSabores({});
+  }
+
+  function cambiarCantidadVentaItem(index: number, delta: number) {
+    setVentaItems((prev) => prev.flatMap((item, itemIndex) => {
+      if (itemIndex !== index) return [item];
+      if (item.sabores?.length) return [item];
+      const nextCantidad = item.cantidad + delta;
+      if (nextCantidad <= 0) return [];
+      return [{ ...item, cantidad: nextCantidad }];
+    }));
   }
 
   function updateSaborVenta(saborId: number, rawValue: string) {
@@ -949,16 +1068,13 @@ export function VendedorPedidos() {
       }
     }
 
-    setVentaItems((prev) => [
-      ...prev,
-      {
-        producto_id: producto.id,
-        nombre: producto.nombre,
-        cantidad,
-        precio_dinero: Number(producto.precio_dinero ?? 0),
-        sabores: saboresItem,
-      },
-    ]);
+    upsertVentaItemDraft({
+      producto_id: producto.id,
+      nombre: producto.nombre,
+      cantidad,
+      precio_dinero: Number(producto.precio_dinero ?? 0),
+      sabores: saboresItem,
+    });
     setVentaProductoId("");
     setVentaCantidad("1");
     setVentaSabores({});
@@ -1418,6 +1534,28 @@ export function VendedorPedidos() {
               </p>
             )}
 
+            {productosFrecuentesVenta.length ? (
+              <div className="rounded-xl p-3" style={{ background: "#FEF3E8", border: "1px solid #F5C8A8", display: "grid", gap: "0.65rem" }}>
+                <p className="text-xs uppercase font-bold tracking-wider" style={{ color: "#A08060", margin: 0 }}>
+                  Productos rapidos
+                </p>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {productosFrecuentesVenta.map((producto) => (
+                    <button
+                      key={`quick-${producto.id}`}
+                      type="button"
+                      className="ios-btn-secondary"
+                      style={{ width: "auto", padding: "0.55rem 0.75rem" }}
+                      onClick={() => agregarProductoRapido(producto)}
+                    >
+                      {producto.nombre} · {money(producto.precio_dinero)}
+                      {producto.configuracion_tipo === "caja_sabores" ? " · elegir sabores" : " · agregar 1"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="adm-form-grid">
               <select
                 className="ios-input"
@@ -1432,7 +1570,18 @@ export function VendedorPedidos() {
                   <option key={producto.id} value={producto.id}>{producto.nombre} - {money(producto.precio_dinero)}</option>
                 ))}
               </select>
-              <input className="ios-input" type="number" min={1} value={ventaCantidad} onChange={(event) => setVentaCantidad(event.target.value)} />
+              <input
+                className="ios-input"
+                type="number"
+                min={1}
+                value={ventaCantidad}
+                onChange={(event) => setVentaCantidad(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  agregarItemVentaLocal();
+                }}
+              />
               <button type="button" className="ios-btn-secondary" style={{ width: "auto" }} onClick={agregarItemVentaLocal}>
                 Agregar
               </button>
@@ -1477,9 +1626,21 @@ export function VendedorPedidos() {
                       </p>
                     ) : null}
                   </div>
-                  <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => setVentaItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
-                    Quitar
-                  </button>
+                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                    {!item.sabores?.length ? (
+                      <>
+                        <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => cambiarCantidadVentaItem(index, -1)}>
+                          -1
+                        </button>
+                        <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => cambiarCantidadVentaItem(index, 1)}>
+                          +1
+                        </button>
+                      </>
+                    ) : null}
+                    <button type="button" className="ios-btn-secondary" style={{ width: "auto", padding: "0.45rem 0.7rem" }} onClick={() => setVentaItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
+                      Quitar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

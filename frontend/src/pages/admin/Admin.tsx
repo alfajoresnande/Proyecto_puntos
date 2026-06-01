@@ -805,6 +805,35 @@ type VentaLocalItemDraft = {
   }>;
 };
 
+function normalizeVentaLocalDraftSabores(
+  sabores?: Array<{
+    sabor_id: number;
+    nombre: string;
+    cantidad: number;
+  }>,
+): Array<{
+  sabor_id: number;
+  nombre: string;
+  cantidad: number;
+}> {
+  return [...(sabores ?? [])]
+    .filter((sabor) => Number(sabor.cantidad) > 0)
+    .sort((a, b) => Number(a.sabor_id) - Number(b.sabor_id));
+}
+
+function sameVentaLocalDraftSabores(
+  left?: Array<{ sabor_id: number; cantidad: number }>,
+  right?: Array<{ sabor_id: number; cantidad: number }>,
+): boolean {
+  const normalizedLeft = normalizeVentaLocalDraftSabores(left as Array<{ sabor_id: number; nombre: string; cantidad: number }> | undefined);
+  const normalizedRight = normalizeVentaLocalDraftSabores(right as Array<{ sabor_id: number; nombre: string; cantidad: number }> | undefined);
+  if (normalizedLeft.length !== normalizedRight.length) return false;
+  return normalizedLeft.every((sabor, index) => (
+    Number(sabor.sabor_id) === Number(normalizedRight[index]?.sabor_id)
+    && Number(sabor.cantidad) === Number(normalizedRight[index]?.cantidad)
+  ));
+}
+
 type VentaLocalSubmitResult = {
   ordenId?: number;
   orderId?: number;
@@ -819,6 +848,7 @@ const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
+const MAX_QUICK_LOCAL_PRODUCTS = 8;
 const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
@@ -2374,10 +2404,97 @@ export function Admin() {
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
   );
+  const productosFrecuentesVentaLocal = useMemo(() => {
+    const scoreByProduct = new Map<number, number>();
+    for (const orden of ordenes) {
+      if (!isOrdenVentaLocal(orden)) continue;
+      for (const item of orden.items ?? []) {
+        const productId = Number(item.producto_id);
+        if (!Number.isInteger(productId) || productId <= 0) continue;
+        scoreByProduct.set(productId, (scoreByProduct.get(productId) ?? 0) + Math.max(1, Number(item.cantidad) || 0));
+      }
+    }
+
+    const productsById = new Map(productosVentaLocal.map((producto) => [Number(producto.id), producto]));
+    const used = new Set<number>();
+    const ranked = [...scoreByProduct.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .map(([productId]) => productsById.get(productId))
+      .filter((producto): producto is typeof productosVentaLocal[number] => Boolean(producto))
+      .filter((producto) => {
+        if (used.has(Number(producto.id))) return false;
+        used.add(Number(producto.id));
+        return true;
+      });
+
+    for (const producto of productosVentaLocal) {
+      if (used.has(Number(producto.id))) continue;
+      ranked.push(producto);
+      used.add(Number(producto.id));
+      if (ranked.length >= MAX_QUICK_LOCAL_PRODUCTS) break;
+    }
+
+    return ranked.slice(0, MAX_QUICK_LOCAL_PRODUCTS);
+  }, [ordenes, productosVentaLocal]);
 
   function getMaxSaborVentaLocal(saborId: number): number {
     const actual = Number(ventaLocalSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVentaLocal - (totalSaboresVentaLocal - actual));
+  }
+
+  function upsertVentaLocalItemDraft(nextItem: VentaLocalItemDraft) {
+    setVentaLocalItems((prev) => {
+      const nextSabores = normalizeVentaLocalDraftSabores(nextItem.sabores);
+      const existingIndex = prev.findIndex((item) => (
+        Number(item.producto_id) === Number(nextItem.producto_id)
+        && sameVentaLocalDraftSabores(item.sabores, nextSabores)
+      ));
+      if (existingIndex < 0) {
+        return [
+          ...prev,
+          {
+            ...nextItem,
+            sabores: nextSabores,
+          },
+        ];
+      }
+      return prev.map((item, index) => index === existingIndex
+        ? {
+            ...item,
+            cantidad: item.cantidad + nextItem.cantidad,
+            sabores: nextSabores,
+          }
+        : item);
+    });
+  }
+
+  function agregarProductoRapidoVentaLocal(producto: typeof productosVentaLocal[number]) {
+    setErrMsg("");
+    setOkMsg("");
+    if (producto.configuracion_tipo === "caja_sabores") {
+      setVentaLocalProductoId(String(producto.id));
+      setVentaLocalCantidad("1");
+      setVentaLocalSabores({});
+      return;
+    }
+    upsertVentaLocalItemDraft({
+      producto_id: Number(producto.id),
+      nombre: producto.nombre,
+      cantidad: 1,
+      precio_dinero: Number(producto.precio_dinero ?? 0),
+      sabores: [],
+    });
+    resetVentaLocalProductoDraft();
+  }
+
+  function cambiarCantidadVentaLocalItem(index: number, delta: number) {
+    setVentaLocalItems((prev) => prev.flatMap((item, itemIndex) => {
+      if (itemIndex !== index) return [item];
+      if (item.sabores?.length) return [item];
+      const nextCantidad = item.cantidad + delta;
+      if (nextCantidad <= 0) return [];
+      return [{ ...item, cantidad: nextCantidad }];
+    }));
   }
 
   function updateSaborVentaLocal(saborId: number, rawValue: string) {
@@ -3329,16 +3446,13 @@ export function Admin() {
       }
     }
 
-    setVentaLocalItems((prev) => [
-      ...prev,
-      {
-        producto_id: producto.id,
-        nombre: producto.nombre,
-        cantidad,
-        precio_dinero: Number(producto.precio_dinero ?? 0),
-        sabores: saboresItem,
-      },
-    ]);
+    upsertVentaLocalItemDraft({
+      producto_id: producto.id,
+      nombre: producto.nombre,
+      cantidad,
+      precio_dinero: Number(producto.precio_dinero ?? 0),
+      sabores: saboresItem,
+    });
     resetVentaLocalProductoDraft();
   }
 
@@ -6933,6 +7047,27 @@ export function Admin() {
                       ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. Los precios se ajustan por categoria segun ese perfil.`
                       : "Si dejas los datos del cliente vacios, la venta queda como Cliente generico y usa el perfil cliente comun. Si completas cliente manual, el nombre es obligatorio y el DNI queda opcional. Solo los clientes web registrados pueden recibir puntos."}
                   </p>
+                  {productosFrecuentesVentaLocal.length ? (
+                    <div className="adm-inline-points-box" style={{ display: "grid", gap: "0.65rem" }}>
+                      <p className="adm-inline-points-title" style={{ margin: 0 }}>
+                        Productos rapidos
+                      </p>
+                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                        {productosFrecuentesVentaLocal.map((producto) => (
+                          <button
+                            key={`quick-local-${producto.id}`}
+                            type="button"
+                            className="adm-btn-secondary"
+                            style={{ width: "auto", padding: "0.55rem 0.75rem" }}
+                            onClick={() => agregarProductoRapidoVentaLocal(producto)}
+                          >
+                            {producto.nombre} · {formatMoney(producto.precio_dinero)}
+                            {producto.configuracion_tipo === "caja_sabores" ? " · elegir sabores" : " · agregar 1"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="adm-form-grid">
                     <FieldWithFloatingTip label="Producto" tip="Producto vendido en mostrador. Solo aparecen productos habilitados para venta o mixtos.">
                       <select
@@ -6952,7 +7087,18 @@ export function Admin() {
                       </select>
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Cantidad" tip="Cantidad de cajas del producto seleccionado. Si la caja es de 3 o 6, luego podras repartir cantidad x capacidad entre los sabores.">
-                      <input className="adm-input" type="number" min={1} value={ventaLocalCantidad} onChange={(event) => setVentaLocalCantidad(event.target.value)} />
+                      <input
+                        className="adm-input"
+                        type="number"
+                        min={1}
+                        value={ventaLocalCantidad}
+                        onChange={(event) => setVentaLocalCantidad(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          agregarItemVentaLocal();
+                        }}
+                      />
                     </FieldWithFloatingTip>
                     <FieldWithFloatingTip label="Agregar producto" tip="Suma el producto elegido al detalle de la venta. Puedes agregar varios productos antes de registrar.">
                       <button type="button" className="adm-btn-secondary" onClick={agregarItemVentaLocal}>
@@ -7008,13 +7154,33 @@ export function Admin() {
                             <td>{item.sabores?.length ? item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ") : "-"}</td>
                             <td>{formatMoney(item.precio_dinero * item.cantidad)}</td>
                             <td>
-                              <button
-                                type="button"
-                                className="adm-btn-danger"
-                                onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
-                              >
-                                Quitar
-                              </button>
+                              <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+                                {!item.sabores?.length ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="adm-btn-secondary"
+                                      onClick={() => cambiarCantidadVentaLocalItem(index, -1)}
+                                    >
+                                      -1
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="adm-btn-secondary"
+                                      onClick={() => cambiarCantidadVentaLocalItem(index, 1)}
+                                    >
+                                      +1
+                                    </button>
+                                  </>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className="adm-btn-danger"
+                                  onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}
+                                >
+                                  Quitar
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
