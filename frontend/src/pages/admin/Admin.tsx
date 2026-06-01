@@ -1624,6 +1624,8 @@ export function Admin() {
   const [codigosPage, setCodigosPage] = useState(1);
   const [sucursalesPage, setSucursalesPage] = useState(1);
   const [seguridadPage, setSeguridadPage] = useState(1);
+  const [appPresenceActivePage, setAppPresenceActivePage] = useState(1);
+  const [appPresenceRecentPage, setAppPresenceRecentPage] = useState(1);
   const [busquedaInventario, setBusquedaInventario] = useState("");
   const [busquedaPostulaciones, setBusquedaPostulaciones] = useState("");
   const [busquedaOrdenes, setBusquedaOrdenes] = useState("");
@@ -1924,7 +1926,7 @@ export function Admin() {
 
   const appPresenceOverviewQuery = useQuery({
     queryKey: ["admin", "personas-app"],
-    queryFn: () => api.get<AppPresenceOverviewResponse>("/admin/personas-app?limit=80"),
+    queryFn: () => api.get<AppPresenceOverviewResponse>("/admin/personas-app?limit=200"),
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
@@ -2579,6 +2581,8 @@ export function Admin() {
   const totalCanjesPages = Math.max(1, Math.ceil(canjes.length / LISTA_POR_PAGINA));
   const totalCodigosPages = Math.max(1, Math.ceil(codigos.length / LISTA_POR_PAGINA));
   const totalSucursalesPages = Math.max(1, Math.ceil(sucursales.length / LISTA_POR_PAGINA));
+  const totalAppPresenceActivePages = Math.max(1, Math.ceil(activePresenceSessions.length / LISTA_POR_PAGINA));
+  const totalAppPresenceRecentPages = Math.max(1, Math.ceil(recentPresenceLogs.length / LISTA_POR_PAGINA));
 
   useEffect(() => {
     setUsuariosPage((prev) => Math.min(prev, totalUsuariosPages));
@@ -2624,10 +2628,28 @@ export function Admin() {
     setSeguridadPage((prev) => Math.min(prev, totalSeguridadPages));
   }, [totalSeguridadPages]);
 
+  useEffect(() => {
+    setAppPresenceActivePage((prev) => Math.min(prev, totalAppPresenceActivePages));
+  }, [totalAppPresenceActivePages]);
+
+  useEffect(() => {
+    setAppPresenceRecentPage((prev) => Math.min(prev, totalAppPresenceRecentPages));
+  }, [totalAppPresenceRecentPages]);
+
   const blockedAccessEventsPagina = useMemo(() => {
     const start = (seguridadPage - 1) * INTENTOS_SEGURIDAD_POR_PAGINA;
     return blockedAccessEvents.slice(start, start + INTENTOS_SEGURIDAD_POR_PAGINA);
   }, [blockedAccessEvents, seguridadPage]);
+
+  const activePresenceSessionsPagina = useMemo(() => {
+    const start = (appPresenceActivePage - 1) * LISTA_POR_PAGINA;
+    return activePresenceSessions.slice(start, start + LISTA_POR_PAGINA);
+  }, [activePresenceSessions, appPresenceActivePage]);
+
+  const recentPresenceLogsPagina = useMemo(() => {
+    const start = (appPresenceRecentPage - 1) * LISTA_POR_PAGINA;
+    return recentPresenceLogs.slice(start, start + LISTA_POR_PAGINA);
+  }, [recentPresenceLogs, appPresenceRecentPage]);
 
   const usuariosPagina = useMemo(() => {
     const start = (usuariosPage - 1) * LISTA_POR_PAGINA;
@@ -5562,7 +5584,7 @@ export function Admin() {
                       {activePresenceSessions.length === 0 ? (
                         <div className="adm-empty">No hay clientes o usuarios no registrados activos en este momento.</div>
                       ) : (
-                        activePresenceSessions.map((session) => (
+                        activePresenceSessionsPagina.map((session) => (
                           <div key={`${session.session_id}-${session.last_seen_at}`} className="adm-mobile-item">
                             <p className="adm-mobile-item-title">{formatPresencePerson(session)}</p>
                             <p><strong>Tipo:</strong> {formatPresenceTypeLabel(session.visitante_tipo)}</p>
@@ -5598,7 +5620,7 @@ export function Admin() {
                               </td>
                             </tr>
                           ) : (
-                            activePresenceSessions.map((session) => (
+                            activePresenceSessionsPagina.map((session) => (
                               <tr key={`${session.session_id}-${session.last_seen_at}`}>
                                 <td>{formatPresencePerson(session)}</td>
                                 <td>{formatPresenceTypeLabel(session.visitante_tipo)}</td>
@@ -5617,6 +5639,13 @@ export function Admin() {
                         </tbody>
                       </table>
                     </div>
+
+                    <PaginationControls
+                      page={appPresenceActivePage}
+                      totalPages={totalAppPresenceActivePages}
+                      onPrev={() => setAppPresenceActivePage((prev) => Math.max(1, prev - 1))}
+                      onNext={() => setAppPresenceActivePage((prev) => Math.min(totalAppPresenceActivePages, prev + 1))}
+                    />
                   </>
                 )}
               </div>
@@ -5633,7 +5662,7 @@ export function Admin() {
                   {recentPresenceLogs.length === 0 ? (
                     <div className="adm-empty">Todavia no hay registros guardados.</div>
                   ) : (
-                    recentPresenceLogs.map((log) => (
+                    recentPresenceLogsPagina.map((log) => (
                       <div key={log.id} className="adm-mobile-item">
                         <p className="adm-mobile-item-title">{formatPresencePerson(log)}</p>
                         <p><strong>Tipo:</strong> {formatPresenceTypeLabel(log.visitante_tipo)}</p>
@@ -5669,7 +5698,7 @@ export function Admin() {
                           </td>
                         </tr>
                       ) : (
-                        recentPresenceLogs.map((log) => (
+                        recentPresenceLogsPagina.map((log) => (
                           <tr key={log.id}>
                             <td>{formatPresencePerson(log)}</td>
                             <td>{formatPresenceTypeLabel(log.visitante_tipo)}</td>
@@ -5688,6 +5717,13 @@ export function Admin() {
                     </tbody>
                   </table>
                 </div>
+
+                <PaginationControls
+                  page={appPresenceRecentPage}
+                  totalPages={totalAppPresenceRecentPages}
+                  onPrev={() => setAppPresenceRecentPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setAppPresenceRecentPage((prev) => Math.min(totalAppPresenceRecentPages, prev + 1))}
+                />
               </div>
             </>
           ) : null}
