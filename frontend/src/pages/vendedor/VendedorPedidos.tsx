@@ -1081,7 +1081,10 @@ export function VendedorPedidos() {
 
   return (
     <section className="dashboard-section vendedor-dashboard-section vendedor-ventas-shell">
-      <div className="ios-card p-4 vendedor-ventas-hero" style={{ borderLeft: "4px solid #D4621A" }}>
+      <div
+        className={`ios-card p-4 vendedor-ventas-hero${currentPage === "local" ? " vendedor-ventas-hero-full" : ""}`}
+        style={currentPage === "local" ? undefined : { borderLeft: "4px solid #D4621A" }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
             <h1 className="ios-title" style={{ marginBottom: "0.25rem" }}>Ventas y Pedidos</h1>
@@ -1417,7 +1420,7 @@ export function VendedorPedidos() {
         ) : null}
 
         {currentPage === "local" ? (
-        <div className="ios-card p-4 vendedor-ventas-panel local-sale-register-shell" style={{ marginTop: "1rem" }}>
+        <div className="vendedor-ventas-panel local-sale-register-shell" style={{ marginTop: "1rem" }}>
           <div className="local-sale-header">
             <div>
               <h2 className="text-base font-bold" style={{ color: "#3D1A02", margin: 0 }}>{ventaEnEdicion ? `Editar venta local #${ventaEditId}` : "Registrar venta local"}</h2>

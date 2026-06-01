@@ -6963,7 +6963,7 @@ export function Admin() {
             <AdminVentasView
               currentView={ventasView}
               ventaLocalContent={
-                <div className="admin-card admin-card-padded local-sale-register-shell">
+                <div className="local-sale-register-shell">
                   <div className="local-sale-header">
                     <div>
                       <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>
