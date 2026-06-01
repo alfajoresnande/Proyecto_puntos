@@ -120,6 +120,12 @@ function toIso(value: Date | string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
+function toTimestamp(value: Date | string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 function floorToHalfHour(date: Date): Date {
   const bucket = new Date(date);
   bucket.setUTCSeconds(0, 0);
@@ -132,6 +138,17 @@ function getTodayRangeInBuenosAires(now: Date = new Date()): { start: Date; end:
   const start = new Date(`${dateStamp}T00:00:00-03:00`);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
+}
+
+function getPresenceIdentityKey(
+  row: Pick<PresenceBaseRow, "identity_key" | "visitante_tipo" | "usuario_id" | "visitor_id">,
+): string {
+  const explicit = row.identity_key?.trim();
+  if (explicit) return explicit;
+  if (row.visitante_tipo === "cliente" && Number.isInteger(row.usuario_id) && Number(row.usuario_id) > 0) {
+    return `cliente:${Number(row.usuario_id)}`;
+  }
+  return `anonimo:${row.visitor_id}`;
 }
 
 function serializePresenceRow(row: PresenceBaseRow): AppPresenceLog {
@@ -155,6 +172,68 @@ function serializePresenceRow(row: PresenceBaseRow): AppPresenceLog {
     user_agent: row.user_agent ?? null,
     page_views: Number(row.page_views ?? 0),
   };
+}
+
+function aggregateRecentPresenceRows(rows: PresenceBaseRow[]): AppPresenceLog[] {
+  const grouped = new Map<string, {
+    latest: PresenceBaseRow;
+    firstSeenAt: number;
+    bucketStart: number;
+    bucketEnd: number;
+    pageViews: number;
+  }>();
+
+  for (const row of rows) {
+    const key = getPresenceIdentityKey(row);
+    const current = grouped.get(key);
+    const rowFirstSeenAt = toTimestamp(row.first_seen_at);
+    const rowBucketStart = toTimestamp(row.bucket_start);
+    const rowBucketEnd = toTimestamp(row.bucket_end);
+    const rowLastSeenAt = toTimestamp(row.last_seen_at);
+    const rowPageViews = Number(row.page_views ?? 0);
+
+    if (!current) {
+      grouped.set(key, {
+        latest: row,
+        firstSeenAt: rowFirstSeenAt,
+        bucketStart: rowBucketStart,
+        bucketEnd: rowBucketEnd,
+        pageViews: rowPageViews,
+      });
+      continue;
+    }
+
+    if (rowLastSeenAt > toTimestamp(current.latest.last_seen_at)) {
+      current.latest = row;
+    }
+    current.firstSeenAt = Math.min(current.firstSeenAt, rowFirstSeenAt);
+    current.bucketStart = Math.min(current.bucketStart, rowBucketStart);
+    current.bucketEnd = Math.max(current.bucketEnd, rowBucketEnd);
+    current.pageViews += rowPageViews;
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => toTimestamp(right.latest.last_seen_at) - toTimestamp(left.latest.last_seen_at))
+    .map<AppPresenceLog>(({ latest, firstSeenAt, bucketStart, bucketEnd, pageViews }) => ({
+      id: Number(latest.id),
+      session_id: latest.session_id,
+      visitor_id: latest.visitor_id,
+      usuario_id: latest.usuario_id === null ? null : Number(latest.usuario_id),
+      visitante_tipo: latest.visitante_tipo,
+      cliente_nombre: latest.cliente_nombre ?? null,
+      cliente_email: latest.cliente_email ?? null,
+      bucket_start: new Date(bucketStart || Date.now()).toISOString(),
+      bucket_end: new Date(bucketEnd || Date.now()).toISOString(),
+      first_seen_at: new Date(firstSeenAt || Date.now()).toISOString(),
+      last_seen_at: toIso(latest.last_seen_at),
+      first_path: latest.first_path,
+      last_path: latest.last_path,
+      page_title: latest.page_title ?? null,
+      referrer: latest.referrer ?? null,
+      ip: latest.ip,
+      user_agent: latest.user_agent ?? null,
+      page_views: pageViews,
+    }));
 }
 
 export async function recordAppPresence(input: RecordAppPresenceInput, conn: Queryable = pool): Promise<void> {
@@ -207,6 +286,7 @@ export async function recordAppPresence(input: RecordAppPresenceInput, conn: Que
 export async function getAppPresenceOverview(limit = 80, conn: Queryable = pool): Promise<AppPresenceOverview> {
   const safeLimit = Math.max(10, Math.min(limit, RECENT_LOGS_LIMIT));
   const now = new Date();
+  const recentThreshold = new Date(now.getTime() - THIRTY_MINUTES_MS);
   const activeThreshold = new Date(now.getTime() - ACTIVE_WINDOW_MS);
   const { start, end } = getTodayRangeInBuenosAires(now);
 
@@ -237,9 +317,10 @@ export async function getAppPresenceOverview(limit = 80, conn: Queryable = pool)
               u.nombre AS cliente_nombre, u.email AS cliente_email
        FROM app_presencia_registros apr
        LEFT JOIN usuarios u ON u.id = apr.usuario_id
+       WHERE apr.last_seen_at >= ?
        ORDER BY apr.last_seen_at DESC, apr.id DESC
        LIMIT ?`,
-      [safeLimit],
+      [toMysqlDateTime(recentThreshold), safeLimit],
     ),
     qAll<PresenceBaseRow>(
       conn,
@@ -295,28 +376,56 @@ export async function getAppPresenceOverview(limit = 80, conn: Queryable = pool)
     current.pageViews += Number(row.page_views ?? 0);
   }
 
-  const activeSessions = Array.from(latestBySession.values())
-    .map<AppPresenceActiveSession>((row) => {
-      const meta = sessionMeta.get(row.session_id);
-      return {
-        session_id: row.session_id,
-        visitor_id: row.visitor_id,
-        usuario_id: row.usuario_id === null ? null : Number(row.usuario_id),
-        visitante_tipo: row.visitante_tipo,
-        cliente_nombre: row.cliente_nombre ?? null,
-        cliente_email: row.cliente_email ?? null,
-        started_at: new Date(meta?.startedAt ?? new Date(row.first_seen_at).getTime()).toISOString(),
-        last_seen_at: toIso(row.last_seen_at),
-        first_path: row.first_path,
-        last_path: row.last_path,
-        page_title: row.page_title ?? null,
-        referrer: row.referrer ?? null,
-        ip: row.ip,
-        user_agent: row.user_agent ?? null,
-        page_views: meta?.pageViews ?? Number(row.page_views ?? 0),
-      };
-    })
+  const activePeople = new Map<string, {
+    latest: PresenceBaseRow;
+    startedAt: number;
+    pageViews: number;
+  }>();
+
+  for (const row of latestBySession.values()) {
+    const key = getPresenceIdentityKey(row);
+    const meta = sessionMeta.get(row.session_id);
+    const startedAt = meta?.startedAt ?? toTimestamp(row.first_seen_at);
+    const pageViews = meta?.pageViews ?? Number(row.page_views ?? 0);
+    const current = activePeople.get(key);
+
+    if (!current) {
+      activePeople.set(key, {
+        latest: row,
+        startedAt,
+        pageViews,
+      });
+      continue;
+    }
+
+    if (toTimestamp(row.last_seen_at) > toTimestamp(current.latest.last_seen_at)) {
+      current.latest = row;
+    }
+    current.startedAt = Math.min(current.startedAt, startedAt);
+    current.pageViews += pageViews;
+  }
+
+  const activeSessions = Array.from(activePeople.values())
+    .map<AppPresenceActiveSession>(({ latest, startedAt, pageViews }) => ({
+      session_id: latest.session_id,
+      visitor_id: latest.visitor_id,
+      usuario_id: latest.usuario_id === null ? null : Number(latest.usuario_id),
+      visitante_tipo: latest.visitante_tipo,
+      cliente_nombre: latest.cliente_nombre ?? null,
+      cliente_email: latest.cliente_email ?? null,
+      started_at: new Date(startedAt || Date.now()).toISOString(),
+      last_seen_at: toIso(latest.last_seen_at),
+      first_path: latest.first_path,
+      last_path: latest.last_path,
+      page_title: latest.page_title ?? null,
+      referrer: latest.referrer ?? null,
+      ip: latest.ip,
+      user_agent: latest.user_agent ?? null,
+      page_views: pageViews,
+    }))
     .sort((left, right) => new Date(right.last_seen_at).getTime() - new Date(left.last_seen_at).getTime());
+
+  const recentLogs = aggregateRecentPresenceRows(recentLogsRows);
 
   const summaryRow = todaySummary[0] ?? {
     unique_devices_today: 0,
@@ -334,6 +443,6 @@ export async function getAppPresenceOverview(limit = 80, conn: Queryable = pool)
       registros_hoy: Number(summaryRow.registros_hoy ?? 0),
     },
     active_sessions: activeSessions,
-    recent_logs: recentLogsRows.map((row) => serializePresenceRow(row)),
+    recent_logs: recentLogs,
   };
 }

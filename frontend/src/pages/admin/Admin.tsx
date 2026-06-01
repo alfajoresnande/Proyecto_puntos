@@ -5553,7 +5553,7 @@ export function Admin() {
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Vista simple de personas y sesiones recientes: solo quien es, que tipo de visita hace, cuando entro, si sigue navegando y en que pantalla esta.
+                  Vista simple de personas reales: si una misma persona abre varias pestañas en el mismo navegador, el sistema la agrupa en una sola fila para no duplicarla.
                 </p>
 
                 <div className="admin-stats" style={{ margin: 0 }}>
@@ -5653,7 +5653,7 @@ export function Admin() {
               <div className="admin-section-header">
                 <h2 className="admin-section-title">Ultimos registros de 30 minutos</h2>
                 <span className="adm-inline-tip" style={{ margin: 0 }}>
-                  Historial reciente de pulsos guardados por sesion.
+                  Historial reciente por persona, agrupado por navegador o cuenta para evitar duplicados de la misma visita.
                 </span>
               </div>
 
