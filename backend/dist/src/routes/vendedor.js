@@ -283,6 +283,18 @@ router.get("/clientes/buscar", async (req, res, next) => {
         next(err);
     }
 });
+router.get("/configuracion-puntos", async (_req, res, next) => {
+    try {
+        const config = await (0, points_1.getPointsProgramConfig)(db_1.pool);
+        res.json({
+            montoBase: config.montoBase,
+            puntosPorMonto: config.puntosPorMonto,
+        });
+    }
+    catch (err) {
+        next(err);
+    }
+});
 // Cargar puntos usando productos del catálogo como referencia
 function roundAmountToNearestThousand(amount) {
     if (!Number.isFinite(amount) || amount <= 0)

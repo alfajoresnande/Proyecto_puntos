@@ -8,6 +8,7 @@ import {
   getLocalSaleQuickProductImage,
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
+import { calculatePointsByAmount } from "../../lib/points";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
 
@@ -19,6 +20,11 @@ type ClienteBuscado = {
   puntos: number;
   tipo_cliente?: "cliente" | "mayorista" | "empleado";
   descuento_porcentaje?: number;
+};
+
+type PointsProgramConfigResponse = {
+  montoBase: number;
+  puntosPorMonto: number;
 };
 
 type SucursalPublica = {
@@ -378,6 +384,13 @@ export function VendedorPedidos() {
     enabled: ventaClienteQuery.trim().length >= 2 && !ventaCliente,
   });
 
+  const puntosConfigQuery = useQuery({
+    queryKey: ["vendedor", "configuracion-puntos"],
+    queryFn: () => api.get<PointsProgramConfigResponse>("/vendedor/configuracion-puntos"),
+    refetchInterval: 60000,
+    refetchIntervalInBackground: true,
+  });
+
   const proveedoresQuery = useQuery({
     queryKey: ["vendedor", "proveedores"],
     queryFn: () => api.get<ProveedorVendedor[]>("/vendedor/proveedores"),
@@ -404,6 +417,7 @@ export function VendedorPedidos() {
   const productosLocales = productosLocalesQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
   const clientesEncontrados = clientesQuery.data ?? [];
+  const puntosConfig = puntosConfigQuery.data ?? null;
   const proveedores = proveedoresQuery.data ?? [];
   const cajaActual = cajaActualQuery.data ?? null;
   const gastos = gastosQuery.data ?? [];
@@ -433,6 +447,10 @@ export function VendedorPedidos() {
   const totalVentaLocal = useMemo(
     () => ventaItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaItems],
+  );
+  const puntosVentaLocalEstimados = useMemo(
+    () => calculatePointsByAmount(totalVentaLocal, puntosConfig?.montoBase, puntosConfig?.puntosPorMonto),
+    [puntosConfig?.montoBase, puntosConfig?.puntosPorMonto, totalVentaLocal],
   );
   const productosVentaFiltrados = useMemo(() => {
     const q = ventaProductoBusqueda.trim().toLowerCase();
@@ -1636,6 +1654,11 @@ export function VendedorPedidos() {
                   ? `Cliente web: ${ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}. La compra acredita puntos automaticamente por monto.`
                   : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
               </p>
+              {ventaCliente ? (
+                <p className="local-sale-points-preview">
+                  Puntos estimados a acreditar: <strong>{puntosVentaLocalEstimados}</strong> pts
+                </p>
+              ) : null}
 
               {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
                 <div className="local-sale-flavor-panel">

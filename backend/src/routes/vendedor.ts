@@ -20,6 +20,7 @@ import { createPricingResolver, getActiveClientePricingProfile } from "../servic
 import {
   acreditarPuntosPorCompra,
   calcularPuntosPorMonto,
+  getPointsProgramConfig,
   registrarMovimientoPuntos,
 } from "../services/points";
 import { approvePaidOrder, cancelOrderUrgently } from "../services/orderLifecycle";
@@ -386,6 +387,18 @@ router.get("/clientes/buscar", async (req, res, next) => {
       [term, term]
     );
     res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/configuracion-puntos", async (_req, res, next) => {
+  try {
+    const config = await getPointsProgramConfig(pool);
+    res.json({
+      montoBase: config.montoBase,
+      puntosPorMonto: config.puntosPorMonto,
+    });
   } catch (err) {
     next(err);
   }

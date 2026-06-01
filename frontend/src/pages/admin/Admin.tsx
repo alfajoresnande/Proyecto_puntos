@@ -12,6 +12,7 @@ import {
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
 import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
+import { calculatePointsByAmount } from "../../lib/points";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { AreaExplanation } from "./components/AreaExplanation";
 import { useAuthStore } from "../../store/authStore";
@@ -2415,6 +2416,10 @@ export function Admin() {
   const totalVentaLocal = useMemo(
     () => ventaLocalItems.reduce((acc, item) => acc + item.precio_dinero * item.cantidad, 0),
     [ventaLocalItems],
+  );
+  const puntosVentaLocalEstimados = useMemo(
+    () => calculatePointsByAmount(totalVentaLocal, configDraft.puntos_monto_base, configDraft.puntos_por_monto),
+    [configDraft.puntos_monto_base, configDraft.puntos_por_monto, totalVentaLocal],
   );
   const productosVentaLocalFiltrados = useMemo(() => {
     const q = ventaLocalProductoBusqueda.trim().toLowerCase();
@@ -7141,6 +7146,11 @@ export function Admin() {
                           ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. La compra acredita puntos automaticamente por monto.`
                           : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
                       </p>
+                      {clienteVentaLocalSeleccionado ? (
+                        <p className="local-sale-points-preview">
+                          Puntos estimados a acreditar: <strong>{puntosVentaLocalEstimados}</strong> pts
+                        </p>
+                      ) : null}
 
                       {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
                         <div className="local-sale-flavor-panel">
