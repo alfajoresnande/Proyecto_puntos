@@ -1020,6 +1020,18 @@ function formatPresenceTypeLabel(type: AppPresenceSession["visitante_tipo"]): st
   return type === "cliente" ? "Cliente" : "Usuario no registrado";
 }
 
+const PRESENCE_ACTIVE_WINDOW_MS = 35 * 60 * 1000;
+
+function isPresenceStillActive(lastSeenAt: string | null | undefined): boolean {
+  const timestamp = lastSeenAt ? new Date(lastSeenAt).getTime() : Number.NaN;
+  if (!Number.isFinite(timestamp)) return false;
+  return Date.now() - timestamp <= PRESENCE_ACTIVE_WINDOW_MS;
+}
+
+function formatPresenceStillActive(lastSeenAt: string | null | undefined): string {
+  return isPresenceStillActive(lastSeenAt) ? "Si" : "No";
+}
+
 async function saveBlobWithPicker(blob: Blob, filename: string, mimeType: string): Promise<"saved" | "downloaded" | "cancelled"> {
   const pickerWindow = window as SaveFilePickerWindow;
   const extensionMatch = filename.match(/\.[a-z0-9]+$/i);
@@ -5519,7 +5531,7 @@ export function Admin() {
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
-                  Este tablero registra usuarios no registrados y clientes con sesion iniciada por dispositivo/sesion. Cada sesion se renueva con un pulso cada 30 minutos mientras la persona sigue navegando. Staff no se incluye.
+                  Vista simple de personas y sesiones recientes: solo quien es, que tipo de visita hace, cuando entro, si sigue navegando y en que pantalla esta.
                 </p>
 
                 <div className="admin-stats" style={{ margin: 0 }}>
@@ -5528,30 +5540,8 @@ export function Admin() {
                     <p className="admin-stat-value">{appPresenceSummary?.active_now ?? 0}</p>
                   </div>
                   <div className="admin-stat-card">
-                    <p className="admin-stat-label">Clientes activos</p>
-                    <p className="admin-stat-value">{appPresenceSummary?.active_clientes ?? 0}</p>
-                  </div>
-                  <div className="admin-stat-card">
-                    <p className="admin-stat-label" style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                      Usuarios no registrados
-                      <FloatingTip
-                        label="Usuarios no registrados"
-                        tip="Personas que estan navegando la app sin iniciar sesion. Pueden venir de la parte publica, login o flujo cliente previo a identificarse."
-                      />
-                    </p>
-                    <p className="admin-stat-value">{appPresenceSummary?.active_anonimos ?? 0}</p>
-                  </div>
-                  <div className="admin-stat-card">
-                    <p className="admin-stat-label">Dispositivos hoy</p>
-                    <p className="admin-stat-value">{appPresenceSummary?.unique_devices_today ?? 0}</p>
-                  </div>
-                  <div className="admin-stat-card">
-                    <p className="admin-stat-label">Sesiones hoy</p>
-                    <p className="admin-stat-value">{appPresenceSummary?.unique_sessions_today ?? 0}</p>
-                  </div>
-                  <div className="admin-stat-card">
-                    <p className="admin-stat-label">Registros 30m hoy</p>
-                    <p className="admin-stat-value">{appPresenceSummary?.registros_hoy ?? 0}</p>
+                    <p className="admin-stat-label">Registros recientes</p>
+                    <p className="admin-stat-value">{recentPresenceLogs.length}</p>
                   </div>
                 </div>
               </div>
@@ -5576,12 +5566,14 @@ export function Admin() {
                           <div key={`${session.session_id}-${session.last_seen_at}`} className="adm-mobile-item">
                             <p className="adm-mobile-item-title">{formatPresencePerson(session)}</p>
                             <p><strong>Tipo:</strong> {formatPresenceTypeLabel(session.visitante_tipo)}</p>
-                            <p><strong>Dispositivo:</strong> {shortPresenceId(session.visitor_id)} / sesion {shortPresenceId(session.session_id)}</p>
+                            <p><strong>Ingreso:</strong> {formatBuenosAiresDateTime(session.started_at)}</p>
+                            <p>
+                              <strong>Sigue en la app:</strong>{" "}
+                              <span className={`adm-badge ${isPresenceStillActive(session.last_seen_at) ? "adm-badge-active" : "adm-badge-neutral"}`}>
+                                {formatPresenceStillActive(session.last_seen_at)}
+                              </span>
+                            </p>
                             <p><strong>Vista actual:</strong> {formatPresenceView(session.last_path, session.page_title)}</p>
-                            <p><strong>Desde:</strong> {formatBuenosAiresDateTime(session.started_at)}</p>
-                            <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(session.last_seen_at)}</p>
-                            <p><strong>Accesos:</strong> {session.page_views}</p>
-                            <p><strong>IP:</strong> {session.ip}</p>
                           </div>
                         ))
                       )}
@@ -5592,27 +5584,16 @@ export function Admin() {
                         <thead>
                           <tr>
                             <th>Persona</th>
-                            <th>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                                Tipo
-                                <FloatingTip
-                                  label="Tipo de persona en app"
-                                  tip="Usuario no registrado significa que la persona esta navegando la app sin iniciar sesion. Cliente significa que ya ingreso con su cuenta."
-                                />
-                              </span>
-                            </th>
-                            <th>Dispositivo</th>
+                            <th>Tipo</th>
+                            <th>Ingreso</th>
+                            <th>Sigue en la app</th>
                             <th>Vista actual</th>
-                            <th>Desde</th>
-                            <th>Ultimo pulso</th>
-                            <th>Accesos</th>
-                            <th>IP</th>
                           </tr>
                         </thead>
                         <tbody>
                           {activePresenceSessions.length === 0 ? (
                             <tr>
-                              <td colSpan={8}>
+                              <td colSpan={5}>
                                 <div className="adm-empty">No hay clientes o usuarios no registrados activos en este momento.</div>
                               </td>
                             </tr>
@@ -5622,15 +5603,14 @@ export function Admin() {
                                 <td>{formatPresencePerson(session)}</td>
                                 <td>{formatPresenceTypeLabel(session.visitante_tipo)}</td>
                                 <td>
-                                  <span className="adm-code-chip">{shortPresenceId(session.visitor_id)}</span>
-                                  {" / "}
-                                  <span className="adm-code-chip">{shortPresenceId(session.session_id)}</span>
+                                  {formatBuenosAiresDateTime(session.started_at)}
+                                </td>
+                                <td>
+                                  <span className={`adm-badge ${isPresenceStillActive(session.last_seen_at) ? "adm-badge-active" : "adm-badge-neutral"}`}>
+                                    {formatPresenceStillActive(session.last_seen_at)}
+                                  </span>
                                 </td>
                                 <td>{formatPresenceView(session.last_path, session.page_title)}</td>
-                                <td>{formatBuenosAiresDateTime(session.started_at)}</td>
-                                <td>{formatBuenosAiresDateTime(session.last_seen_at)}</td>
-                                <td>{session.page_views}</td>
-                                <td>{session.ip}</td>
                               </tr>
                             ))
                           )}
@@ -5656,15 +5636,15 @@ export function Admin() {
                     recentPresenceLogs.map((log) => (
                       <div key={log.id} className="adm-mobile-item">
                         <p className="adm-mobile-item-title">{formatPresencePerson(log)}</p>
-                        <p><strong>Ventana 30m:</strong> {formatBuenosAiresDateTime(log.bucket_start)}</p>
                         <p><strong>Tipo:</strong> {formatPresenceTypeLabel(log.visitante_tipo)}</p>
-                        <p><strong>Dispositivo:</strong> {shortPresenceId(log.visitor_id)} / sesion {shortPresenceId(log.session_id)}</p>
-                        <p><strong>Vista inicial:</strong> {formatPresenceView(log.first_path, log.page_title)}</p>
+                        <p><strong>Ingreso:</strong> {formatBuenosAiresDateTime(log.first_seen_at)}</p>
+                        <p>
+                          <strong>Sigue en la app:</strong>{" "}
+                          <span className={`adm-badge ${isPresenceStillActive(log.last_seen_at) ? "adm-badge-active" : "adm-badge-neutral"}`}>
+                            {formatPresenceStillActive(log.last_seen_at)}
+                          </span>
+                        </p>
                         <p><strong>Vista actual:</strong> {formatPresenceView(log.last_path, log.page_title)}</p>
-                        <p><strong>Primer ingreso:</strong> {formatBuenosAiresDateTime(log.first_seen_at)}</p>
-                        <p><strong>Ultimo pulso:</strong> {formatBuenosAiresDateTime(log.last_seen_at)}</p>
-                        <p><strong>Accesos:</strong> {log.page_views}</p>
-                        <p><strong>IP:</strong> {log.ip}</p>
                       </div>
                     ))
                   )}
@@ -5674,50 +5654,34 @@ export function Admin() {
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>Ventana 30m</th>
                         <th>Persona</th>
-                        <th>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                            Tipo
-                            <FloatingTip
-                              label="Tipo de persona en registros"
-                              tip="Usuario no registrado significa que la persona esta navegando la app sin iniciar sesion. Cliente significa que ya ingreso con su cuenta."
-                            />
-                          </span>
-                        </th>
-                        <th>Dispositivo</th>
-                        <th>Vista inicial</th>
+                        <th>Tipo</th>
+                        <th>Ingreso</th>
+                        <th>Sigue en la app</th>
                         <th>Vista actual</th>
-                        <th>Primer ingreso</th>
-                        <th>Ultimo pulso</th>
-                        <th>Accesos</th>
-                        <th>IP</th>
                       </tr>
                     </thead>
                     <tbody>
                       {recentPresenceLogs.length === 0 ? (
                         <tr>
-                          <td colSpan={10}>
+                          <td colSpan={5}>
                             <div className="adm-empty">Todavia no hay registros guardados.</div>
                           </td>
                         </tr>
                       ) : (
                         recentPresenceLogs.map((log) => (
                           <tr key={log.id}>
-                            <td>{formatBuenosAiresDateTime(log.bucket_start)}</td>
                             <td>{formatPresencePerson(log)}</td>
                             <td>{formatPresenceTypeLabel(log.visitante_tipo)}</td>
                             <td>
-                              <span className="adm-code-chip">{shortPresenceId(log.visitor_id)}</span>
-                              {" / "}
-                              <span className="adm-code-chip">{shortPresenceId(log.session_id)}</span>
+                              {formatBuenosAiresDateTime(log.first_seen_at)}
                             </td>
-                            <td>{formatPresenceView(log.first_path, log.page_title)}</td>
+                            <td>
+                              <span className={`adm-badge ${isPresenceStillActive(log.last_seen_at) ? "adm-badge-active" : "adm-badge-neutral"}`}>
+                                {formatPresenceStillActive(log.last_seen_at)}
+                              </span>
+                            </td>
                             <td>{formatPresenceView(log.last_path, log.page_title)}</td>
-                            <td>{formatBuenosAiresDateTime(log.first_seen_at)}</td>
-                            <td>{formatBuenosAiresDateTime(log.last_seen_at)}</td>
-                            <td>{log.page_views}</td>
-                            <td>{log.ip}</td>
                           </tr>
                         ))
                       )}

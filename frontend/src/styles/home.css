@@ -1507,12 +1507,12 @@
   }
 
   .home-products-carousel {
-    --home-featured-card-width: min(72vw, 280px);
-    --home-featured-gap: 0.9rem;
-    --home-featured-marquee-duration: 16s;
+    --home-featured-card-width: min(54vw, 210px);
+    --home-featured-gap: 0.62rem;
+    --home-featured-marquee-duration: 10s;
     max-width: 100%;
-    padding-inline: 0.1rem;
-    mask-image: linear-gradient(90deg, transparent 0, #000 1rem, #000 calc(100% - 1rem), transparent 100%);
+    padding-inline: 0;
+    mask-image: linear-gradient(90deg, transparent 0, #000 0.75rem, #000 calc(100% - 0.75rem), transparent 100%);
   }
 
   .home-products-grid {
@@ -1584,43 +1584,59 @@
     aspect-ratio: 16 / 9;
   }
 
+  .home-product-card {
+    min-height: 392px;
+  }
+
   .home-product-body {
-    gap: 0.42rem;
-    padding: 0.72rem 0.78rem 0.9rem;
+    gap: 0.3rem;
+    padding: 0.62rem 0.68rem 0.74rem;
   }
 
   .home-product-actions {
-    gap: 0.55rem;
+    gap: 0.42rem;
   }
 
   .home-product-action {
-    min-height: 40px;
-    font-size: 0.8rem;
-    padding: 0.52rem 0.6rem;
+    min-height: 36px;
+    font-size: 0.74rem;
+    padding: 0.42rem 0.52rem;
   }
 
   .home-product-body h3 {
     height: auto;
-    min-height: 2.2rem;
-    max-height: 2.2rem;
-    font-size: 0.92rem;
+    min-height: 1.85rem;
+    max-height: 1.85rem;
+    font-size: 0.82rem;
   }
 
   .home-product-body > p {
-    height: 2.8rem;
-    min-height: 2.8rem;
-    max-height: 2.8rem;
-    font-size: 0.8rem;
-    line-height: 1.28;
+    display: none;
+  }
+
+  .home-product-meta {
+    min-height: 0;
+    gap: 0.24rem;
+  }
+
+  .home-product-price-row {
+    padding-top: 0.34rem;
+  }
+
+  .home-product-price-row span {
+    font-size: 0.68rem;
   }
 
   .home-product-price-row strong {
-    font-size: 0.96rem;
+    font-size: 0.84rem;
   }
 
-  .home-product-earned-points,
+  .home-product-earned-points {
+    display: none;
+  }
+
   .home-product-free-shipping {
-    font-size: 0.74rem;
+    font-size: 0.68rem;
   }
 
   .home-flow-number {
