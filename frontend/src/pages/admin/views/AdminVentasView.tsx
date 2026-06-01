@@ -1,12 +1,11 @@
 import type { ReactNode } from "react";
 import { AreaExplanation } from "../components/AreaExplanation";
 
-export type AdminVentasViewKey = "pedidos" | "venta-local" | "reportes";
+export type AdminVentasViewKey = "pedidos" | "reportes";
 
 type AdminVentasViewProps = {
   currentView: AdminVentasViewKey;
   pedidosContent: ReactNode;
-  ventaLocalContent: ReactNode;
   reportesContent: ReactNode;
 };
 
@@ -25,15 +24,6 @@ const SALES_VIEWS: Array<{
     ],
   },
   {
-    key: "venta-local",
-    label: "Venta local",
-    explanation: [
-      "Aca se cargan ventas presenciales del local, ya sea a un cliente web, a una persona manual o como Cliente generico para registrar rapido.",
-      "La venta local descuenta stock compartido de la sucursal y suma en la caja diaria segun el medio de pago elegido.",
-      "Si se elige un cliente web, se pueden aplicar sus descuentos y acreditar puntos cuando corresponda.",
-    ],
-  },
-  {
     key: "reportes",
     label: "Reportes",
     explanation: [
@@ -47,7 +37,6 @@ const SALES_VIEWS: Array<{
 export function AdminVentasView({
   currentView,
   pedidosContent,
-  ventaLocalContent,
   reportesContent,
 }: AdminVentasViewProps) {
   const activeView = SALES_VIEWS.find((view) => view.key === currentView) ?? SALES_VIEWS[0];
@@ -59,7 +48,6 @@ export function AdminVentasView({
 
       <div style={{ display: "grid", gap: "1.5rem" }}>
         {currentView === "pedidos" ? pedidosContent : null}
-        {currentView === "venta-local" ? ventaLocalContent : null}
         {currentView === "reportes" ? reportesContent : null}
       </div>
     </div>

@@ -888,14 +888,13 @@ function isAdminTab(value: string | null): value is AdminTab {
 }
 
 function isVentasView(value: string | null): value is AdminVentasViewKey {
-  return value === "pedidos" || value === "venta-local" || value === "reportes";
+  return value === "pedidos" || value === "reportes";
 }
 
 function ventasViewFromPath(pathname: string): AdminVentasViewKey | null {
   const match = pathname.match(/\/ventas\/([^/?#]+)/);
   const segment = match?.[1];
   if (segment === "pedidos") return "pedidos";
-  if (segment === "local") return "venta-local";
   if (segment === "reportes") return "reportes";
   return null;
 }
@@ -928,7 +927,6 @@ function adminTabFromPath(pathname: string): AdminTab | null {
 }
 
 function ventasPathSegment(view: AdminVentasViewKey): string {
-  if (view === "venta-local") return "local";
   return view;
 }
 
@@ -1216,20 +1214,8 @@ function sanitizeManualDni(value: string): string {
   return value.replace(/\D/g, "").slice(0, 10);
 }
 
-function sanitizeManualPhone(value: string): string {
-  return value.replace(/[^0-9+()\-\s]/g, "").slice(0, 25);
-}
-
 function validateManualDni(value: string): boolean {
   return /^\d{6,10}$/.test(value.trim());
-}
-
-function validateManualPhone(value: string): boolean {
-  const phone = value.trim();
-  if (!phone) return true;
-  if (!/^[0-9+()\-\s]+$/.test(phone)) return false;
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 6 && digits.length <= 15;
 }
 
 function formatTipoProducto(tipo?: ProductoAdmin["tipo_producto"]): string {
@@ -1695,7 +1681,6 @@ export function Admin() {
   const [ventaLocalClienteId, setVentaLocalClienteId] = useState("");
   const [ventaLocalClienteManualNombre, setVentaLocalClienteManualNombre] = useState("");
   const [ventaLocalClienteManualDni, setVentaLocalClienteManualDni] = useState("");
-  const [ventaLocalClienteManualTelefono, setVentaLocalClienteManualTelefono] = useState("");
   const [ventaLocalSucursalId, setVentaLocalSucursalId] = useState("");
   const [ventaLocalMetodoPago, setVentaLocalMetodoPago] = useState("cash");
   const [ventaLocalProductoId, setVentaLocalProductoId] = useState("");
@@ -1703,7 +1688,6 @@ export function Admin() {
   const [ventaLocalSabores, setVentaLocalSabores] = useState<Record<string, string>>({});
   const [ventaLocalItems, setVentaLocalItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaLocalProductoBusqueda, setVentaLocalProductoBusqueda] = useState("");
-  const [ventaLocalNotas, setVentaLocalNotas] = useState("");
   const [ventaLocalEditOrdenId, setVentaLocalEditOrdenId] = useState<number | null>(null);
   const [ventasExportCanal, setVentasExportCanal] = useState("");
   const [ventasExportDesde, setVentasExportDesde] = useState("");
@@ -2041,6 +2025,14 @@ export function Admin() {
   }, [cajaSucursalId, sucursalesQuery.data]);
 
   useEffect(() => {
+    if (ventaLocalEditOrdenId || ventaLocalSucursalId) return;
+    const firstActiveSucursal = sucursalesQuery.data?.find((item) => item.activo);
+    if (firstActiveSucursal) {
+      setVentaLocalSucursalId(String(firstActiveSucursal.id));
+    }
+  }, [sucursalesQuery.data, ventaLocalEditOrdenId, ventaLocalSucursalId]);
+
+  useEffect(() => {
     setCajaSesionesPage(1);
   }, [cajaSucursalId]);
 
@@ -2052,6 +2044,11 @@ export function Admin() {
   }, [cajaSesionesPage, cajaSesionesQuery.data?.totalPages]);
 
   useEffect(() => {
+    if (/\/ventas\/local(?:[/?#]|$)/.test(location.pathname)) {
+      navigate(`${panelBasePath}/ventas/pedidos`, { replace: true });
+      return;
+    }
+
     const requestedVentasPathView = ventasViewFromPath(location.pathname);
     if (requestedVentasPathView) {
       setTab("ordenes");
@@ -3331,11 +3328,9 @@ export function Admin() {
   function resetVentaLocalForm() {
     setVentaLocalEditOrdenId(null);
     setVentaLocalItems([]);
-    setVentaLocalNotas("");
     setVentaLocalClienteId("");
     setVentaLocalClienteManualNombre("");
     setVentaLocalClienteManualDni("");
-    setVentaLocalClienteManualTelefono("");
     setVentaLocalMetodoPago("cash");
     setVentaLocalProductoBusqueda("");
     resetVentaLocalProductoDraft();
@@ -3345,50 +3340,6 @@ export function Admin() {
     resetVentaLocalForm();
     setOkMsg("");
     setErrMsg("");
-  }
-
-  function editarVentaLocalDesdeOrden(orden: OrdenAdmin) {
-    if (!isOrdenVentaLocal(orden)) {
-      setErrMsg("Solo se pueden editar ventas locales.");
-      return;
-    }
-    setErrMsg("");
-    setOkMsg("");
-    setVentaLocalEditOrdenId(orden.id);
-    setVentaLocalProductoBusqueda("");
-    setVentaLocalSucursalId(String(orden.sucursal_retiro_id ?? ""));
-    setVentaLocalMetodoPago(orden.pago?.metodo || "cash");
-    setVentaLocalNotas(orden.notas || "");
-    if (orden.usuario_id) {
-      setVentaLocalClienteId(String(orden.usuario_id));
-      setVentaLocalClienteManualNombre("");
-      setVentaLocalClienteManualDni("");
-      setVentaLocalClienteManualTelefono("");
-    } else if (orden.cliente_local_id) {
-      setVentaLocalClienteId("");
-      setVentaLocalClienteManualNombre(orden.cliente_nombre || "");
-      setVentaLocalClienteManualDni(orden.cliente_local_dni || "");
-      setVentaLocalClienteManualTelefono(orden.cliente_local_telefono || "");
-    } else {
-      setVentaLocalClienteId("");
-      setVentaLocalClienteManualNombre("");
-      setVentaLocalClienteManualDni("");
-      setVentaLocalClienteManualTelefono("");
-    }
-    setVentaLocalItems((orden.items ?? []).map((item) => ({
-      producto_id: Number(item.producto_id),
-      nombre: item.nombre,
-      cantidad: Number(item.cantidad),
-      precio_dinero: Number(item.cantidad) > 0 ? Number(item.subtotal_dinero ?? 0) / Number(item.cantidad) : 0,
-      sabores: item.sabores?.map((sabor) => ({
-        sabor_id: Number(sabor.sabor_id),
-        nombre: sabor.nombre,
-        cantidad: Number(sabor.cantidad),
-      })) ?? [],
-    })));
-    resetVentaLocalProductoDraft();
-    abrirVistaVentas("venta-local");
-    setOkMsg(`Editando venta local #${orden.id}. Al guardar se ajustan stock, caja y puntos.`);
   }
 
   async function cancelarVentaLocal(orden: OrdenAdmin) {
@@ -3476,8 +3427,7 @@ export function Admin() {
       if (!ventaLocalItems.length) throw new Error("Agrega al menos un producto a la venta local.");
       const hasManualCustomer = Boolean(
         ventaLocalClienteManualNombre.trim() ||
-        ventaLocalClienteManualDni.trim() ||
-        ventaLocalClienteManualTelefono.trim(),
+        ventaLocalClienteManualDni.trim(),
       );
       if (!ventaLocalClienteId && hasManualCustomer) {
         if (!ventaLocalClienteManualNombre.trim()) {
@@ -3485,9 +3435,6 @@ export function Admin() {
         }
         if (ventaLocalClienteManualDni.trim() && !validateManualDni(ventaLocalClienteManualDni)) {
           throw new Error("El DNI del cliente manual debe tener solo numeros y entre 6 y 10 digitos.");
-        }
-        if (!validateManualPhone(ventaLocalClienteManualTelefono)) {
-          throw new Error("El telefono manual solo puede contener numeros y debe tener entre 6 y 15 digitos.");
         }
       }
 
@@ -3501,12 +3448,10 @@ export function Admin() {
             : {
                 nombre: ventaLocalClienteManualNombre.trim(),
                 dni: ventaLocalClienteManualDni.trim() || undefined,
-                telefono: ventaLocalClienteManualTelefono.trim() || undefined,
               },
           sucursal_id: Number(ventaLocalSucursalId),
           metodo_pago: ventaLocalMetodoPago,
           acreditar_puntos: Boolean(clienteVentaLocalSeleccionado?.id),
-          notas: ventaLocalNotas.trim() || undefined,
           items: ventaLocalItems.map((item) => ({
             producto_id: item.producto_id,
             cantidad: item.cantidad,
@@ -5063,12 +5008,6 @@ export function Admin() {
                   onClick={() => abrirVistaVentas("pedidos")}
                 >
                   Pedidos
-                </button>
-                <button
-                  className={`admin-nav-subbtn${tab === "ordenes" && ventasView === "venta-local" ? " active" : ""}`}
-                  onClick={() => abrirVistaVentas("venta-local")}
-                >
-                  Venta local
                 </button>
                 <button
                   className={`admin-nav-subbtn${tab === "ordenes" && ventasView === "reportes" ? " active" : ""}`}
@@ -6964,291 +6903,6 @@ export function Admin() {
           {tab === "ordenes" ? (
             <AdminVentasView
               currentView={ventasView}
-              ventaLocalContent={
-                <div className="local-sale-register-shell">
-                  <div className="local-sale-header">
-                    <div>
-                      <h3 style={{ margin: "0 0 0.25rem", color: "#3D1A02" }}>
-                      {ventaLocalEditOrdenId ? `Editar venta local #${ventaLocalEditOrdenId}` : "Registrar venta local"}
-                      </h3>
-                      <p className="adm-inline-tip" style={{ margin: 0 }}>
-                        {ventaLocalEditOrdenId
-                          ? "Al guardar se reemplaza el detalle de productos y se ajustan stock, caja y puntos de forma automatica."
-                          : "Venta presencial rapida: descuenta stock, suma en caja y solo acredita puntos si eliges un cliente web registrado."}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="local-sale-pos-layout">
-                    <section className="local-sale-catalog-panel" aria-label="Catalogo de productos para venta local">
-                      <div className="local-sale-product-search">
-                        <input
-                          className="adm-input local-sale-search-input"
-                          placeholder="Buscar productos"
-                          value={ventaLocalProductoBusqueda}
-                          onChange={(event) => setVentaLocalProductoBusqueda(event.target.value)}
-                        />
-                        <span className="local-sale-count-pill">
-                          {productosVentaLocalFiltrados.length} de {productosVentaLocal.length} productos
-                        </span>
-                      </div>
-                      <div className="local-sale-products-grid">
-                        {productosQuery.isLoading ? (
-                          <div className="local-sale-empty">Cargando productos...</div>
-                        ) : null}
-                        {!productosQuery.isLoading && productosVentaLocalFiltrados.length === 0 ? (
-                          <div className="local-sale-empty">No hay productos que coincidan con la busqueda.</div>
-                        ) : null}
-                        {productosVentaLocalFiltrados.map((producto) => {
-                          const image = getLocalSaleQuickProductImage(producto);
-                          const productQuantity = getVentaLocalProductoCantidad(Number(producto.id));
-                          const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
-                          const isSelected = ventaLocalProductoId === String(producto.id);
-                          return (
-                            <article key={`local-admin-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}`}>
-                              <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
-                                {image ? (
-                                  <img
-                                    src={image}
-                                    alt={producto.nombre}
-                                    className="local-sale-product-image"
-                                    loading="lazy"
-                                    onError={(event) => {
-                                      event.currentTarget.style.display = "none";
-                                      event.currentTarget.parentElement?.classList.add("has-image-error");
-                                    }}
-                                  />
-                                ) : null}
-                                <div className="local-sale-product-placeholder">
-                                  {image ? "Foto no disponible" : "Sin foto"}
-                                </div>
-                              </div>
-                              <div className="local-sale-product-info">
-                                <p className="local-sale-product-title">{producto.nombre}</p>
-                                <p className="local-sale-product-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
-                                <strong className="local-sale-product-price">{formatMoney(producto.precio_dinero)}</strong>
-                              </div>
-                              {isFlavorBox ? (
-                                <button
-                                  type="button"
-                                  className="local-sale-product-choose-btn"
-                                  onClick={() => prepararProductoVentaLocalConSabores(producto)}
-                                >
-                                  Elegir sabores
-                                </button>
-                              ) : (
-                                <div className="local-sale-product-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
-                                  <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVentaLocal(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
-                                    -
-                                  </button>
-                                  <span className="local-sale-product-qty">{productQuantity}</span>
-                                  <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVentaLocal(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
-                                    +
-                                  </button>
-                                </div>
-                              )}
-                            </article>
-                          );
-                        })}
-                      </div>
-                    </section>
-
-                    <aside className="local-sale-checkout-panel" aria-label="Finalizar venta local">
-                      <div className="local-sale-checkout-title">
-                        <span className="local-sale-checkout-badge">Venta</span>
-                        <h3>Finalizar venta</h3>
-                      </div>
-
-                      <div className="local-sale-checkout-fields">
-                        <label className="local-sale-field">
-                          <span>Cliente web registrado</span>
-                          <select className="adm-input" value={ventaLocalClienteId} onChange={(event) => setVentaLocalClienteId(event.target.value)}>
-                            <option value="">Sin cliente web</option>
-                            {clientesVentaLocal.map((cliente) => (
-                              <option key={cliente.id} value={cliente.id}>
-                                {cliente.nombre} - {cliente.dni || cliente.email}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        {ventaLocalClienteId ? (
-                          <button
-                            type="button"
-                            className="local-sale-inline-btn"
-                            onClick={() => setVentaLocalClienteId("")}
-                          >
-                            Quitar cliente web
-                          </button>
-                        ) : null}
-                        <label className="local-sale-field">
-                          <span>Nombre del cliente manual</span>
-                          <input
-                            className="adm-input"
-                            placeholder="Opcional"
-                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualNombre}
-                            disabled={Boolean(ventaLocalClienteId)}
-                            onChange={(event) => setVentaLocalClienteManualNombre(event.target.value)}
-                          />
-                        </label>
-                        <label className="local-sale-field">
-                          <span>DNI manual</span>
-                          <input
-                            className="adm-input"
-                            placeholder="Opcional"
-                            inputMode="numeric"
-                            maxLength={10}
-                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualDni}
-                            disabled={Boolean(ventaLocalClienteId)}
-                            onChange={(event) => setVentaLocalClienteManualDni(sanitizeManualDni(event.target.value))}
-                          />
-                        </label>
-                        <label className="local-sale-field">
-                          <span>Telefono manual</span>
-                          <input
-                            className="adm-input"
-                            placeholder="Opcional"
-                            inputMode="tel"
-                            maxLength={25}
-                            value={ventaLocalClienteId ? "" : ventaLocalClienteManualTelefono}
-                            disabled={Boolean(ventaLocalClienteId)}
-                            onChange={(event) => setVentaLocalClienteManualTelefono(sanitizeManualPhone(event.target.value))}
-                          />
-                        </label>
-                        <label className="local-sale-field">
-                          <span>Sucursal</span>
-                          <select className="adm-input" value={ventaLocalSucursalId} onChange={(event) => setVentaLocalSucursalId(event.target.value)} disabled={Boolean(ventaLocalEditOrdenId)}>
-                            <option value="">Sucursal</option>
-                            {sucursales.filter((sucursal) => sucursal.activo).map((sucursal) => (
-                              <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="local-sale-field">
-                          <span>Metodo de pago</span>
-                          <select className="adm-input" value={ventaLocalMetodoPago} onChange={(event) => setVentaLocalMetodoPago(event.target.value)}>
-                            <option value="cash">Efectivo</option>
-                            <option value="transferencia">Transferencia</option>
-                            <option value="tarjeta">Tarjeta</option>
-                            <option value="qr">QR</option>
-                            <option value="otro">Otro</option>
-                          </select>
-                        </label>
-                        <label className="local-sale-field">
-                          <span>Notas internas</span>
-                          <input className="adm-input" placeholder="Opcional" value={ventaLocalNotas} onChange={(event) => setVentaLocalNotas(event.target.value)} />
-                        </label>
-                      </div>
-
-                      <p className="local-sale-help-text">
-                        {clienteVentaLocalSeleccionado
-                          ? `Cliente web tipo ${formatTipoClienteLabel(clienteVentaLocalSeleccionado.tipo_cliente).toLowerCase()}. La compra acredita puntos automaticamente por monto.`
-                          : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
-                      </p>
-                      {clienteVentaLocalSeleccionado ? (
-                        <p className="local-sale-points-preview">
-                          Puntos estimados a acreditar: <strong>{puntosVentaLocalEstimados}</strong> pts
-                        </p>
-                      ) : null}
-
-                      {productoVentaLocalSeleccionado?.configuracion_tipo === "caja_sabores" ? (
-                        <div className="local-sale-flavor-panel">
-                          <div className="local-sale-flavor-head">
-                            <div>
-                              <strong>{productoVentaLocalSeleccionado.nombre}</strong>
-                              <span>Sabores {totalSaboresVentaLocal}/{totalAlfajoresVentaLocal} alfajores</span>
-                            </div>
-                            <label>
-                              Cajas
-                              <input
-                                className="adm-input"
-                                type="number"
-                                min={1}
-                                value={ventaLocalCantidad}
-                                onChange={(event) => setVentaLocalCantidad(event.target.value)}
-                              />
-                            </label>
-                          </div>
-                          <div className="local-sale-flavors-grid">
-                            {saboresVentaLocalProducto.map((sabor) => (
-                              <label key={sabor.id} className="local-sale-field">
-                                <span>{sabor.nombre}</span>
-                                <input
-                                  className="adm-input"
-                                  type="number"
-                                  min={0}
-                                  max={getMaxSaborVentaLocal(sabor.id)}
-                                  step={1}
-                                  inputMode="numeric"
-                                  value={ventaLocalSabores[String(sabor.id)] ?? ""}
-                                  onChange={(event) => updateSaborVentaLocal(sabor.id, event.target.value)}
-                                />
-                              </label>
-                            ))}
-                          </div>
-                          <div className="local-sale-flavor-actions">
-                            <button type="button" className="adm-btn-secondary" onClick={resetVentaLocalProductoDraft}>
-                              Cancelar
-                            </button>
-                            <button type="button" className="adm-btn-primary" onClick={agregarItemVentaLocal}>
-                              Agregar caja
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="local-sale-cart">
-                        <div className="local-sale-cart-head">
-                          <strong>Productos seleccionados</strong>
-                          <span>{ventaLocalItems.length} item{ventaLocalItems.length === 1 ? "" : "s"}</span>
-                        </div>
-                        {ventaLocalItems.length === 0 ? (
-                          <div className="local-sale-empty">Todavia no agregaste productos.</div>
-                        ) : null}
-                        {ventaLocalItems.map((item, index) => (
-                          <div key={`${item.producto_id}-${index}`} className="local-sale-cart-row">
-                            <div>
-                              <p>{item.nombre} x{item.cantidad}</p>
-                              <strong>{formatMoney(item.precio_dinero * item.cantidad)}</strong>
-                              {item.sabores?.length ? (
-                                <span>{item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}</span>
-                              ) : null}
-                            </div>
-                            <div className="local-sale-cart-actions">
-                              {!item.sabores?.length ? (
-                                <>
-                                  <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaLocalItem(index, -1)} aria-label={`Quitar ${item.nombre}`}>
-                                    -
-                                  </button>
-                                  <button type="button" className="local-sale-mini-btn" onClick={() => cambiarCantidadVentaLocalItem(index, 1)} aria-label={`Agregar ${item.nombre}`}>
-                                    +
-                                  </button>
-                                </>
-                              ) : null}
-                              <button type="button" className="local-sale-mini-btn danger" onClick={() => setVentaLocalItems((prev) => prev.filter((_item, itemIndex) => itemIndex !== index))}>
-                                Quitar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="local-sale-total-row">
-                        <span>Total</span>
-                        <strong>{formatMoney(totalVentaLocal)}</strong>
-                      </div>
-                      <div className="local-sale-submit-actions">
-                        {ventaLocalEditOrdenId ? (
-                          <button type="button" className="adm-btn-secondary" onClick={cancelarEdicionVentaLocal} disabled={busy}>
-                            Cancelar edicion
-                          </button>
-                        ) : null}
-                        <button type="button" className="adm-btn-primary local-sale-confirm-btn" onClick={() => void registrarVentaLocal()} disabled={busy || ventaLocalItems.length === 0}>
-                          {busy ? "Guardando..." : ventaLocalEditOrdenId ? "Guardar cambios" : "Registrar venta local"}
-                        </button>
-                      </div>
-                    </aside>
-                  </div>
-                </div>
-              }
               pedidosContent={
                 <>
                   <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
@@ -7339,14 +6993,9 @@ export function Admin() {
                                       Ver comprobante
                                     </Link>
                                     {isOrdenVentaLocal(orden) && orden.estado !== "cancelada" && orden.estado !== "expirada" ? (
-                                      <>
-                                        <button className="adm-btn-link" onClick={() => editarVentaLocalDesdeOrden(orden)} disabled={busy}>
-                                          Editar venta
-                                        </button>
-                                        <button className="adm-btn-danger" onClick={() => void cancelarVentaLocal(orden)} disabled={busy}>
-                                          Cancelar
-                                        </button>
-                                      </>
+                                      <button className="adm-btn-danger" onClick={() => void cancelarVentaLocal(orden)} disabled={busy}>
+                                        Cancelar
+                                      </button>
                                     ) : null}
                                     {hasOrderMapPoint(orden.direccion_envio) ? (
                                       <button
