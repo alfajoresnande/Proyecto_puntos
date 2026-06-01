@@ -653,11 +653,16 @@
   display: flex;
   justify-content: center;
   margin-top: 1.35rem;
+  padding-inline: 1rem;
 }
 
 .home-products-footer .home-flow-action {
   background: linear-gradient(180deg, #8a5a33 0%, #6b3e26 100%);
   box-shadow: 0 14px 26px rgba(107, 62, 38, 0.2);
+  width: min(100%, 320px);
+  text-align: center;
+  line-height: 1.2;
+  padding-inline: 1.1rem;
 }
 
 .home-products-footer .home-flow-action:hover {
@@ -1502,8 +1507,9 @@
   }
 
   .home-products-carousel {
-    --home-featured-card-width: min(82vw, 340px);
-    --home-featured-marquee-duration: 24s;
+    --home-featured-card-width: min(72vw, 280px);
+    --home-featured-gap: 0.9rem;
+    --home-featured-marquee-duration: 16s;
     max-width: 100%;
     padding-inline: 0.1rem;
     mask-image: linear-gradient(90deg, transparent 0, #000 1rem, #000 calc(100% - 1rem), transparent 100%);
@@ -1579,18 +1585,42 @@
   }
 
   .home-product-body {
-    gap: 0.5rem;
-    padding: 0.85rem 0.9rem 1rem;
+    gap: 0.42rem;
+    padding: 0.72rem 0.78rem 0.9rem;
   }
 
   .home-product-actions {
-    gap: 0.65rem;
+    gap: 0.55rem;
   }
 
   .home-product-action {
-    min-height: 42px;
-    font-size: 0.82rem;
-    padding: 0.58rem 0.65rem;
+    min-height: 40px;
+    font-size: 0.8rem;
+    padding: 0.52rem 0.6rem;
+  }
+
+  .home-product-body h3 {
+    height: auto;
+    min-height: 2.2rem;
+    max-height: 2.2rem;
+    font-size: 0.92rem;
+  }
+
+  .home-product-body > p {
+    height: 2.8rem;
+    min-height: 2.8rem;
+    max-height: 2.8rem;
+    font-size: 0.8rem;
+    line-height: 1.28;
+  }
+
+  .home-product-price-row strong {
+    font-size: 0.96rem;
+  }
+
+  .home-product-earned-points,
+  .home-product-free-shipping {
+    font-size: 0.74rem;
   }
 
   .home-flow-number {
