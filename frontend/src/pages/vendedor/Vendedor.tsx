@@ -15,6 +15,7 @@ type ClienteBuscado = {
 type CargarResponse = {
   ok: boolean;
   cliente_id: number;
+  monto_aplicado?: number;
   puntos_acreditados: number;
   nuevo_saldo: number;
 };
@@ -22,6 +23,11 @@ type CargarResponse = {
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
+}
+
+function roundAmountToNearestThousand(amount: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.round(amount / 1000) * 1000;
 }
 
 type CanjeInfo = {
@@ -66,6 +72,7 @@ export function Vendedor() {
   const [cliente, setCliente] = useState<ClienteBuscado | null>(null);
   const [mostrarSugerenciasCliente, setMostrarSugerenciasCliente] = useState(false);
   const [filtro, setFiltro] = useState("");
+  const [montoManual, setMontoManual] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [cart, setCart] = useState<Record<number, number>>({});
   const [error, setError] = useState("");
@@ -130,30 +137,50 @@ export function Vendedor() {
     [cartItems],
   );
 
+  const montoManualNumero = useMemo(() => Number(montoManual || 0), [montoManual]);
+  const montoManualRedondeado = useMemo(() => roundAmountToNearestThousand(montoManualNumero), [montoManualNumero]);
+  const shouldUseManualAmount = montoManualRedondeado > 0;
+
   const cargarMutation = useMutation({
     mutationFn: () => {
       if (!cliente) {
         throw new Error("Selecciona un cliente antes de confirmar.");
       }
-      if (!cartItems.length) {
-        throw new Error("Agrega al menos un producto.");
+      if (!shouldUseManualAmount && !cartItems.length) {
+        throw new Error("Agrega al menos un producto o carga un monto manual.");
       }
 
-      const items = Object.entries(cart).map(([producto_id, cantidad]) => ({
-        producto_id: Number(producto_id),
-        cantidad,
-      }));
-
-      return api.post<CargarResponse>("/vendedor/cargar", {
+      const payload: {
+        dni: string;
+        descripcion?: string;
+        items?: Array<{ producto_id: number; cantidad: number }>;
+        monto_total?: number;
+      } = {
         dni: cliente.dni,
-        items,
         descripcion: descripcion.trim() || undefined,
-      });
+      };
+
+      if (shouldUseManualAmount) {
+        payload.monto_total = montoManualNumero;
+      } else {
+        payload.items = Object.entries(cart).map(([producto_id, cantidad]) => ({
+          producto_id: Number(producto_id),
+          cantidad,
+        }));
+      }
+
+      return api.post<CargarResponse>("/vendedor/cargar", payload);
     },
     onSuccess: (data) => {
       setError("");
-      setOk(`Se acreditaron ${data.puntos_acreditados} puntos. Nuevo saldo: ${data.nuevo_saldo}.`);
+      const appliedAmount = Number(data.monto_aplicado ?? 0);
+      setOk(
+        appliedAmount > 0
+          ? `Se acreditaron ${data.puntos_acreditados} puntos sobre ${money(appliedAmount)}. Nuevo saldo: ${data.nuevo_saldo}.`
+          : `Se acreditaron ${data.puntos_acreditados} puntos. Nuevo saldo: ${data.nuevo_saldo}.`,
+      );
       setCart({});
+      setMontoManual("");
       setDescripcion("");
       setCliente((prev) => (prev ? { ...prev, puntos: data.nuevo_saldo } : prev));
     },
@@ -228,6 +255,7 @@ export function Vendedor() {
 
   function clear() {
     setCart({});
+    setMontoManual("");
     setDescripcion("");
     setError("");
     setOk("");
@@ -417,6 +445,57 @@ export function Vendedor() {
             </div>
           ) : null}
 
+          <p className="ios-label mt-6">Monto manual</p>
+          <div className="ios-card p-4" style={{ marginBottom: "0.5rem", display: "grid", gap: "0.65rem" }}>
+            <input
+              className="ios-input"
+              inputMode="numeric"
+              placeholder="Ej: 25000"
+              value={montoManual}
+              onChange={(event) => {
+                setError("");
+                setOk("");
+                setMontoManual(event.target.value.replace(/\D/g, ""));
+              }}
+              disabled={!cliente}
+            />
+            <p className="text-xs text-ios-secondary" style={{ margin: 0 }}>
+              Se redondea al mil mas cercano. Si completas este monto, se usa este valor en lugar del carrito.
+            </p>
+            {montoManual.trim() ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "0.75rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  padding: "0.75rem 0.9rem",
+                  borderRadius: "14px",
+                  background: "#FEF3E8",
+                  border: "1px solid #F5C8A8",
+                }}
+              >
+                <div>
+                  <p className="text-xs text-ios-secondary" style={{ margin: 0 }}>
+                    Monto ingresado
+                  </p>
+                  <p className="text-base font-semibold" style={{ margin: 0, color: "#3D1A02" }}>
+                    {money(montoManualNumero)}
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <p className="text-xs text-ios-secondary" style={{ margin: 0 }}>
+                    Monto aplicado
+                  </p>
+                  <p className="text-lg font-bold text-ios-green" style={{ margin: 0 }}>
+                    {money(montoManualRedondeado)}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <p className="ios-label mt-6">Catalogo</p>
           <input
             className="ios-input mb-2"
@@ -489,7 +568,7 @@ export function Vendedor() {
             <button
               type="button"
               className="ios-btn-primary"
-              disabled={cargarMutation.isPending || !cliente || cartItems.length === 0}
+              disabled={cargarMutation.isPending || !cliente || (!shouldUseManualAmount && cartItems.length === 0)}
               onClick={() => {
                 setError("");
                 setOk("");
@@ -499,9 +578,9 @@ export function Vendedor() {
               {cargarMutation.isPending ? "Cargando..." : "Cargar puntos"}
             </button>
 
-            {cartItems.length > 0 ? (
+            {cartItems.length > 0 || shouldUseManualAmount ? (
               <button type="button" className="ios-btn-secondary" onClick={clear}>
-                Vaciar carrito
+                Limpiar carga
               </button>
             ) : null}
           </div>

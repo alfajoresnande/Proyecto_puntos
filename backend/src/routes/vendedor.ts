@@ -392,6 +392,11 @@ router.get("/clientes/buscar", async (req, res, next) => {
 });
 
 // Cargar puntos usando productos del catálogo como referencia
+function roundAmountToNearestThousand(amount: number): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.round(amount / 1000) * 1000;
+}
+
 router.get("/productos-locales", async (_req, res, next) => {
   try {
     const clienteUsuarioId = Number(_req.query.usuario_id ?? 0);
@@ -477,14 +482,18 @@ const cargarSchema = z.object({
   items: z.array(z.object({
     producto_id: z.number().int().positive(),
     cantidad:    z.number().int().positive(),
-  })).min(1),
+  })).optional().default([]),
+  monto_total: z.number().positive().optional(),
   descripcion: z.string().optional(),
+}).refine((data) => data.items.length > 0 || Number(data.monto_total ?? 0) > 0, {
+  message: "Agrega al menos un producto o un monto manual.",
+  path: ["items"],
 });
 
 router.post("/cargar", async (req, res, next) => {
   const parsed = cargarSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.errors[0].message }); return; }
-  const { dni, items, descripcion } = parsed.data;
+  const { dni, items, monto_total, descripcion } = parsed.data;
 
   let conn;
   try {
@@ -497,8 +506,21 @@ router.post("/cargar", async (req, res, next) => {
     );
     if (!cliente) { res.status(404).json({ error: "Cliente no encontrado" }); await conn.rollback(); return; }
 
+    const manualAmount = Number(monto_total ?? 0);
+    const shouldUseManualAmount = Number.isFinite(manualAmount) && manualAmount > 0;
+
     let totalMonto = 0;
-    for (const item of items) {
+    let roundedMonto = 0;
+    if (shouldUseManualAmount) {
+      roundedMonto = roundAmountToNearestThousand(manualAmount);
+      if (roundedMonto <= 0) {
+        res.status(400).json({ error: "El monto manual debe redondear a un valor mayor que cero." });
+        await conn.rollback();
+        return;
+      }
+      totalMonto = roundedMonto;
+    } else {
+      for (const item of items) {
       const prod = await qOne(conn,
         "SELECT id, precio_dinero FROM productos WHERE id = ? AND activo = 1",
         [item.producto_id]
@@ -510,6 +532,7 @@ router.post("/cargar", async (req, res, next) => {
       }
       totalMonto += Number(prod.precio_dinero ?? 0) * item.cantidad;
     }
+    }
 
     const totalPuntos = await calcularPuntosPorMonto(conn, totalMonto);
     if (totalPuntos === 0) {
@@ -518,11 +541,17 @@ router.post("/cargar", async (req, res, next) => {
       return;
     }
 
+    const movementDescription = descripcion || (
+      shouldUseManualAmount
+        ? `Carga de puntos por monto manual (${roundedMonto})`
+        : `Carga de puntos por ${items.length} producto(s)`
+    );
+
     const nuevoSaldo = await registrarMovimientoPuntos(conn, {
       usuarioId: Number(cliente.id),
       tipo: 'asignacion_manual',
       puntos: totalPuntos,
-      descripcion: descripcion || `Carga de puntos — ${items.length} producto(s)`,
+      descripcion: movementDescription,
       creadoPor: req.user!.id
     });
 
@@ -532,6 +561,7 @@ router.post("/cargar", async (req, res, next) => {
     res.status(201).json({
       ok: true,
       cliente_id: cliente.id,
+      monto_aplicado: totalMonto,
       puntos_acreditados: totalPuntos,
       nuevo_saldo: nuevoSaldo,
     });
@@ -1672,3 +1702,5 @@ router.patch("/ordenes/:id", async (req, res, next) => {
 });
 
 export default router;
+
+

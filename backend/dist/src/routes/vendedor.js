@@ -284,6 +284,11 @@ router.get("/clientes/buscar", async (req, res, next) => {
     }
 });
 // Cargar puntos usando productos del catálogo como referencia
+function roundAmountToNearestThousand(amount) {
+    if (!Number.isFinite(amount) || amount <= 0)
+        return 0;
+    return Math.round(amount / 1000) * 1000;
+}
 router.get("/productos-locales", async (_req, res, next) => {
     try {
         const clienteUsuarioId = Number(_req.query.usuario_id ?? 0);
@@ -343,8 +348,12 @@ const cargarSchema = zod_1.z.object({
     items: zod_1.z.array(zod_1.z.object({
         producto_id: zod_1.z.number().int().positive(),
         cantidad: zod_1.z.number().int().positive(),
-    })).min(1),
+    })).optional().default([]),
+    monto_total: zod_1.z.number().positive().optional(),
     descripcion: zod_1.z.string().optional(),
+}).refine((data) => data.items.length > 0 || Number(data.monto_total ?? 0) > 0, {
+    message: "Agrega al menos un producto o un monto manual.",
+    path: ["items"],
 });
 router.post("/cargar", async (req, res, next) => {
     const parsed = cargarSchema.safeParse(req.body);
@@ -352,7 +361,7 @@ router.post("/cargar", async (req, res, next) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { dni, items, descripcion } = parsed.data;
+    const { dni, items, monto_total, descripcion } = parsed.data;
     let conn;
     try {
         conn = await db_1.pool.getConnection();
@@ -363,15 +372,29 @@ router.post("/cargar", async (req, res, next) => {
             await conn.rollback();
             return;
         }
+        const manualAmount = Number(monto_total ?? 0);
+        const shouldUseManualAmount = Number.isFinite(manualAmount) && manualAmount > 0;
         let totalMonto = 0;
-        for (const item of items) {
-            const prod = await (0, db_1.qOne)(conn, "SELECT id, precio_dinero FROM productos WHERE id = ? AND activo = 1", [item.producto_id]);
-            if (!prod) {
-                res.status(400).json({ error: `Producto ${item.producto_id} no existe o está inactivo` });
+        let roundedMonto = 0;
+        if (shouldUseManualAmount) {
+            roundedMonto = roundAmountToNearestThousand(manualAmount);
+            if (roundedMonto <= 0) {
+                res.status(400).json({ error: "El monto manual debe redondear a un valor mayor que cero." });
                 await conn.rollback();
                 return;
             }
-            totalMonto += Number(prod.precio_dinero ?? 0) * item.cantidad;
+            totalMonto = roundedMonto;
+        }
+        else {
+            for (const item of items) {
+                const prod = await (0, db_1.qOne)(conn, "SELECT id, precio_dinero FROM productos WHERE id = ? AND activo = 1", [item.producto_id]);
+                if (!prod) {
+                    res.status(400).json({ error: `Producto ${item.producto_id} no existe o está inactivo` });
+                    await conn.rollback();
+                    return;
+                }
+                totalMonto += Number(prod.precio_dinero ?? 0) * item.cantidad;
+            }
         }
         const totalPuntos = await (0, points_1.calcularPuntosPorMonto)(conn, totalMonto);
         if (totalPuntos === 0) {
@@ -379,11 +402,14 @@ router.post("/cargar", async (req, res, next) => {
             await conn.rollback();
             return;
         }
+        const movementDescription = descripcion || (shouldUseManualAmount
+            ? `Carga de puntos por monto manual (${roundedMonto})`
+            : `Carga de puntos por ${items.length} producto(s)`);
         const nuevoSaldo = await (0, points_1.registrarMovimientoPuntos)(conn, {
             usuarioId: Number(cliente.id),
             tipo: 'asignacion_manual',
             puntos: totalPuntos,
-            descripcion: descripcion || `Carga de puntos — ${items.length} producto(s)`,
+            descripcion: movementDescription,
             creadoPor: req.user.id
         });
         await conn.commit();
@@ -391,6 +417,7 @@ router.post("/cargar", async (req, res, next) => {
         res.status(201).json({
             ok: true,
             cliente_id: cliente.id,
+            monto_aplicado: totalMonto,
             puntos_acreditados: totalPuntos,
             nuevo_saldo: nuevoSaldo,
         });
