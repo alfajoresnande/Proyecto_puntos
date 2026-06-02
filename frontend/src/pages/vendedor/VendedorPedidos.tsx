@@ -581,6 +581,11 @@ export function VendedorPedidos() {
     }));
   }
 
+  function ajustarSaborVenta(saborId: number, delta: number) {
+    const current = Number(ventaSabores[String(saborId)] ?? 0) || 0;
+    updateSaborVenta(saborId, String(current + delta));
+  }
+
   const ordenesFiltradas = useMemo(() => {
     const q = busquedaOrdenes.trim().toLowerCase();
     return ordenes.filter((orden) => {
@@ -1429,7 +1434,7 @@ export function VendedorPedidos() {
               </div>
             ) : null}
 
-          <div className="local-sale-pos-layout">
+          <div className={`local-sale-pos-layout${productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? " has-flavor-panel" : ""}`}>
             <section className="local-sale-catalog-panel" aria-label="Catalogo de productos para venta local">
               <div className="local-sale-product-search">
                 <input
@@ -1598,6 +1603,69 @@ export function VendedorPedidos() {
                 </p>
               ) : null}
 
+              {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
+                <div className="local-sale-flavor-panel">
+                  <div className="local-sale-flavor-head">
+                    <div className="local-sale-flavor-title">
+                      <strong>{productoVentaSeleccionado.nombre}</strong>
+                      <span>Sabores {totalSaboresVenta}/{totalAlfajoresVenta} alfajores</span>
+                    </div>
+                    <label>
+                      Cajas
+                      <input
+                        className="ios-input"
+                        type="number"
+                        min={1}
+                        value={ventaCantidad}
+                        onChange={(event) => setVentaCantidad(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <div className="local-sale-flavors-grid">
+                    {saboresProductoVenta.map((sabor) => {
+                      const flavorQuantity = Number(ventaSabores[String(sabor.id)] ?? 0) || 0;
+                      const canAddFlavor = getMaxSaborVenta(sabor.id) > flavorQuantity;
+                      return (
+                        <div key={sabor.id} className={`local-sale-flavor-choice${flavorQuantity > 0 ? " is-selected" : ""}`}>
+                          <button
+                            type="button"
+                            className="local-sale-flavor-choice-main"
+                            disabled={!canAddFlavor && flavorQuantity === 0}
+                            onClick={() => ajustarSaborVenta(sabor.id, 1)}
+                          >
+                            <span className="local-sale-flavor-dot" aria-hidden="true" />
+                            <span>{sabor.nombre}</span>
+                          </button>
+                          {flavorQuantity > 0 ? (
+                            <div className="local-sale-flavor-stepper" aria-label={`Cantidad de ${sabor.nombre}`}>
+                              <button type="button" onClick={() => ajustarSaborVenta(sabor.id, -1)} aria-label={`Quitar ${sabor.nombre}`}>
+                                -
+                              </button>
+                              <span>{flavorQuantity}</span>
+                              <button type="button" onClick={() => ajustarSaborVenta(sabor.id, 1)} aria-label={`Agregar ${sabor.nombre}`} disabled={!canAddFlavor}>
+                                +
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="local-sale-flavor-actions">
+                    <button type="button" className="ios-btn-secondary" onClick={() => {
+                      setVentaProductoId("");
+                      setVentaCantidad("1");
+                      setVentaSabores({});
+                    }}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="ios-btn-primary" onClick={agregarItemVentaLocal}>
+                      Agregar caja
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="local-sale-cart">
                 <div className="local-sale-cart-head">
                   <strong>Productos seleccionados</strong>
@@ -1648,57 +1716,6 @@ export function VendedorPedidos() {
               </button>
             </aside>
           </div>
-          {productoVentaSeleccionado?.configuracion_tipo === "caja_sabores" ? (
-            <div className="local-sale-flavor-modal-overlay" role="dialog" aria-modal="true" aria-label={`Sabores de ${productoVentaSeleccionado.nombre}`}>
-              <div className="local-sale-flavor-modal">
-                <div className="local-sale-flavor-head">
-                  <div>
-                    <strong>{productoVentaSeleccionado.nombre}</strong>
-                    <span>Sabores {totalSaboresVenta}/{totalAlfajoresVenta} alfajores</span>
-                  </div>
-                  <label>
-                    Cajas
-                    <input
-                      className="ios-input"
-                      type="number"
-                      min={1}
-                      value={ventaCantidad}
-                      onChange={(event) => setVentaCantidad(event.target.value)}
-                    />
-                  </label>
-                </div>
-                <div className="local-sale-flavors-grid">
-                  {saboresProductoVenta.map((sabor) => (
-                    <label key={sabor.id} className="local-sale-field">
-                      <span>{sabor.nombre}</span>
-                      <input
-                        className="ios-input"
-                        type="number"
-                        min={0}
-                        max={getMaxSaborVenta(sabor.id)}
-                        step={1}
-                        inputMode="numeric"
-                        value={ventaSabores[String(sabor.id)] ?? ""}
-                        onChange={(event) => updateSaborVenta(sabor.id, event.target.value)}
-                      />
-                    </label>
-                  ))}
-                </div>
-                <div className="local-sale-flavor-actions">
-                  <button type="button" className="ios-btn-secondary" onClick={() => {
-                    setVentaProductoId("");
-                    setVentaCantidad("1");
-                    setVentaSabores({});
-                  }}>
-                    Cancelar
-                  </button>
-                  <button type="button" className="ios-btn-primary" onClick={agregarItemVentaLocal}>
-                    Agregar caja
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
         ) : null}
 
