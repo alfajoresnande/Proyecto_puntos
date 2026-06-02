@@ -105,6 +105,7 @@
 .bg-elaboracion { background-image: url('/parallax/2.jpg'); }
 .bg-significado { background-image: url('/parallax/3.jpg'); }
 .bg-calidad { background-image: url('/parallax/4.jpg'); }
+.bg-familia { background-image: url('/parallax/5.jpg'); }
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {

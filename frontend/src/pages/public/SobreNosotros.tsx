@@ -85,6 +85,12 @@ export function SobreNosotros() {
           </p>
         </div>
       </section>
+      {/* SECCIÓN 5: Bienvenida a la familia */}
+      <section className="parallax-section bg-familia">
+        <div className="parallax-content transparent-box" ref={setRef(4)}>
+          <h2 className="animated-title">¡BIENVENIDOS A LA FAMILIA ÑANDÉ!</h2>
+        </div>
+      </section>
     </div>
   );
 }
