@@ -42,10 +42,15 @@ export function SobreNosotros() {
 
   return (
     <div className="parallax-container">
-      {/* SECCIÓN 1: Introducción */}
-      <section className="parallax-section bg-intro">
-        <div className="parallax-content transparent-box" ref={setRef(0)}>
-          <h2 className="animated-title">ORGULLOSAMENTE CORRENTINOS</h2>
+      {/* SECCIÓN 1: Introducción (Solo Imagen) */}
+      <section className="parallax-section bg-intro" style={{ minHeight: '100vh' }}>
+        {/* Sin texto aquí porque la imagen ya tiene su propio logo y título */}
+      </section>
+
+      {/* BLOQUE DE TEXTO SÓLIDO (Para no tapar la imagen anterior) */}
+      <section className="solid-text-section" ref={setRef(0)}>
+        <div className="solid-content">
+          <h2 className="solid-title">ORGULLOSAMENTE CORRENTINOS</h2>
           <p className="lead-text">
             Nacimos en 2010 como un sueño familiar: crear un alfajor que nos represente. 
             Materia prima regional, sabores autóctonos y el corazón de Corrientes en cada bocado.

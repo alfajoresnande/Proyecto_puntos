@@ -102,10 +102,44 @@
 
 /* Specific Backgrounds */
 .bg-intro { background-image: url('/parallax/1.jpg'); }
+/* Quitar la capa oscura de la primera sección porque es un poster que ya tiene texto */
+.bg-intro::before { background: transparent !important; }
+
 .bg-elaboracion { background-image: url('/parallax/2.jpg'); }
 .bg-significado { background-image: url('/parallax/3.jpg'); }
 .bg-calidad { background-image: url('/parallax/4.jpg'); }
 .bg-familia { background-image: url('/parallax/5.png'); }
+
+/* --- BLOQUE DE TEXTO SÓLIDO --- */
+.solid-text-section {
+  background-color: #53331b; /* Marrón oscuro cálido haciendo juego con la marca */
+  color: #fff;
+  padding: 5rem 2rem;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+}
+
+.solid-content {
+  max-width: 800px;
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.solid-content.fade-in-visible, .solid-text-section.fade-in-visible .solid-content {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.solid-title {
+  color: #f1c40f;
+  font-size: 2.8rem;
+  font-weight: 900;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
@@ -118,16 +152,13 @@
   }
   
   /* Oscurecemos más la capa base en celulares para asegurar lectura del texto */
-  .parallax-section::before {
+  .parallax-section:not(.bg-intro)::before {
     background: rgba(0, 0, 0, 0.55);
   }
 
   /* Ajustes específicos para que el texto no tape lo importante de las fotos */
   .bg-intro {
-    /* Mueve la imagen arriba para mostrar el logo, y el texto abajo */
     background-position: center top;
-    align-items: flex-end;
-    padding-bottom: 3rem;
   }
   
   .bg-familia {
@@ -136,7 +167,7 @@
     padding-bottom: 4rem;
   }
 
-  .animated-title {
+  .animated-title, .solid-title {
     font-size: 2rem;
     letter-spacing: 1px;
     margin-bottom: 1rem;
@@ -148,7 +179,11 @@
     padding: 1.5rem;
   }
 
-  .parallax-content p {
+  .solid-text-section {
+    padding: 3rem 1.5rem;
+  }
+
+  .parallax-content p, .solid-content p {
     font-size: 1.05rem;
     line-height: 1.5;
   }
