@@ -20,85 +20,108 @@
   overflow: hidden;
 }
 
-/* Add a dark overlay to make text readable */
+/* Base overlay to slightly darken images */
 .parallax-section::before {
   content: "";
   position: absolute;
   top: 0; right: 0; bottom: 0; left: 0;
-  background: rgba(0, 0, 0, 0.5); /* 50% dark overlay */
+  background: rgba(0, 0, 0, 0.3); /* Lighter overlay to let images pop more */
   z-index: 1;
 }
 
-/* Content Box inside sections */
+/* --- ANIMACIONES DE SCROLL --- */
 .parallax-content {
   position: relative;
-  z-index: 2; /* Place above the overlay */
-  max-width: 800px;
-  background: rgba(255, 255, 255, 0.1); /* Slight glassmorphism */
-  backdrop-filter: blur(10px);
-  padding: 3rem;
-  border-radius: 15px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 2;
+  max-width: 700px;
   text-align: center;
+  
+  /* Estado inicial para la animación (invisible y desplazado hacia abajo) */
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s ease-out, transform 0.8s ease-out;
 }
 
-.parallax-content h2 {
-  font-size: 3rem;
-  font-weight: 800;
+/* Estado cuando es visible (agregado por React IntersectionObserver) */
+.parallax-content.fade-in-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* --- ESTILOS DE CAJAS --- */
+
+/* Caja transparente (casi sin fondo, solo sombra de texto) para que la imagen domine */
+.transparent-box {
+  background: transparent;
+  padding: 2rem;
+}
+
+.transparent-box .animated-title {
+  color: #f1c40f;
+  text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+}
+
+.transparent-box p {
+  text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+  font-weight: 500;
+}
+
+/* Caja flotante (vidrio esmerilado suave) para textos más largos que necesiten contraste */
+.floating-box {
+  background: rgba(25, 25, 25, 0.65);
+  backdrop-filter: blur(8px);
+  padding: 3rem;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.floating-box .animated-title {
+  color: #fff;
+}
+
+/* --- TIPOGRAFÍA --- */
+.animated-title {
+  font-size: 3.5rem;
+  font-weight: 900;
   margin-bottom: 1.5rem;
   text-transform: uppercase;
-  letter-spacing: 2px;
-  color: #f1c40f; /* A nice warm gold/yellow for contrast */
+  letter-spacing: 3px;
+  line-height: 1.1;
 }
 
 .parallax-content p {
-  font-size: 1.15rem;
-  line-height: 1.8;
-  margin-bottom: 1.5rem;
-  text-align: justify;
-}
-
-.parallax-content p:last-child {
+  font-size: 1.25rem;
+  line-height: 1.6;
   margin-bottom: 0;
 }
 
-/* Specific Backgrounds (Images should be in public/parallax/) */
-.bg-intro {
-  background-image: url('/parallax/1.jpg');
+.lead-text {
+  font-size: 1.5rem !important; /* Más grande para los textos principales */
 }
 
-.bg-elaboracion {
-  background-image: url('/parallax/2.jpg');
-}
-
-.bg-significado {
-  background-image: url('/parallax/3.jpg');
-}
-
-.bg-calidad {
-  background-image: url('/parallax/4.jpg');
-}
+/* Specific Backgrounds */
+.bg-intro { background-image: url('/parallax/1.jpg'); }
+.bg-elaboracion { background-image: url('/parallax/2.jpg'); }
+.bg-significado { background-image: url('/parallax/3.jpg'); }
+.bg-calidad { background-image: url('/parallax/4.jpg'); }
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
-  /* On mobile, sometimes fixed backgrounds behave weirdly on iOS, 
-     but we leave it fixed first and fall back to scroll if needed */
   .parallax-section {
-    background-attachment: scroll; /* Safer for mobile */
-    min-height: 80vh;
-    padding: 3rem 1rem;
+    background-attachment: scroll;
+    min-height: 70vh;
   }
   
-  .parallax-content {
-    padding: 2rem;
-  }
-  
-  .parallax-content h2 {
-    font-size: 2rem;
+  .animated-title {
+    font-size: 2.2rem;
   }
   
   .parallax-content p {
-    font-size: 1rem;
+    font-size: 1.1rem;
+  }
+  
+  .lead-text {
+    font-size: 1.2rem !important;
   }
 }
