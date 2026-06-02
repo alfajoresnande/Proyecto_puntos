@@ -156,18 +156,17 @@
     background: rgba(0, 0, 0, 0.55);
   }
 
-  /* --- IMÁGENES ESPECÍFICAS PARA CELULAR --- 
-     Si agregas imágenes como 11.jpg en public/parallax/, se usarán en vez de las de PC. */
+  /* --- IMÁGENES ESPECÍFICAS PARA CELULAR --- */
   .bg-intro {
-    background-image: url('/parallax/11.jpg');
+    background-image: url('/parallax/11.png');
     background-position: center top;
   }
-  .bg-elaboracion { background-image: url('/parallax/12.jpg'); }
-  .bg-significado { background-image: url('/parallax/13.jpg'); }
-  .bg-calidad { background-image: url('/parallax/14.jpg'); }
+  .bg-elaboracion { background-image: url('/parallax/12.png'); }
+  .bg-significado { background-image: url('/parallax/13.png'); }
+  .bg-calidad { background-image: url('/parallax/14.png'); }
   
   .bg-familia {
-    background-image: url('/parallax/15.png'); /* o .jpg si cambias el formato */
+    background-image: url('/parallax/15.png');
     background-position: center center;
     align-items: flex-end;
     padding-bottom: 4rem;
