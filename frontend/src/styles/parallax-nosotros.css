@@ -110,19 +110,55 @@
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .parallax-section {
+    /* En móvil desactivamos fixed porque en iOS da saltos, pero ajustamos la imagen */
     background-attachment: scroll;
-    min-height: 70vh;
+    min-height: 85vh; /* Ocupar casi toda la pantalla */
+    padding: 2rem 1.5rem;
+    background-position: center;
   }
   
+  /* Oscurecemos más la capa base en celulares para asegurar lectura del texto */
+  .parallax-section::before {
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  /* Ajustes específicos para que el texto no tape lo importante de las fotos */
+  .bg-intro {
+    /* Mueve la imagen arriba para mostrar el logo, y el texto abajo */
+    background-position: center top;
+    align-items: flex-end;
+    padding-bottom: 3rem;
+  }
+  
+  .bg-familia {
+    background-position: center center;
+    align-items: flex-end;
+    padding-bottom: 4rem;
+  }
+
   .animated-title {
-    font-size: 2.2rem;
+    font-size: 2rem;
+    letter-spacing: 1px;
+    margin-bottom: 1rem;
   }
   
+  .parallax-content {
+    /* Forzar que las cajas ocupen todo el ancho disponible para que no se apriete el texto */
+    width: 100%;
+    padding: 1.5rem;
+  }
+
   .parallax-content p {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+    line-height: 1.5;
   }
   
   .lead-text {
-    font-size: 1.2rem !important;
+    font-size: 1.15rem !important;
+  }
+
+  /* En móvil, la caja flotante no necesita tanto margen y sombra */
+  .floating-box {
+    padding: 2rem 1.5rem;
   }
 }
