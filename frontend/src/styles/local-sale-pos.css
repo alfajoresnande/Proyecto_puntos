@@ -66,10 +66,6 @@
   width: 100%;
 }
 
-.local-sale-pos-layout.has-flavor-panel {
-  grid-template-columns: minmax(320px, 0.78fr) minmax(560px, 1.22fr);
-}
-
 .local-sale-catalog-panel,
 .local-sale-checkout-panel {
   background: rgba(255, 250, 244, 0.8);
@@ -419,6 +415,7 @@
 }
 
 .local-sale-flavor-panel,
+.local-sale-flavor-modal,
 .local-sale-cart {
   background: rgba(255, 248, 241, 0.82);
   border: 1px solid rgba(239, 198, 166, 0.85);
@@ -426,6 +423,29 @@
   display: grid;
   gap: 0.75rem;
   padding: 0.8rem;
+}
+
+.local-sale-flavor-modal-overlay {
+  align-items: center;
+  background: rgba(61, 26, 2, 0.28);
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 1rem;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 80;
+}
+
+.local-sale-flavor-modal {
+  background: #fffaf4;
+  box-shadow: 0 24px 60px rgba(61, 26, 2, 0.22);
+  max-height: min(86dvh, 720px);
+  max-width: 860px;
+  overflow: auto;
+  width: min(100%, 860px);
 }
 
 .local-sale-flavor-head,
@@ -678,10 +698,6 @@
 
 @media (max-width: 1180px) {
   .local-sale-pos-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .local-sale-pos-layout.has-flavor-panel {
     grid-template-columns: 1fr;
   }
 
