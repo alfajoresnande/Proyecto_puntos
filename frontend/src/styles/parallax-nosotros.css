@@ -1,0 +1,104 @@
+/* Parallax Container */
+.parallax-container {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #fff;
+  width: 100%;
+}
+
+/* Individual Parallax Sections */
+.parallax-section {
+  position: relative;
+  min-height: 100vh; /* Full viewport height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-attachment: fixed;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  padding: 4rem 2rem;
+  overflow: hidden;
+}
+
+/* Add a dark overlay to make text readable */
+.parallax-section::before {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: rgba(0, 0, 0, 0.5); /* 50% dark overlay */
+  z-index: 1;
+}
+
+/* Content Box inside sections */
+.parallax-content {
+  position: relative;
+  z-index: 2; /* Place above the overlay */
+  max-width: 800px;
+  background: rgba(255, 255, 255, 0.1); /* Slight glassmorphism */
+  backdrop-filter: blur(10px);
+  padding: 3rem;
+  border-radius: 15px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
+}
+
+.parallax-content h2 {
+  font-size: 3rem;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #f1c40f; /* A nice warm gold/yellow for contrast */
+}
+
+.parallax-content p {
+  font-size: 1.15rem;
+  line-height: 1.8;
+  margin-bottom: 1.5rem;
+  text-align: justify;
+}
+
+.parallax-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* Specific Backgrounds (Images should be in public/parallax/) */
+.bg-intro {
+  background-image: url('/parallax/1.jpg');
+}
+
+.bg-elaboracion {
+  background-image: url('/parallax/2.jpg');
+}
+
+.bg-significado {
+  background-image: url('/parallax/3.jpg');
+}
+
+.bg-calidad {
+  background-image: url('/parallax/4.jpg');
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  /* On mobile, sometimes fixed backgrounds behave weirdly on iOS, 
+     but we leave it fixed first and fall back to scroll if needed */
+  .parallax-section {
+    background-attachment: scroll; /* Safer for mobile */
+    min-height: 80vh;
+    padding: 3rem 1rem;
+  }
+  
+  .parallax-content {
+    padding: 2rem;
+  }
+  
+  .parallax-content h2 {
+    font-size: 2rem;
+  }
+  
+  .parallax-content p {
+    font-size: 1rem;
+  }
+}
