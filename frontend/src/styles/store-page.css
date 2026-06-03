@@ -81,6 +81,7 @@
   .store-page.store-page-isolated .product-card-media-btn {
     align-self: start;
     aspect-ratio: 1 / 1.14;
+    background: #f6eadd;
     border-radius: 14px;
     grid-column: 1;
     grid-row: 1 / span 2;
@@ -92,10 +93,11 @@
 
   .store-page-isolated .product-card-img {
     aspect-ratio: auto;
+    background: #f6eadd;
     display: block;
     height: 100%;
     min-height: 0;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
     transform: none;
     width: 100%;
@@ -336,6 +338,7 @@
   .catalog-redemption-page:not(.store-page) .product-card-media-btn {
     align-self: start;
     aspect-ratio: 1 / 1.14;
+    background: #f6eadd;
     border-radius: 14px;
     grid-column: 1;
     grid-row: 1 / span 2;
@@ -347,10 +350,11 @@
 
   .catalog-redemption-page:not(.store-page) .product-card-img {
     aspect-ratio: auto;
+    background: #f6eadd;
     display: block;
     height: 100%;
     min-height: 0;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
     transform: none;
     width: 100%;
