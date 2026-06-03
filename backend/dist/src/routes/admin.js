@@ -2038,7 +2038,7 @@ router.patch("/sabores/:id/activo", async (req, res) => {
 //  PRODUCTOS (ABM completo)
 // ════════════════════════════════════════════════════════
 router.get("/productos", async (_req, res) => {
-    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT id, nombre, sku, descripcion, imagen_url, imagen_mobile_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
             track_stock, permite_envio, envio_gratis, permite_retiro_local,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at

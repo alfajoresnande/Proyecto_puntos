@@ -2422,6 +2422,7 @@ router.get("/productos", async (_req, res) => {
     sku: string | null;
     descripcion: string | null;
     imagen_url: string | null;
+    imagen_mobile_url: string | null;
     categoria: string | null;
     tipo_producto: "canje" | "venta" | "mixto";
     configuracion_tipo: "simple" | "caja_sabores";
@@ -2442,7 +2443,7 @@ router.get("/productos", async (_req, res) => {
     activo: number;
     created_at: string;
   }>(pool,
-    `SELECT id, nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
+    `SELECT id, nombre, sku, descripcion, imagen_url, imagen_mobile_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
             track_stock, permite_envio, envio_gratis, permite_retiro_local,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, activo, created_at
