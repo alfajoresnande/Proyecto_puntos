@@ -15,8 +15,9 @@ function money(value: number | string | null | undefined): string {
 }
 
 function productImage(producto: Producto): string | null {
+  if (producto.imagen_url) return mediaUrl(producto.imagen_url);
   if (producto.imagenes?.length) return mediaUrl(producto.imagenes[0]);
-  return producto.imagen_url ? mediaUrl(producto.imagen_url) : null;
+  return null;
 }
 
 function productImages(producto: Producto): string[] {
@@ -1101,7 +1102,12 @@ export function TiendaOnline() {
                     aria-label={`Ver producto ${producto.nombre}`}
                   >
                     {img ? (
-                      <img className="product-card-img" src={img} alt={producto.nombre} />
+                      <picture>
+                        {producto.imagen_mobile_url && (
+                          <source media="(max-width: 768px)" srcSet={mediaUrl(producto.imagen_mobile_url)} />
+                        )}
+                        <img className="product-card-img" src={img} alt={producto.nombre} />
+                      </picture>
                     ) : (
                       <div className="product-card-placeholder" />
                     )}

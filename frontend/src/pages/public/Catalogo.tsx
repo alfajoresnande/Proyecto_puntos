@@ -1211,7 +1211,12 @@ export function Catalogo() {
                   aria-label={`Ver producto ${producto.nombre}`}
                 >
                   {getProductoImagen(producto) ? (
-                    <img src={getProductoImagen(producto) as string} alt={producto.nombre} className="product-card-img" />
+                    <picture>
+                      {producto.imagen_mobile_url && (
+                        <source media="(max-width: 768px)" srcSet={mediaUrl(producto.imagen_mobile_url)} />
+                      )}
+                      <img src={getProductoImagen(producto) as string} alt={producto.nombre} className="product-card-img" />
+                    </picture>
                   ) : (
                     <div className="product-card-placeholder" />
                   )}

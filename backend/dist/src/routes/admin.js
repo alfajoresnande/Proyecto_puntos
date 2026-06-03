@@ -2123,6 +2123,7 @@ router.post("/productos", async (req, res) => {
         sku: zod_1.z.string().max(64).optional().nullable(),
         descripcion: zod_1.z.string().max(1000).optional().nullable(),
         imagen_url: zod_1.z.string().min(1).optional().nullable(),
+        imagen_mobile_url: zod_1.z.string().min(1).optional().nullable(),
         imagenes: zod_1.z.array(zod_1.z.string().min(1)).max(3).optional().nullable(),
         categoria: zod_1.z.string().max(100).optional().nullable(),
         tipo_producto: zod_1.z.enum(["canje", "venta", "mixto"]).optional(),
@@ -2148,7 +2149,7 @@ router.post("/productos", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagen_mobile_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
     const configuracionTipo = configuracion_tipo ?? "simple";
     const isCajaSabores = configuracionTipo === "caja_sabores";
     const flavorIds = normalizeFlavorIds(sabor_ids);
@@ -2189,14 +2190,15 @@ router.post("/productos", async (req, res) => {
         const trackStockFinal = isCajaSabores ? false : (track_stock === undefined ? true : track_stock);
         const productStockDisponible = isCajaSabores ? 0 : stockDisponibleFinal;
         const { insertId } = await (0, db_1.qRun)(conn, `INSERT INTO productos
-        (nombre, sku, descripcion, imagen_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
+        (nombre, sku, descripcion, imagen_url, imagen_mobile_url, categoria, tipo_producto, configuracion_tipo, capacidad_sabores,
          precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home,
          stock_disponible, stock_reservado, track_stock, permite_envio, envio_gratis, permite_retiro_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`, [
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`, [
             nombre,
             sku?.trim() || null,
             descripcion ?? null,
             imageUrls[0] ?? null,
+            imagen_mobile_url ?? null,
             categoria ?? null,
             tipoProducto,
             configuracionTipo,
@@ -2254,6 +2256,7 @@ router.put("/productos/:id", async (req, res) => {
         sku: zod_1.z.string().max(64).optional().nullable(),
         descripcion: zod_1.z.string().max(1000).optional().nullable(),
         imagen_url: zod_1.z.string().min(1).optional().nullable(),
+        imagen_mobile_url: zod_1.z.string().min(1).optional().nullable(),
         imagenes: zod_1.z.array(zod_1.z.string().min(1)).max(3).optional().nullable(),
         categoria: zod_1.z.string().max(100).optional().nullable(),
         tipo_producto: zod_1.z.enum(["canje", "venta", "mixto"]).optional(),
@@ -2279,7 +2282,7 @@ router.put("/productos/:id", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    const { nombre, sku, descripcion, imagen_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
+    const { nombre, sku, descripcion, imagen_url, imagen_mobile_url, imagenes, categoria, tipo_producto, configuracion_tipo, capacidad_sabores, sabor_ids, precio_dinero, precio_puntos, puntos_para_canjear, puntos_requeridos, puntos_acumulables, puntaje_al_comprar, destacado_home, stock_disponible, track_stock, permite_envio, envio_gratis, permite_retiro_local, inventario_sucursales, } = parsed.data;
     const configuracionTipo = configuracion_tipo ?? "simple";
     const isCajaSabores = configuracionTipo === "caja_sabores";
     const flavorIds = normalizeFlavorIds(sabor_ids);
@@ -2326,7 +2329,7 @@ router.put("/productos/:id", async (req, res) => {
         const trackStockFinal = isCajaSabores ? false : (track_stock === undefined ? Number(current.track_stock ?? 1) === 1 : track_stock);
         const productStockDisponible = isCajaSabores ? 0 : stockDisponibleFinal;
         const { affectedRows } = await (0, db_1.qRun)(conn, `UPDATE productos
-       SET nombre=?, sku=?, descripcion=?, imagen_url=?, categoria=?, tipo_producto=?, configuracion_tipo=?, capacidad_sabores=?,
+       SET nombre=?, sku=?, descripcion=?, imagen_url=?, imagen_mobile_url=?, categoria=?, tipo_producto=?, configuracion_tipo=?, capacidad_sabores=?,
            precio_dinero=?, precio_puntos=?, puntos_para_canjear=?, puntos_requeridos=?, puntos_acumulables=?, puntaje_al_comprar=?, destacado_home=?,
            stock_disponible=?, track_stock=?, permite_envio=?, envio_gratis=?, permite_retiro_local=?
        WHERE id=?`, [
@@ -2334,6 +2337,7 @@ router.put("/productos/:id", async (req, res) => {
             sku?.trim() || null,
             descripcion ?? null,
             imageUrls[0] ?? null,
+            imagen_mobile_url ?? null,
             categoria ?? null,
             tipoProducto,
             configuracionTipo,

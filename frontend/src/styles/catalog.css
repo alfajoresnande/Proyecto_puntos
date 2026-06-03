@@ -1230,16 +1230,16 @@ body.catalogo-background .pagina-page {
 
 .product-card-img {
   width: 100%;
-  height: 165px;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
-  object-position: center 75%;
+  object-position: center;
   background: #FEF3E8;          /* ← fondo del área de imagen cuando no hay foto */
   display: block;
 }
 
 .product-card-placeholder {
   width: 100%;
-  height: 165px;
+  aspect-ratio: 1 / 1;
   background: linear-gradient(135deg, #FEF3E8 0%, #FDF6EE 100%); /* ← gradiente del placeholder de imagen */
   display: flex;
   align-items: center;

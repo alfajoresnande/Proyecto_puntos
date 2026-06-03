@@ -737,6 +737,15 @@ async function ensureProductosEcommerceSchema() {
     await pool.query("ALTER TABLE productos ADD COLUMN sku VARCHAR(64) NULL AFTER nombre");
   }
 
+  const [imagenMobileRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'imagen_mobile_url'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!imagenMobileRows.length) {
+    await pool.query("ALTER TABLE productos ADD COLUMN imagen_mobile_url VARCHAR(255) NULL AFTER imagen_url");
+  }
+
   const [updatedRows] = await pool.query(
     `SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'updated_at'

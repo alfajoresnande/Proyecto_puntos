@@ -48,7 +48,7 @@ router.get("/destacados", async (req, res) => {
         const limit = Number.isFinite(rawLimit) ? Math.min(24, Math.max(1, Math.floor(rawLimit))) : 12;
         const fetchLimit = Math.min(60, Math.max(limit * 3, limit));
         res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-        const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria,
+        const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, imagen_mobile_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
             precio_dinero, precio_puntos, puntos_para_canjear, destacado_home, permite_envio, envio_gratis
      FROM productos
@@ -90,12 +90,14 @@ router.get("/destacados", async (req, res) => {
                 .filter((url) => Boolean(url))
                 .slice(0, 3);
             const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+            const mainImageUrl = row.imagen_url ? (0, urlSafety_1.normalizeSafeImageUrl)(row.imagen_url) : (imagenes[0] ?? null);
             return {
                 id: row.id,
                 nombre: row.nombre,
                 descripcion: row.descripcion,
-                imagen_url: imagenes[0] ?? null,
-                imagenes,
+                imagen_url: mainImageUrl,
+                imagen_mobile_url: row.imagen_mobile_url ? (0, urlSafety_1.normalizeSafeImageUrl)(row.imagen_mobile_url) : null,
+                imagenes: imagenes.length > 0 ? imagenes : (mainImageUrl ? [mainImageUrl] : []),
                 categoria: row.categoria,
                 puntos_requeridos: row.puntos_requeridos,
                 puntos_acumulables: row.puntos_acumulables,
@@ -155,7 +157,7 @@ router.get("/", async (req, res) => {
         }
     }
     const where = conditions.join(" AND ");
-    const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, categoria,
+    const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, imagen_mobile_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
             configuracion_tipo, capacidad_sabores,
             precio_dinero, precio_puntos, puntos_para_canjear, stock_disponible, stock_reservado,
@@ -250,11 +252,13 @@ router.get("/", async (req, res) => {
         const stockReservadoSucursal = Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0);
         const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
         const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+        const mainImageUrl = row.imagen_url ? (0, urlSafety_1.normalizeSafeImageUrl)(row.imagen_url) : (imagenes[0] ?? null);
         return {
             id: row.id,
             nombre: row.nombre,
             descripcion: row.descripcion,
-            imagen_url: imagenes[0] ?? null,
+            imagen_url: mainImageUrl,
+            imagen_mobile_url: row.imagen_mobile_url ? (0, urlSafety_1.normalizeSafeImageUrl)(row.imagen_mobile_url) : null,
             categoria: row.categoria,
             puntos_requeridos: row.puntos_requeridos,
             puntos_acumulables: row.puntos_acumulables,
@@ -289,7 +293,7 @@ router.get("/", async (req, res) => {
                 stock_disponible: Number(item.stock_disponible ?? 0),
                 stock_reservado: Number(item.stock_reservado ?? 0),
             })),
-            imagenes,
+            imagenes: imagenes.length > 0 ? imagenes : (mainImageUrl ? [mainImageUrl] : []),
             track_stock: Boolean(row.track_stock),
             permite_envio: Boolean(row.permite_envio),
             envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),

@@ -584,6 +584,12 @@ async function ensureProductosEcommerceSchema() {
     if (!skuRows.length) {
         await exports.pool.query("ALTER TABLE productos ADD COLUMN sku VARCHAR(64) NULL AFTER nombre");
     }
+    const [imagenMobileRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'imagen_mobile_url'
+     LIMIT 1`);
+    if (!imagenMobileRows.length) {
+        await exports.pool.query("ALTER TABLE productos ADD COLUMN imagen_mobile_url VARCHAR(255) NULL AFTER imagen_url");
+    }
     const [updatedRows] = await exports.pool.query(`SELECT 1 FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'productos' AND COLUMN_NAME = 'updated_at'
      LIMIT 1`);

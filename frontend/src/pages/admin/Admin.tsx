@@ -758,6 +758,7 @@ type ProductoForm = {
   permite_retiro_local: boolean;
   inventario_sucursales: Record<string, number | null>;
   imagenes: string[];
+  imagen_mobile_url: string;
 };
 
 type UsuarioEditDraft = {
@@ -1201,6 +1202,7 @@ function emptyProductoForm(): ProductoForm {
     permite_retiro_local: true,
     inventario_sucursales: {},
     imagenes: [],
+    imagen_mobile_url: "",
   };
 }
 
@@ -2945,6 +2947,42 @@ export function Admin() {
     }
   }
 
+  async function subirImagenMobileProducto(file: File, target: "nuevo" | "edit") {
+    if (!file) return;
+    if (!isAllowedImageFile(file)) {
+      setErrMsg("Solo puedes subir imagenes JPG, PNG o WEBP.");
+      return;
+    }
+
+    setBusy(true);
+    setErrMsg("");
+    try {
+      const upload = await uploadImageMutation.mutateAsync(file);
+      if (target === "nuevo") {
+        setNuevoProducto((prev) => ({ ...prev, imagen_mobile_url: upload.url }));
+      } else {
+        setEditDraft((prev) => ({ ...prev, imagen_mobile_url: upload.url }));
+      }
+      setAdminHint("Imagen móvil cargada con exito.");
+    } catch (error) {
+      setErrMsg(
+        error instanceof Error
+          ? error.message
+          : "No se pudo procesar la imagen en el servidor."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function quitarImagenMobileProducto(target: "nuevo" | "edit") {
+    if (target === "nuevo") {
+      setNuevoProducto((prev) => ({ ...prev, imagen_mobile_url: "" }));
+      return;
+    }
+    setEditDraft((prev) => ({ ...prev, imagen_mobile_url: "" }));
+  }
+
   function quitarImagenProducto(target: "nuevo" | "edit", index: number) {
     if (target === "nuevo") {
       setNuevoProducto((prev) => ({ ...prev, imagenes: prev.imagenes.filter((_, idx) => idx !== index) }));
@@ -3123,6 +3161,7 @@ export function Admin() {
       permite_retiro_local: producto.permite_retiro_local ?? true,
       inventario_sucursales: inventoryDraftFromRows(inventarioPorProducto.get(producto.id), sucursales),
       imagenes: normalizeImageList(producto.imagenes ?? (producto.imagen_url ? [producto.imagen_url] : [])),
+      imagen_mobile_url: producto.imagen_mobile_url || "",
     });
   }
 
@@ -6348,6 +6387,37 @@ export function Admin() {
                   </div>
                 ) : null}
 
+                <div className="adm-field">
+                  <FieldLabel text="Imagen Horizontal (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato tarjeta horizontal)." />
+                  <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
+                    {nuevoProducto.imagen_mobile_url ? (
+                      <div className="adm-product-image-card" style={{ width: "fit-content" }}>
+                        <img src={mediaUrl(nuevoProducto.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "auto", height: "80px" }} />
+                        <div className="adm-product-image-row">
+                          <span>Imagen Móvil</span>
+                          <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("nuevo")}>
+                            Quitar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="adm-btn-secondary adm-btn-inline" style={{ cursor: "pointer", width: "auto" }}>
+                        Cargar imagen móvil
+                        <input
+                          type="file"
+                          accept={IMAGE_FILE_ACCEPT}
+                          style={{ display: "none" }}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.currentTarget.value = "";
+                            if (file) void subirImagenMobileProducto(file, "nuevo");
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
                 <button className="adm-btn-primary" disabled={busy} onClick={crearProducto}>
                   {busy ? "Creando..." : "Crear producto"}
                 </button>
@@ -6614,6 +6684,38 @@ export function Admin() {
                             ))}
                           </div>
                         ) : null}
+
+                        <div className="adm-field">
+                          <FieldLabel text="Imagen Horizontal (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato tarjeta horizontal)." />
+                          <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
+                            {editDraft.imagen_mobile_url ? (
+                              <div className="adm-product-image-card" style={{ width: "fit-content" }}>
+                                <img src={mediaUrl(editDraft.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "auto", height: "80px" }} />
+                                <div className="adm-product-image-row">
+                                  <span>Imagen Móvil</span>
+                                  <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("edit")}>
+                                    Quitar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="adm-btn-secondary adm-btn-inline" style={{ cursor: "pointer", width: "auto" }}>
+                                Cargar imagen móvil
+                                <input
+                                  type="file"
+                                  accept={IMAGE_FILE_ACCEPT}
+                                  style={{ display: "none" }}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.currentTarget.value = "";
+                                    if (file) void subirImagenMobileProducto(file, "edit");
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
 
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <button className="adm-btn-primary" style={{ flex: 2 }} onClick={() => saveEdit(producto.id)}>

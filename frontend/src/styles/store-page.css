@@ -12,10 +12,10 @@
 }
 
 .store-page-isolated .product-card-img {
-  object-fit: contain;
-  object-position: center top;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center;
   padding: 0;
-  transform: scale(1.05);
 }
 
 .store-page-isolated .product-card-body {
@@ -80,7 +80,7 @@
 
   .store-page.store-page-isolated .product-card-media-btn {
     align-self: start;
-    aspect-ratio: 1 / 1.14;
+    aspect-ratio: 1 / 1;
     background: #f6eadd;
     border-radius: 14px;
     grid-column: 1;
@@ -97,7 +97,7 @@
     display: block;
     height: 100%;
     min-height: 0;
-    object-fit: contain;
+    object-fit: cover;
     object-position: center;
     transform: none;
     width: 100%;
@@ -337,7 +337,7 @@
 
   .catalog-redemption-page:not(.store-page) .product-card-media-btn {
     align-self: start;
-    aspect-ratio: 1 / 1.14;
+    aspect-ratio: 1 / 1;
     background: #f6eadd;
     border-radius: 14px;
     grid-column: 1;
@@ -354,7 +354,7 @@
     display: block;
     height: 100%;
     min-height: 0;
-    object-fit: contain;
+    object-fit: cover;
     object-position: center;
     transform: none;
     width: 100%;
