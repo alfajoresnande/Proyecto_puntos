@@ -1220,7 +1220,16 @@ export function TiendaOnline() {
                               ? "Comprar caja"
                               : cantidadSeleccionada < 1
                                 ? "Elegi cantidad"
-                                : `Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
+                                : (
+                                  <>
+                                    <span className="store-cart-label-full">
+                                      {`Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito de compras` : "al carrito de compras"}`}
+                                    </span>
+                                    <span className="store-cart-label-mobile">
+                                      {`Agregar ${cantidadSeleccionada > 1 ? `${cantidadSeleccionada} al carrito` : "al carrito"}`}
+                                    </span>
+                                  </>
+                                )}
                       </button>
                     </div>
                   </div>
