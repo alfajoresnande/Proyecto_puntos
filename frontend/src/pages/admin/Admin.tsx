@@ -3122,6 +3122,7 @@ export function Admin() {
           inventario_sucursales: productoInventoryPayload(nuevoProducto, sucursales),
           imagenes,
           imagen_url: imagenUrl,
+          imagen_mobile_url: nuevoProducto.imagen_mobile_url || null,
         },
       });
 
@@ -3214,6 +3215,7 @@ export function Admin() {
           inventario_sucursales: productoInventoryPayload(editDraft, sucursales),
           imagenes,
           imagen_url: imagenUrl,
+          imagen_mobile_url: editDraft.imagen_mobile_url || null,
         },
       });
 
