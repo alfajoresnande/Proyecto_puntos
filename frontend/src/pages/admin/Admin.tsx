@@ -658,7 +658,6 @@ type ConfiguracionDraft = {
   eventbar_fecha_fin: string;
   eventbar_color_fondo: string;
   eventbar_color_texto: string;
-  eventbar_descuento_especial_activo: boolean;
   eventbar_descuento_especial_tipo: EventbarDescuentoEspecialTipo;
 };
 
@@ -1856,7 +1855,6 @@ export function Admin() {
     eventbar_fecha_fin: "",
     eventbar_color_fondo: "#2D1A0D",
     eventbar_color_texto: "#F3C47B",
-    eventbar_descuento_especial_activo: false,
     eventbar_descuento_especial_tipo: "none",
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
@@ -2202,7 +2200,6 @@ export function Admin() {
       eventbar_fecha_fin: toDatetimeLocalInputValue(getConfig("eventbar_fecha_fin", "")),
       eventbar_color_fondo: normalizeHexColorInput(getConfig("eventbar_color_fondo", "#2D1A0D"), "#2D1A0D"),
       eventbar_color_texto: normalizeHexColorInput(getConfig("eventbar_color_texto", "#F3C47B"), "#F3C47B"),
-      eventbar_descuento_especial_activo: isTruthyConfigValue(getConfig("eventbar_descuento_especial_activo", "0")),
       eventbar_descuento_especial_tipo: normalizeEventbarDescuentoEspecialTipo(getConfig("eventbar_descuento_especial_tipo", "none")),
     });
     setConfigLoaded(true);
@@ -4654,7 +4651,6 @@ export function Admin() {
     const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
     const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
     const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
-    const eventbarDescuentoEspecialActivo = configDraft.eventbar_descuento_especial_activo;
     const eventbarDescuentoEspecialTipo = normalizeEventbarDescuentoEspecialTipo(configDraft.eventbar_descuento_especial_tipo);
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
@@ -4745,12 +4741,8 @@ export function Admin() {
         return;
       }
     }
-    if (eventbarDescuentoEspecialActivo && !eventbarActivo) {
+    if (eventbarDescuentoEspecialTipo !== "none" && !eventbarActivo) {
       setConfigErr("Para activar el descuento especial, primero activa la eventbar.");
-      return;
-    }
-    if (eventbarDescuentoEspecialActivo && eventbarDescuentoEspecialTipo === "none") {
-      setConfigErr("Selecciona un tipo de descuento especial: 2x1, 3x2 o 4x3.");
       return;
     }
 
@@ -4879,7 +4871,7 @@ export function Admin() {
         },
         {
           clave: "eventbar_descuento_especial_activo",
-          valor: eventbarDescuentoEspecialActivo ? "1" : "0",
+          valor: eventbarDescuentoEspecialTipo === "none" ? "0" : "1",
           descripcion: "Activa el descuento especial de la eventbar para precios de tienda online.",
         },
         {
@@ -5540,27 +5532,8 @@ export function Admin() {
                     </div>
                     <p className="adm-field-help">Conviene elegir un color con buen contraste contra el fondo.</p>
                   </div>
-                  <div className="adm-field adm-field-checkbox">
-                    <label className="adm-label">Descuento especial</label>
-                    <label className="adm-label-inline">
-                      <input
-                        type="checkbox"
-                        checked={configDraft.eventbar_descuento_especial_activo}
-                        onChange={(event) => setConfigDraft((prev) => ({
-                          ...prev,
-                          eventbar_descuento_especial_activo: event.target.checked,
-                          eventbar_descuento_especial_tipo: event.target.checked && prev.eventbar_descuento_especial_tipo === "none"
-                            ? "2x1"
-                            : prev.eventbar_descuento_especial_tipo,
-                        }))}
-                        disabled={configBusy}
-                      />
-                      Activar promo en tienda online
-                    </label>
-                    <p className="adm-field-help">Solo modifica precios de venta online. No se aplica a canjes ni al catalogo de puntos.</p>
-                  </div>
                   <div className="adm-field">
-                    <label className="adm-label">Tipo de promo</label>
+                    <label className="adm-label">Descuento especial</label>
                     <select
                       className="adm-input"
                       value={configDraft.eventbar_descuento_especial_tipo}
@@ -5568,7 +5541,7 @@ export function Admin() {
                         ...prev,
                         eventbar_descuento_especial_tipo: normalizeEventbarDescuentoEspecialTipo(event.target.value),
                       }))}
-                      disabled={configBusy || !configDraft.eventbar_descuento_especial_activo}
+                      disabled={configBusy}
                     >
                       {EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -5576,7 +5549,9 @@ export function Admin() {
                         </option>
                       ))}
                     </select>
-                    <p className="adm-field-help">{eventbarDescuentoEspecialOption.help}</p>
+                    <p className="adm-field-help">
+                      {eventbarDescuentoEspecialOption.help} Solo modifica precios de venta online; no se aplica a canjes ni al catalogo de puntos.
+                    </p>
                   </div>
                   <div className="adm-field adm-eventbar-preview-field">
                     <label className="adm-label">Preview</label>

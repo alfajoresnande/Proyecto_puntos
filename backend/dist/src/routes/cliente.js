@@ -28,6 +28,37 @@ function getPrecioDineroConResolver(producto, resolvePrice) {
 function getSubtotalDineroConPromo(precioDineroUnit, cantidad, eventbarDiscount) {
     return (0, customerPricing_1.calculateEventbarSpecialDiscountSubtotal)(precioDineroUnit, cantidad, eventbarDiscount);
 }
+function buildEventbarCartPromoFields(precioDineroUnit, cantidad, subtotalDinero, eventbarDiscount) {
+    const unitPrice = toMoney(Number(precioDineroUnit ?? 0));
+    const qty = Math.max(0, Math.floor(Number(cantidad || 0)));
+    const subtotal = toMoney(Number(subtotalDinero || 0));
+    const subtotalRegular = toMoney(unitPrice * qty);
+    const ahorro = toMoney(Math.max(0, subtotalRegular - subtotal));
+    if (!eventbarDiscount.activo || qty <= 0 || unitPrice <= 0) {
+        return {
+            promo_eventbar_activa: false,
+            promo_eventbar_aplicada: false,
+            promo_eventbar_tipo: null,
+            promo_eventbar_label: null,
+            promo_eventbar_cantidad_requerida: null,
+            promo_eventbar_cantidad_paga: null,
+            promo_eventbar_precio_unitario_efectivo: null,
+            promo_eventbar_subtotal_regular: null,
+            promo_eventbar_ahorro: null,
+        };
+    }
+    return {
+        promo_eventbar_activa: true,
+        promo_eventbar_aplicada: ahorro > 0,
+        promo_eventbar_tipo: eventbarDiscount.tipo === "none" ? null : eventbarDiscount.tipo,
+        promo_eventbar_label: eventbarDiscount.label,
+        promo_eventbar_cantidad_requerida: eventbarDiscount.cantidadRequerida,
+        promo_eventbar_cantidad_paga: eventbarDiscount.cantidadPaga,
+        promo_eventbar_precio_unitario_efectivo: toMoney(subtotal / qty),
+        promo_eventbar_subtotal_regular: subtotalRegular,
+        promo_eventbar_ahorro: ahorro,
+    };
+}
 class HttpError extends Error {
     status;
     errorCode;
@@ -1162,10 +1193,12 @@ router.get("/carrito", async (req, res) => {
     for (const item of rawItems) {
         const producto = await getProductoForCart(db_1.pool, Number(item.producto_id));
         const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
+        const subtotalDinero = getSubtotalDineroConPromo(precioDineroUnit, Number(item.cantidad), eventbarDiscount);
         items.push({
             ...item,
             precio_dinero_unit: precioDineroUnit,
-            subtotal_dinero: getSubtotalDineroConPromo(precioDineroUnit, Number(item.cantidad), eventbarDiscount),
+            subtotal_dinero: subtotalDinero,
+            ...buildEventbarCartPromoFields(precioDineroUnit, Number(item.cantidad), subtotalDinero, eventbarDiscount),
         });
     }
     const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));

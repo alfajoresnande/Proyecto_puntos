@@ -138,50 +138,51 @@ html.eventbar-visible {
 
 @media (max-width: 767px) {
   html.eventbar-visible {
-    --eventbar-height: 118px;
+    --eventbar-height: 92px;
   }
 
   .eventbar-inner {
     align-content: center;
-    gap: 0.45rem;
+    gap: 0.24rem;
     grid-template-columns: 1fr;
     justify-items: center;
-    padding: 0.55rem 1rem;
+    padding: 0.32rem 0.85rem;
     text-align: center;
   }
 
   .eventbar-title {
-    font-size: 0.94rem;
-    letter-spacing: 0.12em;
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
     max-width: 100%;
   }
 
   .eventbar-subtitle {
-    font-size: 0.74rem;
+    font-size: 0.66rem;
     max-width: 100%;
   }
 
   .eventbar-countdown {
+    gap: 0.34rem;
     justify-content: center;
     min-width: 0;
   }
 
   .eventbar-time-card {
-    height: 42px;
-    min-width: 58px;
-    padding: 0.32rem 0.5rem;
+    height: 34px;
+    min-width: 50px;
+    padding: 0.2rem 0.4rem;
   }
 
   .eventbar-time-card strong {
-    font-size: 1rem;
+    font-size: 0.84rem;
   }
 
   .eventbar-time-card small {
-    font-size: 0.52rem;
+    font-size: 0.44rem;
   }
 
   .eventbar-count-separator {
-    font-size: 1rem;
+    font-size: 0.82rem;
   }
 }
 

@@ -74,7 +74,7 @@ router.get("/eventbar", async (_req, res) => {
     const subtitle = String(config.get("eventbar_subtitulo") ?? "").trim();
     const endDate = parseEventDate(config.get("eventbar_fecha_fin"));
     const specialDiscountType = normalizeSpecialDiscountType(config.get("eventbar_descuento_especial_tipo"));
-    const specialDiscountActive = parseConfigBoolean(config.get("eventbar_descuento_especial_activo")) && Boolean(specialDiscountType);
+    const specialDiscountActive = Boolean(specialDiscountType);
 
     if (!active || !title || !endDate || endDate.getTime() <= Date.now()) {
       res.json({ active: false });

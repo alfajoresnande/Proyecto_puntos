@@ -1174,21 +1174,24 @@ export function TiendaOnline() {
                     </div>
                     <div className="product-card-points store-price-box">
                       <div className="product-card-row">
-                        <span>{eventbarPromo ? `Promo ${eventbarPromo.label}` : "Precio"}</span>
-                        <span className="cost">
-                          {money(eventbarPromo?.effectiveUnitPrice ?? producto.precio_dinero)}
-                        </span>
+                        <span>Precio</span>
+                        <span className="cost">{money(producto.precio_dinero)}</span>
                       </div>
+                      {eventbarPromo ? (
+                        <p className="store-mobile-promo-pill">
+                          Promo {eventbarPromo.label}: lleva {eventbarPromo.requiredQuantity} y paga {eventbarPromo.paidQuantity}
+                        </p>
+                      ) : null}
                       {eventbarPromo ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row product-card-promo-row">
-                            <span>Llevando {eventbarPromo.requiredQuantity}</span>
-                            <strong>Pagas {eventbarPromo.paidQuantity}</strong>
+                            <span>Promo {eventbarPromo.label}</span>
+                            <strong>Llevando {eventbarPromo.requiredQuantity}, pagas {eventbarPromo.paidQuantity}</strong>
                           </div>
                           <div className="product-card-row product-card-promo-note">
-                            <span>Precio regular</span>
-                            <span>{money(producto.precio_dinero)}</span>
+                            <span>Equivale a</span>
+                            <span>{money(eventbarPromo.effectiveUnitPrice)} c/u</span>
                           </div>
                         </>
                       ) : null}
@@ -1440,21 +1443,19 @@ export function TiendaOnline() {
 
               <div className="product-card-points store-price-box">
                 <div className="product-card-row">
-                  <span>{productoModalEventbarPromo ? `Promo ${productoModalEventbarPromo.label}` : "Precio"}</span>
-                  <span className="cost">
-                    {money(productoModalEventbarPromo?.effectiveUnitPrice ?? productoModal.precio_dinero)}
-                  </span>
+                  <span>Precio</span>
+                  <span className="cost">{money(productoModal.precio_dinero)}</span>
                 </div>
                 {productoModalEventbarPromo ? (
                   <>
                     <div className="product-card-divider" />
                     <div className="product-card-row product-card-promo-row">
-                      <span>Llevando {productoModalEventbarPromo.requiredQuantity}</span>
-                      <strong>Pagas {productoModalEventbarPromo.paidQuantity}</strong>
+                      <span>Promo {productoModalEventbarPromo.label}</span>
+                      <strong>Llevando {productoModalEventbarPromo.requiredQuantity}, pagas {productoModalEventbarPromo.paidQuantity}</strong>
                     </div>
                     <div className="product-card-row product-card-promo-note">
-                      <span>Precio regular</span>
-                      <span>{money(productoModal.precio_dinero)}</span>
+                      <span>Equivale a</span>
+                      <span>{money(productoModalEventbarPromo.effectiveUnitPrice)} c/u</span>
                     </div>
                   </>
                 ) : null}

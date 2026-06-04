@@ -141,12 +141,11 @@ export async function loadEventbarSpecialDiscountConfig(conn: Queryable): Promis
 
   const byKey = new Map(rows.map((row) => [row.clave, row.valor]));
   const eventbarActiva = parseConfigBoolean(byKey.get("eventbar_activo"));
-  const descuentoActivo = parseConfigBoolean(byKey.get("eventbar_descuento_especial_activo"));
   const fechaFin = parseEventbarEndDate(byKey.get("eventbar_fecha_fin"));
   const tipo = normalizeEventbarSpecialDiscountType(byKey.get("eventbar_descuento_especial_tipo"));
   const terms = getEventbarSpecialDiscountTerms(tipo);
 
-  if (!eventbarActiva || !descuentoActivo || !fechaFin || fechaFin.getTime() <= Date.now() || !terms) {
+  if (!eventbarActiva || !fechaFin || fechaFin.getTime() <= Date.now() || !terms) {
     return inactive;
   }
 
