@@ -55,14 +55,14 @@ function getDynamicGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día! Soy Alfajorito.";
+      timeGreeting = "¡Buen día! Soy Alfi.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes! Soy Alfajorito.";
+      timeGreeting = "¡Buenas tardes! Soy Alfi.";
     } else {
-      timeGreeting = "¡Buenas noches! Soy Alfajorito.";
+      timeGreeting = "¡Buenas noches! Soy Alfi.";
     }
   } catch {
-    timeGreeting = "¡Hola! Soy Alfajorito.";
+    timeGreeting = "¡Hola! Soy Alfi.";
   }
 
   if (!user) {
@@ -88,14 +88,14 @@ function getTooltipGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día! Soy Alfajorito.";
+      timeGreeting = "¡Buen día! Soy Alfi.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes! Soy Alfajorito.";
+      timeGreeting = "¡Buenas tardes! Soy Alfi.";
     } else {
-      timeGreeting = "¡Buenas noches! Soy Alfajorito.";
+      timeGreeting = "¡Buenas noches! Soy Alfi.";
     }
   } catch {
-    timeGreeting = "¡Hola! Soy Alfajorito.";
+    timeGreeting = "¡Hola! Soy Alfi.";
   }
 
   if (!user) {
@@ -258,12 +258,12 @@ export function AiChatWidget() {
   }
 
   return (
-    <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda Alfajorito">
+    <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda Alfi">
       {isOpen ? (
-        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="Alfajorito">
+        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="Alfi">
           <div className="ai-chat-header">
             <div>
-              <p className="ai-chat-eyebrow">Alfajorito</p>
+              <p className="ai-chat-eyebrow">Alfi</p>
               <h2>Ñandé te ayuda</h2>
             </div>
             <button
