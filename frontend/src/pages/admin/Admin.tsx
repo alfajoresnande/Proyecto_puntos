@@ -614,6 +614,24 @@ type ConfiguracionItem = {
 };
 
 type PuntosAlertaUnidad = "semanas" | "meses";
+type EventbarDescuentoEspecialTipo = "none" | "2x1" | "3x2" | "4x3";
+
+const EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS: Array<{
+  value: EventbarDescuentoEspecialTipo;
+  label: string;
+  help: string;
+}> = [
+  { value: "none", label: "Sin descuento", help: "La eventbar solo comunica el evento." },
+  { value: "2x1", label: "2x1", help: "Cada 2 unidades del mismo producto, paga 1." },
+  { value: "3x2", label: "3x2", help: "Cada 3 unidades del mismo producto, paga 2." },
+  { value: "4x3", label: "4x3", help: "Cada 4 unidades del mismo producto, paga 3." },
+];
+
+function normalizeEventbarDescuentoEspecialTipo(value: string | null | undefined): EventbarDescuentoEspecialTipo {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "").replace(/×/g, "x");
+  if (normalized === "2x1" || normalized === "3x2" || normalized === "4x3") return normalized;
+  return "none";
+}
 
 type ConfiguracionDraft = {
   dias_limite_retiro: string;
@@ -640,6 +658,7 @@ type ConfiguracionDraft = {
   eventbar_fecha_fin: string;
   eventbar_color_fondo: string;
   eventbar_color_texto: string;
+  eventbar_descuento_especial_tipo: EventbarDescuentoEspecialTipo;
 };
 
 type SucursalAdmin = {
@@ -1836,6 +1855,7 @@ export function Admin() {
     eventbar_fecha_fin: "",
     eventbar_color_fondo: "#2D1A0D",
     eventbar_color_texto: "#F3C47B",
+    eventbar_descuento_especial_tipo: "none",
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
@@ -2180,6 +2200,7 @@ export function Admin() {
       eventbar_fecha_fin: toDatetimeLocalInputValue(getConfig("eventbar_fecha_fin", "")),
       eventbar_color_fondo: normalizeHexColorInput(getConfig("eventbar_color_fondo", "#2D1A0D"), "#2D1A0D"),
       eventbar_color_texto: normalizeHexColorInput(getConfig("eventbar_color_texto", "#F3C47B"), "#F3C47B"),
+      eventbar_descuento_especial_tipo: normalizeEventbarDescuentoEspecialTipo(getConfig("eventbar_descuento_especial_tipo", "none")),
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
@@ -4630,6 +4651,7 @@ export function Admin() {
     const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
     const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
     const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
+    const eventbarDescuentoEspecialTipo = normalizeEventbarDescuentoEspecialTipo(configDraft.eventbar_descuento_especial_tipo);
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -4718,6 +4740,10 @@ export function Admin() {
         setConfigErr("La fecha final de la eventbar debe estar en el futuro.");
         return;
       }
+    }
+    if (eventbarDescuentoEspecialTipo !== "none" && !eventbarActivo) {
+      setConfigErr("Para activar el descuento especial, primero activa la eventbar.");
+      return;
     }
 
     setConfigBusy(true);
@@ -4842,6 +4868,16 @@ export function Admin() {
           clave: "eventbar_color_texto",
           valor: eventbarColorTexto,
           descripcion: "Color de texto de la barra superior de evento.",
+        },
+        {
+          clave: "eventbar_descuento_especial_activo",
+          valor: eventbarDescuentoEspecialTipo === "none" ? "0" : "1",
+          descripcion: "Activa el descuento especial de la eventbar para precios de tienda online.",
+        },
+        {
+          clave: "eventbar_descuento_especial_tipo",
+          valor: eventbarDescuentoEspecialTipo,
+          descripcion: "Tipo de descuento especial de la eventbar: none, 2x1, 3x2 o 4x3.",
         },
       ];
 
@@ -5067,6 +5103,9 @@ export function Admin() {
 
   const stats = statsQuery.data;
   const eventbarPreviewCountdown = getEventbarCountdownPreview(configDraft.eventbar_fecha_fin);
+  const eventbarDescuentoEspecialOption =
+    EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS.find((item) => item.value === configDraft.eventbar_descuento_especial_tipo)
+    ?? EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS[0];
   const canjeCodigoAdminFinalizado = canjeCodigoAdmin
     ? ["entregado", "cancelado", "expirado"].includes(canjeCodigoAdmin.estado)
     : false;
@@ -5492,6 +5531,27 @@ export function Admin() {
                       />
                     </div>
                     <p className="adm-field-help">Conviene elegir un color con buen contraste contra el fondo.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Descuento especial</label>
+                    <select
+                      className="adm-input"
+                      value={configDraft.eventbar_descuento_especial_tipo}
+                      onChange={(event) => setConfigDraft((prev) => ({
+                        ...prev,
+                        eventbar_descuento_especial_tipo: normalizeEventbarDescuentoEspecialTipo(event.target.value),
+                      }))}
+                      disabled={configBusy}
+                    >
+                      {EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="adm-field-help">
+                      {eventbarDescuentoEspecialOption.help} Solo modifica precios de venta online; no se aplica a canjes ni al catalogo de puntos.
+                    </p>
                   </div>
                   <div className="adm-field adm-eventbar-preview-field">
                     <label className="adm-label">Preview</label>

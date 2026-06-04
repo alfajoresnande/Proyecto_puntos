@@ -22,6 +22,15 @@ type CartItem = {
   envio_gratis?: number | boolean;
   configuracion_tipo?: "simple" | "caja_sabores";
   capacidad_sabores?: number | null;
+  promo_eventbar_activa?: boolean;
+  promo_eventbar_aplicada?: boolean;
+  promo_eventbar_tipo?: "2x1" | "3x2" | "4x3" | null;
+  promo_eventbar_label?: string | null;
+  promo_eventbar_cantidad_requerida?: number | null;
+  promo_eventbar_cantidad_paga?: number | null;
+  promo_eventbar_precio_unitario_efectivo?: number | null;
+  promo_eventbar_subtotal_regular?: number | null;
+  promo_eventbar_ahorro?: number | null;
   sabores?: Array<{
     sabor_id: number;
     nombre: string;
@@ -182,6 +191,10 @@ function storeApprovedCheckout(checkout: CheckoutConfirmResponse | null) {
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Number.isFinite(n) ? n : 0);
+}
+
+function cartPromoLabel(item: CartItem): string {
+  return item.promo_eventbar_label || item.promo_eventbar_tipo?.toUpperCase() || "Promo";
 }
 
 function estadoPedidoLabel(estado: string): string {
@@ -1286,7 +1299,13 @@ export function CarritoTienda() {
                   {clearCart.isPending ? "Vaciando..." : "Vaciar carrito"}
                 </button>
               </div>
-              {cartItems.map((item) => (
+              {cartItems.map((item) => {
+                const promoAplicada = Boolean(item.promo_eventbar_aplicada);
+                const promoActiva = Boolean(item.promo_eventbar_activa && item.promo_eventbar_tipo);
+                const promoLabel = cartPromoLabel(item);
+                const promoRequired = Number(item.promo_eventbar_cantidad_requerida ?? 0);
+                const promoPaid = Number(item.promo_eventbar_cantidad_paga ?? 0);
+                return (
                 <div key={item.id} className="catalog-canje-item">
                   <div>
                     <p style={{ margin: 0, fontWeight: 800 }}>{item.nombre}</p>
@@ -1295,7 +1314,26 @@ export function CarritoTienda() {
                         {item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(" | ")}
                       </p>
                     ) : null}
-                    <p style={{ margin: "0.1rem 0 0", color: "#8B5A30" }}>{money(item.subtotal_dinero)}</p>
+                    {promoAplicada ? (
+                      <>
+                        <p style={{ margin: "0.18rem 0 0", color: "#7A3D1C", fontSize: "0.88rem", fontWeight: 850 }}>
+                          Promo {promoLabel} aplicada: pagas {money(item.subtotal_dinero)}
+                          {Number(item.promo_eventbar_subtotal_regular ?? 0) > Number(item.subtotal_dinero ?? 0)
+                            ? ` en lugar de ${money(item.promo_eventbar_subtotal_regular)}`
+                            : ""}
+                        </p>
+                        <p style={{ margin: "0.1rem 0 0", color: "#8B5A30", fontSize: "0.84rem" }}>
+                          Precio promo aprox: {money(item.promo_eventbar_precio_unitario_efectivo)} c/u
+                          {Number(item.promo_eventbar_ahorro ?? 0) > 0 ? ` - Ahorras ${money(item.promo_eventbar_ahorro)}` : ""}
+                        </p>
+                      </>
+                    ) : (
+                      <p style={{ margin: "0.1rem 0 0", color: "#8B5A30" }}>
+                        {promoActiva && promoRequired > 0 && promoPaid > 0
+                          ? `Promo ${promoLabel}: llevando ${promoRequired}, pagas ${promoPaid}. Subtotal actual: ${money(item.subtotal_dinero)}`
+                          : money(item.subtotal_dinero)}
+                      </p>
+                    )}
                     {item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1 ? (
                       <p style={{ margin: "0.1rem 0 0", color: "#16633D", fontSize: "0.82rem", fontWeight: 800 }}>Envio gratis</p>
                     ) : null}
@@ -1331,7 +1369,8 @@ export function CarritoTienda() {
                   </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="catalog-confirm-branch-detail catalog-canje-block catalog-canje-summary">

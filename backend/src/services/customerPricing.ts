@@ -47,9 +47,31 @@ const GLOBAL_DISCOUNT_CONFIG_KEYS = [
   "descuento_web_global_empleado",
 ] as const;
 
+const EVENTBAR_SPECIAL_DISCOUNT_CONFIG_KEYS = [
+  "eventbar_activo",
+  "eventbar_fecha_fin",
+  "eventbar_descuento_especial_activo",
+  "eventbar_descuento_especial_tipo",
+] as const;
+
+export type EventbarSpecialDiscountType = "none" | "2x1" | "3x2" | "4x3";
+
+export type EventbarSpecialDiscountConfig = {
+  activo: boolean;
+  tipo: EventbarSpecialDiscountType;
+  cantidadRequerida: number;
+  cantidadPaga: number;
+  label: string | null;
+};
+
 function normalizeTipoCliente(value: unknown): TipoCliente {
   if (value === "mayorista" || value === "empleado") return value;
   return "cliente";
+}
+
+function parseConfigBoolean(value: unknown): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "si", "yes", "on"].includes(normalized);
 }
 
 export function normalizeDiscount(value: unknown): number {
@@ -71,6 +93,97 @@ export function applyDiscountToMoney(basePrice: number, discountPercentage: numb
 
 function normalizeCategoryKey(value: string | null | undefined): string {
   return (value || "").trim().toLowerCase();
+}
+
+export function normalizeEventbarSpecialDiscountType(value: unknown): EventbarSpecialDiscountType {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/×/g, "x");
+  if (normalized === "2x1" || normalized === "3x2" || normalized === "4x3") return normalized;
+  return "none";
+}
+
+export function getEventbarSpecialDiscountTerms(type: EventbarSpecialDiscountType): {
+  cantidadRequerida: number;
+  cantidadPaga: number;
+} | null {
+  if (type === "2x1") return { cantidadRequerida: 2, cantidadPaga: 1 };
+  if (type === "3x2") return { cantidadRequerida: 3, cantidadPaga: 2 };
+  if (type === "4x3") return { cantidadRequerida: 4, cantidadPaga: 3 };
+  return null;
+}
+
+function parseEventbarEndDate(value: unknown): Date | null {
+  const date = new Date(String(value ?? ""));
+  if (!Number.isFinite(date.getTime())) return null;
+  return date;
+}
+
+export async function loadEventbarSpecialDiscountConfig(conn: Queryable): Promise<EventbarSpecialDiscountConfig> {
+  const inactive: EventbarSpecialDiscountConfig = {
+    activo: false,
+    tipo: "none",
+    cantidadRequerida: 0,
+    cantidadPaga: 0,
+    label: null,
+  };
+
+  const placeholders = EVENTBAR_SPECIAL_DISCOUNT_CONFIG_KEYS.map(() => "?").join(", ");
+  const rows = await qAll<{ clave: string; valor: string }>(
+    conn,
+    `SELECT clave, valor
+     FROM configuracion
+     WHERE clave IN (${placeholders})`,
+    [...EVENTBAR_SPECIAL_DISCOUNT_CONFIG_KEYS],
+  ).catch(() => []);
+
+  const byKey = new Map(rows.map((row) => [row.clave, row.valor]));
+  const eventbarActiva = parseConfigBoolean(byKey.get("eventbar_activo"));
+  const fechaFin = parseEventbarEndDate(byKey.get("eventbar_fecha_fin"));
+  const tipo = normalizeEventbarSpecialDiscountType(byKey.get("eventbar_descuento_especial_tipo"));
+  const terms = getEventbarSpecialDiscountTerms(tipo);
+
+  if (!eventbarActiva || !fechaFin || fechaFin.getTime() <= Date.now() || !terms) {
+    return inactive;
+  }
+
+  return {
+    activo: true,
+    tipo,
+    cantidadRequerida: terms.cantidadRequerida,
+    cantidadPaga: terms.cantidadPaga,
+    label: tipo.toUpperCase(),
+  };
+}
+
+export function calculateEventbarSpecialDiscountSubtotal(
+  unitPrice: number | null | undefined,
+  quantity: number | null | undefined,
+  discount: EventbarSpecialDiscountConfig | null | undefined,
+): number {
+  const price = normalizeMoney(unitPrice ?? 0);
+  const qty = Math.max(0, Math.floor(Number(quantity ?? 0)));
+  if (!discount?.activo || discount.cantidadRequerida <= 0 || discount.cantidadPaga <= 0 || qty <= 0 || price <= 0) {
+    return normalizeMoney(price * qty);
+  }
+
+  const promoGroups = Math.floor(qty / discount.cantidadRequerida);
+  const remainder = qty % discount.cantidadRequerida;
+  const chargedQuantity = promoGroups * discount.cantidadPaga + remainder;
+  return normalizeMoney(price * chargedQuantity);
+}
+
+export function getEventbarSpecialEffectiveUnitPrice(
+  unitPrice: number | null | undefined,
+  discount: EventbarSpecialDiscountConfig | null | undefined,
+): number | null {
+  const price = normalizeMoney(unitPrice ?? 0);
+  if (!discount?.activo || discount.cantidadRequerida <= 0 || discount.cantidadPaga <= 0 || price <= 0) {
+    return null;
+  }
+  return normalizeMoney(price * (discount.cantidadPaga / discount.cantidadRequerida));
 }
 
 export async function getCustomerPricingProfile(
@@ -141,10 +254,9 @@ async function loadWebGlobalDiscountConfig(conn: Queryable): Promise<DiscountCon
   ).catch(() => []);
 
   const byKey = new Map(rows.map((row) => [row.clave, row.valor]));
-  const activoRaw = String(byKey.get("descuento_web_global_activo") ?? "0").trim().toLowerCase();
 
   return {
-    activo: activoRaw === "1" || activoRaw === "true" || activoRaw === "si" || activoRaw === "yes" || activoRaw === "on",
+    activo: parseConfigBoolean(byKey.get("descuento_web_global_activo") ?? "0"),
     cliente: normalizeDiscount(byKey.get("descuento_web_global_cliente") ?? 0),
     mayorista: normalizeDiscount(byKey.get("descuento_web_global_mayorista") ?? 0),
     empleado: normalizeDiscount(byKey.get("descuento_web_global_empleado") ?? 0),

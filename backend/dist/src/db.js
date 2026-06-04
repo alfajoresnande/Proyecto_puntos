@@ -511,6 +511,16 @@ async function ensureGlobalConfigurationSchema() {
             valor: "#F3C47B",
             descripcion: "Color de texto de la barra superior de evento.",
         },
+        {
+            clave: "eventbar_descuento_especial_activo",
+            valor: "0",
+            descripcion: "Activa el descuento especial de la eventbar para precios de tienda online.",
+        },
+        {
+            clave: "eventbar_descuento_especial_tipo",
+            valor: "none",
+            descripcion: "Tipo de descuento especial de la eventbar: none, 2x1, 3x2 o 4x3.",
+        },
     ];
     for (const item of defaultConfigs) {
         await exports.pool.query(`INSERT INTO configuracion (clave, valor, descripcion)
