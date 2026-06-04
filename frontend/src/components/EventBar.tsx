@@ -5,6 +5,7 @@ import { api } from "../api";
 type EventBarResponse = {
   active: boolean;
   titulo?: string;
+  subtitulo?: string;
   fecha_fin?: string;
   color_fondo?: string;
   color_texto?: string;
@@ -70,19 +71,34 @@ export function EventBar() {
   if (!visible || !countdown || !eventbarQuery.data) return null;
 
   const style = {
-    "--eventbar-bg": eventbarQuery.data.color_fondo || "#6B3E26",
-    "--eventbar-fg": eventbarQuery.data.color_texto || "#FFFFFF",
+    "--eventbar-bg": eventbarQuery.data.color_fondo || "#2D1A0D",
+    "--eventbar-fg": eventbarQuery.data.color_texto || "#F3C47B",
   } as CSSProperties & Record<"--eventbar-bg" | "--eventbar-fg", string>;
 
   return (
     <div className="eventbar" style={style} role="status" aria-live="polite">
       <div className="eventbar-inner">
-        <p className="eventbar-title">{eventbarQuery.data.titulo}</p>
+        <div className="eventbar-copy">
+          <p className="eventbar-title">{eventbarQuery.data.titulo}</p>
+          {eventbarQuery.data.subtitulo ? (
+            <p className="eventbar-subtitle">{eventbarQuery.data.subtitulo}</p>
+          ) : null}
+        </div>
         <div className="eventbar-countdown" aria-label={countdown.ariaLabel}>
-          <span className="eventbar-count-main">
-            {countdown.days}/{countdown.hours}/{countdown.minutes}
+          <span className="eventbar-time-card">
+            <strong>{countdown.days}</strong>
+            <small>DIAS</small>
           </span>
-          <span className="eventbar-count-label">DD/HH/MM</span>
+          <span className="eventbar-count-separator" aria-hidden="true">:</span>
+          <span className="eventbar-time-card">
+            <strong>{countdown.hours}</strong>
+            <small>HRS</small>
+          </span>
+          <span className="eventbar-count-separator" aria-hidden="true">:</span>
+          <span className="eventbar-time-card">
+            <strong>{countdown.minutes}</strong>
+            <small>MIN</small>
+          </span>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
@@ -636,6 +636,7 @@ type ConfiguracionDraft = {
   chatbot_activo: boolean;
   eventbar_activo: boolean;
   eventbar_titulo: string;
+  eventbar_subtitulo: string;
   eventbar_fecha_fin: string;
   eventbar_color_fondo: string;
   eventbar_color_texto: string;
@@ -1193,15 +1194,19 @@ function datetimeLocalInputToIso(value: string): string {
   return date.toISOString();
 }
 
-function formatEventbarCountdownPreview(value: string): string {
+function getEventbarCountdownPreview(value: string): { days: string; hours: string; minutes: string } {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "DD/HH/MM";
+  if (!Number.isFinite(date.getTime())) return { days: "DD", hours: "HH", minutes: "MM" };
   const remainingMs = Math.max(0, date.getTime() - Date.now());
   const totalMinutes = Math.ceil(remainingMs / 60_000);
   const days = Math.floor(totalMinutes / (24 * 60));
   const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
   const minutes = totalMinutes % 60;
-  return `${String(days).padStart(2, "0")}/${String(hours).padStart(2, "0")}/${String(minutes).padStart(2, "0")}`;
+  return {
+    days: String(days).padStart(2, "0"),
+    hours: String(hours).padStart(2, "0"),
+    minutes: String(minutes).padStart(2, "0"),
+  };
 }
 
 function isValidConfigNavigationLink(value: string): boolean {
@@ -1827,9 +1832,10 @@ export function Admin() {
     chatbot_activo: true,
     eventbar_activo: false,
     eventbar_titulo: "",
+    eventbar_subtitulo: "",
     eventbar_fecha_fin: "",
-    eventbar_color_fondo: "#6B3E26",
-    eventbar_color_texto: "#FFFFFF",
+    eventbar_color_fondo: "#2D1A0D",
+    eventbar_color_texto: "#F3C47B",
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
@@ -2170,9 +2176,10 @@ export function Admin() {
       chatbot_activo: isTruthyConfigValue(getConfig("chatbot_activo", "1")),
       eventbar_activo: isTruthyConfigValue(getConfig("eventbar_activo", "0")),
       eventbar_titulo: getConfig("eventbar_titulo", ""),
+      eventbar_subtitulo: getConfig("eventbar_subtitulo", ""),
       eventbar_fecha_fin: toDatetimeLocalInputValue(getConfig("eventbar_fecha_fin", "")),
-      eventbar_color_fondo: normalizeHexColorInput(getConfig("eventbar_color_fondo", "#6B3E26"), "#6B3E26"),
-      eventbar_color_texto: normalizeHexColorInput(getConfig("eventbar_color_texto", "#FFFFFF"), "#FFFFFF"),
+      eventbar_color_fondo: normalizeHexColorInput(getConfig("eventbar_color_fondo", "#2D1A0D"), "#2D1A0D"),
+      eventbar_color_texto: normalizeHexColorInput(getConfig("eventbar_color_texto", "#F3C47B"), "#F3C47B"),
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
@@ -4618,6 +4625,7 @@ export function Admin() {
     const chatbotActivo = configDraft.chatbot_activo;
     const eventbarActivo = configDraft.eventbar_activo;
     const eventbarTitulo = configDraft.eventbar_titulo.trim();
+    const eventbarSubtitulo = configDraft.eventbar_subtitulo.trim();
     const eventbarFechaFinIso = datetimeLocalInputToIso(configDraft.eventbar_fecha_fin);
     const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
     const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
@@ -4696,6 +4704,10 @@ export function Admin() {
     if (eventbarActivo) {
       if (eventbarTitulo.length < 2 || eventbarTitulo.length > 120) {
         setConfigErr("El titulo de la eventbar debe tener entre 2 y 120 caracteres.");
+        return;
+      }
+      if (eventbarSubtitulo.length > 160) {
+        setConfigErr("El subtitulo de la eventbar no puede superar 160 caracteres.");
         return;
       }
       if (!Number.isFinite(eventbarFechaFinMs)) {
@@ -4810,6 +4822,11 @@ export function Admin() {
           clave: "eventbar_titulo",
           valor: eventbarTitulo,
           descripcion: "Texto principal que se muestra en la barra superior de evento.",
+        },
+        {
+          clave: "eventbar_subtitulo",
+          valor: eventbarSubtitulo,
+          descripcion: "Texto secundario que se muestra debajo del titulo en la barra superior de evento.",
         },
         {
           clave: "eventbar_fecha_fin",
@@ -5049,6 +5066,7 @@ export function Admin() {
   }
 
   const stats = statsQuery.data;
+  const eventbarPreviewCountdown = getEventbarCountdownPreview(configDraft.eventbar_fecha_fin);
   const canjeCodigoAdminFinalizado = canjeCodigoAdmin
     ? ["entregado", "cancelado", "expirado"].includes(canjeCodigoAdmin.estado)
     : false;
@@ -5411,6 +5429,18 @@ export function Admin() {
                     <p className="adm-field-help">Texto corto que aparece en la barra. Maximo 120 caracteres.</p>
                   </div>
                   <div className="adm-field">
+                    <label className="adm-label">Subtitulo</label>
+                    <input
+                      className="adm-input"
+                      maxLength={160}
+                      value={configDraft.eventbar_subtitulo}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_subtitulo: event.target.value }))}
+                      placeholder="Ej: Ultimas horas - termina hoy a la medianoche"
+                      disabled={configBusy}
+                    />
+                    <p className="adm-field-help">Segunda linea opcional para dar contexto al evento.</p>
+                  </div>
+                  <div className="adm-field">
                     <label className="adm-label">Finaliza el</label>
                     <input
                       className="adm-input"
@@ -5426,7 +5456,7 @@ export function Admin() {
                     <div className="adm-color-control">
                       <input
                         type="color"
-                        value={normalizeHexColorInput(configDraft.eventbar_color_fondo, "#6B3E26")}
+                        value={normalizeHexColorInput(configDraft.eventbar_color_fondo, "#2D1A0D")}
                         onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_fondo: event.target.value }))}
                         disabled={configBusy}
                         aria-label="Color de fondo de la eventbar"
@@ -5435,19 +5465,19 @@ export function Admin() {
                         className="adm-input"
                         value={configDraft.eventbar_color_fondo}
                         onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_fondo: event.target.value }))}
-                        placeholder="#6B3E26"
+                        placeholder="#2D1A0D"
                         maxLength={7}
                         disabled={configBusy}
                       />
                     </div>
-                    <p className="adm-field-help">Usa formato hexadecimal, por ejemplo #6B3E26.</p>
+                    <p className="adm-field-help">Usa formato hexadecimal, por ejemplo #2D1A0D.</p>
                   </div>
                   <div className="adm-field">
                     <label className="adm-label">Color de texto</label>
                     <div className="adm-color-control">
                       <input
                         type="color"
-                        value={normalizeHexColorInput(configDraft.eventbar_color_texto, "#FFFFFF")}
+                        value={normalizeHexColorInput(configDraft.eventbar_color_texto, "#F3C47B")}
                         onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_texto: event.target.value }))}
                         disabled={configBusy}
                         aria-label="Color de texto de la eventbar"
@@ -5456,7 +5486,7 @@ export function Admin() {
                         className="adm-input"
                         value={configDraft.eventbar_color_texto}
                         onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_texto: event.target.value }))}
-                        placeholder="#FFFFFF"
+                        placeholder="#F3C47B"
                         maxLength={7}
                         disabled={configBusy}
                       />
@@ -5468,16 +5498,33 @@ export function Admin() {
                     <div
                       className="adm-eventbar-preview"
                       style={{
-                        background: normalizeHexColorInput(configDraft.eventbar_color_fondo, "#6B3E26"),
-                        color: normalizeHexColorInput(configDraft.eventbar_color_texto, "#FFFFFF"),
-                      }}
+                        "--adm-eventbar-bg": normalizeHexColorInput(configDraft.eventbar_color_fondo, "#2D1A0D"),
+                        "--adm-eventbar-fg": normalizeHexColorInput(configDraft.eventbar_color_texto, "#F3C47B"),
+                      } as CSSProperties & Record<"--adm-eventbar-bg" | "--adm-eventbar-fg", string>}
                     >
-                      <span className="adm-eventbar-preview-title">
-                        {configDraft.eventbar_titulo.trim() || "Nombre del evento"}
+                      <span className="adm-eventbar-preview-copy">
+                        <span className="adm-eventbar-preview-title">
+                          {configDraft.eventbar_titulo.trim() || "OFERTA 4X3 EN TODA LA WEB"}
+                        </span>
+                        <span className="adm-eventbar-preview-subtitle">
+                          {configDraft.eventbar_subtitulo.trim() || "Ultimas horas - termina hoy a la medianoche"}
+                        </span>
                       </span>
                       <span className="adm-eventbar-preview-count">
-                        {formatEventbarCountdownPreview(configDraft.eventbar_fecha_fin)}
-                        <small>DD/HH/MM</small>
+                        <span className="adm-eventbar-preview-time-card">
+                          <strong>{eventbarPreviewCountdown.days}</strong>
+                          <small>DIAS</small>
+                        </span>
+                        <span className="adm-eventbar-preview-separator">:</span>
+                        <span className="adm-eventbar-preview-time-card">
+                          <strong>{eventbarPreviewCountdown.hours}</strong>
+                          <small>HRS</small>
+                        </span>
+                        <span className="adm-eventbar-preview-separator">:</span>
+                        <span className="adm-eventbar-preview-time-card">
+                          <strong>{eventbarPreviewCountdown.minutes}</strong>
+                          <small>MIN</small>
+                        </span>
                       </span>
                     </div>
                   </div>

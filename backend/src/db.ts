@@ -598,18 +598,23 @@ async function ensureGlobalConfigurationSchema() {
       descripcion: "Texto principal que se muestra en la barra superior de evento.",
     },
     {
+      clave: "eventbar_subtitulo",
+      valor: "",
+      descripcion: "Texto secundario que se muestra debajo del titulo en la barra superior de evento.",
+    },
+    {
       clave: "eventbar_fecha_fin",
       valor: "",
       descripcion: "Fecha y hora ISO en la que termina el evento de la barra superior.",
     },
     {
       clave: "eventbar_color_fondo",
-      valor: "#6B3E26",
+      valor: "#2D1A0D",
       descripcion: "Color de fondo de la barra superior de evento.",
     },
     {
       clave: "eventbar_color_texto",
-      valor: "#FFFFFF",
+      valor: "#F3C47B",
       descripcion: "Color de texto de la barra superior de evento.",
     },
   ];

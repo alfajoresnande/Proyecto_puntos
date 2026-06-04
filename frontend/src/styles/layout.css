@@ -27,13 +27,17 @@
 }
 
 html.eventbar-visible {
-  --eventbar-height: 48px;
+  --eventbar-height: 76px;
 }
 
 .eventbar {
   align-items: center;
-  background: var(--eventbar-bg, #6B3E26);
-  color: var(--eventbar-fg, #FFFFFF);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214, 128, 45, 0.22), transparent 34%),
+    linear-gradient(90deg, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 82%, #000000 18%) 0%, var(--eventbar-bg, #2D1A0D) 52%, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 72%, #000000 28%) 100%);
+  border-bottom: 1px solid rgba(238, 177, 93, 0.26);
+  box-shadow: inset 0 -1px 0 rgba(255, 230, 180, 0.08), 0 8px 22px rgba(45, 24, 12, 0.2);
+  color: var(--eventbar-fg, #F3C47B);
   display: flex;
   height: var(--eventbar-height);
   left: 0;
@@ -47,50 +51,94 @@ html.eventbar-visible {
 .eventbar-inner {
   align-items: center;
   display: grid;
-  gap: 1rem;
+  gap: 1.4rem;
   grid-template-columns: minmax(0, 1fr) auto;
   margin: 0 auto;
-  max-width: 1180px;
+  max-width: 1320px;
   padding: 0 1.75rem;
   width: 100%;
 }
 
+.eventbar-copy {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
 .eventbar-title {
-  font-size: 0.9rem;
-  font-weight: 850;
+  color: var(--eventbar-fg, #F3C47B);
+  font-size: clamp(1rem, 1.8vw, 1.55rem);
+  font-weight: 950;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.eventbar-subtitle {
+  color: color-mix(in srgb, var(--eventbar-fg, #F3C47B) 82%, #ffffff 18%);
+  font-size: 0.92rem;
+  font-weight: 700;
   line-height: 1.2;
   margin: 0;
   min-width: 0;
+  opacity: 0.9;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .eventbar-countdown {
-  align-items: baseline;
+  align-items: center;
   display: inline-flex;
   gap: 0.55rem;
   justify-content: flex-end;
-  min-width: 138px;
+  min-width: 310px;
   white-space: nowrap;
 }
 
-.eventbar-count-main {
+.eventbar-time-card {
+  align-items: center;
+  background: rgba(255, 201, 124, 0.06);
+  border: 1px solid rgba(243, 196, 123, 0.22);
+  border-radius: 8px;
+  color: var(--eventbar-fg, #F3C47B);
+  display: grid;
+  height: 52px;
+  justify-items: center;
+  min-width: 70px;
+  padding: 0.38rem 0.65rem;
+}
+
+.eventbar-time-card strong {
+  font-size: 1.32rem;
   font-variant-numeric: tabular-nums;
-  font-size: 1.05rem;
   font-weight: 950;
   line-height: 1;
 }
 
-.eventbar-count-label {
+.eventbar-time-card small {
   font-size: 0.62rem;
-  font-weight: 850;
-  opacity: 0.82;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  opacity: 0.92;
+}
+
+.eventbar-count-separator {
+  color: var(--eventbar-fg, #F3C47B);
+  font-size: 1.35rem;
+  font-weight: 900;
+  opacity: 0.85;
 }
 
 @media (max-width: 767px) {
   html.eventbar-visible {
-    --eventbar-height: 74px;
+    --eventbar-height: 118px;
   }
 
   .eventbar-inner {
@@ -103,7 +151,13 @@ html.eventbar-visible {
   }
 
   .eventbar-title {
-    font-size: 0.82rem;
+    font-size: 0.94rem;
+    letter-spacing: 0.12em;
+    max-width: 100%;
+  }
+
+  .eventbar-subtitle {
+    font-size: 0.74rem;
     max-width: 100%;
   }
 
@@ -112,7 +166,21 @@ html.eventbar-visible {
     min-width: 0;
   }
 
-  .eventbar-count-main {
+  .eventbar-time-card {
+    height: 42px;
+    min-width: 58px;
+    padding: 0.32rem 0.5rem;
+  }
+
+  .eventbar-time-card strong {
+    font-size: 1rem;
+  }
+
+  .eventbar-time-card small {
+    font-size: 0.52rem;
+  }
+
+  .eventbar-count-separator {
     font-size: 1rem;
   }
 }

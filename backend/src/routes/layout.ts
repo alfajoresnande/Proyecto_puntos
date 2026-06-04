@@ -5,6 +5,7 @@ const router = Router();
 const EVENTBAR_KEYS = [
   "eventbar_activo",
   "eventbar_titulo",
+  "eventbar_subtitulo",
   "eventbar_fecha_fin",
   "eventbar_color_fondo",
   "eventbar_color_texto",
@@ -62,6 +63,7 @@ router.get("/eventbar", async (_req, res) => {
     const config = new Map(rows.map((row) => [row.clave, row.valor]));
     const active = parseConfigBoolean(config.get("eventbar_activo"));
     const title = String(config.get("eventbar_titulo") ?? "").trim();
+    const subtitle = String(config.get("eventbar_subtitulo") ?? "").trim();
     const endDate = parseEventDate(config.get("eventbar_fecha_fin"));
 
     if (!active || !title || !endDate || endDate.getTime() <= Date.now()) {
@@ -72,9 +74,10 @@ router.get("/eventbar", async (_req, res) => {
     res.json({
       active: true,
       titulo: title.slice(0, 120),
+      subtitulo: subtitle.slice(0, 160),
       fecha_fin: endDate.toISOString(),
-      color_fondo: normalizeHexColor(config.get("eventbar_color_fondo"), "#6B3E26"),
-      color_texto: normalizeHexColor(config.get("eventbar_color_texto"), "#FFFFFF"),
+      color_fondo: normalizeHexColor(config.get("eventbar_color_fondo"), "#2D1A0D"),
+      color_texto: normalizeHexColor(config.get("eventbar_color_texto"), "#F3C47B"),
     });
   } catch (err) {
     console.error("Error al cargar eventbar:", err);
