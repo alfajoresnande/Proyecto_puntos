@@ -828,7 +828,23 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('limite_compra_mayorista', '100',
         'Cantidad maxima por producto para clientes mayoristas. 0 significa sin tope comercial.'),
     ('limite_compra_empleado', '100',
-        'Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.')
+        'Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.'),
+    ('eventbar_activo', '0',
+        'Activa o desactiva la barra superior de evento temporal.'),
+    ('eventbar_titulo', '',
+        'Texto principal que se muestra en la barra superior de evento.'),
+    ('eventbar_subtitulo', '',
+        'Texto secundario que se muestra debajo del titulo en la barra superior de evento.'),
+    ('eventbar_fecha_fin', '',
+        'Fecha y hora ISO en la que termina el evento de la barra superior.'),
+    ('eventbar_color_fondo', '#2D1A0D',
+        'Color de fondo de la barra superior de evento.'),
+    ('eventbar_color_texto', '#F3C47B',
+        'Color de texto de la barra superior de evento.'),
+    ('eventbar_descuento_especial_activo', '0',
+        'Activa el descuento especial de la eventbar para precios de tienda online.'),
+    ('eventbar_descuento_especial_tipo', 'none',
+        'Tipo de descuento especial de la eventbar: none, 2x1, 3x2 o 4x3.')
 ON DUPLICATE KEY UPDATE valor = VALUES(valor);
 
 

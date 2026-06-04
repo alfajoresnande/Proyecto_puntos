@@ -587,6 +587,46 @@ async function ensureGlobalConfigurationSchema() {
       valor: "100",
       descripcion: "Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.",
     },
+    {
+      clave: "eventbar_activo",
+      valor: "0",
+      descripcion: "Activa o desactiva la barra superior de evento temporal.",
+    },
+    {
+      clave: "eventbar_titulo",
+      valor: "",
+      descripcion: "Texto principal que se muestra en la barra superior de evento.",
+    },
+    {
+      clave: "eventbar_subtitulo",
+      valor: "",
+      descripcion: "Texto secundario que se muestra debajo del titulo en la barra superior de evento.",
+    },
+    {
+      clave: "eventbar_fecha_fin",
+      valor: "",
+      descripcion: "Fecha y hora ISO en la que termina el evento de la barra superior.",
+    },
+    {
+      clave: "eventbar_color_fondo",
+      valor: "#2D1A0D",
+      descripcion: "Color de fondo de la barra superior de evento.",
+    },
+    {
+      clave: "eventbar_color_texto",
+      valor: "#F3C47B",
+      descripcion: "Color de texto de la barra superior de evento.",
+    },
+    {
+      clave: "eventbar_descuento_especial_activo",
+      valor: "0",
+      descripcion: "Activa el descuento especial de la eventbar para precios de tienda online.",
+    },
+    {
+      clave: "eventbar_descuento_especial_tipo",
+      valor: "none",
+      descripcion: "Tipo de descuento especial de la eventbar: none, 2x1, 3x2 o 4x3.",
+    },
   ];
 
   for (const item of defaultConfigs) {

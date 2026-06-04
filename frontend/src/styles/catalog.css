@@ -2076,9 +2076,9 @@ body.catalogo-background .pagina-page {
 /* ── Toast flotante ──────────────────────────────────── */
 .catalog-float-toast {
   position: fixed;
-  top: 84px;
+  top: calc(var(--navbar-height, 58px) + var(--eventbar-height, 0px) + 16px);
   right: 16px;
-  z-index: 300;
+  z-index: 1110;
   background: #ffffff;
   border: 1.5px solid #F5C8A8;
   border-left-width: 6px;
@@ -2090,6 +2090,14 @@ body.catalogo-background .pagina-page {
   flex-direction: column;
   gap: 0.75rem;
   animation: catalog-toast-in 0.2s ease-out;
+}
+
+@media (max-width: 640px) {
+  .catalog-float-toast {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+  }
 }
 
 .catalog-float-toast-success {

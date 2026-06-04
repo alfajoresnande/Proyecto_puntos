@@ -1,7 +1,13 @@
 import { Router } from "express";
 import { pool } from "../db";
 import { getAuthPayload } from "../auth";
-import { createPricingResolver, getActiveClientePricingProfile } from "../services/customerPricing";
+import {
+  createPricingResolver,
+  getActiveClientePricingProfile,
+  getEventbarSpecialEffectiveUnitPrice,
+  loadEventbarSpecialDiscountConfig,
+  type EventbarSpecialDiscountConfig,
+} from "../services/customerPricing";
 import { getPurchaseQuantityLimit } from "../services/purchaseLimits";
 import { normalizeSafeImageUrl, normalizeSafeNavigationUrl } from "../urlSafety";
 
@@ -21,6 +27,35 @@ const HOME_LOCATION_SRC_KEYS = [
 function hasOwnProductImage(imagenUrl: string | null, imagenes: string[]): boolean {
   const image = imagenes.find(Boolean) || imagenUrl || "";
   return Boolean(image && !image.endsWith("/logo.png") && image !== "logo.png");
+}
+
+function toMoney(value: number): number {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function buildEventbarPromoFields(unitPrice: number, discount: EventbarSpecialDiscountConfig) {
+  const effectiveUnitPrice = getEventbarSpecialEffectiveUnitPrice(unitPrice, discount);
+  if (!discount.activo || effectiveUnitPrice === null) {
+    return {
+      promo_eventbar_activa: false,
+      promo_eventbar_tipo: null,
+      promo_eventbar_label: null,
+      promo_eventbar_cantidad_requerida: null,
+      promo_eventbar_cantidad_paga: null,
+      promo_eventbar_precio_efectivo: null,
+      promo_eventbar_precio_pack: null,
+    };
+  }
+
+  return {
+    promo_eventbar_activa: true,
+    promo_eventbar_tipo: discount.tipo,
+    promo_eventbar_label: discount.label,
+    promo_eventbar_cantidad_requerida: discount.cantidadRequerida,
+    promo_eventbar_cantidad_paga: discount.cantidadPaga,
+    promo_eventbar_precio_efectivo: effectiveUnitPrice,
+    promo_eventbar_precio_pack: toMoney(unitPrice * discount.cantidadPaga),
+  };
 }
 
 router.get("/home-layout-config", async (_req, res) => {
@@ -100,6 +135,7 @@ router.get("/destacados", async (req, res) => {
       : null;
     const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
     const purchaseLimit = await getPurchaseQuantityLimit(pool, pricingProfile?.tipoCliente ?? "cliente");
+    const eventbarDiscount = await loadEventbarSpecialDiscountConfig(pool);
 
     const ids = rows.map((row) => row.id);
     const placeholders = ids.map(() => "?").join(", ");
@@ -127,6 +163,7 @@ router.get("/destacados", async (req, res) => {
           .filter((url): url is string => Boolean(url))
           .slice(0, 3);
         const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+        const promoFields = buildEventbarPromoFields(pricing.precioFinal, eventbarDiscount);
 
         const mainImageUrl = row.imagen_url ? normalizeSafeImageUrl(row.imagen_url) : (imagenes[0] ?? null);
 
@@ -148,6 +185,7 @@ router.get("/destacados", async (req, res) => {
           precio_dinero_lista: pricing.precioLista,
           descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
           tipo_cliente_precio: pricing.tipoCliente,
+          ...promoFields,
           precio_puntos: row.precio_puntos,
           puntos_para_canjear: row.puntos_para_canjear,
           permite_envio: Boolean(row.permite_envio),
@@ -261,6 +299,15 @@ router.get("/", async (req, res) => {
     : null;
   const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
   const purchaseLimit = await getPurchaseQuantityLimit(pool, pricingProfile?.tipoCliente ?? "cliente");
+  const eventbarDiscount = modoParam === "venta"
+    ? await loadEventbarSpecialDiscountConfig(pool)
+    : {
+        activo: false,
+        tipo: "none" as const,
+        cantidadRequerida: 0,
+        cantidadPaga: 0,
+        label: null,
+      };
 
   const allIds = rows.map((row) => row.id);
   const allPlaceholders = allIds.map(() => "?").join(", ");
@@ -370,6 +417,7 @@ router.get("/", async (req, res) => {
       const stockReservadoSucursal = Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0);
       const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
       const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+      const promoFields = buildEventbarPromoFields(pricing.precioFinal, eventbarDiscount);
       const mainImageUrl = row.imagen_url ? normalizeSafeImageUrl(row.imagen_url) : (imagenes[0] ?? null);
 
       return {
@@ -391,6 +439,7 @@ router.get("/", async (req, res) => {
         precio_dinero_lista: pricing.precioLista,
         descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
         tipo_cliente_precio: pricing.tipoCliente,
+        ...promoFields,
         precio_puntos: row.precio_puntos,
         puntos_para_canjear: row.puntos_para_canjear,
         stock_disponible: stockSucursal,

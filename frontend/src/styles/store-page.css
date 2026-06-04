@@ -38,6 +38,24 @@
   text-align: left;
 }
 
+.store-page-isolated .product-card-promo-row {
+  color: #8B5A30;
+  font-weight: 800;
+}
+
+.store-page-isolated .product-card-promo-row strong {
+  color: #C85A28;
+}
+
+.store-page-isolated .product-card-promo-note {
+  color: #9A735D;
+  font-size: 0.86rem;
+}
+
+.store-page-isolated .store-mobile-promo-pill {
+  display: none;
+}
+
 .store-page-isolated .product-card-qty {
   justify-self: center;
 }
@@ -180,8 +198,24 @@
   }
 
   .store-page.store-page-isolated .product-card-divider,
-  .store-page.store-page-isolated .product-card-points .product-card-row:not(:first-child) {
+  .store-page.store-page-isolated .product-card-points .product-card-row:not(:first-child):not(.product-card-promo-row):not(.product-card-promo-note) {
     display: none !important;
+  }
+
+  .store-page.store-page-isolated .store-mobile-promo-pill {
+    align-items: center;
+    background: #7a4328;
+    border-radius: 999px;
+    color: #fffaf4;
+    display: inline-flex;
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    line-height: 1.1;
+    margin: 0.1rem 0 0;
+    max-width: 100%;
+    padding: 0.36rem 0.58rem;
+    text-transform: uppercase;
   }
 
   .store-page.store-page-isolated .product-card-row {
@@ -194,6 +228,38 @@
 
   .store-page.store-page-isolated .product-card-row > span:first-child {
     display: none;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-row,
+  .store-page.store-page-isolated .product-card-promo-note {
+    display: flex !important;
+    gap: 0.35rem;
+    line-height: 1.1;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-row > span:first-child,
+  .store-page.store-page-isolated .product-card-promo-note > span:first-child {
+    display: inline;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-row {
+    color: #7a4328;
+    font-size: 0.74rem;
+    font-weight: 850;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-row strong {
+    color: #7a4328;
+    font-size: 0.74rem;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-note {
+    color: #8f6d58;
+    font-size: 0.72rem;
+  }
+
+  .store-page.store-page-isolated .product-card-promo-note span:last-child {
+    font-weight: 800;
   }
 
   .store-page.store-page-isolated .product-card-row .cost {
