@@ -21,6 +21,102 @@
   text-transform: uppercase;
 }
 
+:root {
+  --navbar-height: 58px;
+  --eventbar-height: 0px;
+}
+
+html.eventbar-visible {
+  --eventbar-height: 48px;
+}
+
+.eventbar {
+  align-items: center;
+  background: var(--eventbar-bg, #6B3E26);
+  color: var(--eventbar-fg, #FFFFFF);
+  display: flex;
+  height: var(--eventbar-height);
+  left: 0;
+  overflow: hidden;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 1120;
+}
+
+.eventbar-inner {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 0 1.75rem;
+  width: 100%;
+}
+
+.eventbar-title {
+  font-size: 0.9rem;
+  font-weight: 850;
+  line-height: 1.2;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventbar-countdown {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 0.55rem;
+  justify-content: flex-end;
+  min-width: 138px;
+  white-space: nowrap;
+}
+
+.eventbar-count-main {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.eventbar-count-label {
+  font-size: 0.62rem;
+  font-weight: 850;
+  opacity: 0.82;
+}
+
+@media (max-width: 767px) {
+  html.eventbar-visible {
+    --eventbar-height: 74px;
+  }
+
+  .eventbar-inner {
+    align-content: center;
+    gap: 0.45rem;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0.55rem 1rem;
+    text-align: center;
+  }
+
+  .eventbar-title {
+    font-size: 0.82rem;
+    max-width: 100%;
+  }
+
+  .eventbar-countdown {
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .eventbar-count-main {
+    font-size: 1rem;
+  }
+}
+
 .app-toast-viewport {
   display: grid;
   gap: 0.75rem;
@@ -2355,6 +2451,39 @@
 
   .support-chat-mini-head {
     padding-bottom: 0.7rem;
+  }
+}
+
+html .navbar {
+  top: var(--eventbar-height);
+}
+
+html .navbar-mobile,
+html .navbar-mobile-shell {
+  max-height: calc(100dvh - var(--navbar-height) - var(--eventbar-height));
+  top: calc(var(--navbar-height) + var(--eventbar-height));
+}
+
+html .app-main {
+  padding-top: calc(var(--navbar-height) + var(--eventbar-height));
+}
+
+html .admin-layout {
+  min-height: calc(100vh - var(--navbar-height) - var(--eventbar-height));
+}
+
+html .admin-sidebar {
+  height: calc(100vh - var(--navbar-height) - var(--eventbar-height));
+  top: calc(var(--navbar-height) + var(--eventbar-height));
+}
+
+html .app-toast-viewport {
+  top: calc(var(--navbar-height) + var(--eventbar-height) + 16px);
+}
+
+@media (max-width: 767px) {
+  html .app-toast-viewport {
+    top: auto;
   }
 }
 

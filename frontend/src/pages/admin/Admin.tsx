@@ -634,6 +634,11 @@ type ConfiguracionDraft = {
   empresa_horario_retiro: string;
   pedido_comprobante_leyenda: string;
   chatbot_activo: boolean;
+  eventbar_activo: boolean;
+  eventbar_titulo: string;
+  eventbar_fecha_fin: string;
+  eventbar_color_fondo: string;
+  eventbar_color_texto: string;
 };
 
 type SucursalAdmin = {
@@ -1156,6 +1161,47 @@ function emptyZeroInputValue(value: number | string | null | undefined): string 
   const numericValue = Number(stringValue);
   if (!Number.isFinite(numericValue) || numericValue === 0) return "";
   return stringValue;
+}
+
+function isTruthyConfigValue(value: string | null | undefined): boolean {
+  return ["1", "true", "si", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function isValidHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value.trim());
+}
+
+function normalizeHexColorInput(value: string | null | undefined, fallback: string): string {
+  const normalized = String(value ?? "").trim();
+  return isValidHexColor(normalized) ? normalized : fallback;
+}
+
+function toDatetimeLocalInputValue(value: string | null | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return "";
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function datetimeLocalInputToIso(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toISOString();
+}
+
+function formatEventbarCountdownPreview(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "DD/HH/MM";
+  const remainingMs = Math.max(0, date.getTime() - Date.now());
+  const totalMinutes = Math.ceil(remainingMs / 60_000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(days).padStart(2, "0")}/${String(hours).padStart(2, "0")}/${String(minutes).padStart(2, "0")}`;
 }
 
 function isValidConfigNavigationLink(value: string): boolean {
@@ -1779,6 +1825,11 @@ export function Admin() {
     empresa_horario_retiro: "08:00 a 18:00",
     pedido_comprobante_leyenda: "Este documento no es valido como factura.",
     chatbot_activo: true,
+    eventbar_activo: false,
+    eventbar_titulo: "",
+    eventbar_fecha_fin: "",
+    eventbar_color_fondo: "#6B3E26",
+    eventbar_color_texto: "#FFFFFF",
   });
   const [nuevaSucursal, setNuevaSucursal] = useState<SucursalForm>(emptySucursalForm());
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
@@ -2116,7 +2167,12 @@ export function Admin() {
       empresa_dias_habiles_retiro: getConfig("empresa_dias_habiles_retiro", "Lunes a viernes"),
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
       pedido_comprobante_leyenda: getConfig("pedido_comprobante_leyenda", "Este documento no es valido como factura."),
-      chatbot_activo: ["1", "true", "yes", "on"].includes(getConfig("chatbot_activo", "1").toLowerCase()),
+      chatbot_activo: isTruthyConfigValue(getConfig("chatbot_activo", "1")),
+      eventbar_activo: isTruthyConfigValue(getConfig("eventbar_activo", "0")),
+      eventbar_titulo: getConfig("eventbar_titulo", ""),
+      eventbar_fecha_fin: toDatetimeLocalInputValue(getConfig("eventbar_fecha_fin", "")),
+      eventbar_color_fondo: normalizeHexColorInput(getConfig("eventbar_color_fondo", "#6B3E26"), "#6B3E26"),
+      eventbar_color_texto: normalizeHexColorInput(getConfig("eventbar_color_texto", "#FFFFFF"), "#FFFFFF"),
     });
     setConfigLoaded(true);
   }, [configLoaded, configuracionQuery.data]);
@@ -4560,6 +4616,12 @@ export function Admin() {
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
     const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
     const chatbotActivo = configDraft.chatbot_activo;
+    const eventbarActivo = configDraft.eventbar_activo;
+    const eventbarTitulo = configDraft.eventbar_titulo.trim();
+    const eventbarFechaFinIso = datetimeLocalInputToIso(configDraft.eventbar_fecha_fin);
+    const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
+    const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
+    const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -4622,6 +4684,28 @@ export function Admin() {
     if (!pedidoComprobanteLeyenda) {
       setConfigErr("Completa la leyenda legal del comprobante.");
       return;
+    }
+    if (!isValidHexColor(eventbarColorFondo)) {
+      setConfigErr("El color de fondo de la eventbar debe tener formato #RRGGBB.");
+      return;
+    }
+    if (!isValidHexColor(eventbarColorTexto)) {
+      setConfigErr("El color de texto de la eventbar debe tener formato #RRGGBB.");
+      return;
+    }
+    if (eventbarActivo) {
+      if (eventbarTitulo.length < 2 || eventbarTitulo.length > 120) {
+        setConfigErr("El titulo de la eventbar debe tener entre 2 y 120 caracteres.");
+        return;
+      }
+      if (!Number.isFinite(eventbarFechaFinMs)) {
+        setConfigErr("Selecciona una fecha y hora final valida para la eventbar.");
+        return;
+      }
+      if (eventbarFechaFinMs <= Date.now()) {
+        setConfigErr("La fecha final de la eventbar debe estar en el futuro.");
+        return;
+      }
     }
 
     setConfigBusy(true);
@@ -4716,6 +4800,31 @@ export function Admin() {
           clave: "chatbot_activo",
           valor: chatbotActivo ? "1" : "0",
           descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
+        },
+        {
+          clave: "eventbar_activo",
+          valor: eventbarActivo ? "1" : "0",
+          descripcion: "Activa o desactiva la barra superior de evento temporal.",
+        },
+        {
+          clave: "eventbar_titulo",
+          valor: eventbarTitulo,
+          descripcion: "Texto principal que se muestra en la barra superior de evento.",
+        },
+        {
+          clave: "eventbar_fecha_fin",
+          valor: eventbarFechaFinIso,
+          descripcion: "Fecha y hora ISO en la que termina el evento de la barra superior.",
+        },
+        {
+          clave: "eventbar_color_fondo",
+          valor: eventbarColorFondo,
+          descripcion: "Color de fondo de la barra superior de evento.",
+        },
+        {
+          clave: "eventbar_color_texto",
+          valor: eventbarColorTexto,
+          descripcion: "Color de texto de la barra superior de evento.",
         },
       ];
 
@@ -5269,6 +5378,118 @@ export function Admin() {
                   </div>
                 </>
               )}
+
+              <div className="admin-section-header adm-config-header">
+                <h2 className="admin-section-title">Eventbar</h2>
+              </div>
+              <div className="admin-card admin-card-padded adm-config-card">
+                <p className="adm-config-subtitle">
+                  Crea una barra superior temporal para eventos, promociones o avisos con cuenta regresiva en dias, horas y minutos.
+                </p>
+                <div className="adm-field adm-field-checkbox adm-eventbar-toggle">
+                  <label className="adm-label-inline">
+                    <input
+                      type="checkbox"
+                      checked={configDraft.eventbar_activo}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_activo: event.target.checked }))}
+                      disabled={configBusy}
+                    />
+                    Mostrar eventbar en la aplicacion
+                  </label>
+                </div>
+                <div className="adm-config-grid adm-eventbar-grid">
+                  <div className="adm-field">
+                    <label className="adm-label">Titulo del evento</label>
+                    <input
+                      className="adm-input"
+                      maxLength={120}
+                      value={configDraft.eventbar_titulo}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_titulo: event.target.value }))}
+                      placeholder="Ej: Promo aniversario"
+                      disabled={configBusy}
+                    />
+                    <p className="adm-field-help">Texto corto que aparece en la barra. Maximo 120 caracteres.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Finaliza el</label>
+                    <input
+                      className="adm-input"
+                      type="datetime-local"
+                      value={configDraft.eventbar_fecha_fin}
+                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_fecha_fin: event.target.value }))}
+                      disabled={configBusy}
+                    />
+                    <p className="adm-field-help">Cuando llega a cero, la barra se oculta automaticamente.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Color de fondo</label>
+                    <div className="adm-color-control">
+                      <input
+                        type="color"
+                        value={normalizeHexColorInput(configDraft.eventbar_color_fondo, "#6B3E26")}
+                        onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_fondo: event.target.value }))}
+                        disabled={configBusy}
+                        aria-label="Color de fondo de la eventbar"
+                      />
+                      <input
+                        className="adm-input"
+                        value={configDraft.eventbar_color_fondo}
+                        onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_fondo: event.target.value }))}
+                        placeholder="#6B3E26"
+                        maxLength={7}
+                        disabled={configBusy}
+                      />
+                    </div>
+                    <p className="adm-field-help">Usa formato hexadecimal, por ejemplo #6B3E26.</p>
+                  </div>
+                  <div className="adm-field">
+                    <label className="adm-label">Color de texto</label>
+                    <div className="adm-color-control">
+                      <input
+                        type="color"
+                        value={normalizeHexColorInput(configDraft.eventbar_color_texto, "#FFFFFF")}
+                        onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_texto: event.target.value }))}
+                        disabled={configBusy}
+                        aria-label="Color de texto de la eventbar"
+                      />
+                      <input
+                        className="adm-input"
+                        value={configDraft.eventbar_color_texto}
+                        onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_color_texto: event.target.value }))}
+                        placeholder="#FFFFFF"
+                        maxLength={7}
+                        disabled={configBusy}
+                      />
+                    </div>
+                    <p className="adm-field-help">Conviene elegir un color con buen contraste contra el fondo.</p>
+                  </div>
+                  <div className="adm-field adm-eventbar-preview-field">
+                    <label className="adm-label">Preview</label>
+                    <div
+                      className="adm-eventbar-preview"
+                      style={{
+                        background: normalizeHexColorInput(configDraft.eventbar_color_fondo, "#6B3E26"),
+                        color: normalizeHexColorInput(configDraft.eventbar_color_texto, "#FFFFFF"),
+                      }}
+                    >
+                      <span className="adm-eventbar-preview-title">
+                        {configDraft.eventbar_titulo.trim() || "Nombre del evento"}
+                      </span>
+                      <span className="adm-eventbar-preview-count">
+                        {formatEventbarCountdownPreview(configDraft.eventbar_fecha_fin)}
+                        <small>DD/HH/MM</small>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {configErr ? <div className="adm-msg-err">{configErr}</div> : null}
+                {configMsg ? <div className="adm-msg-ok">{configMsg}</div> : null}
+                <div className="adm-config-actions">
+                  <button className="adm-btn-primary adm-btn-inline" onClick={guardarConfiguracionGeneral} disabled={configBusy}>
+                    {configBusy ? "Guardando..." : "Guardar eventbar"}
+                  </button>
+                </div>
+              </div>
 
               <div className="admin-section-header adm-config-header">
                 <h2 className="admin-section-title">Configuracion del programa</h2>

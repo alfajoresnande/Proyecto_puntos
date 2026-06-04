@@ -5,6 +5,7 @@ import { Footer } from "./components/Footer";
 import { FloatingWhatsApp } from "./components/FloatingWhatsApp";
 import { AiChatWidget } from "./components/AiChatWidget";
 import { AppPresenceTracker } from "./components/AppPresenceTracker";
+import { EventBar } from "./components/EventBar";
 import { Navbar } from "./components/Navbar";
 import { ProfileCompletionBanner } from "./components/ProfileCompletionBanner";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -156,6 +157,7 @@ export default function App() {
       <ScrollToTop />
       <NumberInputGuards />
       <AppPresenceTracker />
+      <EventBar />
       <Navbar />
       <div className="app-main">
         <ProfileCompletionBanner />
