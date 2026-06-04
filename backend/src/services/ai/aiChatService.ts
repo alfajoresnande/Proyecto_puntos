@@ -9,6 +9,7 @@ import {
 } from "./aiRouter";
 import { checkAndConsumeAiUsage } from "./aiUsageLimiter";
 import { pool, qOne, qAll } from "../../db";
+import { getPointsProgramConfig } from "../points";
 
 export type AiChatUserRole = "cliente" | "vendedor" | "admin" | "superadmin" | "anonimo";
 
@@ -69,6 +70,60 @@ function sanitizePromptValue(value: string | undefined, fallback: string, maxLen
   return normalized || fallback;
 }
 
+function formatMoneyForPrompt(value: number): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "$0";
+  const hasDecimals = Math.abs(amount % 1) > 0;
+  return `$${amount.toLocaleString("es-AR", {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: hasDecimals ? 2 : 0,
+  })}`;
+}
+
+function normalizePromptInteger(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.trunc(parsed);
+}
+
+async function getPointsProgramContext(): Promise<string> {
+  try {
+    const [pointsConfig, referralConfig] = await Promise.all([
+      getPointsProgramConfig(pool),
+      qOne<{
+        referido_invitador: string | number | null;
+        referido_invitado: string | number | null;
+      }>(
+        pool,
+        `SELECT
+           MAX(CASE WHEN clave = 'puntos_referido_invitador' THEN valor END) AS referido_invitador,
+           MAX(CASE WHEN clave = 'puntos_referido_invitado' THEN valor END) AS referido_invitado
+         FROM configuracion
+         WHERE clave IN ('puntos_referido_invitador', 'puntos_referido_invitado')`,
+      ),
+    ]);
+
+    const puntosInvitador = normalizePromptInteger(referralConfig?.referido_invitador, 50);
+    const puntosInvitado = normalizePromptInteger(referralConfig?.referido_invitado, 30);
+    const ejemploMonto = pointsConfig.montoBase * 2;
+    const ejemploPuntos = pointsConfig.puntosPorMonto * 2;
+
+    return `PROGRAMA DE PUNTOS ACTUAL:
+- Acumulacion por compra: por cada tramo completo de ${formatMoneyForPrompt(pointsConfig.montoBase)} de compra se acreditan ${pointsConfig.puntosPorMonto} puntos.
+- Si una compra no llega a ${formatMoneyForPrompt(pointsConfig.montoBase)}, suma 0 puntos por compra.
+- Ejemplo exacto: una compra de ${formatMoneyForPrompt(ejemploMonto)} acredita ${ejemploPuntos} puntos.
+- Los puntos de compra se acreditan cuando el pedido queda pagado o avanza a un estado de pedido pagado.
+- Los puntos acreditados vencen a los ${pointsConfig.vencimientoMeses} meses.
+- La app avisa puntos por vencer con ${pointsConfig.alertaPreVencimientoValor} ${pointsConfig.alertaPreVencimientoUnidad} de anticipacion.
+- Referidos: quien comparte su codigo gana ${puntosInvitador} puntos cuando otra persona lo usa; quien se registra con ese codigo gana ${puntosInvitado} puntos.
+- Canjes: el costo en puntos depende de cada producto del catalogo. Para canjes, usa los puntos para canje listados en el catalogo actualizado.
+- No uses otros valores de puntos, porcentajes ni equivalencias si no aparecen en este bloque o en el catalogo actualizado.`;
+  } catch (error) {
+    console.error("[ai-chat] Error fetching points context", error);
+    return "PROGRAMA DE PUNTOS ACTUAL: No se pudo cargar temporalmente la configuracion exacta de puntos. No inventes valores.";
+  }
+}
+
 async function getProductsContext(): Promise<string> {
   try {
     const productos = await qAll<{
@@ -76,17 +131,30 @@ async function getProductsContext(): Promise<string> {
       nombre: string;
       descripcion: string | null;
       precio_dinero: number | null;
-      precio_puntos: number | null;
+      puntos_canje: number | null;
+      tipo_producto: string | null;
     }>(
       pool,
-      "SELECT id, nombre, descripcion, precio_dinero, precio_puntos FROM productos WHERE activo = 1",
+      `SELECT id, nombre, descripcion, precio_dinero,
+              COALESCE(puntos_para_canjear, precio_puntos, puntos_requeridos) AS puntos_canje,
+              tipo_producto
+       FROM productos
+       WHERE activo = 1`,
     );
 
     if (!productos || productos.length === 0) return "No hay productos activos en este momento.";
 
     let ctx = "CATÁLOGO DE PRODUCTOS ACTUALIZADO:\n";
     for (const p of productos) {
-      ctx += `- ${p.nombre}: ${p.descripcion || "Sin descripción"}. Precio: $${p.precio_dinero || 0} / Puntos: ${p.precio_puntos || 0}\n`;
+      const precio = Number(p.precio_dinero ?? 0);
+      const puntosCanje = Number(p.puntos_canje ?? 0);
+      const permiteCanje = p.tipo_producto === "canje" || p.tipo_producto === "mixto" || !p.tipo_producto;
+      const precioTexto = precio > 0 ? formatMoneyForPrompt(precio) : "sin precio en dinero";
+      const puntosTexto = permiteCanje && puntosCanje > 0
+        ? `${puntosCanje} puntos para canje`
+        : "no disponible para canje por puntos";
+
+      ctx += `- ${p.nombre}: ${p.descripcion || "Sin descripcion"}. Tipo: ${p.tipo_producto || "sin tipo"}. Precio en dinero: ${precioTexto}. Canje: ${puntosTexto}.\n`;
     }
     return ctx;
   } catch (error) {
@@ -125,13 +193,16 @@ async function buildMessages(input: AiChatServiceInput): Promise<Groq.Chat.ChatC
   const userRole = input.context?.userRole ?? "anonimo";
   const message = input.message.trim().slice(0, 500);
   
-  const productsContext = await getProductsContext();
-  const envioGratisContext = await getEnvioGratisContext();
+  const [productsContext, envioGratisContext, pointsProgramContext] = await Promise.all([
+    getProductsContext(),
+    getEnvioGratisContext(),
+    getPointsProgramContext(),
+  ]);
 
   return [
     { 
       role: "system", 
-      content: `${AI_SYSTEM_PROMPT}\n\n${envioGratisContext}\n\n${productsContext}` 
+      content: `${AI_SYSTEM_PROMPT}\n\n${pointsProgramContext}\n\n${envioGratisContext}\n\n${productsContext}` 
     },
     {
       role: "user",

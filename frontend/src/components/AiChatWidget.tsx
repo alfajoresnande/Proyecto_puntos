@@ -55,14 +55,14 @@ function getDynamicGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día! Soy SolisChadBot.";
+      timeGreeting = "¡Buen día! Soy Alfajorito.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes! Soy SolisChadBot.";
+      timeGreeting = "¡Buenas tardes! Soy Alfajorito.";
     } else {
-      timeGreeting = "¡Buenas noches! Soy SolisChadBot.";
+      timeGreeting = "¡Buenas noches! Soy Alfajorito.";
     }
   } catch {
-    timeGreeting = "¡Hola! Soy SolisChadBot.";
+    timeGreeting = "¡Hola! Soy Alfajorito.";
   }
 
   if (!user) {
@@ -88,14 +88,14 @@ function getTooltipGreeting(user: User | null): string {
     const hour = parseInt(formatter.format(new Date()), 10);
 
     if (hour >= 6 && hour < 12) {
-      timeGreeting = "¡Buen día! Soy SolisChadBot.";
+      timeGreeting = "¡Buen día! Soy Alfajorito.";
     } else if (hour >= 12 && hour < 20) {
-      timeGreeting = "¡Buenas tardes! Soy SolisChadBot.";
+      timeGreeting = "¡Buenas tardes! Soy Alfajorito.";
     } else {
-      timeGreeting = "¡Buenas noches! Soy SolisChadBot.";
+      timeGreeting = "¡Buenas noches! Soy Alfajorito.";
     }
   } catch {
-    timeGreeting = "¡Hola! Soy SolisChadBot.";
+    timeGreeting = "¡Hola! Soy Alfajorito.";
   }
 
   if (!user) {
@@ -258,12 +258,12 @@ export function AiChatWidget() {
   }
 
   return (
-    <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda IA">
+    <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda Alfajorito">
       {isOpen ? (
-        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="SolisChadBot">
+        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="Alfajorito">
           <div className="ai-chat-header">
             <div>
-              <p className="ai-chat-eyebrow">SolisChadBot</p>
+              <p className="ai-chat-eyebrow">Alfajorito</p>
               <h2>Ñandé te ayuda</h2>
             </div>
             <button

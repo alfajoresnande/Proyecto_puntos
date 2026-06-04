@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../api";
 
 type EventBarResponse = {
@@ -40,7 +41,9 @@ function isValidTargetDate(value: string | undefined): value is string {
 }
 
 export function EventBar() {
+  const location = useLocation();
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [isCollapsedOnScroll, setIsCollapsedOnScroll] = useState(false);
   const eventbarQuery = useQuery({
     queryKey: ["layout", "eventbar"],
     queryFn: () => api.get<EventBarResponse>("/layout/eventbar"),
@@ -53,7 +56,13 @@ export function EventBar() {
     return new Date(eventbarQuery.data.fecha_fin).getTime();
   }, [eventbarQuery.data?.fecha_fin]);
 
-  const visible = Boolean(eventbarQuery.data?.active && targetMs && targetMs > nowMs);
+  const eventbarIsActive = Boolean(eventbarQuery.data?.active && targetMs && targetMs > nowMs);
+  const collapsesOnScroll =
+    location.pathname === "/catalogo" ||
+    location.pathname.startsWith("/catalogo/") ||
+    location.pathname === "/tienda" ||
+    location.pathname.startsWith("/tienda/");
+  const visible = eventbarIsActive && !isCollapsedOnScroll;
   const countdown = targetMs ? formatCountdown(targetMs, nowMs) : null;
 
   useEffect(() => {
@@ -67,6 +76,47 @@ export function EventBar() {
     document.documentElement.classList.toggle("eventbar-visible", visible);
     return () => document.documentElement.classList.remove("eventbar-visible");
   }, [visible]);
+
+  useEffect(() => {
+    if (!collapsesOnScroll || !eventbarIsActive) {
+      setIsCollapsedOnScroll(false);
+      return;
+    }
+
+    let lastScrollY = window.scrollY;
+    let ticking = false;
+    let frameId: number | null = null;
+
+    function syncCollapsedState() {
+      const currentScrollY = window.scrollY;
+      const isScrollingDown = currentScrollY > lastScrollY + 6;
+      const isScrollingUp = currentScrollY < lastScrollY - 10;
+
+      if (currentScrollY <= 12) {
+        setIsCollapsedOnScroll(false);
+      } else if (isScrollingDown && currentScrollY > 32) {
+        setIsCollapsedOnScroll(true);
+      } else if (isScrollingUp) {
+        setIsCollapsedOnScroll(false);
+      }
+
+      lastScrollY = currentScrollY;
+      ticking = false;
+    }
+
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      frameId = window.requestAnimationFrame(syncCollapsedState);
+    }
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [collapsesOnScroll, eventbarIsActive, location.pathname]);
 
   if (!visible || !countdown || !eventbarQuery.data) return null;
 
