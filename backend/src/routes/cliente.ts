@@ -18,7 +18,14 @@ import {
   recalcularSaldoPuntosUsuario,
   registrarMovimientoPuntos,
 } from "../services/points";
-import { createPricingResolver, getActiveClientePricingProfile, type ResolvedMoneyPrice } from "../services/customerPricing";
+import {
+  calculateEventbarSpecialDiscountSubtotal,
+  createPricingResolver,
+  getActiveClientePricingProfile,
+  loadEventbarSpecialDiscountConfig,
+  type EventbarSpecialDiscountConfig,
+  type ResolvedMoneyPrice,
+} from "../services/customerPricing";
 import { resolvePaymentFee } from "../services/paymentFees";
 import { sendOrderReceiptEmail } from "../services/email";
 import {
@@ -271,6 +278,14 @@ function getPrecioDineroConResolver(
   resolvePrice: (product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
 ): number {
   return resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
+}
+
+function getSubtotalDineroConPromo(
+  precioDineroUnit: number | null | undefined,
+  cantidad: number,
+  eventbarDiscount: EventbarSpecialDiscountConfig,
+): number {
+  return calculateEventbarSpecialDiscountSubtotal(precioDineroUnit, cantidad, eventbarDiscount);
 }
 
 class HttpError extends Error {
@@ -1732,7 +1747,20 @@ router.get("/sucursales", async (_req, res) => {
 });
 
 router.get("/carrito", async (req, res) => {
-  const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
+  const rawItems = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
+  const pricingProfile = await getActiveClientePricingProfile(pool, req.user!.id);
+  const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
+  const eventbarDiscount = await loadEventbarSpecialDiscountConfig(pool);
+  const items: CarritoItemDB[] = [];
+  for (const item of rawItems) {
+    const producto = await getProductoForCart(pool, Number(item.producto_id));
+    const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
+    items.push({
+      ...item,
+      precio_dinero_unit: precioDineroUnit,
+      subtotal_dinero: getSubtotalDineroConPromo(precioDineroUnit, Number(item.cantidad), eventbarDiscount),
+    });
+  }
   const totalDinero = toMoney(items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0));
   const totalUnidades = items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
   const totalPuntosGanados = await calcularPuntosPorMonto(pool, totalDinero);
@@ -1779,6 +1807,7 @@ router.post("/carrito/items", async (req, res) => {
     const producto = await getProductoForCart(conn, producto_id);
     const pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
+    const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
     validateProductoForMode(producto, modo_compra);
     const configHash = buildFlavorConfigHash(producto_id, saboresSeleccionados);
 
@@ -1808,7 +1837,7 @@ router.post("/carrito/items", async (req, res) => {
 
     const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
     const precioPuntosUnit = null;
-    const subtotalDinero = toMoney(precioDineroUnit * nuevaCantidad);
+    const subtotalDinero = getSubtotalDineroConPromo(precioDineroUnit, nuevaCantidad, eventbarDiscount);
     const subtotalPuntos = 0;
 
     if (existente?.id) {
@@ -1914,6 +1943,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const producto = await getProductoForCart(conn, Number(item.producto_id));
     const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
+    const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
     validateProductoForMode(producto, item.modo_compra);
     const purchaseLimit = await getPurchaseQuantityLimit(conn, pricingProfile?.tipoCliente ?? "cliente");
     assertWithinPurchaseLimit(parsed.data.cantidad, purchaseLimit);
@@ -1927,7 +1957,7 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
 
     const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
     const precioPuntosUnit = null;
-    const subtotalDinero = toMoney(precioDineroUnit * parsed.data.cantidad);
+    const subtotalDinero = getSubtotalDineroConPromo(precioDineroUnit, parsed.data.cantidad, eventbarDiscount);
     const subtotalPuntos = 0;
 
     await qRun(
@@ -2078,6 +2108,7 @@ router.post("/checkout/preview", async (req, res) => {
 
     const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
+    const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
     const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, parsed.data.sucursal_id ?? null);
     const metodoEntrega = parsed.data.metodo_entrega ?? "retiro";
     const direccionEnvio = metodoEntrega === "envio"
@@ -2144,7 +2175,7 @@ router.post("/checkout/preview", async (req, res) => {
 
       const precioDineroUnit = item.modo_compra === "dinero" ? getPrecioDineroConResolver(producto, resolvePrice) : null;
       const precioPuntosUnit = null;
-      const subtotalDinero = toMoney((precioDineroUnit ?? 0) * item.cantidad);
+      const subtotalDinero = getSubtotalDineroConPromo(precioDineroUnit, Number(item.cantidad), eventbarDiscount);
       const subtotalPuntos = 0;
 
       itemsEvaluados.push({
@@ -2253,6 +2284,7 @@ router.post("/checkout/confirm", async (req, res) => {
 
     const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
+    const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
     const usuario = await qOne<CheckoutBuyer>(
       conn,
       "SELECT nombre, email, puntos_saldo FROM usuarios WHERE id = ?",
@@ -2314,7 +2346,7 @@ router.post("/checkout/confirm", async (req, res) => {
         config_hash: item.config_hash ?? "",
         precio_dinero_unit: precioDineroUnit,
         precio_puntos_unit: precioPuntosUnit,
-        subtotal_dinero: toMoney((precioDineroUnit ?? 0) * Number(item.cantidad)),
+        subtotal_dinero: getSubtotalDineroConPromo(precioDineroUnit, Number(item.cantidad), eventbarDiscount),
         subtotal_puntos: 0,
         track_stock: Number(item.track_stock ?? 0),
         puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,

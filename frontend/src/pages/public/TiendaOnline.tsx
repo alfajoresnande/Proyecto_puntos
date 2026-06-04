@@ -84,6 +84,44 @@ function productDiscount(producto: Producto): number {
   return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
+function productEventbarPromo(producto: Producto): {
+  label: string;
+  requiredQuantity: number;
+  paidQuantity: number;
+  effectiveUnitPrice: number;
+  packPrice: number;
+} | null {
+  const requiredQuantity = Number(producto.promo_eventbar_cantidad_requerida ?? 0);
+  const paidQuantity = Number(producto.promo_eventbar_cantidad_paga ?? 0);
+  const effectiveUnitPrice = Number(producto.promo_eventbar_precio_efectivo ?? 0);
+  const packPrice = Number(producto.promo_eventbar_precio_pack ?? 0);
+  if (!producto.promo_eventbar_activa || requiredQuantity <= 0 || paidQuantity <= 0 || effectiveUnitPrice <= 0) {
+    return null;
+  }
+  return {
+    label: producto.promo_eventbar_label || producto.promo_eventbar_tipo?.toUpperCase() || `${requiredQuantity}X${paidQuantity}`,
+    requiredQuantity,
+    paidQuantity,
+    effectiveUnitPrice,
+    packPrice: Number.isFinite(packPrice) && packPrice > 0 ? packPrice : productPrice(producto) * paidQuantity,
+  };
+}
+
+function productDisplayPrice(producto: Producto): number {
+  return productEventbarPromo(producto)?.effectiveUnitPrice ?? productPrice(producto);
+}
+
+function productPromotionalSubtotal(producto: Producto, quantity: number): number {
+  const qty = Math.max(0, Math.floor(Number(quantity || 0)));
+  const unitPrice = productPrice(producto);
+  const promo = productEventbarPromo(producto);
+  if (!promo || qty <= 0 || unitPrice <= 0) return unitPrice * qty;
+  const promoGroups = Math.floor(qty / promo.requiredQuantity);
+  const remainder = qty % promo.requiredQuantity;
+  const chargedQuantity = promoGroups * promo.paidQuantity + remainder;
+  return unitPrice * chargedQuantity;
+}
+
 function hasFreeShipping(producto: Producto): boolean {
   return Boolean(producto.permite_envio && producto.envio_gratis);
 }
@@ -186,7 +224,7 @@ export function TiendaOnline() {
   const dismissedProductUrlIdRef = useRef<string | null>(null);
   const sucursales = sucursalesQuery.data ?? [];
   const preciosCatalogo = useMemo(
-    () => productos.map(productPrice).filter((precio) => Number.isFinite(precio) && precio > 0),
+    () => productos.map(productDisplayPrice).filter((precio) => Number.isFinite(precio) && precio > 0),
     [productos],
   );
   const precioMin = preciosCatalogo.length ? Math.min(...preciosCatalogo) : 0;
@@ -200,6 +238,7 @@ export function TiendaOnline() {
   const productoModalImagenes = productoModal ? productImages(productoModal) : [];
   const productoModalImagenActual = productoModalImagenes[productoModalImageIndex] ?? productoModalImagenes[0] ?? null;
   const productoModalTieneCarousel = productoModalImagenes.length > 1;
+  const productoModalEventbarPromo = productoModal ? productEventbarPromo(productoModal) : null;
 
   useEffect(() => {
     if (!productoUrlId) {
@@ -281,7 +320,7 @@ export function TiendaOnline() {
 
   const conteosPorCategoria = useMemo(() => {
     const base = baseSearch.filter((producto) => {
-      const precio = productPrice(producto);
+      const precio = productDisplayPrice(producto);
       return !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
     });
     const acc: Record<string, number> = { __all: base.length };
@@ -342,16 +381,16 @@ export function TiendaOnline() {
   const productosFiltrados = useMemo(() => {
     const filtrados = baseSearch.filter((producto) => {
       const categoriaOk = !categoriaActiva || producto.categoria === categoriaActiva;
-      const precio = productPrice(producto);
+      const precio = productDisplayPrice(producto);
       const precioOk = !preciosCatalogo.length || (precio >= precioFiltroMin && precio <= precioFiltroMax);
       return categoriaOk && precioOk;
     });
 
     if (ordenProductos === "precio-asc") {
-      return [...filtrados].sort((a, b) => productPrice(a) - productPrice(b));
+      return [...filtrados].sort((a, b) => productDisplayPrice(a) - productDisplayPrice(b));
     }
     if (ordenProductos === "precio-desc") {
-      return [...filtrados].sort((a, b) => productPrice(b) - productPrice(a));
+      return [...filtrados].sort((a, b) => productDisplayPrice(b) - productDisplayPrice(a));
     }
     if (ordenProductos === "nombre-asc") {
       return [...filtrados].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
@@ -532,7 +571,7 @@ export function TiendaOnline() {
             items[existingIndex] = {
               ...existing,
               cantidad: nuevaCantidad,
-              subtotal_dinero: precio * nuevaCantidad,
+              subtotal_dinero: productPromotionalSubtotal(producto, nuevaCantidad),
             };
           } else {
             items.push({
@@ -542,7 +581,7 @@ export function TiendaOnline() {
               modo_compra: "dinero",
               precio_dinero_unit: precio,
               puntaje_al_comprar_unitario: producto.puntaje_al_comprar ?? 0,
-              subtotal_dinero: precio * cantidad,
+              subtotal_dinero: productPromotionalSubtotal(producto, cantidad),
               nombre: producto.nombre,
               imagen_url: productImage(producto),
             });
@@ -1086,6 +1125,7 @@ export function TiendaOnline() {
               const cantidadInputValue = getCantidadInputValue(producto.id);
               const cantidadSeleccionada = getCantidadSeleccionada(producto.id);
               const maxCantidad = maxSelectableQuantity(producto);
+              const eventbarPromo = productEventbarPromo(producto);
               return (
                 <article
                   key={producto.id}
@@ -1134,9 +1174,24 @@ export function TiendaOnline() {
                     </div>
                     <div className="product-card-points store-price-box">
                       <div className="product-card-row">
-                        <span>Precio</span>
-                        <span className="cost">{money(producto.precio_dinero)}</span>
+                        <span>{eventbarPromo ? `Promo ${eventbarPromo.label}` : "Precio"}</span>
+                        <span className="cost">
+                          {money(eventbarPromo?.effectiveUnitPrice ?? producto.precio_dinero)}
+                        </span>
                       </div>
+                      {eventbarPromo ? (
+                        <>
+                          <div className="product-card-divider" />
+                          <div className="product-card-row product-card-promo-row">
+                            <span>Llevando {eventbarPromo.requiredQuantity}</span>
+                            <strong>Pagas {eventbarPromo.paidQuantity}</strong>
+                          </div>
+                          <div className="product-card-row product-card-promo-note">
+                            <span>Precio regular</span>
+                            <span>{money(producto.precio_dinero)}</span>
+                          </div>
+                        </>
+                      ) : null}
                       {hasFreeShipping(producto) ? (
                         <>
                           <div className="product-card-divider" />
@@ -1385,9 +1440,24 @@ export function TiendaOnline() {
 
               <div className="product-card-points store-price-box">
                 <div className="product-card-row">
-                  <span>Precio</span>
-                  <span className="cost">{money(productoModal.precio_dinero)}</span>
+                  <span>{productoModalEventbarPromo ? `Promo ${productoModalEventbarPromo.label}` : "Precio"}</span>
+                  <span className="cost">
+                    {money(productoModalEventbarPromo?.effectiveUnitPrice ?? productoModal.precio_dinero)}
+                  </span>
                 </div>
+                {productoModalEventbarPromo ? (
+                  <>
+                    <div className="product-card-divider" />
+                    <div className="product-card-row product-card-promo-row">
+                      <span>Llevando {productoModalEventbarPromo.requiredQuantity}</span>
+                      <strong>Pagas {productoModalEventbarPromo.paidQuantity}</strong>
+                    </div>
+                    <div className="product-card-row product-card-promo-note">
+                      <span>Precio regular</span>
+                      <span>{money(productoModal.precio_dinero)}</span>
+                    </div>
+                  </>
+                ) : null}
                 {hasFreeShipping(productoModal) ? (
                   <>
                     <div className="product-card-divider" />

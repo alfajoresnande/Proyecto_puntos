@@ -38,6 +38,24 @@
   text-align: left;
 }
 
+.store-page-isolated .product-card-promo-row {
+  color: #8B5A30;
+  font-weight: 800;
+}
+
+.store-page-isolated .product-card-promo-row strong {
+  color: #C85A28;
+}
+
+.store-page-isolated .product-card-promo-note {
+  color: #9A735D;
+  font-size: 0.86rem;
+}
+
+.store-page-isolated .product-card-promo-note span:last-child {
+  text-decoration: line-through;
+}
+
 .store-page-isolated .product-card-qty {
   justify-self: center;
 }
