@@ -48,6 +48,8 @@ type VentaLocalItemDraft = {
   }>;
 };
 
+type LocalSaleCatalogView = "modern" | "normal";
+
 type OrdenVendedor = {
   id: number;
   usuario_id?: number | null;
@@ -271,6 +273,15 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
 type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
 
 const ORDENES_POR_PAGINA = 5;
+const LOCAL_SALE_CATALOG_VIEW_STORAGE_KEY = "nande_vendedor_local_sale_catalog_view";
+
+function getInitialLocalSaleCatalogView(): LocalSaleCatalogView {
+  if (typeof window === "undefined") return "modern";
+  const raw = window.localStorage.getItem(LOCAL_SALE_CATALOG_VIEW_STORAGE_KEY);
+  if (raw === "modern") return "modern";
+  if (raw === "normal" || raw === "classic" || raw === "list") return "normal";
+  return "modern";
+}
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
   return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
@@ -342,6 +353,7 @@ export function VendedorPedidos() {
   const [ventaItems, setVentaItems] = useState<VentaLocalItemDraft[]>([]);
   const [ventaProductoBusqueda, setVentaProductoBusqueda] = useState("");
   const [ventaEditId, setVentaEditId] = useState<number | null>(null);
+  const [ventaCatalogView, setVentaCatalogView] = useState<LocalSaleCatalogView>(() => getInitialLocalSaleCatalogView());
 
   const ordenesQuery = useQuery({
     queryKey: ["vendedor", "ordenes"],
@@ -474,6 +486,11 @@ export function VendedorPedidos() {
     setCajaMontoCierre(emptyZeroInputValue(cajaActual.summary.efectivoSistema ?? cajaActual.monto_apertura));
   }, [cajaActual?.id]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LOCAL_SALE_CATALOG_VIEW_STORAGE_KEY, ventaCatalogView);
+  }, [ventaCatalogView]);
+
   function getMaxSaborVenta(saborId: number): number {
     const actual = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     return Math.max(0, totalAlfajoresVenta - (totalSaboresVenta - actual));
@@ -584,6 +601,59 @@ export function VendedorPedidos() {
   function ajustarSaborVenta(saborId: number, delta: number) {
     const current = Number(ventaSabores[String(saborId)] ?? 0) || 0;
     updateSaborVenta(saborId, String(current + delta));
+  }
+
+  function renderVentaProducto(producto: Producto) {
+    const image = getLocalSaleQuickProductImage(producto);
+    const productQuantity = getVentaProductoCantidad(Number(producto.id));
+    const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
+    const isSelected = ventaProductoId === String(producto.id);
+
+    return (
+      <article key={`local-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}${ventaCatalogView === "normal" ? " is-normal" : ""}`}>
+        <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
+          {image ? (
+            <img
+              src={image}
+              alt={producto.nombre}
+              className="local-sale-product-image"
+              loading="lazy"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+                event.currentTarget.parentElement?.classList.add("has-image-error");
+              }}
+            />
+          ) : null}
+          <div className="local-sale-product-placeholder">
+            {image ? "Foto no disponible" : "Sin foto"}
+          </div>
+        </div>
+        <div className="local-sale-product-info">
+          <p className="local-sale-product-title">{producto.nombre}</p>
+          <p className="local-sale-product-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
+          <strong className="local-sale-product-price">{money(producto.precio_dinero)}</strong>
+        </div>
+        {isFlavorBox ? (
+          <button
+            type="button"
+            className="local-sale-product-choose-btn"
+            onClick={() => prepararProductoVentaConSabores(producto)}
+          >
+            Elegir sabores
+          </button>
+        ) : (
+          <div className="local-sale-product-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
+            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
+              -
+            </button>
+            <span className="local-sale-product-qty">{productQuantity}</span>
+            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
+              +
+            </button>
+          </div>
+        )}
+      </article>
+    );
   }
 
   const ordenesFiltradas = useMemo(() => {
@@ -1436,75 +1506,45 @@ export function VendedorPedidos() {
 
           <div className="local-sale-pos-layout">
             <section className="local-sale-catalog-panel" aria-label="Catalogo de productos para venta local">
-              <div className="local-sale-product-search">
-                <input
-                  className="ios-input local-sale-search-input"
-                  placeholder="Buscar productos"
-                  value={ventaProductoBusqueda}
-                  onChange={(event) => setVentaProductoBusqueda(event.target.value)}
-                />
-                <span className="local-sale-count-pill">
-                  {productosVentaFiltrados.length} de {productosLocales.length} productos
-                </span>
+              <div className="local-sale-catalog-toolbar">
+                <div className="local-sale-product-search">
+                  <input
+                    className="ios-input local-sale-search-input"
+                    placeholder="Buscar productos"
+                    value={ventaProductoBusqueda}
+                    onChange={(event) => setVentaProductoBusqueda(event.target.value)}
+                  />
+                  <span className="local-sale-count-pill">
+                    {productosVentaFiltrados.length} de {productosLocales.length} productos
+                  </span>
+                </div>
+                <div className="local-sale-view-switch" role="group" aria-label="Modo de catalogo">
+                  <button
+                    type="button"
+                    className={`local-sale-view-switch-btn${ventaCatalogView === "modern" ? " is-active" : ""}`}
+                    aria-pressed={ventaCatalogView === "modern"}
+                    onClick={() => setVentaCatalogView("modern")}
+                  >
+                    Moderna
+                  </button>
+                  <button
+                    type="button"
+                    className={`local-sale-view-switch-btn${ventaCatalogView === "normal" ? " is-active" : ""}`}
+                    aria-pressed={ventaCatalogView === "normal"}
+                    onClick={() => setVentaCatalogView("normal")}
+                  >
+                    Normal
+                  </button>
+                </div>
               </div>
-              <div className="local-sale-products-grid">
+              <div className={`local-sale-products-grid is-${ventaCatalogView}`}>
                 {productosLocalesQuery.isLoading ? (
                   <div className="local-sale-empty">Cargando productos...</div>
                 ) : null}
                 {!productosLocalesQuery.isLoading && productosVentaFiltrados.length === 0 ? (
                   <div className="local-sale-empty">No hay productos que coincidan con la busqueda.</div>
                 ) : null}
-                {productosVentaFiltrados.map((producto) => {
-                    const image = getLocalSaleQuickProductImage(producto);
-                    const productQuantity = getVentaProductoCantidad(Number(producto.id));
-                    const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
-                    const isSelected = ventaProductoId === String(producto.id);
-                    return (
-                      <article key={`local-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}`}>
-                        <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
-                          {image ? (
-                            <img
-                              src={image}
-                              alt={producto.nombre}
-                              className="local-sale-product-image"
-                              loading="lazy"
-                              onError={(event) => {
-                                event.currentTarget.style.display = "none";
-                                event.currentTarget.parentElement?.classList.add("has-image-error");
-                              }}
-                            />
-                          ) : null}
-                          <div className="local-sale-product-placeholder">
-                            {image ? "Foto no disponible" : "Sin foto"}
-                          </div>
-                        </div>
-                        <div className="local-sale-product-info">
-                          <p className="local-sale-product-title">{producto.nombre}</p>
-                          <p className="local-sale-product-subtitle">{getLocalSaleQuickProductSubtitle(producto)}</p>
-                          <strong className="local-sale-product-price">{money(producto.precio_dinero)}</strong>
-                        </div>
-                        {isFlavorBox ? (
-                          <button
-                            type="button"
-                            className="local-sale-product-choose-btn"
-                            onClick={() => prepararProductoVentaConSabores(producto)}
-                          >
-                            Elegir sabores
-                          </button>
-                        ) : (
-                          <div className="local-sale-product-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
-                            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
-                              -
-                            </button>
-                            <span className="local-sale-product-qty">{productQuantity}</span>
-                            <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
-                              +
-                            </button>
-                          </div>
-                        )}
-                      </article>
-                    );
-                  })}
+                {productosVentaFiltrados.map((producto) => renderVentaProducto(producto))}
               </div>
             </section>
 
