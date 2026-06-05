@@ -2466,6 +2466,7 @@ body.catalogo-background .pagina-page {
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  box-sizing: border-box;
 }
 
 .producto-modal {
@@ -2476,9 +2477,12 @@ body.catalogo-background .pagina-page {
   max-width: 500px;
   max-height: 92vh;
   overflow-y: auto;
+  overflow-x: hidden;
   position: relative;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 .producto-modal-close {
@@ -2516,6 +2520,7 @@ body.catalogo-background .pagina-page {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 .producto-modal-img {
@@ -2610,6 +2615,14 @@ body.catalogo-background .pagina-page {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  min-width: 0;
+}
+
+.producto-modal-img-wrap .product-card-cat {
+  max-width: calc(100% - 4.9rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .producto-modal-name {
@@ -2630,17 +2643,31 @@ body.catalogo-background .pagina-page {
 @media (max-width: 639px) {
   .producto-modal-overlay {
     align-items: flex-end;
-    padding: 0;
+    padding:
+      max(0.35rem, env(safe-area-inset-top, 0px))
+      max(0.35rem, env(safe-area-inset-right, 0px))
+      max(env(safe-area-inset-bottom, 0px), 0px)
+      max(0.35rem, env(safe-area-inset-left, 0px));
   }
   .producto-modal {
+    width: min(100%, calc(100vw - 0.7rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     max-width: 100%;
     max-height: 95vh;
     border-radius: 20px 20px 0 0;
+    margin-inline: auto;
   }
   .producto-modal-img-wrap {
     height: 52vw;
     min-height: 200px;
     border-radius: 20px 20px 0 0;
+  }
+  .producto-modal-close {
+    right: max(0.7rem, env(safe-area-inset-right, 0px));
+  }
+  .producto-modal-img-wrap .product-card-cat {
+    left: 0.7rem;
+    top: 0.7rem;
+    max-width: calc(100% - 4.5rem);
   }
 }
 
