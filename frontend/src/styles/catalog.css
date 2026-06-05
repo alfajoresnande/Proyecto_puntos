@@ -2619,6 +2619,7 @@ body.catalogo-background .pagina-page {
 }
 
 .producto-modal-img-wrap .product-card-cat {
+  position: absolute !important;
   display: inline-flex;
   align-items: center;
   max-width: calc(100% - 4.9rem);
