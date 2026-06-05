@@ -2619,10 +2619,14 @@ body.catalogo-background .pagina-page {
 }
 
 .producto-modal-img-wrap .product-card-cat {
+  display: inline-flex;
+  align-items: center;
   max-width: calc(100% - 4.9rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .producto-modal-name {
