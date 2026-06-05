@@ -2627,6 +2627,9 @@ body.catalogo-background .pagina-page {
   white-space: nowrap;
   min-width: 0;
   box-sizing: border-box;
+  left: 1rem !important;
+  top: 1rem !important;
+  right: auto !important;
 }
 
 .producto-modal-name {
