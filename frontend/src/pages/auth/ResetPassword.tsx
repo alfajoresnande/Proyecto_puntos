@@ -25,7 +25,7 @@ async function resetPassword(token: string, newPassword: string): Promise<{ mess
 }
 
 function validatePassword(value: string): string | null {
-  if (value.length < 12) return "La contraseña debe tener al menos 12 caracteres.";
+  if (value.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
   if (!/[^A-Za-z0-9]/.test(value)) return "La contraseña debe incluir al menos 1 caracter especial.";
   if (!/\d/.test(value)) return "La contraseña debe incluir al menos un número.";
   return null;
@@ -103,7 +103,7 @@ export function ResetPassword() {
             <input
               type={showPassword ? "text" : "password"}
               className="login-input login-input-password"
-              placeholder="Mínimo 12 caracteres"
+              placeholder="Mínimo 8 caracteres"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required

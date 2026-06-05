@@ -30,12 +30,12 @@ const REGISTER_PUBLIC_MESSAGE = "Si los datos son validos, te enviaremos un corr
 const PASSWORD_RESET_PUBLIC_MESSAGE = "Si el correo esta registrado, te enviaremos instrucciones para recuperar tu contrasena.";
 const ACCEPT_TERMS_MESSAGE = "Debes aceptar los Terminos y Condiciones.";
 // Política:
-// - Mínimo 12 caracteres (priorizamos longitud sobre "complejidad" artificial).
+// - Minimo 8 caracteres.
 // - Al menos un caracter especial y un numero.
 // - Máximo 128 para frenar DoS por hashing bcrypt.
 const strongPasswordSchema = zod_1.z
     .string()
-    .min(12, "La contrasena debe tener al menos 12 caracteres")
+    .min(8, "La contrasena debe tener al menos 8 caracteres")
     .max(128, "La contrasena no puede superar 128 caracteres")
     .regex(/[^A-Za-z0-9]/, "La contrasena debe incluir al menos 1 caracter especial")
     .regex(/\d/, "La contrasena debe incluir al menos un numero");

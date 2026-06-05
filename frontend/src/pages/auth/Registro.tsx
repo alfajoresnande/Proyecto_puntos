@@ -8,7 +8,7 @@ import { useAuthStore } from "../../store/authStore";
 
 function passwordValidationErrors(value: string): string[] {
   const errors: string[] = [];
-  if (value.length < 12) errors.push("Minimo 12 caracteres");
+  if (value.length < 8) errors.push("Minimo 8 caracteres");
   if (!/[^A-Za-z0-9]/.test(value)) errors.push("Al menos 1 caracter especial");
   if (!/\d/.test(value)) errors.push("Al menos 1 numero");
   return errors;
@@ -243,7 +243,7 @@ export function Registro() {
               {showPassword ? "Ocultar" : "Ver"}
             </button>
           </div>
-          <p className="register-pass-hint">Mínimo 12 caracteres, con al menos 1 carácter especial y 1 número.</p>
+          <p className="register-pass-hint">Mínimo 8 caracteres, con al menos 1 carácter especial y 1 número.</p>
 
           <label className="login-field-label">Confirmar contraseña</label>
           <div className="login-input-group" style={{ marginBottom: "0.85rem" }}>

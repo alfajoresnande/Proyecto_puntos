@@ -130,7 +130,7 @@ async function ensureCanManageUser(req, res, userId) {
 }
 const strongPasswordSchema = zod_1.z
     .string()
-    .min(12, "La contrasena debe tener al menos 12 caracteres")
+    .min(8, "La contrasena debe tener al menos 8 caracteres")
     .max(128, "La contrasena no puede superar 128 caracteres")
     .regex(/[^A-Za-z0-9]/, "La contrasena debe incluir al menos 1 caracter especial")
     .regex(/\d/, "La contrasena debe incluir al menos 1 numero");

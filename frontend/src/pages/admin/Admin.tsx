@@ -46,6 +46,14 @@ type AdminTab =
   | "layout-timeline"
   | "layout-donde";
 
+function passwordValidationErrors(value: string): string[] {
+  const errors: string[] = [];
+  if (value.length < 8) errors.push("Minimo 8 caracteres");
+  if (!/[^A-Za-z0-9]/.test(value)) errors.push("Al menos 1 caracter especial");
+  if (!/\d/.test(value)) errors.push("Al menos 1 numero");
+  return errors;
+}
+
 const ADMIN_TABS: AdminTab[] = [
   "inicio",
   "usuarios",
@@ -4480,6 +4488,11 @@ export function Admin() {
   async function crearUsuario() {
     setErrMsg("");
     setOkMsg("");
+    const passwordErrors = passwordValidationErrors(nuevoUsuario.password);
+    if (passwordErrors.length > 0) {
+      setErrMsg(`Contrasena invalida: ${passwordErrors.join(", ")}.`);
+      return;
+    }
     setBusy(true);
     try {
       await commandMutation.mutateAsync({
@@ -8824,6 +8837,7 @@ export function Admin() {
                 <input className="adm-input" placeholder="Nombre" value={nuevoUsuario.nombre} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, nombre: event.target.value }))} />
                 <input className="adm-input" placeholder="Email" value={nuevoUsuario.email} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, email: event.target.value }))} />
                 <input type="password" className="adm-input" placeholder="Contrasena" value={nuevoUsuario.password} onChange={(event) => setNuevoUsuario((prev) => ({ ...prev, password: event.target.value }))} />
+                <p className="adm-field-help" style={{ margin: 0 }}>Minimo 8 caracteres, con al menos 1 caracter especial y 1 numero.</p>
                 <label style={{ display: "grid", gap: "0.35rem" }}>
                   <FieldLabel text="Tipo de acceso" tip="Define que panel puede usar. Para crear mayoristas o empleados con descuentos, elegi Cliente y abajo cambia el perfil comercial." />
                   <select
