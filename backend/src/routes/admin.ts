@@ -100,6 +100,27 @@ function parseJsonField(value: unknown): unknown {
   }
 }
 
+function toDateOnly(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : null;
+  }
+  return null;
+}
+
+function normalizeAdminUserRow<T extends Record<string, unknown>>(row: T): T {
+  return {
+    ...row,
+    fecha_nacimiento: toDateOnly(row.fecha_nacimiento),
+  };
+}
+
 // ── Configuración de multer para subida de imágenes ──────
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -648,7 +669,7 @@ router.get("/usuarios", async (_req, res) => {
      ${isSuperAdmin ? "" : "WHERE rol <> 'superAdmin'"}
      ORDER BY created_at DESC`
   );
-  res.json(rows);
+  res.json(rows.map((row) => normalizeAdminUserRow(row)));
 });
 
 router.post("/usuarios", async (req, res) => {

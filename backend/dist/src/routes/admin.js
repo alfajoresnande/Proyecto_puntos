@@ -64,6 +64,27 @@ function parseJsonField(value) {
         return null;
     }
 }
+function toDateOnly(value) {
+    if (!value)
+        return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed)
+            return null;
+        const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : null;
+    }
+    return null;
+}
+function normalizeAdminUserRow(row) {
+    return {
+        ...row,
+        fecha_nacimiento: toDateOnly(row.fecha_nacimiento),
+    };
+}
 // ── Configuración de multer para subida de imágenes ──────
 const MIME_TO_EXT = {
     "image/jpeg": ".jpg",
@@ -484,7 +505,7 @@ router.get("/usuarios", async (_req, res) => {
      FROM usuarios
      ${isSuperAdmin ? "" : "WHERE rol <> 'superAdmin'"}
      ORDER BY created_at DESC`);
-    res.json(rows);
+    res.json(rows.map((row) => normalizeAdminUserRow(row)));
 });
 router.post("/usuarios", async (req, res) => {
     const schema = zod_1.z.object({

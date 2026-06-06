@@ -954,8 +954,9 @@ function getInitialBirthdayWindowMonths(): number {
 }
 
 function parseDateOnlyParts(value: string | null | undefined): { year: number; month: number; day: number } | null {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split("-").map(Number);
+  const normalized = typeof value === "string" ? value.trim().match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "" : "";
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split("-").map(Number);
   if (!year || !month || !day) return null;
   return { year, month, day };
 }
@@ -7108,7 +7109,7 @@ export function Admin() {
                   </label>
                 </div>
 
-                <div className="adm-inline-tip">Puedes cargar hasta 3 imágenes. La primera se usa como portada del catálogo.</div>
+                <div className="adm-inline-tip">Puedes cargar hasta 3 imágenes. La primera se usa como portada del catálogo en PC y recomendamos formato 16:9.</div>
                 {nuevoProducto.imagenes.length ? (
                   <div className="adm-product-images-grid">
                     {nuevoProducto.imagenes.map((url, index) => (
@@ -7126,11 +7127,11 @@ export function Admin() {
                 ) : null}
 
                 <div className="adm-field">
-                  <FieldLabel text="Imagen Horizontal (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato tarjeta horizontal)." />
+                  <FieldLabel text="Imagen Cuadrada (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato 1:1)." />
                   <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
                     {nuevoProducto.imagen_mobile_url ? (
                       <div className="adm-product-image-card" style={{ width: "fit-content" }}>
-                        <img src={mediaUrl(nuevoProducto.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "auto", height: "80px" }} />
+                        <img src={mediaUrl(nuevoProducto.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} />
                         <div className="adm-product-image-row">
                           <span>Imagen Móvil</span>
                           <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("nuevo")}>
@@ -7406,7 +7407,7 @@ export function Admin() {
                           </label>
                         </div>
 
-                        <div className="adm-inline-tip">Ordena tus imágenes quitando y volviendo a cargar. La primera se muestra como portada.</div>
+                        <div className="adm-inline-tip">Ordena tus imágenes quitando y volviendo a cargar. La primera se muestra como portada en PC y recomendamos formato 16:9.</div>
                         {editDraft.imagenes.length ? (
                           <div className="adm-product-images-grid">
                             {editDraft.imagenes.map((url, index) => (
@@ -7424,11 +7425,11 @@ export function Admin() {
                         ) : null}
 
                         <div className="adm-field">
-                          <FieldLabel text="Imagen Horizontal (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato tarjeta horizontal)." />
+                          <FieldLabel text="Imagen Cuadrada (Móvil)" tip="Esta imagen se mostrará en el catálogo cuando el usuario ingrese desde un celular (formato 1:1)." />
                           <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
                             {editDraft.imagen_mobile_url ? (
                               <div className="adm-product-image-card" style={{ width: "fit-content" }}>
-                                <img src={mediaUrl(editDraft.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "auto", height: "80px" }} />
+                                <img src={mediaUrl(editDraft.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} />
                                 <div className="adm-product-image-row">
                                   <span>Imagen Móvil</span>
                                   <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("edit")}>
