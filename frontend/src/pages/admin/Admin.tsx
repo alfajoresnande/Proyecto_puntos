@@ -5,7 +5,6 @@ import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl, mediaUrl } from "../../lib/apiBase";
-import { WHATSAPP_NUMBER } from "../../lib/contact";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import {
@@ -914,6 +913,7 @@ const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
 const ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY = "nande_admin_birthday_window_months";
+const ADMIN_BIRTHDAY_ALERT_DAYS_KEY = "nande_admin_birthday_alert_days";
 const ADMIN_BIRTHDAY_TOAST_DAY_KEY = "nande_admin_birthday_toast_day";
 const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"];
 
@@ -946,11 +946,23 @@ function clampBirthdayWindowMonths(value: number): number {
   return Math.min(12, Math.max(1, Math.floor(value)));
 }
 
+function clampBirthdayAlertDays(value: number): number {
+  if (!Number.isFinite(value)) return 14;
+  return Math.min(90, Math.max(1, Math.floor(value)));
+}
+
 function getInitialBirthdayWindowMonths(): number {
   if (typeof window === "undefined") return 3;
   const raw = window.localStorage.getItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY);
   const parsed = Number(raw);
   return clampBirthdayWindowMonths(parsed || 3);
+}
+
+function getInitialBirthdayAlertDays(): number {
+  if (typeof window === "undefined") return 14;
+  const raw = window.localStorage.getItem(ADMIN_BIRTHDAY_ALERT_DAYS_KEY);
+  const parsed = Number(raw);
+  return clampBirthdayAlertDays(parsed || 14);
 }
 
 function parseDateOnlyParts(value: string | null | undefined): { year: number; month: number; day: number } | null {
@@ -1003,14 +1015,26 @@ function formatDateStamp(value: string): string {
   return formatBuenosAiresDate(`${value}T12:00:00Z`);
 }
 
-function buildCompanyWhatsAppUrl(message: string): string {
-  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+function normalizeWhatsAppPhone(value: string | null | undefined): string | null {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.startsWith("549") && digits.length >= 12) return digits;
+  if (digits.startsWith("54") && digits.length >= 12) {
+    return digits.startsWith("549") ? digits : `549${digits.slice(2)}`;
+  }
+  const localDigits = digits.replace(/^0+/, "");
+  if (localDigits.length < 10) return null;
+  return `549${localDigits}`;
 }
 
-function buildBirthdayWhatsAppMessage(item: UpcomingBirthday): string {
+function buildWhatsAppUrl(phone: string, message: string): string {
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+function buildBirthdayCustomerWhatsAppMessage(item: UpcomingBirthday): string {
   return item.isToday
-    ? `Hoy es el cumpleaños de ${item.usuario.nombre}.`
-    : `Se acerca el cumpleaños de ${item.usuario.nombre}: ${formatDateStamp(item.nextBirthdayStamp)}. Faltan ${item.daysUntil} días.`;
+    ? `Hola ${item.usuario.nombre}, desde Ñandé Alfajores queremos desearte un muy feliz cumpleaños. Que tengas un hermoso día.`
+    : `Hola ${item.usuario.nombre}, desde Ñandé Alfajores queremos saludarte por tu próximo cumpleaños del ${formatDateStamp(item.nextBirthdayStamp)}.`;
 }
 
 function isAdminTab(value: string | null): value is AdminTab {
@@ -1833,6 +1857,8 @@ export function Admin() {
   const [cumpleanosPage, setCumpleanosPage] = useState(1);
   const [cumpleanosWindowMonths, setCumpleanosWindowMonths] = useState(() => getInitialBirthdayWindowMonths());
   const [cumpleanosWindowMonthsDraft, setCumpleanosWindowMonthsDraft] = useState(() => String(getInitialBirthdayWindowMonths()));
+  const [cumpleanosAlertDays, setCumpleanosAlertDays] = useState(() => getInitialBirthdayAlertDays());
+  const [cumpleanosAlertDaysDraft, setCumpleanosAlertDaysDraft] = useState(() => String(getInitialBirthdayAlertDays()));
   const [busquedaProductos, setBusquedaProductos] = useState("");
   const [filtroTipoProducto, setFiltroTipoProducto] = useState("");
   const [movimientosInicioPage, setMovimientosInicioPage] = useState(1);
@@ -2519,20 +2545,17 @@ export function Admin() {
     () => cumpleanosCalculados.filter((item) => item.nextBirthdayStamp <= cumpleanosWindowEndStamp),
     [cumpleanosCalculados, cumpleanosWindowEndStamp],
   );
+  const cumpleanosPorAvisar = useMemo(
+    () => cumpleanosCalculados.filter((item) => item.daysUntil <= cumpleanosAlertDays),
+    [cumpleanosAlertDays, cumpleanosCalculados],
+  );
+  const cumpleanosPorAvisarConWhatsapp = useMemo(
+    () => cumpleanosPorAvisar.filter((item) => Boolean(normalizeWhatsAppPhone(item.usuario.telefono))),
+    [cumpleanosPorAvisar],
+  );
   const usuariosSinFechaNacimiento = useMemo(
     () => usuarios.filter((usuario) => usuario.activo && !usuario.fecha_nacimiento).length,
     [usuarios],
-  );
-  const cumpleanosHoyWhatsappMessage = useMemo(() => {
-    if (!cumpleanosHoy.length) return "";
-    const names = cumpleanosHoy.map((item) => item.usuario.nombre).join(", ");
-    return cumpleanosHoy.length === 1
-      ? `Hoy es el cumpleaños de ${names}.`
-      : `Hoy cumplen años: ${names}.`;
-  }, [cumpleanosHoy]);
-  const cumpleanosHoyWhatsappUrl = useMemo(
-    () => (cumpleanosHoyWhatsappMessage ? buildCompanyWhatsAppUrl(cumpleanosHoyWhatsappMessage) : ""),
-    [cumpleanosHoyWhatsappMessage],
   );
 
   function guardarCumpleanosWindowMonths() {
@@ -2558,6 +2581,31 @@ export function Admin() {
       window.localStorage.setItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY, String(nextValue));
     }
     setOkMsg("Configuración de cumpleaños guardada.");
+  }
+
+  function guardarCumpleanosAlertDays() {
+    const rawValue = cumpleanosAlertDaysDraft.trim();
+    setErrMsg("");
+    setOkMsg("");
+
+    if (!rawValue) {
+      setErrMsg("Completa cuántos días antes quieres avisar.");
+      return;
+    }
+
+    const parsedValue = Number(rawValue);
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+      setErrMsg("Los días de aviso deben ser un número entero mayor o igual a 1.");
+      return;
+    }
+
+    const nextValue = clampBirthdayAlertDays(parsedValue);
+    setCumpleanosAlertDays(nextValue);
+    setCumpleanosAlertDaysDraft(String(nextValue));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_BIRTHDAY_ALERT_DAYS_KEY, String(nextValue));
+    }
+    setOkMsg("Aviso de cumpleaños guardado.");
   }
 
   const categorias = categoriasQuery.data ?? [];
@@ -2899,24 +2947,22 @@ export function Admin() {
   }, [adminAlerts.canjes, tab]);
 
   useEffect(() => {
-    if (!cumpleanosHoy.length || !cumpleanosHoyWhatsappUrl) return;
+    if (!cumpleanosPorAvisarConWhatsapp.length) return;
     if (typeof window === "undefined") return;
     const alreadyShownForDay = window.localStorage.getItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY);
     if (alreadyShownForDay === todayStamp) return;
     window.localStorage.setItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY, todayStamp);
     showToast({
       tone: "info",
-      title: cumpleanosHoy.length === 1 ? "Cumpleaños hoy" : "Cumpleaños de hoy",
-      message: cumpleanosHoy.length === 1
-        ? `${cumpleanosHoy[0]?.usuario.nombre} cumple años hoy.`
-        : `${cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")} cumplen años hoy.`,
+      title: cumpleanosPorAvisarConWhatsapp.length === 1 ? "Cumpleaños por avisar" : "Cumpleaños por avisar",
+      message: cumpleanosPorAvisarConWhatsapp.length === 1
+        ? `${cumpleanosPorAvisarConWhatsapp[0]?.usuario.nombre} tiene cumpleaños dentro de ${cumpleanosAlertDays} días.`
+        : `Tienes ${cumpleanosPorAvisarConWhatsapp.length} clientes para avisar por cumpleaños dentro de ${cumpleanosAlertDays} días.`,
       actionLabel: "Ver cumpleaños",
       onAction: () => navigate(`${panelBasePath}/cumpleanos`),
-      secondaryActionLabel: "WhatsApp empresa",
-      onSecondaryAction: () => window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer"),
       duration: 9500,
     });
-  }, [cumpleanosHoy, cumpleanosHoyWhatsappUrl, navigate, panelBasePath, showToast, todayStamp]);
+  }, [cumpleanosAlertDays, cumpleanosPorAvisarConWhatsapp, navigate, panelBasePath, showToast, todayStamp]);
 
   useEffect(() => {
     setMovimientosInicioPage((prev) => Math.min(prev, totalMovimientosInicioPages));
@@ -5392,7 +5438,7 @@ export function Admin() {
             {renderAdminNavLabel("Usuarios")}
           </button>
           <button className={`admin-nav-btn ${tab === "cumpleanos" ? "active" : ""}`} onClick={() => seleccionarTab("cumpleanos")}>
-            {renderAdminNavLabel("Cumpleaños", cumpleanosHoy.length)}
+            {renderAdminNavLabel("Cumpleaños", cumpleanosPorAvisarConWhatsapp.length)}
           </button>
           <button className={`admin-nav-btn ${tab === "personas-app" ? "active" : ""}`} onClick={() => seleccionarTab("personas-app")}>
             {renderAdminNavLabel("Personas en app", appPresenceSummary?.active_now ?? 0)}
@@ -6631,17 +6677,6 @@ export function Admin() {
             <>
               <div className="admin-section-header">
                 <h2 className="admin-section-title">Cumpleaños</h2>
-                <button
-                  type="button"
-                  className="adm-btn-link"
-                  disabled={!cumpleanosHoyWhatsappUrl}
-                  onClick={() => {
-                    if (!cumpleanosHoyWhatsappUrl) return;
-                    window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  Avisar hoy por WhatsApp
-                </button>
               </div>
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
@@ -6671,14 +6706,39 @@ export function Admin() {
                       </button>
                     </div>
                   </label>
+                  <label className="adm-birthday-window-field">
+                    <span>Avisar con días</span>
+                    <div className="adm-birthday-window-actions">
+                      <input
+                        className="adm-input"
+                        type="number"
+                        min={1}
+                        max={90}
+                        inputMode="numeric"
+                        value={cumpleanosAlertDaysDraft}
+                        onChange={(event) => {
+                          setCumpleanosAlertDaysDraft(event.target.value);
+                          if (errMsg) setErrMsg("");
+                          if (okMsg) setOkMsg("");
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="adm-btn-primary adm-btn-inline"
+                        onClick={guardarCumpleanosAlertDays}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </label>
                   <div className="adm-birthday-range-note">
                     <strong>Rango actual</strong>
-                    <span>Desde hoy hasta {formatDateStamp(cumpleanosWindowEndStamp)}</span>
+                    <span>Desde hoy hasta {formatDateStamp(cumpleanosWindowEndStamp)}. Badge y aviso manual: {cumpleanosAlertDays} días antes.</span>
                   </div>
                 </div>
 
                 <p className="adm-field-help" style={{ margin: 0 }}>
-                  El sistema calcula la próxima fecha de cumpleaños segun la fecha de nacimiento de cada usuario activo. El aviso por WhatsApp queda listo en un click; para envío automático real haría falta integrar una API externa de WhatsApp.
+                  El sistema calcula la próxima fecha de cumpleaños según la fecha de nacimiento de cada usuario activo. Si el cliente tiene teléfono cargado, puedes abrir su WhatsApp con el mensaje listo.
                 </p>
 
                 <div className="adm-birthday-summary-grid">
@@ -6691,28 +6751,30 @@ export function Admin() {
                     <strong>{cumpleanosProximos.length}</strong>
                   </article>
                   <article className="adm-birthday-summary-card">
+                    <span>Para avisar</span>
+                    <strong>{cumpleanosPorAvisarConWhatsapp.length}</strong>
+                  </article>
+                  <article className="adm-birthday-summary-card">
                     <span>Sin fecha cargada</span>
                     <strong>{usuariosSinFechaNacimiento}</strong>
                   </article>
                 </div>
 
-                {cumpleanosHoy.length ? (
+                {cumpleanosPorAvisarConWhatsapp.length ? (
                   <div className="adm-birthday-today-box">
                     <div>
-                      <strong>Hoy cumplen años</strong>
-                      <p>{cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")}</p>
+                      <strong>Clientes para avisar por WhatsApp</strong>
+                      <p>
+                        {cumpleanosPorAvisarConWhatsapp
+                          .slice(0, 4)
+                          .map((item) => `${item.usuario.nombre} (${item.isToday ? "hoy" : `${item.daysUntil} días`})`)
+                          .join(", ")}
+                        {cumpleanosPorAvisarConWhatsapp.length > 4 ? ` y ${cumpleanosPorAvisarConWhatsapp.length - 4} más.` : ""}
+                      </p>
                     </div>
-                    <button
-                      type="button"
-                      className="adm-btn-primary"
-                      style={{ width: "auto" }}
-                      onClick={() => window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer")}
-                    >
-                      Abrir WhatsApp empresa
-                    </button>
                   </div>
                 ) : (
-                  <div className="adm-empty">Hoy no hay cumpleaños cargados.</div>
+                  <div className="adm-empty">No hay clientes con cumpleaños próximos dentro del aviso configurado.</div>
                 )}
               </div>
 
@@ -6737,8 +6799,9 @@ export function Admin() {
                         </tr>
                       ) : null}
                       {cumpleanosPagina.map((item) => {
-                        const whatsappMessage = buildBirthdayWhatsAppMessage(item);
-                        const whatsappUrl = buildCompanyWhatsAppUrl(whatsappMessage);
+                        const clientPhone = normalizeWhatsAppPhone(item.usuario.telefono);
+                        const whatsappMessage = buildBirthdayCustomerWhatsAppMessage(item);
+                        const whatsappUrl = clientPhone ? buildWhatsAppUrl(clientPhone, whatsappMessage) : "";
                         return (
                           <tr key={`cumpleanos-${item.usuario.id}`}>
                             <td>
@@ -6769,9 +6832,10 @@ export function Admin() {
                                 type="button"
                                 className="adm-btn-secondary"
                                 style={{ width: "auto" }}
+                                disabled={!whatsappUrl}
                                 onClick={() => window.open(whatsappUrl, "_blank", "noopener,noreferrer")}
                               >
-                                WhatsApp empresa
+                                {whatsappUrl ? "WhatsApp cliente" : "Sin WhatsApp"}
                               </button>
                             </td>
                           </tr>
