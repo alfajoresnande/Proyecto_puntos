@@ -609,8 +609,38 @@ export function VendedorPedidos() {
     const isFlavorBox = producto.configuracion_tipo === "caja_sabores";
     const isSelected = ventaProductoId === String(producto.id);
 
+    if (ventaCatalogView === "normal") {
+      return (
+        <article key={`local-product-${producto.id}`} className={`local-sale-product-row${isSelected ? " is-active" : ""}`}>
+          <div className="local-sale-product-row-main">
+            <p className="local-sale-product-row-title">{producto.nombre}</p>
+          </div>
+          <strong className="local-sale-product-row-price">{money(producto.precio_dinero)}</strong>
+          {isFlavorBox ? (
+            <button
+              type="button"
+              className="local-sale-product-row-choose-btn"
+              onClick={() => prepararProductoVentaConSabores(producto)}
+            >
+              Elegir sabores
+            </button>
+          ) : (
+            <div className="local-sale-product-stepper local-sale-product-row-stepper" role="group" aria-label={`Cantidad de ${producto.nombre}`}>
+              <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, -1)} aria-label={`Quitar ${producto.nombre}`}>
+                -
+              </button>
+              <span className="local-sale-product-qty">{productQuantity}</span>
+              <button type="button" className="local-sale-product-step-btn" onClick={() => cambiarCantidadProductoVenta(producto, 1)} aria-label={`Agregar ${producto.nombre}`}>
+                +
+              </button>
+            </div>
+          )}
+        </article>
+      );
+    }
+
     return (
-      <article key={`local-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}${ventaCatalogView === "normal" ? " is-normal" : ""}`}>
+      <article key={`local-product-${producto.id}`} className={`local-sale-product-card${isSelected ? " is-active" : ""}`}>
         <div className={`local-sale-product-media${image ? "" : " is-empty"}`}>
           {image ? (
             <img
