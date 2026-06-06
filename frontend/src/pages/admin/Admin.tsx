@@ -822,6 +822,7 @@ type UsuarioEditDraft = {
   descuento_porcentaje: string;
   dni: string;
   telefono: string;
+  fecha_nacimiento: string;
 };
 
 type WebDiscountDraft = {
@@ -1800,6 +1801,7 @@ export function Admin() {
     descuento_porcentaje: "",
     dni: "",
     telefono: "",
+    fecha_nacimiento: "",
   });
   const [adminHint, setAdminHint] = useState("");
 
@@ -1829,6 +1831,7 @@ export function Admin() {
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
   const [cumpleanosPage, setCumpleanosPage] = useState(1);
   const [cumpleanosWindowMonths, setCumpleanosWindowMonths] = useState(() => getInitialBirthdayWindowMonths());
+  const [cumpleanosWindowMonthsDraft, setCumpleanosWindowMonthsDraft] = useState(() => String(getInitialBirthdayWindowMonths()));
   const [busquedaProductos, setBusquedaProductos] = useState("");
   const [filtroTipoProducto, setFiltroTipoProducto] = useState("");
   const [movimientosInicioPage, setMovimientosInicioPage] = useState(1);
@@ -2202,11 +2205,6 @@ export function Admin() {
   }, [adminHint]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY, String(clampBirthdayWindowMonths(cumpleanosWindowMonths)));
-  }, [cumpleanosWindowMonths]);
-
-  useEffect(() => {
     if (cajaSucursalId) return;
     const firstActiveSucursal = sucursalesQuery.data?.find((item) => item.activo);
     if (firstActiveSucursal) {
@@ -2535,6 +2533,32 @@ export function Admin() {
     () => (cumpleanosHoyWhatsappMessage ? buildCompanyWhatsAppUrl(cumpleanosHoyWhatsappMessage) : ""),
     [cumpleanosHoyWhatsappMessage],
   );
+
+  function guardarCumpleanosWindowMonths() {
+    const rawValue = cumpleanosWindowMonthsDraft.trim();
+    setErrMsg("");
+    setOkMsg("");
+
+    if (!rawValue) {
+      setErrMsg("Completa cuántos meses quieres mostrar.");
+      return;
+    }
+
+    const parsedValue = Number(rawValue);
+    if (!Number.isInteger(parsedValue) || parsedValue < 1) {
+      setErrMsg("Los próximos meses deben ser un número entero mayor o igual a 1.");
+      return;
+    }
+
+    const nextValue = clampBirthdayWindowMonths(parsedValue);
+    setCumpleanosWindowMonths(nextValue);
+    setCumpleanosWindowMonthsDraft(String(nextValue));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY, String(nextValue));
+    }
+    setOkMsg("Configuración de cumpleaños guardada.");
+  }
+
   const categorias = categoriasQuery.data ?? [];
   const categoriasActivas = useMemo(() => categorias.filter((categoria) => categoria.activo !== false), [categorias]);
   const categoriasProductoEdit = useMemo(() => {
@@ -4531,6 +4555,7 @@ export function Admin() {
       descuento_porcentaje: "",
       dni: usuario.dni || "",
       telefono: usuario.telefono || "",
+      fecha_nacimiento: usuario.fecha_nacimiento || "",
     });
     setErrMsg("");
     setOkMsg("");
@@ -4546,6 +4571,7 @@ export function Admin() {
       descuento_porcentaje: "",
       dni: "",
       telefono: "",
+      fecha_nacimiento: "",
     });
   }
 
@@ -4574,6 +4600,7 @@ export function Admin() {
           descuento_porcentaje: 0,
           dni: editUsuarioDraft.dni.trim() || null,
           telefono: editUsuarioDraft.telefono.trim() || null,
+          fecha_nacimiento: editUsuarioDraft.fecha_nacimiento.trim() || null,
         },
       });
       setOkMsg("Usuario actualizado.");
@@ -6506,6 +6533,14 @@ export function Admin() {
                                       onChange={(event) => setEditUsuarioDraft((prev) => ({ ...prev, telefono: event.target.value }))}
                                     />
                                   </div>
+                                  <div className="adm-form-grid" style={{ marginTop: "0.6rem" }}>
+                                    <input
+                                      className="adm-input"
+                                      type="date"
+                                      value={editUsuarioDraft.fecha_nacimiento}
+                                      onChange={(event) => setEditUsuarioDraft((prev) => ({ ...prev, fecha_nacimiento: event.target.value }))}
+                                    />
+                                  </div>
                                   {editUsuarioDraft.rol === "cliente" ? (
                                     <div className="adm-form-grid" style={{ marginTop: "0.6rem" }}>
                                       <input
@@ -6612,14 +6647,28 @@ export function Admin() {
                 <div className="adm-birthday-toolbar">
                   <label className="adm-birthday-window-field">
                     <span>Mostrar próximos meses</span>
-                    <input
-                      className="adm-input"
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={cumpleanosWindowMonths}
-                      onChange={(event) => setCumpleanosWindowMonths(clampBirthdayWindowMonths(Number(event.target.value) || 1))}
-                    />
+                    <div className="adm-birthday-window-actions">
+                      <input
+                        className="adm-input"
+                        type="number"
+                        min={1}
+                        max={12}
+                        inputMode="numeric"
+                        value={cumpleanosWindowMonthsDraft}
+                        onChange={(event) => {
+                          setCumpleanosWindowMonthsDraft(event.target.value);
+                          if (errMsg) setErrMsg("");
+                          if (okMsg) setOkMsg("");
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="adm-btn-primary adm-btn-inline"
+                        onClick={guardarCumpleanosWindowMonths}
+                      >
+                        Guardar
+                      </button>
+                    </div>
                   </label>
                   <div className="adm-birthday-range-note">
                     <strong>Rango actual</strong>

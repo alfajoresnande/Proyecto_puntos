@@ -2402,6 +2402,13 @@
   gap: 0.35rem;
 }
 
+.adm-birthday-window-actions {
+  align-items: end;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .adm-birthday-window-field span {
   color: #6B3E26;
   font-size: 0.8rem;
@@ -2521,6 +2528,10 @@
 @media (max-width: 900px) {
   .adm-birthday-toolbar,
   .adm-birthday-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .adm-birthday-window-actions {
     grid-template-columns: 1fr;
   }
 }
