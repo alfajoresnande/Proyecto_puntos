@@ -95,8 +95,8 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Usa esta area cuando necesites corregir datos de una cuenta, activar o bloquear usuarios, o revisar quien tiene permisos de vendedor o administrador.",
   ],
   cumpleanos: [
-    "Aca ves los proximos cumpleanos segun la fecha de nacimiento guardada en cada usuario.",
-    "Puedes elegir cuántos meses hacia adelante quieres revisar y el sistema calcula la proxima fecha y cuántos dias faltan.",
+    "Aca ves los proximos cumpleaños segun la fecha de nacimiento guardada en cada usuario.",
+    "Puedes elegir cuántos meses hacia adelante quieres revisar y el sistema calcula la próxima fecha y cuántos días faltan.",
     "Si hoy cumple alguien, la vista muestra un aviso y te deja abrir WhatsApp de la empresa con el mensaje ya preparado.",
   ],
   "personas-app": [
@@ -1007,8 +1007,8 @@ function buildCompanyWhatsAppUrl(message: string): string {
 
 function buildBirthdayWhatsAppMessage(item: UpcomingBirthday): string {
   return item.isToday
-    ? `Hoy es el cumpleanos de ${item.usuario.nombre}.`
-    : `Se acerca el cumpleanos de ${item.usuario.nombre}: ${formatDateStamp(item.nextBirthdayStamp)}. Faltan ${item.daysUntil} dias.`;
+    ? `Hoy es el cumpleaños de ${item.usuario.nombre}.`
+    : `Se acerca el cumpleaños de ${item.usuario.nombre}: ${formatDateStamp(item.nextBirthdayStamp)}. Faltan ${item.daysUntil} días.`;
 }
 
 function isAdminTab(value: string | null): value is AdminTab {
@@ -2528,8 +2528,8 @@ export function Admin() {
     if (!cumpleanosHoy.length) return "";
     const names = cumpleanosHoy.map((item) => item.usuario.nombre).join(", ");
     return cumpleanosHoy.length === 1
-      ? `Hoy es el cumpleanos de ${names}.`
-      : `Hoy cumplen anos: ${names}.`;
+      ? `Hoy es el cumpleaños de ${names}.`
+      : `Hoy cumplen años: ${names}.`;
   }, [cumpleanosHoy]);
   const cumpleanosHoyWhatsappUrl = useMemo(
     () => (cumpleanosHoyWhatsappMessage ? buildCompanyWhatsAppUrl(cumpleanosHoyWhatsappMessage) : ""),
@@ -2881,11 +2881,11 @@ export function Admin() {
     window.localStorage.setItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY, todayStamp);
     showToast({
       tone: "info",
-      title: cumpleanosHoy.length === 1 ? "Cumpleanos hoy" : "Cumpleanos de hoy",
+      title: cumpleanosHoy.length === 1 ? "Cumpleaños hoy" : "Cumpleaños de hoy",
       message: cumpleanosHoy.length === 1
-        ? `${cumpleanosHoy[0]?.usuario.nombre} cumple anos hoy.`
-        : `${cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")} cumplen anos hoy.`,
-      actionLabel: "Ver cumpleanos",
+        ? `${cumpleanosHoy[0]?.usuario.nombre} cumple años hoy.`
+        : `${cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")} cumplen años hoy.`,
+      actionLabel: "Ver cumpleaños",
       onAction: () => navigate(`${panelBasePath}/cumpleanos`),
       secondaryActionLabel: "WhatsApp empresa",
       onSecondaryAction: () => window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer"),
@@ -5364,7 +5364,7 @@ export function Admin() {
             {renderAdminNavLabel("Usuarios")}
           </button>
           <button className={`admin-nav-btn ${tab === "cumpleanos" ? "active" : ""}`} onClick={() => seleccionarTab("cumpleanos")}>
-            {renderAdminNavLabel("Cumpleanos", cumpleanosHoy.length)}
+            {renderAdminNavLabel("Cumpleaños", cumpleanosHoy.length)}
           </button>
           <button className={`admin-nav-btn ${tab === "personas-app" ? "active" : ""}`} onClick={() => seleccionarTab("personas-app")}>
             {renderAdminNavLabel("Personas en app", appPresenceSummary?.active_now ?? 0)}
@@ -6594,7 +6594,7 @@ export function Admin() {
           {tab === "cumpleanos" ? (
             <>
               <div className="admin-section-header">
-                <h2 className="admin-section-title">Cumpleanos</h2>
+                <h2 className="admin-section-title">Cumpleaños</h2>
                 <button
                   type="button"
                   className="adm-btn-link"
@@ -6611,7 +6611,7 @@ export function Admin() {
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
                 <div className="adm-birthday-toolbar">
                   <label className="adm-birthday-window-field">
-                    <span>Mostrar proximos meses</span>
+                    <span>Mostrar próximos meses</span>
                     <input
                       className="adm-input"
                       type="number"
@@ -6628,7 +6628,7 @@ export function Admin() {
                 </div>
 
                 <p className="adm-field-help" style={{ margin: 0 }}>
-                  El sistema calcula la proxima fecha de cumpleanos segun la fecha de nacimiento de cada usuario activo. El aviso por WhatsApp queda listo en un click; para envio automatico real haria falta integrar una API externa de WhatsApp.
+                  El sistema calcula la próxima fecha de cumpleaños segun la fecha de nacimiento de cada usuario activo. El aviso por WhatsApp queda listo en un click; para envío automático real haría falta integrar una API externa de WhatsApp.
                 </p>
 
                 <div className="adm-birthday-summary-grid">
@@ -6649,7 +6649,7 @@ export function Admin() {
                 {cumpleanosHoy.length ? (
                   <div className="adm-birthday-today-box">
                     <div>
-                      <strong>Hoy cumplen anos</strong>
+                      <strong>Hoy cumplen años</strong>
                       <p>{cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")}</p>
                     </div>
                     <button
@@ -6662,7 +6662,7 @@ export function Admin() {
                     </button>
                   </div>
                 ) : (
-                  <div className="adm-empty">Hoy no hay cumpleanos cargados.</div>
+                  <div className="adm-empty">Hoy no hay cumpleaños cargados.</div>
                 )}
               </div>
 
@@ -6672,7 +6672,7 @@ export function Admin() {
                     <thead>
                       <tr>
                         <th>Nombre</th>
-                        <th>Proximo cumpleanos</th>
+                        <th>Próximo cumpleaños</th>
                         <th>Faltan</th>
                         <th>Datos</th>
                         <th>Accion</th>
@@ -6682,7 +6682,7 @@ export function Admin() {
                       {cumpleanosPagina.length === 0 ? (
                         <tr>
                           <td colSpan={5}>
-                            <div className="adm-empty">No hay cumpleanos dentro del rango elegido.</div>
+                            <div className="adm-empty">No hay cumpleaños dentro del rango elegido.</div>
                           </td>
                         </tr>
                       ) : null}
@@ -6700,7 +6700,7 @@ export function Admin() {
                             <td>
                               <div className="adm-birthday-date-cell">
                                 <strong>{formatDateStamp(item.nextBirthdayStamp)}</strong>
-                                {item.nextAge ? <span>Cumple {item.nextAge} anos</span> : null}
+                                {item.nextAge ? <span>Cumple {item.nextAge} años</span> : null}
                               </div>
                             </td>
                             <td>

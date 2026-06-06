@@ -443,6 +443,14 @@ export default function App() {
               }
             />
             <Route
+              path="/admin/cumpleanos"
+              element={
+                <ProtectedRoute rol={["admin", "superAdmin"]}>
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/ventas/:ventasPage"
               element={
                 <ProtectedRoute rol={["admin", "superAdmin"]}>
@@ -517,6 +525,14 @@ export default function App() {
             />
             <Route
               path="/superadmin/personas-app"
+              element={
+                <ProtectedRoute rol="superAdmin">
+                  <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin/cumpleanos"
               element={
                 <ProtectedRoute rol="superAdmin">
                   <Admin />
