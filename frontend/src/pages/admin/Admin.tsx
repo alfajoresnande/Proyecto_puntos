@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
 import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl, mediaUrl } from "../../lib/apiBase";
+import { WHATSAPP_NUMBER } from "../../lib/contact";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import {
@@ -23,6 +24,7 @@ import { AdminLayoutDonde } from "./AdminLayoutDonde";
 type AdminTab =
   | "inicio"
   | "usuarios"
+  | "cumpleanos"
   | "personas-app"
   | "productos"
   | "productos-crear"
@@ -57,6 +59,7 @@ function passwordValidationErrors(value: string): string[] {
 const ADMIN_TABS: AdminTab[] = [
   "inicio",
   "usuarios",
+  "cumpleanos",
   "personas-app",
   "productos",
   "productos-crear",
@@ -90,6 +93,11 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se revisan los usuarios registrados y se pueden editar datos importantes como rol, perfil comercial, puntos y estado de la cuenta.",
     "El perfil comercial sirve para que un cliente vea precios distintos en la tienda, por ejemplo mayorista o empleado, segun los descuentos configurados.",
     "Usa esta area cuando necesites corregir datos de una cuenta, activar o bloquear usuarios, o revisar quien tiene permisos de vendedor o administrador.",
+  ],
+  cumpleanos: [
+    "Aca ves los proximos cumpleanos segun la fecha de nacimiento guardada en cada usuario.",
+    "Puedes elegir cuántos meses hacia adelante quieres revisar y el sistema calcula la proxima fecha y cuántos dias faltan.",
+    "Si hoy cumple alguien, la vista muestra un aviso y te deja abrir WhatsApp de la empresa con el mensaje ya preparado.",
   ],
   "personas-app": [
     "Aca ves quienes estan navegando la app ahora mismo, separados entre usuarios no registrados y clientes con sesion iniciada.",
@@ -347,10 +355,22 @@ type Usuario = {
   descuento_porcentaje?: number;
   dni: string | null;
   telefono?: string | null;
+  fecha_nacimiento?: string | null;
+  localidad?: string | null;
+  provincia?: string | null;
   puntos_saldo: number;
   codigo_invitacion: string | null;
   activo: boolean;
   created_at: string;
+};
+
+type UpcomingBirthday = {
+  usuario: Usuario;
+  birthDate: string;
+  nextBirthdayStamp: string;
+  daysUntil: number;
+  isToday: boolean;
+  nextAge: number | null;
 };
 
 type Movimiento = {
@@ -885,12 +905,15 @@ type StaticPageSlug = "sobre-nosotros" | "terminos";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
+const CUMPLEANOS_POR_PAGINA = 12;
 const APP_PRESENCE_PAGE_SIZE = 10;
 const INTENTOS_SEGURIDAD_POR_PAGINA = 5;
 const MAX_PRODUCT_IMAGES = 3;
 const IMAGE_FILE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const IMAGE_FILE_ACCEPT = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const ADMIN_ALERT_REDEEM_IDS_KEY = "admin_alert_known_canjes_v1";
+const ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY = "nande_admin_birthday_window_months";
+const ADMIN_BIRTHDAY_TOAST_DAY_KEY = "nande_admin_birthday_toast_day";
 const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"];
 
 type AdminAlertState = {
@@ -915,6 +938,77 @@ type SaveFilePickerWindow = Window & {
 
 function formatDate(value: string | null): string {
   return formatBuenosAiresDateTime(value);
+}
+
+function clampBirthdayWindowMonths(value: number): number {
+  if (!Number.isFinite(value)) return 3;
+  return Math.min(12, Math.max(1, Math.floor(value)));
+}
+
+function getInitialBirthdayWindowMonths(): number {
+  if (typeof window === "undefined") return 3;
+  const raw = window.localStorage.getItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY);
+  const parsed = Number(raw);
+  return clampBirthdayWindowMonths(parsed || 3);
+}
+
+function parseDateOnlyParts(value: string | null | undefined): { year: number; month: number; day: number } | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 400 === 0 || (year % 4 === 0 && year % 100 !== 0);
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function buildDateStamp(year: number, month: number, day: number): string {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function getBirthdayOccurrenceStamp(month: number, day: number, year: number): string {
+  const safeDay = month === 2 && day === 29 && !isLeapYear(year)
+    ? 28
+    : Math.min(day, getDaysInMonth(year, month));
+  return buildDateStamp(year, month, safeDay);
+}
+
+function addMonthsToDateStamp(stamp: string, monthsToAdd: number): string {
+  const parts = parseDateOnlyParts(stamp);
+  if (!parts) return stamp;
+  const totalMonths = (parts.month - 1) + clampBirthdayWindowMonths(monthsToAdd);
+  const targetYear = parts.year + Math.floor(totalMonths / 12);
+  const targetMonth = (totalMonths % 12) + 1;
+  const safeDay = Math.min(parts.day, getDaysInMonth(targetYear, targetMonth));
+  return buildDateStamp(targetYear, targetMonth, safeDay);
+}
+
+function diffDaysBetweenDateStamps(fromStamp: string, toStamp: string): number {
+  const from = parseDateOnlyParts(fromStamp);
+  const to = parseDateOnlyParts(toStamp);
+  if (!from || !to) return 0;
+  const fromUtc = Date.UTC(from.year, from.month - 1, from.day);
+  const toUtc = Date.UTC(to.year, to.month - 1, to.day);
+  return Math.max(0, Math.round((toUtc - fromUtc) / 86400000));
+}
+
+function formatDateStamp(value: string): string {
+  return formatBuenosAiresDate(`${value}T12:00:00Z`);
+}
+
+function buildCompanyWhatsAppUrl(message: string): string {
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
+function buildBirthdayWhatsAppMessage(item: UpcomingBirthday): string {
+  return item.isToday
+    ? `Hoy es el cumpleanos de ${item.usuario.nombre}.`
+    : `Se acerca el cumpleanos de ${item.usuario.nombre}: ${formatDateStamp(item.nextBirthdayStamp)}. Faltan ${item.daysUntil} dias.`;
 }
 
 function isAdminTab(value: string | null): value is AdminTab {
@@ -950,6 +1044,7 @@ function adminTabFromPath(pathname: string): AdminTab | null {
   if (/\/productos\/sabores(?:[/?#]|$)/.test(pathname)) return "productos-sabores";
   if (/\/productos\/listado(?:[/?#]|$)/.test(pathname)) return "productos";
   if (/\/productos(?:[/?#]|$)/.test(pathname)) return "productos";
+  if (/\/cumpleanos(?:[/?#]|$)/.test(pathname)) return "cumpleanos";
   if (/\/caja(?:[/?#]|$)/.test(pathname)) return "caja";
   if (/\/gastos(?:[/?#]|$)/.test(pathname)) return "gastos";
   if (/\/proveedores(?:[/?#]|$)/.test(pathname)) return "proveedores";
@@ -969,6 +1064,7 @@ function adminPathSegment(tab: AdminTab): string | null {
   if (tab === "productos-crear") return "productos/crear";
   if (tab === "productos-edicion") return "productos/editar";
   if (tab === "productos-sabores") return "productos/sabores";
+  if (tab === "cumpleanos") return "cumpleanos";
   if (tab === "caja") return "caja";
   if (tab === "gastos") return "gastos";
   if (tab === "proveedores") return "proveedores";
@@ -1731,6 +1827,8 @@ export function Admin() {
     dni: "",
   });
   const [busquedaUsuarios, setBusquedaUsuarios] = useState("");
+  const [cumpleanosPage, setCumpleanosPage] = useState(1);
+  const [cumpleanosWindowMonths, setCumpleanosWindowMonths] = useState(() => getInitialBirthdayWindowMonths());
   const [busquedaProductos, setBusquedaProductos] = useState("");
   const [filtroTipoProducto, setFiltroTipoProducto] = useState("");
   const [movimientosInicioPage, setMovimientosInicioPage] = useState(1);
@@ -2104,6 +2202,11 @@ export function Admin() {
   }, [adminHint]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY, String(clampBirthdayWindowMonths(cumpleanosWindowMonths)));
+  }, [cumpleanosWindowMonths]);
+
+  useEffect(() => {
     if (cajaSucursalId) return;
     const firstActiveSucursal = sucursalesQuery.data?.find((item) => item.activo);
     if (firstActiveSucursal) {
@@ -2375,6 +2478,63 @@ export function Admin() {
   const ordenes = ordenesQuery.data ?? [];
   const usuarios = usuariosQuery.data ?? [];
   const movimientos = movimientosQuery.data ?? [];
+  const todayStamp = getBuenosAiresDateStamp();
+  const cumpleanosWindowEndStamp = useMemo(
+    () => addMonthsToDateStamp(todayStamp, cumpleanosWindowMonths),
+    [cumpleanosWindowMonths, todayStamp],
+  );
+  const cumpleanosCalculados = useMemo<UpcomingBirthday[]>(() => {
+    return usuarios
+      .filter((usuario) => usuario.activo && usuario.fecha_nacimiento)
+      .map((usuario) => {
+        const birthParts = parseDateOnlyParts(usuario.fecha_nacimiento ?? null);
+        const todayParts = parseDateOnlyParts(todayStamp);
+        if (!birthParts || !todayParts) return null;
+        let nextYear = todayParts.year;
+        let nextBirthdayStamp = getBirthdayOccurrenceStamp(birthParts.month, birthParts.day, nextYear);
+        if (nextBirthdayStamp < todayStamp) {
+          nextYear += 1;
+          nextBirthdayStamp = getBirthdayOccurrenceStamp(birthParts.month, birthParts.day, nextYear);
+        }
+        return {
+          usuario,
+          birthDate: usuario.fecha_nacimiento ?? "",
+          nextBirthdayStamp,
+          daysUntil: diffDaysBetweenDateStamps(todayStamp, nextBirthdayStamp),
+          isToday: nextBirthdayStamp === todayStamp,
+          nextAge: nextYear - birthParts.year,
+        } satisfies UpcomingBirthday;
+      })
+      .filter((value): value is UpcomingBirthday => Boolean(value))
+      .sort((left, right) => (
+        left.daysUntil - right.daysUntil
+        || left.nextBirthdayStamp.localeCompare(right.nextBirthdayStamp)
+        || left.usuario.nombre.localeCompare(right.usuario.nombre, "es")
+      ));
+  }, [todayStamp, usuarios]);
+  const cumpleanosHoy = useMemo(
+    () => cumpleanosCalculados.filter((item) => item.isToday),
+    [cumpleanosCalculados],
+  );
+  const cumpleanosProximos = useMemo(
+    () => cumpleanosCalculados.filter((item) => item.nextBirthdayStamp <= cumpleanosWindowEndStamp),
+    [cumpleanosCalculados, cumpleanosWindowEndStamp],
+  );
+  const usuariosSinFechaNacimiento = useMemo(
+    () => usuarios.filter((usuario) => usuario.activo && !usuario.fecha_nacimiento).length,
+    [usuarios],
+  );
+  const cumpleanosHoyWhatsappMessage = useMemo(() => {
+    if (!cumpleanosHoy.length) return "";
+    const names = cumpleanosHoy.map((item) => item.usuario.nombre).join(", ");
+    return cumpleanosHoy.length === 1
+      ? `Hoy es el cumpleanos de ${names}.`
+      : `Hoy cumplen anos: ${names}.`;
+  }, [cumpleanosHoy]);
+  const cumpleanosHoyWhatsappUrl = useMemo(
+    () => (cumpleanosHoyWhatsappMessage ? buildCompanyWhatsAppUrl(cumpleanosHoyWhatsappMessage) : ""),
+    [cumpleanosHoyWhatsappMessage],
+  );
   const categorias = categoriasQuery.data ?? [];
   const categoriasActivas = useMemo(() => categorias.filter((categoria) => categoria.activo !== false), [categorias]);
   const categoriasProductoEdit = useMemo(() => {
@@ -2714,6 +2874,26 @@ export function Admin() {
   }, [adminAlerts.canjes, tab]);
 
   useEffect(() => {
+    if (!cumpleanosHoy.length || !cumpleanosHoyWhatsappUrl) return;
+    if (typeof window === "undefined") return;
+    const alreadyShownForDay = window.localStorage.getItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY);
+    if (alreadyShownForDay === todayStamp) return;
+    window.localStorage.setItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY, todayStamp);
+    showToast({
+      tone: "info",
+      title: cumpleanosHoy.length === 1 ? "Cumpleanos hoy" : "Cumpleanos de hoy",
+      message: cumpleanosHoy.length === 1
+        ? `${cumpleanosHoy[0]?.usuario.nombre} cumple anos hoy.`
+        : `${cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")} cumplen anos hoy.`,
+      actionLabel: "Ver cumpleanos",
+      onAction: () => navigate(`${panelBasePath}/cumpleanos`),
+      secondaryActionLabel: "WhatsApp empresa",
+      onSecondaryAction: () => window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer"),
+      duration: 9500,
+    });
+  }, [cumpleanosHoy, cumpleanosHoyWhatsappUrl, navigate, panelBasePath, showToast, todayStamp]);
+
+  useEffect(() => {
     setMovimientosInicioPage((prev) => Math.min(prev, totalMovimientosInicioPages));
   }, [totalMovimientosInicioPages]);
 
@@ -2820,6 +3000,7 @@ export function Admin() {
   }, [busquedaOrdenes, ordenes, ordenesFiltroEntrega, ordenesFiltroEstado]);
 
   const totalUsuariosPages = Math.max(1, Math.ceil(usuariosFiltrados.length / LISTA_POR_PAGINA));
+  const totalCumpleanosPages = Math.max(1, Math.ceil(cumpleanosProximos.length / CUMPLEANOS_POR_PAGINA));
   const totalProductosPages = Math.max(1, Math.ceil(productosFiltrados.length / LISTA_POR_PAGINA));
   const totalInventarioPages = Math.max(1, Math.ceil(inventarioFiltrado.length / LISTA_POR_PAGINA));
   const totalPostulacionesPages = Math.max(1, Math.ceil(postulacionesFiltradas.length / LISTA_POR_PAGINA));
@@ -2835,6 +3016,14 @@ export function Admin() {
   useEffect(() => {
     setUsuariosPage((prev) => Math.min(prev, totalUsuariosPages));
   }, [totalUsuariosPages]);
+
+  useEffect(() => {
+    setCumpleanosPage((prev) => Math.min(prev, totalCumpleanosPages));
+  }, [totalCumpleanosPages]);
+
+  useEffect(() => {
+    setCumpleanosPage(1);
+  }, [cumpleanosWindowMonths]);
 
   useEffect(() => {
     setProductosPage((prev) => Math.min(prev, totalProductosPages));
@@ -2894,6 +3083,11 @@ export function Admin() {
     const start = (usuariosPage - 1) * LISTA_POR_PAGINA;
     return usuariosFiltrados.slice(start, start + LISTA_POR_PAGINA);
   }, [usuariosFiltrados, usuariosPage]);
+
+  const cumpleanosPagina = useMemo(() => {
+    const start = (cumpleanosPage - 1) * CUMPLEANOS_POR_PAGINA;
+    return cumpleanosProximos.slice(start, start + CUMPLEANOS_POR_PAGINA);
+  }, [cumpleanosPage, cumpleanosProximos]);
 
   const productosPagina = useMemo(() => {
     const start = (productosPage - 1) * LISTA_POR_PAGINA;
@@ -5169,6 +5363,9 @@ export function Admin() {
           <button className={`admin-nav-btn ${tab === "usuarios" ? "active" : ""}`} onClick={() => seleccionarTab("usuarios")}>
             {renderAdminNavLabel("Usuarios")}
           </button>
+          <button className={`admin-nav-btn ${tab === "cumpleanos" ? "active" : ""}`} onClick={() => seleccionarTab("cumpleanos")}>
+            {renderAdminNavLabel("Cumpleanos", cumpleanosHoy.length)}
+          </button>
           <button className={`admin-nav-btn ${tab === "personas-app" ? "active" : ""}`} onClick={() => seleccionarTab("personas-app")}>
             {renderAdminNavLabel("Personas en app", appPresenceSummary?.active_now ?? 0)}
           </button>
@@ -6389,6 +6586,155 @@ export function Admin() {
                   totalPages={totalUsuariosPages}
                   onPrev={() => setUsuariosPage((prev) => Math.max(1, prev - 1))}
                   onNext={() => setUsuariosPage((prev) => Math.min(totalUsuariosPages, prev + 1))}
+                />
+              </div>
+            </>
+          ) : null}
+
+          {tab === "cumpleanos" ? (
+            <>
+              <div className="admin-section-header">
+                <h2 className="admin-section-title">Cumpleanos</h2>
+                <button
+                  type="button"
+                  className="adm-btn-link"
+                  disabled={!cumpleanosHoyWhatsappUrl}
+                  onClick={() => {
+                    if (!cumpleanosHoyWhatsappUrl) return;
+                    window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Avisar hoy por WhatsApp
+                </button>
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
+                <div className="adm-birthday-toolbar">
+                  <label className="adm-birthday-window-field">
+                    <span>Mostrar proximos meses</span>
+                    <input
+                      className="adm-input"
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={cumpleanosWindowMonths}
+                      onChange={(event) => setCumpleanosWindowMonths(clampBirthdayWindowMonths(Number(event.target.value) || 1))}
+                    />
+                  </label>
+                  <div className="adm-birthday-range-note">
+                    <strong>Rango actual</strong>
+                    <span>Desde hoy hasta {formatDateStamp(cumpleanosWindowEndStamp)}</span>
+                  </div>
+                </div>
+
+                <p className="adm-field-help" style={{ margin: 0 }}>
+                  El sistema calcula la proxima fecha de cumpleanos segun la fecha de nacimiento de cada usuario activo. El aviso por WhatsApp queda listo en un click; para envio automatico real haria falta integrar una API externa de WhatsApp.
+                </p>
+
+                <div className="adm-birthday-summary-grid">
+                  <article className="adm-birthday-summary-card">
+                    <span>Cumplen hoy</span>
+                    <strong>{cumpleanosHoy.length}</strong>
+                  </article>
+                  <article className="adm-birthday-summary-card">
+                    <span>En el rango elegido</span>
+                    <strong>{cumpleanosProximos.length}</strong>
+                  </article>
+                  <article className="adm-birthday-summary-card">
+                    <span>Sin fecha cargada</span>
+                    <strong>{usuariosSinFechaNacimiento}</strong>
+                  </article>
+                </div>
+
+                {cumpleanosHoy.length ? (
+                  <div className="adm-birthday-today-box">
+                    <div>
+                      <strong>Hoy cumplen anos</strong>
+                      <p>{cumpleanosHoy.map((item) => item.usuario.nombre).join(", ")}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="adm-btn-primary"
+                      style={{ width: "auto" }}
+                      onClick={() => window.open(cumpleanosHoyWhatsappUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      Abrir WhatsApp empresa
+                    </button>
+                  </div>
+                ) : (
+                  <div className="adm-empty">Hoy no hay cumpleanos cargados.</div>
+                )}
+              </div>
+
+              <div className="admin-card">
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Proximo cumpleanos</th>
+                        <th>Faltan</th>
+                        <th>Datos</th>
+                        <th>Accion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cumpleanosPagina.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="adm-empty">No hay cumpleanos dentro del rango elegido.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {cumpleanosPagina.map((item) => {
+                        const whatsappMessage = buildBirthdayWhatsAppMessage(item);
+                        const whatsappUrl = buildCompanyWhatsAppUrl(whatsappMessage);
+                        return (
+                          <tr key={`cumpleanos-${item.usuario.id}`}>
+                            <td>
+                              <div className="adm-birthday-name-cell">
+                                <strong>{item.usuario.nombre}</strong>
+                                <span>{formatRolLabel(item.usuario.rol)}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <div className="adm-birthday-date-cell">
+                                <strong>{formatDateStamp(item.nextBirthdayStamp)}</strong>
+                                {item.nextAge ? <span>Cumple {item.nextAge} anos</span> : null}
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`adm-birthday-days-badge${item.isToday ? " is-today" : ""}`}>
+                                {item.isToday ? "Hoy" : `${item.daysUntil} dias`}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="adm-birthday-meta-cell">
+                                <span>{item.usuario.telefono?.trim() || item.usuario.email}</span>
+                                <span>{[item.usuario.localidad, item.usuario.provincia].filter(Boolean).join(", ") || "-"}</span>
+                              </div>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="adm-btn-secondary"
+                                style={{ width: "auto" }}
+                                onClick={() => window.open(whatsappUrl, "_blank", "noopener,noreferrer")}
+                              >
+                                WhatsApp empresa
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <PaginationControls
+                  page={cumpleanosPage}
+                  totalPages={totalCumpleanosPages}
+                  onPrev={() => setCumpleanosPage((prev) => Math.max(1, prev - 1))}
+                  onNext={() => setCumpleanosPage((prev) => Math.min(totalCumpleanosPages, prev + 1))}
                 />
               </div>
             </>

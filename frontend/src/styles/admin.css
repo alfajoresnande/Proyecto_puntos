@@ -2390,3 +2390,138 @@
   }
 }
 
+.adm-birthday-toolbar {
+  align-items: end;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.adm-birthday-window-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.adm-birthday-window-field span {
+  color: #6B3E26;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.adm-birthday-range-note {
+  background: linear-gradient(180deg, rgba(255, 247, 236, 0.98) 0%, rgba(250, 238, 221, 0.9) 100%);
+  border: 1px solid rgba(164, 103, 54, 0.18);
+  border-radius: 14px;
+  color: #6B3E26;
+  display: grid;
+  gap: 0.2rem;
+  min-height: 48px;
+  padding: 0.75rem 0.9rem;
+}
+
+.adm-birthday-range-note strong {
+  color: #4A1C08;
+  font-size: 0.82rem;
+}
+
+.adm-birthday-range-note span {
+  font-size: 0.82rem;
+}
+
+.adm-birthday-summary-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.adm-birthday-summary-card {
+  background: #FFF8F0;
+  border: 1px solid rgba(180,84,20,0.18);
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.95rem 1rem;
+}
+
+.adm-birthday-summary-card span {
+  color: #8B5A30;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.adm-birthday-summary-card strong {
+  color: #4A1C08;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.adm-birthday-today-box {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(239, 252, 241, 0.96) 0%, rgba(225, 246, 229, 0.92) 100%);
+  border: 1px solid rgba(96, 184, 108, 0.28);
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  justify-content: space-between;
+  padding: 0.95rem 1rem;
+}
+
+.adm-birthday-today-box strong {
+  color: #26532C;
+}
+
+.adm-birthday-today-box p {
+  color: #43724A;
+  margin: 0.2rem 0 0;
+}
+
+.adm-birthday-name-cell,
+.adm-birthday-date-cell,
+.adm-birthday-meta-cell {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.adm-birthday-name-cell strong,
+.adm-birthday-date-cell strong {
+  color: #4A1C08;
+}
+
+.adm-birthday-name-cell span,
+.adm-birthday-date-cell span,
+.adm-birthday-meta-cell span {
+  color: #8B5A30;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.adm-birthday-days-badge {
+  align-items: center;
+  background: rgba(212,98,26,0.1);
+  border: 1px solid rgba(212,98,26,0.18);
+  border-radius: 999px;
+  color: #A04E1C;
+  display: inline-flex;
+  font-size: 0.76rem;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 70px;
+  padding: 0.3rem 0.6rem;
+}
+
+.adm-birthday-days-badge.is-today {
+  background: rgba(96, 184, 108, 0.14);
+  border-color: rgba(96, 184, 108, 0.28);
+  color: #2F6E38;
+}
+
+@media (max-width: 900px) {
+  .adm-birthday-toolbar,
+  .adm-birthday-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
