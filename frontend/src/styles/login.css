@@ -14,9 +14,69 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   background: transparent;
   padding: 2rem 1rem;
   box-sizing: border-box;
+}
+
+.login-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(45, 22, 10, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.login-notice-modal {
+  width: min(100%, 420px);
+  background: #fff8f0;
+  border: 1px solid #e6d3b8;
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(45, 22, 10, 0.24);
+  padding: 1.35rem 1.2rem 1.15rem;
+  text-align: center;
+}
+
+.login-notice-title {
+  margin: 0 0 0.45rem;
+  color: #4a2c1a;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.login-notice-message {
+  margin: 0;
+  color: #6b3e26;
+  font-size: 0.96rem;
+  line-height: 1.45;
+}
+
+.login-notice-btn {
+  min-width: 138px;
+  margin-top: 1rem;
+  padding: 0.78rem 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: #6b3e26;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 800;
+  transition: background 0.18s ease, transform 0.12s ease;
+}
+
+.login-notice-btn:hover {
+  background: #a86a3d;
+}
+
+.login-notice-btn:active {
+  transform: scale(0.98);
 }
 
 body.auth-background {

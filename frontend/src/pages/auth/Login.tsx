@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useRetryAfterCooldown } from "../../lib/rateLimitError";
 import { useAuthStore } from "../../store/authStore";
 
@@ -10,6 +10,7 @@ const LOGIN_SUCCESS_ROUTE = "/";
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
   const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
@@ -22,6 +23,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const { cooldownSeconds, cooldownMessage, startCooldownFromError } = useRetryAfterCooldown();
 
   const loginMutation = useMutation({
@@ -51,6 +53,23 @@ export function Login() {
       document.body.classList.remove("auth-background");
     };
   }, []);
+
+  useEffect(() => {
+    const state = (location.state as { loginNotice?: string; accessDeniedNotice?: string; from?: string } | null) ?? null;
+    const nextNotice = state?.loginNotice?.trim() || state?.accessDeniedNotice?.trim() || "";
+    if (!nextNotice) return;
+
+    setLoginNotice(nextNotice);
+
+    const nextState = { ...(state ?? {}) };
+    delete nextState.loginNotice;
+    delete nextState.accessDeniedNotice;
+
+    navigate(location.pathname, {
+      replace: true,
+      state: Object.keys(nextState).length ? nextState : null,
+    });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (!googleClientId || user) return;
@@ -135,6 +154,28 @@ export function Login() {
 
   return (
     <section className="login-page">
+      {loginNotice ? (
+        <div className="login-notice-overlay" onClick={() => setLoginNotice(null)}>
+          <div
+            className="login-notice-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="login-notice-title"
+            aria-describedby="login-notice-message"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p id="login-notice-title" className="login-notice-title">
+              Inicio de sesión requerido
+            </p>
+            <p id="login-notice-message" className="login-notice-message">
+              {loginNotice}
+            </p>
+            <button type="button" className="login-notice-btn" onClick={() => setLoginNotice(null)}>
+              Entendido
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className="login-card">
         <div className="login-logo">
           <img src="/logo.png" alt="Nande" />

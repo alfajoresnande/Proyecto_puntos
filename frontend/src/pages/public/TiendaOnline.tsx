@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
@@ -68,6 +68,7 @@ type OnlineCartResponse = {
 
 const DEFAULT_SELECTABLE_QUANTITY_LIMIT = 100;
 const MAX_SELECTABLE_QUANTITY_LIMIT = 100000;
+const LOGIN_CART_NOTICE = "Para agregar un producto al carrito debe de iniciar sesion.";
 
 function productPrice(producto: Producto): number {
   const n = Number(producto.precio_dinero ?? 0);
@@ -173,6 +174,7 @@ function isCajaSabores(producto: Producto): boolean {
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [categoriaActiva, setCategoriaActiva] = useState("");
@@ -637,7 +639,12 @@ export function TiendaOnline() {
 
   function agregar(producto: Producto, cantidad: number) {
     if (!user || user.rol !== "cliente") {
-      navigate("/login");
+      navigate("/login", {
+        state: {
+          from: `${location.pathname}${location.search}`,
+          loginNotice: LOGIN_CART_NOTICE,
+        },
+      });
       return;
     }
     if (!Number.isInteger(cantidad) || cantidad < 1) {
@@ -1236,8 +1243,8 @@ export function TiendaOnline() {
                       >
                         Ver producto
                       </button>
-                      <div className="product-card-action-slot">
-                        {user && !esCaja ? (
+                      {user && !esCaja ? (
+                        <div className="product-card-action-slot">
                           <div className="product-card-qty">
                             <button
                               type="button"
@@ -1267,10 +1274,8 @@ export function TiendaOnline() {
                               +
                             </button>
                           </div>
-                        ) : (
-                          <div className="product-card-action-spacer" aria-hidden="true" />
-                        )}
-                      </div>
+                        </div>
+                      ) : null}
                       <button
                         className="product-card-btn product-card-btn-canjear"
                         disabled={addMutation.isPending || sinStock || (!esCaja && cantidadSeleccionada < 1)}
@@ -1585,7 +1590,11 @@ export function TiendaOnline() {
                   </button>
                 </>
               ) : (
-                <Link to="/login" className="product-card-btn product-card-btn-login">
+                <Link
+                  to="/login"
+                  state={{ from: `${location.pathname}${location.search}`, loginNotice: LOGIN_CART_NOTICE }}
+                  className="product-card-btn product-card-btn-login"
+                >
                   Iniciar sesión para comprar
                 </Link>
               )}

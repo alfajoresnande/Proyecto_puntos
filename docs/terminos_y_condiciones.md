@@ -1,219 +1,176 @@
 # Términos y Condiciones de Uso, Compra, Canje y Programa de Puntos
 
-Última actualización: 25 de mayo de 2026
+Última actualización: 6 de junio de 2026
 
-Estos Términos y Condiciones regulan el uso del sitio web, la tienda online, el catálogo de canjes, el programa de puntos, los perfiles de usuario y los canales de soporte de **Ñandé / Alfajores Correntinos**.
+Este documento regula el uso del sitio web, la tienda online, el catálogo de canjes, el programa de puntos, la mensajería de soporte y demás servicios digitales de **Ñandé / Alfajores Correntinos**.
 
-Antes de publicar este documento, completar los datos legales del proveedor:
+Al navegar por la plataforma, registrarte, comprar, canjear puntos o comunicarte con la empresa, aceptás estos Términos y Condiciones. Si no estás de acuerdo, te pedimos que no utilices la plataforma.
+
+## 1. Datos del proveedor
+
+Antes de publicar la versión definitiva, completar o confirmar estos datos:
 
 - Titular o razón social: **[completar]**
 - CUIT: **[completar]**
 - Domicilio legal o comercial: **[completar]**
-- Correo de atención al cliente: **[completar]**
-- WhatsApp de atención: **+54 9 379 463-2610**
+- Correo de atención: **[completar]**
+- WhatsApp oficial: **+54 9 379 463-2610**
+- Instagram oficial: **https://www.instagram.com/alfajorescorrentinos/**
 - Sitio web: **https://alfajorescorrentinos.com**
 
-Al navegar, registrarte, comprar, canjear puntos, usar códigos promocionales o comunicarte por los canales de atención, aceptás estos Términos y Condiciones. Si no estás de acuerdo, te pedimos que no utilices la plataforma.
+## 2. Alcance del servicio
 
-## 1. Alcance de la plataforma
+La plataforma puede permitir, según disponibilidad:
 
-La plataforma permite, según disponibilidad y configuración vigente:
+- ver productos, precios, imágenes, sabores, promociones y stock;
+- comprar productos para retiro en sucursal o envío, cuando esa modalidad esté habilitada;
+- pagar por medios digitales y, en ciertos casos, en efectivo al retirar;
+- acumular puntos por compras o acciones promocionales;
+- canjear puntos por productos habilitados;
+- consultar pedidos, canjes, comprobantes y movimientos;
+- comunicarse con soporte por la sección **Mensajes**, WhatsApp o redes sociales oficiales.
 
-- Consultar información institucional de Ñandé.
-- Ver productos, precios, imágenes, sabores, categorías y disponibilidad.
-- Comprar productos mediante la tienda online.
-- Retirar pedidos en sucursales habilitadas o solicitar envío cuando esa opción esté disponible.
-- Pagar online mediante proveedores externos de pago o elegir efectivo al retirar cuando se encuentre habilitado.
-- Acumular puntos por compras, promociones, códigos o acciones comerciales habilitadas.
-- Canjear puntos por productos disponibles en el catálogo de canjes.
-- Consultar historial de pedidos, canjes, movimientos de puntos y comprobantes.
-- Usar canales de soporte y recibir comunicaciones vinculadas con pedidos, pagos, canjes o incidencias.
+## 3. Registro y uso de la cuenta
 
-La plataforma está orientada principalmente a personas ubicadas en la República Argentina.
+Para acceder a determinadas funciones puede ser necesario crear una cuenta. El usuario debe brindar datos verdaderos, actualizados y completos.
 
-## 2. Usuarios, registro y edad mínima
+Cada usuario es responsable por la confidencialidad de su contraseña y por las acciones realizadas desde su cuenta. No está permitido:
 
-Para comprar, acumular puntos, canjear productos o acceder a funciones personalizadas, puede ser necesario crear una cuenta.
+- usar datos falsos o de terceros sin autorización;
+- compartir cuentas;
+- manipular precios, stock, puntos o canjes;
+- utilizar bots, automatizaciones abusivas o cualquier mecanismo que afecte el funcionamiento de la plataforma;
+- realizar conductas fraudulentas, ofensivas o contrarias a la ley.
 
-El usuario se compromete a brindar información verdadera, actualizada y completa. La plataforma puede solicitar, entre otros datos, nombre, correo electrónico, DNI, teléfono, fecha de nacimiento, localidad, provincia, dirección de envío o sucursal de retiro.
+Ñandé podrá suspender o cancelar cuentas ante incumplimientos, uso abusivo, fraude, intentos de manipulación o requerimientos legales.
 
-La edad mínima para registrarse es de **13 años**. Las personas menores de 18 años deben utilizar la plataforma con conocimiento y autorización de su madre, padre, tutor o representante legal, especialmente para realizar compras, canjes o compartir datos personales.
+## 4. Productos, imágenes y disponibilidad
 
-Ñandé podrá rechazar, suspender o cancelar cuentas cuando detecte datos falsos, uso abusivo, fraude, intentos de manipulación de puntos, operaciones sospechosas, incumplimiento de estos Términos o requerimientos legales.
+Las imágenes y descripciones tienen carácter informativo y comercial. Puede haber variaciones razonables de presentación, empaque, lote, sabor o estética del producto final.
 
-## 3. Cuenta, contraseña y seguridad
-
-Cada usuario es responsable por la confidencialidad de sus credenciales y por las operaciones realizadas desde su cuenta.
-
-No está permitido compartir accesos, vender cuentas, utilizar datos de terceros, crear cuentas falsas, automatizar compras o canjes, intentar vulnerar la seguridad de la plataforma ni utilizar el sistema con fines distintos a los previstos.
-
-Si detectás un acceso no autorizado, un error en tu saldo de puntos, un pedido desconocido o un canje que no realizaste, debés comunicarlo cuanto antes por los canales de atención.
-
-## 4. Información de productos, imágenes y disponibilidad
-
-Las imágenes, descripciones, textos, sabores, etiquetas, premios, presentaciones y demás contenidos del catálogo tienen finalidad informativa y comercial. Pueden existir diferencias razonables entre las imágenes y el producto final por iluminación, lote, empaque, disponibilidad de sabores o actualización de diseño.
-
-La disponibilidad de productos puede variar por sucursal, stock, temporada, producción, reservas pendientes, demanda, logística o errores de carga. Agregar un producto al carrito no garantiza su disponibilidad definitiva hasta que el pedido o canje sea confirmado por el sistema.
-
-En productos alimenticios, el usuario debe revisar el estado del producto al recibirlo o retirarlo y conservarlo de acuerdo con las indicaciones del empaque, la naturaleza del producto y las recomendaciones del personal.
+La disponibilidad puede cambiar sin previo aviso por stock, demanda, producción, reservas pendientes, errores de carga o cuestiones operativas. Agregar productos al carrito no garantiza la disponibilidad definitiva hasta la confirmación del pedido.
 
 ## 5. Precios, promociones y errores
 
-Los precios se informan en pesos argentinos, salvo indicación expresa en contrario. Pueden variar sin previo aviso hasta la confirmación del pedido.
+Los precios se expresan en pesos argentinos, salvo indicación distinta. Pueden modificarse sin previo aviso hasta la confirmación de la operación.
 
-Las promociones, descuentos, beneficios para perfiles especiales, precios mayoristas, beneficios para empleados, cupones, códigos promocionales, puntos por producto y condiciones comerciales pueden tener vigencia limitada, stock limitado, restricciones por usuario, sucursal, canal, fecha, medio de pago o categoría de producto.
+Las promociones, descuentos, cupones, beneficios por puntos y condiciones comerciales pueden tener:
 
-Si se detecta un error manifiesto de precio, stock, puntos, descripción, configuración o disponibilidad, Ñandé podrá contactar al usuario para corregir la operación, ofrecer una alternativa razonable o cancelar la operación.
+- vigencia limitada;
+- stock limitado;
+- restricciones por usuario, sucursal, canal o medio de pago;
+- condiciones especiales de uso.
 
-## 6. Compras en tienda online
+Si existiera un error evidente en precios, stock, puntaje, publicación o configuración, Ñandé podrá dejar sin efecto la operación, corregirla o proponer una alternativa razonable.
 
-Para realizar una compra, el usuario debe seleccionar productos, cantidades, configuración de sabores cuando aplique, sucursal de retiro o datos de envío, y medio de pago disponible.
+## 6. Compras y confirmación de pedidos
 
-El pedido puede pasar por distintos estados, por ejemplo: pendiente de pago, pagado, preparado, enviado, entregado, cancelado o expirado. Los estados visibles en la plataforma son informativos y pueden actualizarse automáticamente o por intervención del personal autorizado.
+Todo pedido queda sujeto a validación de stock, datos del usuario, disponibilidad de sucursal o envío, confirmación del pago y controles internos de seguridad.
 
-El pedido queda sujeto a validaciones de stock, perfil completo, medio de pago, sucursal elegida, datos de contacto y controles de seguridad. Si un pedido no puede confirmarse, Ñandé podrá cancelarlo y liberar el stock reservado.
+El pedido podrá reflejar distintos estados operativos, tales como pendiente, pagado, en preparación, listo para retirar, enviado, entregado, cancelado o vencido. Dichos estados son informativos y podrán actualizarse de manera automática o manual.
 
 ## 7. Medios de pago
 
-La plataforma puede habilitar distintos medios de pago, incluyendo:
+La plataforma puede ofrecer medios de pago como tarjeta de crédito, tarjeta de débito, Mercado Pago, QR u otros medios digitales habilitados. El pago en efectivo podrá estar disponible solo para ciertos casos de retiro en sucursal.
 
-- Pagos online procesados por Mercado Pago u otros proveedores externos habilitados.
-- QR, billetera virtual, tarjeta u otras modalidades ofrecidas por el proveedor de pago.
-- Efectivo al retirar, cuando esté disponible para el pedido y la sucursal seleccionada.
+Cuando el pago sea procesado por terceros, también aplicarán los términos y políticas del proveedor de pago correspondiente.
 
-Los pagos online se rigen también por los términos, condiciones, políticas de seguridad y disponibilidad del proveedor externo correspondiente. Ñandé no almacena los datos completos de tarjeta cuando el pago es procesado por un proveedor externo.
+## 8. Retiros, entregas y envíos
 
-En operaciones con efectivo al retirar, el pedido puede quedar reservado por un plazo limitado. Si el usuario no abona y retira dentro del plazo informado o configurado, el pedido podrá expirar o cancelarse, y el stock volverá a estar disponible.
+En los pedidos con retiro, el usuario deberá presentarse dentro del plazo informado, con los datos necesarios para identificar la operación.
 
-## 8. Retiro en sucursal y envíos
+En los pedidos con envío, el usuario debe cargar correctamente dirección, localidad, provincia, teléfono y referencias necesarias. Los plazos de entrega son estimativos y pueden verse afectados por causas ajenas a Ñandé, incluyendo demoras logísticas, clima, alta demanda, feriados o problemas de terceros.
 
-Cuando el pedido sea para retiro, el usuario debe presentarse en la sucursal seleccionada dentro de los horarios y plazos disponibles, con los datos necesarios para identificar la operación. El personal podrá solicitar número de pedido, comprobante, código de retiro, DNI u otro dato razonable de validación.
+Si la entrega no pudiera concretarse por datos incorrectos, ausencia, falta de respuesta o rechazo injustificado, la empresa podrá reprogramar, cancelar o aplicar condiciones operativas razonables según el caso.
 
-Cuando la opción de envío esté habilitada, el usuario debe cargar una dirección correcta, código postal, localidad, provincia, teléfono y cualquier referencia necesaria. Los plazos de entrega son estimativos y pueden verse afectados por disponibilidad, clima, distancia, logística, feriados, terceros de entrega o fuerza mayor.
+## 9. Política de cancelaciones, cambios y reembolsos
 
-Si el usuario no puede recibir el pedido por datos incorrectos, ausencia en el domicilio, imposibilidad de contacto o rechazo injustificado, podrán aplicarse costos adicionales o cancelación según el caso.
+Como regla general, **Ñandé no realiza devoluciones de dinero ni reembolsos** por compras confirmadas, pedidos preparados, productos retirados o entregados, canjes efectuados, errores imputables al usuario, falta de retiro dentro del plazo, cambios de opinión posteriores a la confirmación o cualquier situación ordinaria vinculada a la operatoria habitual del negocio.
 
-## 9. Cancelaciones y política sobre pagos realizados
+Toda solicitud vinculada con cancelaciones, revisión de importes abonados, cambios excepcionales o incidencias deberá ser analizada **caso por caso** por la empresa.
 
-El usuario puede solicitar la cancelación de un pedido desde la plataforma o por soporte cuando el estado del pedido lo permita. La posibilidad de cancelar puede depender de si el pedido ya fue pagado, preparado, enviado, entregado o si contiene productos alimenticios perecederos o preparados especialmente.
+Solo en situaciones **muy excepcionales, extraordinarias o debidamente justificadas**, y siempre a exclusivo criterio de Ñandé o cuando la normativa aplicable así lo exija, podrá evaluarse una solución particular. En esos supuestos, la persona usuaria deberá comunicarse exclusivamente por alguno de estos canales oficiales:
 
-**Ñandé no realiza devoluciones de dinero.** Si el usuario cancela un pedido que ya fue pagado (total o parcialmente), deberá comunicarse a través del canal de soporte de la plataforma o por los medios de atención habilitados (WhatsApp, correo electrónico, chat de la app) para coordinar con el equipo de Ñandé la resolución correspondiente respecto al dinero abonado. Cada caso será evaluado de forma individual por el equipo de atención.
+- la sección **Mensajes** de la app;
+- el **WhatsApp oficial** de la empresa;
+- el **Instagram oficial** u otra red social oficial que la empresa tenga habilitada.
 
-Si Ñandé cancela un pedido por falta de stock, error operativo, imposibilidad de preparación, rechazo del pago, vencimiento de reserva u otra causa atribuible al comercio, se informará al usuario y se coordinará la resolución a través de los canales de atención de la plataforma.
+La sola recepción del reclamo o mensaje **no implica aceptación automática** de devolución, reintegro, compensación ni reconocimiento de responsabilidad.
 
-**En ningún caso se realizarán reembolsos automáticos ni devoluciones de dinero.** Toda gestión vinculada a importes pagados en pedidos cancelados se tramitará exclusivamente a través de los canales de comunicación de la app y será resuelta caso por caso.
+Cuando corresponda una revisión excepcional, la empresa podrá solicitar comprobantes, número de pedido, identidad del titular de la compra, imágenes del producto, descripción del inconveniente y cualquier otro dato razonable para evaluar el caso.
+
+Lo anterior se aplica **sin perjuicio de los derechos irrenunciables del consumidor previstos por la legislación argentina**, incluyendo los supuestos legales de revocación en contrataciones a distancia cuando resulten aplicables.
 
 ## 10. Programa de puntos
 
-El programa de puntos es un beneficio comercial de Ñandé. Los puntos pueden generarse por compras, códigos promocionales, códigos de invitación, referidos, acciones comerciales, ajustes manuales o campañas específicas.
+El programa de puntos es un beneficio promocional y comercial de Ñandé. Los puntos:
 
-Los puntos:
+- no constituyen dinero;
+- no son reembolsables en efectivo;
+- no generan intereses;
+- no son transferibles, salvo autorización expresa;
+- no pueden venderse, cederse ni comercializarse.
 
-- No son dinero.
-- No tienen valor de cambio en efectivo.
-- No generan intereses.
-- No son transferibles, salvo autorización expresa de Ñandé.
-- No pueden venderse, cederse, subastarse ni utilizarse fuera de la plataforma.
-- Pueden estar sujetos a límites, auditorías, vencimientos, condiciones de uso o disponibilidad de productos.
+La empresa podrá otorgar, descontar, ajustar, bloquear o dejar sin efecto puntos cuando detecte errores, fraude, duplicaciones, abusos, devoluciones, cancelaciones o incumplimientos.
 
-Los puntos por compra se acreditan según la configuración vigente de cada producto y cuando la operación cumple las condiciones necesarias, por ejemplo pago aprobado o pedido confirmado. Si una compra es cancelada, rechazada, anulada o detectada como fraudulenta, los puntos asociados podrán no acreditarse o podrán descontarse.
+## 11. Canjes
 
-El saldo visible en la cuenta es informativo y se calcula a partir de los movimientos registrados. Si hubiera diferencias por errores técnicos, duplicaciones, ajustes de cuenta o incidencias, Ñandé podrá corregir el saldo dejando registro del movimiento correspondiente.
+Los puntos podrán canjearse únicamente por productos habilitados, con stock disponible y bajo las condiciones vigentes al momento del canje.
 
-## 11. Canje de puntos
+Una vez confirmado el canje:
 
-El usuario puede canjear puntos por productos habilitados en el catálogo de canjes, siempre que tenga saldo suficiente, perfil completo, stock disponible y una sucursal de retiro habilitada.
+- los puntos se descuentan automáticamente;
+- el stock puede quedar reservado por un plazo determinado;
+- el usuario deberá retirar dentro del tiempo informado.
 
-Al confirmar un canje, la plataforma descuenta los puntos, reserva el stock y genera un código de retiro. El usuario debe presentar el código de retiro y los datos que el personal solicite razonablemente para validar la entrega.
+Si el usuario no retira dentro del plazo indicado, el canje podrá vencer y los puntos podrán no ser reintegrados, salvo decisión comercial excepcional de la empresa.
 
-El plazo de retiro se informa al confirmar el canje y puede estar configurado por Ñandé. Si el usuario no retira el producto dentro del plazo, el canje podrá expirar, el producto reservado volverá al stock disponible y los puntos podrán no ser reintegrados, salvo decisión comercial excepcional.
+## 12. Soporte y canales de comunicación
 
-Si el canje es cancelado por Ñandé o marcado como no disponible por falta de stock u otra causa atribuible al comercio, los puntos utilizados serán reintegrados o se ofrecerá una solución equivalente cuando corresponda.
+Los canales oficiales de atención son únicamente los habilitados por la empresa, incluyendo la sección **Mensajes** de la app, WhatsApp oficial y redes sociales oficiales.
 
-Los productos de canje están sujetos a disponibilidad. Ñandé puede modificar productos, puntos requeridos, stock, sucursales habilitadas y condiciones futuras del programa sin afectar canjes ya entregados.
+Toda persona usuaria debe mantener un trato respetuoso. No se permite enviar mensajes ofensivos, amenazantes, discriminatorios, falsos, fraudulentos o ajenos a la finalidad del canal.
 
-## 12. Códigos promocionales, invitaciones y referidos
+Ñandé podrá conservar registros de conversaciones y utilizarlos para seguimiento de pedidos, seguridad, control de calidad y resolución de incidencias.
 
-La plataforma puede permitir el uso de códigos promocionales, códigos de puntos, códigos de invitación o beneficios por referidos.
+## 13. Datos personales
 
-Estos códigos pueden tener límites de uso, vencimiento, condiciones de activación, requisitos de verificación de correo, restricciones por usuario o controles antifraude. No está permitido publicar, vender, automatizar, manipular o utilizar códigos de forma abusiva.
+La empresa podrá recopilar y tratar datos personales necesarios para:
 
-Ñandé podrá anular beneficios obtenidos mediante fraude, cuentas falsas, datos incorrectos, uso automatizado, autocanje, múltiples registros indebidos o cualquier práctica contraria a la finalidad del programa.
+- crear y administrar cuentas;
+- procesar compras, pagos, retiros, envíos y canjes;
+- gestionar puntos, promociones y soporte;
+- prevenir fraude y reforzar la seguridad;
+- cumplir obligaciones legales y administrativas.
 
-## 13. Soporte y comunicaciones
+El tratamiento de datos deberá realizarse conforme a la normativa aplicable en la República Argentina. El usuario podrá solicitar la actualización, rectificación o supresión de sus datos a través de los canales oficiales de contacto, sin perjuicio de las obligaciones legales de conservación que correspondan.
 
-La plataforma puede incluir chats o conversaciones de soporte entre usuarios y personal autorizado. Estos canales se utilizan para consultas, seguimiento de pedidos, canjes, pagos, cancelaciones, problemas de stock y atención general.
+## 14. Propiedad intelectual
 
-Los mensajes enviados por soporte deben ser respetuosos, claros y vinculados con el uso de la plataforma. No se permite enviar contenido ofensivo, discriminatorio, amenazante, fraudulento, ilegal, publicitario no solicitado o que afecte derechos de terceros.
+Todos los contenidos de la plataforma, incluyendo marca, nombre comercial, imágenes, textos, diseños, logotipos, código, catálogos y piezas publicitarias, pertenecen a Ñandé o a sus respectivos titulares y no pueden ser reproducidos, modificados ni explotados sin autorización previa y por escrito.
 
-Ñandé puede enviar comunicaciones operativas por correo electrónico, plataforma, WhatsApp u otros medios de contacto informados por el usuario. Estas comunicaciones pueden incluir verificación de cuenta, recuperación de contraseña, estado de pedidos, avisos de pago, canjes, soporte, cambios relevantes o información necesaria para prestar el servicio.
+## 15. Suspensión o limitación del servicio
 
-## 14. Datos personales y privacidad
+Ñandé podrá interrumpir, limitar, actualizar o modificar la plataforma por tareas de mantenimiento, seguridad, mejoras técnicas, problemas operativos, fuerza mayor o decisiones comerciales.
 
-Ñandé trata datos personales para crear y administrar cuentas, verificar identidad, gestionar compras, pagos, retiros, envíos, puntos, canjes, soporte, comunicaciones, seguridad, prevención de fraude, obligaciones contables, cumplimiento legal y mejora de la plataforma.
+La empresa no garantiza disponibilidad ininterrumpida ni ausencia total de errores.
 
-Los datos tratados pueden incluir nombre, correo electrónico, DNI, teléfono, fecha de nacimiento, localidad, provincia, dirección de envío, sucursal elegida, historial de pedidos, canjes, puntos, medios de contacto, mensajes de soporte, datos técnicos de sesión y datos mínimos relacionados con pagos procesados por terceros.
+## 16. Modificaciones de los términos
 
-El responsable del tratamiento es el titular o razón social indicado al inicio de estos Términos. El usuario puede solicitar acceso, actualización, rectificación o supresión de sus datos personales a través del correo de atención o el canal informado por Ñandé, sin perjuicio de las obligaciones legales de conservación que pudieran corresponder.
+Ñandé podrá modificar estos Términos y Condiciones en cualquier momento para adaptarlos a cambios comerciales, operativos, tecnológicos o legales. La versión actualizada será la publicada en los canales oficiales de la empresa.
 
-Ñandé puede compartir datos estrictamente necesarios con proveedores tecnológicos, servicios de hosting, pasarelas de pago, servicios de mensajería, logística, soporte, contabilidad, auditoría o autoridades competentes cuando corresponda.
+## 17. Ley aplicable
 
-La plataforma utiliza cookies, almacenamiento local o tecnologías similares necesarias para sesión, carrito, seguridad, preferencias y funcionamiento general. Si se incorporan herramientas analíticas, publicitarias o de medición no esenciales, deberán informarse conforme a la normativa aplicable.
+Estos Términos y Condiciones se rigen por las leyes de la República Argentina.
 
-Ñandé adopta medidas razonables para proteger la información, pero ningún sistema conectado a internet es absolutamente infalible. El usuario también debe proteger sus credenciales, dispositivos y correo electrónico.
+En caso de duda interpretativa o conflicto, se aplicarán también las normas imperativas de defensa del consumidor y demás disposiciones legales vigentes que resulten obligatorias.
 
-## 15. Propiedad intelectual
+## 18. Aceptación final
 
-El nombre Ñandé, logotipos, imágenes, textos, diseños, fotografías, ilustraciones, catálogos, código, interfaz, contenidos comerciales y demás elementos de la plataforma pertenecen a Ñandé o a sus respectivos titulares.
+El uso de la plataforma implica que la persona usuaria declara haber leído, comprendido y aceptado estos Términos y Condiciones.
 
-No está permitido copiar, reutilizar, modificar, distribuir, explotar comercialmente, extraer masivamente o usar estos contenidos sin autorización previa y por escrito, salvo usos permitidos por ley.
+---
 
-## 16. Servicios y enlaces de terceros
+## Nota importante para publicación
 
-La plataforma puede enlazar o integrarse con servicios de terceros como Mercado Pago, WhatsApp, Instagram, PedidosYa, mapas, proveedores de envío u otros servicios externos.
-
-El uso de esos servicios puede estar sujeto a sus propios términos, políticas de privacidad, disponibilidad, comisiones, validaciones, tiempos de acreditación, reglas de seguridad y canales de atención. Ñandé no controla completamente el funcionamiento de dichos terceros.
-
-## 17. Conductas prohibidas
-
-El usuario no debe:
-
-- Usar la plataforma para actividades ilegales, engañosas o fraudulentas.
-- Manipular precios, puntos, stock, pedidos, pagos, canjes o códigos.
-- Intentar acceder a cuentas, datos o sistemas sin autorización.
-- Interferir con la seguridad, estabilidad o disponibilidad de la plataforma.
-- Usar bots, scraping, automatizaciones abusivas o carga excesiva.
-- Registrar datos falsos o de terceros sin autorización.
-- Revender beneficios, puntos, códigos o canjes sin autorización.
-- Publicar o enviar contenido ofensivo, discriminatorio, amenazante o contrario a derechos de terceros.
-
-El incumplimiento puede derivar en suspensión de cuenta, cancelación de operaciones, pérdida de beneficios, ajustes de puntos, bloqueo de acceso y acciones legales cuando corresponda.
-
-## 18. Limitación razonable de responsabilidad
-
-Ñandé trabaja para mantener la plataforma disponible, segura y actualizada, pero no garantiza funcionamiento ininterrumpido ni ausencia total de errores.
-
-La plataforma puede verse afectada por mantenimiento, fallas técnicas, problemas de internet, servicios de terceros, errores de proveedores de pago, falta de stock, fuerza mayor, cortes de energía, conflictos logísticos, problemas climáticos u otras circunstancias ajenas al control razonable de Ñandé.
-
-## 19. Cambios en los Términos
-
-Ñandé puede modificar estos Términos para reflejar cambios legales, operativos, comerciales, tecnológicos, de seguridad o de funcionalidades de la plataforma.
-
-Cuando los cambios sean relevantes, se procurará informar por medios razonables, como publicación en la plataforma, correo electrónico, aviso en la cuenta o aviso visible. El uso continuado de la plataforma luego de publicada una modificación implica aceptación de los nuevos Términos, salvo que la normativa aplicable exija otro mecanismo.
-
-## 20. Ley aplicable y reclamos
-
-Estos Términos se rigen por las leyes de la República Argentina.
-
-Las relaciones de consumo se interpretan conforme a la normativa argentina de defensa del consumidor, comercio electrónico, contratos de consumo, protección de datos personales y demás normas aplicables.
-
-Para consultas, reclamos, cancelaciones, problemas con pedidos, dudas sobre puntos, canjes o datos personales, el usuario puede comunicarse por:
-
-- WhatsApp: **+54 9 379 463-2610**
-- Correo electrónico: **[completar]**
-- Canal de soporte dentro de la plataforma, cuando esté disponible.
-- Domicilio de atención: **[completar]**
-
-## 21. Aceptación final
-
-Al utilizar la plataforma, el usuario declara haber leído y comprendido estos Términos y Condiciones, y acepta que regulen su relación con Ñandé en todo lo vinculado con navegación, registro, compras, pagos, retiros, envíos, puntos, canjes y soporte.
+Este borrador ya contempla la política comercial de **no reembolso** que pediste, pero conviene que antes de publicarlo se revisen y completen los datos legales faltantes y se valide internamente que el texto final coincida con la operatoria real de la empresa.
