@@ -25,6 +25,7 @@ import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 import { UPLOADS_DIR } from "./paths";
+import { runOneTimeWebCheckoutPointsBackfill } from "./services/startupBackfills";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -278,4 +279,10 @@ server.listen(PORT, () => {
   console.log("BUILD_VERSION puntos-fix-2026-05-12");
   console.log(`API en http://localhost:${PORT}`);
   startReservationExpirationWorker();
+  void runOneTimeWebCheckoutPointsBackfill().catch((error) => {
+    console.error(
+      "[startup-backfill] Error ejecutando backfill unico de puntos web:",
+      error instanceof Error ? error.message : error,
+    );
+  });
 });

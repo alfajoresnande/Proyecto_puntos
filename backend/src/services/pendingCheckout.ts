@@ -1,4 +1,5 @@
 import { qOne, qRun, type Queryable } from "../db";
+import { acreditarPuntosPorCompra } from "./points";
 import { resolvePaymentFee } from "./paymentFees";
 import {
   finalizeFlavorStockForCheckoutItems,
@@ -604,6 +605,7 @@ export async function approvePendingCheckoutAndCreateOrder(
     ],
   );
 
+  await acreditarPuntosPorCompra(conn, orderId);
   await removePurchasedItemsFromCart(conn, pending.carrito_id, items);
   return { orderId, alreadyApproved: false };
 }
