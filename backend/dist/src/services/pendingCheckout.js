@@ -13,6 +13,7 @@ exports.cancelOpenPendingCheckoutsForUser = cancelOpenPendingCheckoutsForUser;
 exports.approvePendingCheckoutAndCreateOrder = approvePendingCheckoutAndCreateOrder;
 exports.rejectOrExpirePendingCheckout = rejectOrExpirePendingCheckout;
 const db_1 = require("../db");
+const points_1 = require("./points");
 const paymentFees_1 = require("./paymentFees");
 const stock_1 = require("./stock");
 function toMoney(value) {
@@ -394,6 +395,7 @@ async function approvePendingCheckoutAndCreateOrder(conn, input) {
         input.payload === undefined ? null : JSON.stringify(input.payload),
         pending.id,
     ]);
+    await (0, points_1.acreditarPuntosPorCompra)(conn, orderId);
     await removePurchasedItemsFromCart(conn, pending.carrito_id, items);
     return { orderId, alreadyApproved: false };
 }

@@ -28,6 +28,7 @@ const securityMonitor_1 = require("./securityMonitor");
 const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
 const paths_1 = require("./paths");
+const startupBackfills_1 = require("./services/startupBackfills");
 const app = (0, express_1.default)();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DEFAULT_FRONTEND_ORIGINS = [
@@ -245,4 +246,7 @@ server.listen(PORT, () => {
     console.log("BUILD_VERSION puntos-fix-2026-05-12");
     console.log(`API en http://localhost:${PORT}`);
     (0, expirations_1.startReservationExpirationWorker)();
+    void (0, startupBackfills_1.runOneTimeWebCheckoutPointsBackfill)().catch((error) => {
+        console.error("[startup-backfill] Error ejecutando backfill unico de puntos web:", error instanceof Error ? error.message : error);
+    });
 });
