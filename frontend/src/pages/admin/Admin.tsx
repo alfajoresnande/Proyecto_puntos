@@ -1952,6 +1952,8 @@ export function Admin() {
   const [configBusy, setConfigBusy] = useState(false);
   const [configMsg, setConfigMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
+  const [eventbarMsg, setEventbarMsg] = useState("");
+  const [eventbarErr, setEventbarErr] = useState("");
   const [webDiscountLoaded, setWebDiscountLoaded] = useState(false);
   const [webDiscountDraft, setWebDiscountDraft] = useState<WebDiscountDraft>({
     activo: false,
@@ -4901,6 +4903,19 @@ export function Admin() {
     }
   }
 
+  async function guardarConfiguracionItems(updates: Array<{ clave: string; valor: string; descripcion: string }>) {
+    await Promise.all(
+      updates.map((item) =>
+        commandMutation.mutateAsync({
+          method: "put",
+          path: `/admin/configuracion/${item.clave}`,
+          body: { valor: item.valor, descripcion: item.descripcion },
+        }),
+      ),
+    );
+    await queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
+  }
+
   async function guardarConfiguracionGeneral() {
     setConfigErr("");
     setConfigMsg("");
@@ -4925,14 +4940,6 @@ export function Admin() {
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
     const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
     const chatbotActivo = configDraft.chatbot_activo;
-    const eventbarActivo = configDraft.eventbar_activo;
-    const eventbarTitulo = configDraft.eventbar_titulo.trim();
-    const eventbarSubtitulo = configDraft.eventbar_subtitulo.trim();
-    const eventbarFechaFinIso = datetimeLocalInputToIso(configDraft.eventbar_fecha_fin);
-    const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
-    const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
-    const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
-    const eventbarDescuentoEspecialTipo = normalizeEventbarDescuentoEspecialTipo(configDraft.eventbar_descuento_especial_tipo);
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -4996,37 +5003,6 @@ export function Admin() {
       setConfigErr("Completa la leyenda legal del comprobante.");
       return;
     }
-    if (!isValidHexColor(eventbarColorFondo)) {
-      setConfigErr("El color de fondo de la eventbar debe tener formato #RRGGBB.");
-      return;
-    }
-    if (!isValidHexColor(eventbarColorTexto)) {
-      setConfigErr("El color de texto de la eventbar debe tener formato #RRGGBB.");
-      return;
-    }
-    if (eventbarActivo) {
-      if (eventbarTitulo.length < 2 || eventbarTitulo.length > 120) {
-        setConfigErr("El titulo de la eventbar debe tener entre 2 y 120 caracteres.");
-        return;
-      }
-      if (eventbarSubtitulo.length > 160) {
-        setConfigErr("El subtitulo de la eventbar no puede superar 160 caracteres.");
-        return;
-      }
-      if (!Number.isFinite(eventbarFechaFinMs)) {
-        setConfigErr("Selecciona una fecha y hora final valida para la eventbar.");
-        return;
-      }
-      if (eventbarFechaFinMs <= Date.now()) {
-        setConfigErr("La fecha final de la eventbar debe estar en el futuro.");
-        return;
-      }
-    }
-    if (eventbarDescuentoEspecialTipo !== "none" && !eventbarActivo) {
-      setConfigErr("Para activar el descuento especial, primero activa la eventbar.");
-      return;
-    }
-
     setConfigBusy(true);
     try {
       const updates = [
@@ -5120,6 +5096,64 @@ export function Admin() {
           valor: chatbotActivo ? "1" : "0",
           descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
         },
+      ];
+
+      await guardarConfiguracionItems(updates);
+      setConfigMsg("Configuracion general actualizada.");
+    } catch (error) {
+      setConfigErr((error as Error).message);
+    } finally {
+      setConfigBusy(false);
+    }
+  }
+
+  async function guardarEventbar() {
+    setEventbarErr("");
+    setEventbarMsg("");
+
+    const eventbarActivo = configDraft.eventbar_activo;
+    const eventbarTitulo = configDraft.eventbar_titulo.trim();
+    const eventbarSubtitulo = configDraft.eventbar_subtitulo.trim();
+    const eventbarFechaFinIso = datetimeLocalInputToIso(configDraft.eventbar_fecha_fin);
+    const eventbarFechaFinMs = eventbarFechaFinIso ? new Date(eventbarFechaFinIso).getTime() : NaN;
+    const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
+    const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
+    const eventbarDescuentoEspecialTipo = normalizeEventbarDescuentoEspecialTipo(configDraft.eventbar_descuento_especial_tipo);
+
+    if (!isValidHexColor(eventbarColorFondo)) {
+      setEventbarErr("El color de fondo de la eventbar debe tener formato #RRGGBB.");
+      return;
+    }
+    if (!isValidHexColor(eventbarColorTexto)) {
+      setEventbarErr("El color de texto de la eventbar debe tener formato #RRGGBB.");
+      return;
+    }
+    if (eventbarActivo) {
+      if (eventbarTitulo.length < 2 || eventbarTitulo.length > 120) {
+        setEventbarErr("El titulo de la eventbar debe tener entre 2 y 120 caracteres.");
+        return;
+      }
+      if (eventbarSubtitulo.length > 160) {
+        setEventbarErr("El subtitulo de la eventbar no puede superar 160 caracteres.");
+        return;
+      }
+      if (!Number.isFinite(eventbarFechaFinMs)) {
+        setEventbarErr("Selecciona una fecha y hora final valida para la eventbar.");
+        return;
+      }
+      if (eventbarFechaFinMs <= Date.now()) {
+        setEventbarErr("La fecha final de la eventbar debe estar en el futuro.");
+        return;
+      }
+    }
+    if (eventbarDescuentoEspecialTipo !== "none" && !eventbarActivo) {
+      setEventbarErr("Para activar el descuento especial, primero activa la eventbar.");
+      return;
+    }
+
+    setConfigBusy(true);
+    try {
+      await guardarConfiguracionItems([
         {
           clave: "eventbar_activo",
           valor: eventbarActivo ? "1" : "0",
@@ -5137,7 +5171,7 @@ export function Admin() {
         },
         {
           clave: "eventbar_fecha_fin",
-          valor: eventbarFechaFinIso,
+          valor: eventbarFechaFinIso ?? "",
           descripcion: "Fecha y hora ISO en la que termina el evento de la barra superior.",
         },
         {
@@ -5160,22 +5194,11 @@ export function Admin() {
           valor: eventbarDescuentoEspecialTipo,
           descripcion: "Tipo de descuento especial de la eventbar: none, 2x1, 3x2 o 4x3.",
         },
-      ];
+      ]);
 
-      await Promise.all(
-        updates.map((item) =>
-          commandMutation.mutateAsync({
-            method: "put",
-            path: `/admin/configuracion/${item.clave}`,
-            body: { valor: item.valor, descripcion: item.descripcion },
-          }),
-        ),
-      );
-
-      setConfigMsg("Configuracion general actualizada.");
-      await queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
+      setEventbarMsg("Eventbar actualizada correctamente.");
     } catch (error) {
-      setConfigErr((error as Error).message);
+      setEventbarErr((error as Error).message);
     } finally {
       setConfigBusy(false);
     }
@@ -5873,10 +5896,10 @@ export function Admin() {
                     </div>
                   </div>
                 </div>
-                {configErr ? <div className="adm-msg-err">{configErr}</div> : null}
-                {configMsg ? <div className="adm-msg-ok">{configMsg}</div> : null}
+                {eventbarErr ? <div className="adm-msg-err">{eventbarErr}</div> : null}
+                {eventbarMsg ? <div className="adm-msg-ok">{eventbarMsg}</div> : null}
                 <div className="adm-config-actions">
-                  <button className="adm-btn-primary adm-btn-inline" onClick={guardarConfiguracionGeneral} disabled={configBusy}>
+                  <button className="adm-btn-primary adm-btn-inline" onClick={guardarEventbar} disabled={configBusy}>
                     {configBusy ? "Guardando..." : "Guardar eventbar"}
                   </button>
                 </div>

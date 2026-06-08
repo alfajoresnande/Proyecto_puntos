@@ -469,9 +469,9 @@
 
 /* ── Feedback ── */
 .adm-msg-ok {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #16a34a;               /* ← texto éxito */
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #15803d;               /* exito */
   padding: 0.65rem 1rem;
   border-radius: 10px;
   font-size: 0.875rem;
