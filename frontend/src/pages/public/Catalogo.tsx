@@ -474,7 +474,7 @@ export function Catalogo() {
       setCanjeConfirmOpen(false);
       setProductoModal(null);
       setToast(null);
-      navigate("/carrito-canjes", {
+      navigate(data.canje_id ? `/carrito-canjes?confirmado=${data.canje_id}` : "/carrito-canjes", {
         state: {
           canjeConfirmado: {
             canjeId: data.canje_id,

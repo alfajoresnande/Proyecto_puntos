@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
@@ -57,6 +57,29 @@ type ConfirmarCanjeLocationState = {
   canjeConfirmado?: ConfirmadoData;
 } | null;
 
+type CanjeDetalle = {
+  id: number;
+  codigo_retiro?: string | null;
+  puntos_usados: number;
+  fecha_limite_retiro: string | null;
+  producto_nombre: string;
+  producto_imagen: string | null;
+  items?: Array<{
+    producto_id: number;
+    producto_nombre: string;
+    producto_imagen: string | null;
+    cantidad: number;
+    puntos_unitarios: number;
+    puntos_total: number;
+  }>;
+  sucursal_id?: number | null;
+  sucursal_nombre?: string | null;
+  sucursal_direccion?: string | null;
+  sucursal_piso?: string | null;
+  sucursal_localidad?: string | null;
+  sucursal_provincia?: string | null;
+};
+
 function isLegacyCanjeCode(code?: string | null): boolean {
   return Boolean(code && /^C0{2,}[A-Z0-9]*$/.test(code));
 }
@@ -72,8 +95,43 @@ function formatSucursalLabel(sucursal: SucursalRetiro): string {
   return `${sucursal.nombre} - ${sucursal.direccion}${piso}, ${sucursal.localidad}, ${sucursal.provincia}`;
 }
 
+function buildConfirmadoFromDetalle(canje: CanjeDetalle): ConfirmadoData {
+  const items = canje.items?.length
+    ? canje.items
+    : [{
+        producto_id: 0,
+        producto_nombre: canje.producto_nombre,
+        producto_imagen: canje.producto_imagen,
+        cantidad: 1,
+        puntos_unitarios: Number(canje.puntos_usados),
+        puntos_total: Number(canje.puntos_usados),
+      }];
+  const sucursal = canje.sucursal_id && canje.sucursal_nombre && canje.sucursal_direccion && canje.sucursal_localidad && canje.sucursal_provincia
+    ? {
+        id: canje.sucursal_id,
+        nombre: canje.sucursal_nombre,
+        direccion: canje.sucursal_direccion,
+        piso: canje.sucursal_piso ?? null,
+        localidad: canje.sucursal_localidad,
+        provincia: canje.sucursal_provincia,
+      }
+    : null;
+
+  return {
+    canjeId: canje.id,
+    codigo: canje.codigo_retiro && !isLegacyCanjeCode(canje.codigo_retiro) ? canje.codigo_retiro : "Disponible en Mis Canjes",
+    puntosUsados: Number(canje.puntos_usados),
+    totalUnidades: items.reduce((acc, item) => acc + Number(item.cantidad || 0), 0),
+    diasLimiteRetiro: null,
+    sucursal,
+    lugarRetiro: sucursal ? formatSucursalLabel(sucursal) : "informada por la administracion",
+    items,
+  };
+}
+
 export function ConfirmarCanje() {
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const updateUserPoints = useAuthStore((state) => state.updateUserPoints);
   const cartItemsMap = useCartStore((state) => state.items);
@@ -87,6 +145,11 @@ export function ConfirmarCanje() {
     const state = location.state as ConfirmarCanjeLocationState;
     return state?.canjeConfirmado ?? null;
   });
+  const confirmadoId = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get("confirmado");
+    const id = Number(raw);
+    return Number.isInteger(id) && id > 0 ? id : null;
+  }, [location.search]);
 
   const sucursalesQuery = useQuery({
     queryKey: ["cliente", "sucursales-retiro"],
@@ -108,12 +171,24 @@ export function ConfirmarCanje() {
     (sucursalRetiroId ? sucursalesRetiro.find((item) => String(item.id) === sucursalRetiroId) : undefined) ||
     (sucursalesRetiro.length === 1 ? sucursalesRetiro[0] : undefined);
 
+  const canjeConfirmadoQuery = useQuery({
+    queryKey: ["cliente", "canje-confirmado", confirmadoId],
+    queryFn: () => api.get<CanjeDetalle>(`/cliente/canjes/${confirmadoId}`),
+    enabled: user?.rol === "cliente" && !canjeConfirmado && Boolean(confirmadoId),
+    retry: false,
+  });
+
   useEffect(() => {
     const state = location.state as ConfirmarCanjeLocationState;
     if (state?.canjeConfirmado) {
       setCanjeConfirmado(state.canjeConfirmado);
     }
   }, [location.state]);
+
+  useEffect(() => {
+    if (!canjeConfirmadoQuery.data || canjeConfirmado) return;
+    setCanjeConfirmado(buildConfirmadoFromDetalle(canjeConfirmadoQuery.data));
+  }, [canjeConfirmado, canjeConfirmadoQuery.data]);
 
   const canjearMutation = useMutation({
     mutationFn: () =>
@@ -129,7 +204,7 @@ export function ConfirmarCanje() {
       cartClear();
       const sucursal =
         data.sucursal ?? (data.sucursal_id ? sucursalesRetiro.find((item) => item.id === data.sucursal_id) ?? null : null);
-      setCanjeConfirmado({
+      const confirmado: ConfirmadoData = {
         canjeId: data.canje_id,
         codigo: getCanjeCode(data) ?? "Disponible en Mis Canjes",
         puntosUsados: data.puntos_usados,
@@ -141,7 +216,14 @@ export function ConfirmarCanje() {
           ? formatSucursalLabel(sucursal)
           : (data.lugar_retiro || "informada por la administracion").trim(),
         items: data.items,
-      });
+      };
+      setCanjeConfirmado(confirmado);
+      if (data.canje_id) {
+        navigate(`/carrito-canjes?confirmado=${data.canje_id}`, {
+          replace: true,
+          state: { canjeConfirmado: confirmado },
+        });
+      }
       setErrorMsg(null);
       setNeedsProfileCompletion(false);
     },
@@ -244,6 +326,14 @@ export function ConfirmarCanje() {
           </>
         ) : (
           <>
+            {confirmadoId && canjeConfirmadoQuery.isLoading ? (
+              <div className="catalog-confirm-branch-detail catalog-canje-block" role="status" aria-live="polite">
+                <p>Cargando confirmacion del canje...</p>
+              </div>
+            ) : null}
+
+            {!confirmadoId || canjeConfirmadoQuery.isError ? (
+              <>
             {cartItems.length === 0 ? (
               <div className="catalog-confirm-branch-detail catalog-canje-block">
                 <p>Tu carrito esta vacio.</p>
@@ -341,6 +431,8 @@ export function ConfirmarCanje() {
                 </div>
               </>
             )}
+              </>
+            ) : null}
           </>
         )}
       </div>
