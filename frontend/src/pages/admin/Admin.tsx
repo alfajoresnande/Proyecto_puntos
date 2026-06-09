@@ -8141,11 +8141,6 @@ export function Admin() {
                                     <Link className="adm-btn-link" to={`${panelBasePath}/pedidos/${orden.id}`} style={{ textDecoration: "none" }}>
                                       Ver comprobante
                                     </Link>
-                                    {isOrdenVentaLocal(orden) && orden.estado !== "cancelada" && orden.estado !== "expirada" ? (
-                                      <button className="adm-btn-danger" onClick={() => void cancelarVentaLocal(orden)} disabled={busy}>
-                                        Cancelar
-                                      </button>
-                                    ) : null}
                                     {hasOrderMapPoint(orden.direccion_envio) ? (
                                       <button
                                         type="button"
@@ -8173,8 +8168,21 @@ export function Admin() {
                                     {(!orden.direccion_envio && ["pagada", "preparandose", "preparada"].includes(orden.estado)) || orden.estado === "entregando" ? (
                                       <button className="adm-btn-success" onClick={() => void actualizarEstadoOrden(orden.id, "entregada")} disabled={busy}>Entregar</button>
                                     ) : null}
-                                    {(["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"] as OrdenAdmin["estado"][]).includes(orden.estado) ? (
-                                      <button className="adm-btn-danger" onClick={() => abrirCancelacionUrgente(orden)} disabled={busy}>Cancelar</button>
+                                    {isOrdenVentaLocal(orden) && orden.estado !== "cancelada" && orden.estado !== "expirada"
+                                      || (!isOrdenVentaLocal(orden) && (["pendiente_pago", "pagada", "preparandose", "preparada", "enviada", "entregando"] as OrdenAdmin["estado"][]).includes(orden.estado)) ? (
+                                      <button
+                                        className="adm-btn-danger"
+                                        onClick={() => {
+                                          if (isOrdenVentaLocal(orden)) {
+                                            void cancelarVentaLocal(orden);
+                                            return;
+                                          }
+                                          abrirCancelacionUrgente(orden);
+                                        }}
+                                        disabled={busy}
+                                      >
+                                        Cancelar
+                                      </button>
                                     ) : null}
                                   </div>
                                 </td>
