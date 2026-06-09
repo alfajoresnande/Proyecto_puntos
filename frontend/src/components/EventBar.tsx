@@ -51,11 +51,13 @@ function promoText(type: EventBarResponse["descuento_especial_tipo"]): string {
 
 export function EventBar() {
   const location = useLocation();
+  const isStoreEventbarPath = location.pathname === "/tienda";
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [isCollapsedOnScroll, setIsCollapsedOnScroll] = useState(false);
   const eventbarQuery = useQuery({
     queryKey: ["layout", "eventbar"],
     queryFn: () => api.get<EventBarResponse>("/layout/eventbar"),
+    enabled: isStoreEventbarPath,
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
   });
@@ -66,20 +68,15 @@ export function EventBar() {
   }, [eventbarQuery.data?.fecha_fin]);
 
   const eventbarIsActive = Boolean(eventbarQuery.data?.active && targetMs && targetMs > nowMs);
-  const collapsesOnScroll =
-    location.pathname === "/catalogo" ||
-    location.pathname.startsWith("/catalogo/") ||
-    location.pathname === "/tienda" ||
-    location.pathname.startsWith("/tienda/");
-  const visible = eventbarIsActive && !isCollapsedOnScroll;
+  const visible = isStoreEventbarPath && eventbarIsActive && !isCollapsedOnScroll;
   const countdown = targetMs ? formatCountdown(targetMs, nowMs) : null;
 
   useEffect(() => {
-    if (!eventbarQuery.data?.active) return;
+    if (!isStoreEventbarPath || !eventbarQuery.data?.active) return;
     setNowMs(Date.now());
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [eventbarQuery.data?.active, eventbarQuery.data?.fecha_fin]);
+  }, [eventbarQuery.data?.active, eventbarQuery.data?.fecha_fin, isStoreEventbarPath]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("eventbar-visible", visible);
@@ -87,29 +84,17 @@ export function EventBar() {
   }, [visible]);
 
   useEffect(() => {
-    if (!collapsesOnScroll || !eventbarIsActive) {
+    if (!isStoreEventbarPath || !eventbarIsActive) {
       setIsCollapsedOnScroll(false);
       return;
     }
 
-    let lastScrollY = window.scrollY;
     let ticking = false;
     let frameId: number | null = null;
 
     function syncCollapsedState() {
       const currentScrollY = window.scrollY;
-      const isScrollingDown = currentScrollY > lastScrollY + 6;
-      const isScrollingUp = currentScrollY < lastScrollY - 10;
-
-      if (currentScrollY <= 12) {
-        setIsCollapsedOnScroll(false);
-      } else if (isScrollingDown && currentScrollY > 32) {
-        setIsCollapsedOnScroll(true);
-      } else if (isScrollingUp) {
-        setIsCollapsedOnScroll(false);
-      }
-
-      lastScrollY = currentScrollY;
+      setIsCollapsedOnScroll(currentScrollY > 10);
       ticking = false;
     }
 
@@ -125,7 +110,7 @@ export function EventBar() {
       window.removeEventListener("scroll", onScroll);
       if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
-  }, [collapsesOnScroll, eventbarIsActive, location.pathname]);
+  }, [eventbarIsActive, isStoreEventbarPath, location.pathname]);
 
   if (!visible || !countdown || !eventbarQuery.data) return null;
 

@@ -1186,21 +1186,8 @@ export function TiendaOnline() {
                       </div>
                       {eventbarPromo ? (
                         <p className="store-mobile-promo-pill">
-                          Promo {eventbarPromo.label}: lleva {eventbarPromo.requiredQuantity} y paga {eventbarPromo.paidQuantity}
+                          Llevas {eventbarPromo.requiredQuantity} y pagas {eventbarPromo.paidQuantity}
                         </p>
-                      ) : null}
-                      {eventbarPromo ? (
-                        <>
-                          <div className="product-card-divider" />
-                          <div className="product-card-row product-card-promo-row">
-                            <span>Promo {eventbarPromo.label}</span>
-                            <strong>Llevando {eventbarPromo.requiredQuantity}, pagas {eventbarPromo.paidQuantity}</strong>
-                          </div>
-                          <div className="product-card-row product-card-promo-note">
-                            <span>Equivale a</span>
-                            <span>{money(eventbarPromo.effectiveUnitPrice)} c/u</span>
-                          </div>
-                        </>
                       ) : null}
                       {hasFreeShipping(producto) ? (
                         <>
@@ -1452,17 +1439,9 @@ export function TiendaOnline() {
                   <span className="cost">{money(productoModal.precio_dinero)}</span>
                 </div>
                 {productoModalEventbarPromo ? (
-                  <>
-                    <div className="product-card-divider" />
-                    <div className="product-card-row product-card-promo-row">
-                      <span>Promo {productoModalEventbarPromo.label}</span>
-                      <strong>Llevando {productoModalEventbarPromo.requiredQuantity}, pagas {productoModalEventbarPromo.paidQuantity}</strong>
-                    </div>
-                    <div className="product-card-row product-card-promo-note">
-                      <span>Equivale a</span>
-                      <span>{money(productoModalEventbarPromo.effectiveUnitPrice)} c/u</span>
-                    </div>
-                  </>
+                  <p className="store-mobile-promo-pill">
+                    Llevas {productoModalEventbarPromo.requiredQuantity} y pagas {productoModalEventbarPromo.paidQuantity}
+                  </p>
                 ) : null}
                 {hasFreeShipping(productoModal) ? (
                   <>
