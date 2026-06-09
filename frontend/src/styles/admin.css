@@ -1302,10 +1302,11 @@
 
 .adm-area-explanation-card p {
   margin: 0;
-  color: #4A2C1A;
-  font-size: 0.88rem;
-  font-weight: 650;
-  line-height: 1.45;
+  color: #6B4A32;
+  font-size: 0.86rem;
+  font-weight: 520;
+  letter-spacing: 0.005em;
+  line-height: 1.55;
 }
 
 .adm-category-guide {
