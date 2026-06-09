@@ -283,10 +283,10 @@ type OrdenItemClienteRow = {
 };
 
 function getPrecioDineroConResolver(
-  producto: Pick<ProductoCarritoDB, "precio_dinero" | "categoria">,
-  resolvePrice: (product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
+  producto: Pick<ProductoCarritoDB, "id" | "precio_dinero" | "categoria">,
+  resolvePrice: (product: { id?: number | null; precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
 ): number {
-  return resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
+  return resolvePrice({ id: producto.id, precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
 }
 
 function getSubtotalDineroConPromo(

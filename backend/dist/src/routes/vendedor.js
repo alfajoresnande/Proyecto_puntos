@@ -335,7 +335,7 @@ router.get("/productos-locales", async (_req, res, next) => {
         }
         res.json(productos.map((producto) => {
             const productFlavors = flavorMap.get(Number(producto.id)) ?? [];
-            const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
+            const pricing = resolvePrice({ id: producto.id, precio_dinero: producto.precio_dinero, categoria: producto.categoria });
             return {
                 ...producto,
                 activo: Boolean(producto.activo),
@@ -343,6 +343,7 @@ router.get("/productos-locales", async (_req, res, next) => {
                 precio_dinero_original: pricing.precioLista,
                 precio_dinero_lista: pricing.precioLista,
                 descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+                descuento_producto_porcentaje: pricing.descuentoProductoPorcentaje,
                 tipo_cliente_precio: pricing.tipoCliente,
                 puntaje_al_comprar: producto.puntaje_al_comprar === null ? null : Number(producto.puntaje_al_comprar),
                 capacidad_sabores: producto.capacidad_sabores === null ? null : Number(producto.capacidad_sabores),

@@ -318,6 +318,12 @@ const descuentoTipoCategoriaSchema = z.object({
   descuento_porcentaje: z.number().min(0).max(100),
   activo: z.boolean().optional().default(true),
 });
+const descuentoTipoProductoSchema = z.object({
+  tipo_cliente: tipoClienteSchema,
+  producto_id: z.number().int().positive(),
+  descuento_porcentaje: z.number().min(0).max(100),
+  activo: z.boolean().optional().default(true),
+});
 const dniManualSchema = z
   .string()
   .trim()
@@ -2902,6 +2908,50 @@ router.put("/descuentos-categorias", async (req, res) => {
        activo = VALUES(activo),
        updated_at = CURRENT_TIMESTAMP`,
     [parsed.data.tipo_cliente, categoria, descuento, parsed.data.activo ? 1 : 0],
+  );
+  emitRealtime(["admin-config", "productos"]);
+  res.json({ ok: true });
+});
+
+router.get("/descuentos-productos", async (_req, res) => {
+  const rows = await qAll(
+    pool,
+    `SELECT d.id, d.tipo_cliente, d.producto_id, p.nombre AS producto_nombre, p.categoria,
+            d.descuento_porcentaje, d.activo, d.created_at, d.updated_at
+     FROM descuentos_tipo_producto d
+     INNER JOIN productos p ON p.id = d.producto_id
+     ORDER BY p.nombre ASC, d.tipo_cliente ASC, d.id ASC`,
+  );
+  res.json(rows.map((row: any) => ({ ...row, activo: Boolean(row.activo) })));
+});
+
+router.put("/descuentos-productos", async (req, res) => {
+  const parsed = descuentoTipoProductoSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const producto = await qOne<{ id: number }>(
+    pool,
+    "SELECT id FROM productos WHERE id = ? LIMIT 1",
+    [parsed.data.producto_id],
+  );
+  if (!producto) {
+    res.status(404).json({ error: "Producto no encontrado." });
+    return;
+  }
+
+  const descuento = Number(parsed.data.descuento_porcentaje ?? 0);
+  await qRun(
+    pool,
+    `INSERT INTO descuentos_tipo_producto (tipo_cliente, producto_id, descuento_porcentaje, activo)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       descuento_porcentaje = VALUES(descuento_porcentaje),
+       activo = VALUES(activo),
+       updated_at = CURRENT_TIMESTAMP`,
+    [parsed.data.tipo_cliente, parsed.data.producto_id, descuento, parsed.data.activo ? 1 : 0],
   );
   emitRealtime(["admin-config", "productos"]);
   res.json({ ok: true });

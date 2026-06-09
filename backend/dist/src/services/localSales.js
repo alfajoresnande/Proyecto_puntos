@@ -264,7 +264,7 @@ async function prepareLocalSaleItems(conn, items, resolvePrice) {
         if (producto.tipo_producto !== "venta" && producto.tipo_producto !== "mixto") {
             throw new Error(`${producto.nombre} no esta configurado para venta.`);
         }
-        const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
+        const pricing = resolvePrice({ id: producto.id, precio_dinero: producto.precio_dinero, categoria: producto.categoria });
         if (!Number.isFinite(pricing.precioFinal) || pricing.precioFinal <= 0) {
             throw new Error(`${producto.nombre} no tiene precio de venta configurado.`);
         }

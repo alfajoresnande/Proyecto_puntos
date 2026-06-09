@@ -389,7 +389,7 @@ function mergePreparedItems(items: PreparedItem[]): PreparedItem[] {
 async function prepareLocalSaleItems(
   conn: Queryable,
   items: LocalSaleItemInput[],
-  resolvePrice: (product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
+  resolvePrice: (product: { id?: number | null; precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice,
 ): Promise<PreparedItem[]> {
   const prepared: PreparedItem[] = [];
 
@@ -419,7 +419,7 @@ async function prepareLocalSaleItems(
       throw new Error(`${producto.nombre} no esta configurado para venta.`);
     }
 
-    const pricing = resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria });
+    const pricing = resolvePrice({ id: producto.id, precio_dinero: producto.precio_dinero, categoria: producto.categoria });
     if (!Number.isFinite(pricing.precioFinal) || pricing.precioFinal <= 0) {
       throw new Error(`${producto.nombre} no tiene precio de venta configurado.`);
     }

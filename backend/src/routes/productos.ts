@@ -162,7 +162,7 @@ router.get("/destacados", async (req, res) => {
           .map((url) => normalizeSafeImageUrl(url))
           .filter((url): url is string => Boolean(url))
           .slice(0, 3);
-        const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+        const pricing = resolvePrice({ id: row.id, precio_dinero: row.precio_dinero, categoria: row.categoria });
         const promoFields = buildEventbarPromoFields(pricing.precioFinal, eventbarDiscount);
 
         const mainImageUrl = row.imagen_url ? normalizeSafeImageUrl(row.imagen_url) : (imagenes[0] ?? null);
@@ -184,6 +184,7 @@ router.get("/destacados", async (req, res) => {
           precio_dinero_original: pricing.precioLista,
           precio_dinero_lista: pricing.precioLista,
           descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+          descuento_producto_porcentaje: pricing.descuentoProductoPorcentaje,
           tipo_cliente_precio: pricing.tipoCliente,
           ...promoFields,
           precio_puntos: row.precio_puntos,
@@ -416,7 +417,7 @@ router.get("/", async (req, res) => {
       const stockSucursal = Number(row.stock_disponible_sucursal ?? row.stock_disponible ?? 0);
       const stockReservadoSucursal = Number(row.stock_reservado_sucursal ?? row.stock_reservado ?? 0);
       const hasStock = !Boolean(row.track_stock) || stockSucursal > 0;
-      const pricing = resolvePrice({ precio_dinero: row.precio_dinero, categoria: row.categoria });
+      const pricing = resolvePrice({ id: row.id, precio_dinero: row.precio_dinero, categoria: row.categoria });
       const promoFields = buildEventbarPromoFields(pricing.precioFinal, eventbarDiscount);
       const mainImageUrl = row.imagen_url ? normalizeSafeImageUrl(row.imagen_url) : (imagenes[0] ?? null);
 
@@ -438,6 +439,7 @@ router.get("/", async (req, res) => {
         precio_dinero_original: pricing.precioLista,
         precio_dinero_lista: pricing.precioLista,
         descuento_porcentaje_aplicado: pricing.descuentoPorcentajeAplicado,
+        descuento_producto_porcentaje: pricing.descuentoProductoPorcentaje,
         tipo_cliente_precio: pricing.tipoCliente,
         ...promoFields,
         precio_puntos: row.precio_puntos,

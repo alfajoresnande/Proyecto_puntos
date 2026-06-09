@@ -233,6 +233,12 @@ const descuentoTipoCategoriaSchema = zod_1.z.object({
     descuento_porcentaje: zod_1.z.number().min(0).max(100),
     activo: zod_1.z.boolean().optional().default(true),
 });
+const descuentoTipoProductoSchema = zod_1.z.object({
+    tipo_cliente: tipoClienteSchema,
+    producto_id: zod_1.z.number().int().positive(),
+    descuento_porcentaje: zod_1.z.number().min(0).max(100),
+    activo: zod_1.z.boolean().optional().default(true),
+});
 const dniManualSchema = zod_1.z
     .string()
     .trim()
@@ -2453,6 +2459,35 @@ router.put("/descuentos-categorias", async (req, res) => {
        descuento_porcentaje = VALUES(descuento_porcentaje),
        activo = VALUES(activo),
        updated_at = CURRENT_TIMESTAMP`, [parsed.data.tipo_cliente, categoria, descuento, parsed.data.activo ? 1 : 0]);
+    (0, realtime_1.emitRealtime)(["admin-config", "productos"]);
+    res.json({ ok: true });
+});
+router.get("/descuentos-productos", async (_req, res) => {
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT d.id, d.tipo_cliente, d.producto_id, p.nombre AS producto_nombre, p.categoria,
+            d.descuento_porcentaje, d.activo, d.created_at, d.updated_at
+     FROM descuentos_tipo_producto d
+     INNER JOIN productos p ON p.id = d.producto_id
+     ORDER BY p.nombre ASC, d.tipo_cliente ASC, d.id ASC`);
+    res.json(rows.map((row) => ({ ...row, activo: Boolean(row.activo) })));
+});
+router.put("/descuentos-productos", async (req, res) => {
+    const parsed = descuentoTipoProductoSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const producto = await (0, db_1.qOne)(db_1.pool, "SELECT id FROM productos WHERE id = ? LIMIT 1", [parsed.data.producto_id]);
+    if (!producto) {
+        res.status(404).json({ error: "Producto no encontrado." });
+        return;
+    }
+    const descuento = Number(parsed.data.descuento_porcentaje ?? 0);
+    await (0, db_1.qRun)(db_1.pool, `INSERT INTO descuentos_tipo_producto (tipo_cliente, producto_id, descuento_porcentaje, activo)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       descuento_porcentaje = VALUES(descuento_porcentaje),
+       activo = VALUES(activo),
+       updated_at = CURRENT_TIMESTAMP`, [parsed.data.tipo_cliente, parsed.data.producto_id, descuento, parsed.data.activo ? 1 : 0]);
     (0, realtime_1.emitRealtime)(["admin-config", "productos"]);
     res.json({ ok: true });
 });

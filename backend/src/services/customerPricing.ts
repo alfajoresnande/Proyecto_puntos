@@ -14,6 +14,7 @@ export type ResolvedMoneyPrice = {
   precioLista: number;
   descuentoUsuarioPorcentaje: number;
   descuentoCategoriaPorcentaje: number;
+  descuentoProductoPorcentaje: number;
   descuentoWebGlobalPorcentaje: number;
   descuentoPorcentajeAplicado: number;
   precioFinal: number;
@@ -24,6 +25,13 @@ export type ResolvedMoneyPrice = {
 type DiscountRow = {
   tipo_cliente: TipoCliente;
   categoria: string;
+  descuento_porcentaje: number;
+  activo: number;
+};
+
+type ProductDiscountRow = {
+  tipo_cliente: TipoCliente;
+  producto_id: number;
   descuento_porcentaje: number;
   activo: number;
 };
@@ -243,6 +251,26 @@ async function loadCategoryDiscounts(conn: Queryable): Promise<Map<string, numbe
   return map;
 }
 
+async function loadProductDiscounts(conn: Queryable): Promise<Map<string, number>> {
+  const rows = await qAll<ProductDiscountRow>(
+    conn,
+    `SELECT d.tipo_cliente, d.producto_id, d.descuento_porcentaje, d.activo
+     FROM descuentos_tipo_producto d
+     INNER JOIN productos p ON p.id = d.producto_id
+     WHERE d.activo = 1
+       AND p.activo = 1`,
+  ).catch(() => []);
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    const productoId = Number(row.producto_id);
+    if (!Number.isInteger(productoId) || productoId <= 0) continue;
+    const tipoCliente = normalizeTipoCliente(row.tipo_cliente);
+    map.set(`${tipoCliente}:${productoId}`, normalizeDiscount(row.descuento_porcentaje));
+  }
+  return map;
+}
+
 async function loadWebGlobalDiscountConfig(conn: Queryable): Promise<DiscountConfig> {
   const placeholders = GLOBAL_DISCOUNT_CONFIG_KEYS.map(() => "?").join(", ");
   const rows = await qAll<{ clave: string; valor: string }>(
@@ -272,9 +300,10 @@ function getGlobalDiscountForType(config: DiscountConfig, tipoCliente: TipoClien
 export async function createPricingResolver(
   conn: Queryable,
   options: PricingResolverOptions,
-): Promise<(product: { precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice> {
+): Promise<(product: { id?: number | null; precio_dinero: number | null | undefined; categoria?: string | null }) => ResolvedMoneyPrice> {
   const tipoCliente = normalizeTipoCliente(options.profile?.tipoCliente);
   const categoryDiscounts = await loadCategoryDiscounts(conn);
+  const productDiscounts = await loadProductDiscounts(conn);
   const webGlobalConfig = options.source === "web"
     ? await loadWebGlobalDiscountConfig(conn)
     : {
@@ -291,6 +320,10 @@ export async function createPricingResolver(
     const descuentoCategoriaPorcentaje = categoriaKey
       ? normalizeDiscount(categoryDiscounts.get(`${tipoCliente}:${categoriaKey}`) ?? 0)
       : 0;
+    const productoId = Number(product.id ?? 0);
+    const descuentoProductoPorcentaje = Number.isInteger(productoId) && productoId > 0
+      ? normalizeDiscount(productDiscounts.get(`${tipoCliente}:${productoId}`) ?? 0)
+      : 0;
     const descuentoWebGlobalPorcentaje =
       options.source === "web" && webGlobalConfig.activo
         ? getGlobalDiscountForType(webGlobalConfig, tipoCliente)
@@ -300,6 +333,7 @@ export async function createPricingResolver(
     const descuentoPorcentajeAplicado = Math.max(
       descuentoUsuarioPorcentaje,
       descuentoCategoriaPorcentaje,
+      descuentoProductoPorcentaje,
       descuentoWebGlobalPorcentaje,
     );
 
@@ -307,6 +341,7 @@ export async function createPricingResolver(
       precioLista,
       descuentoUsuarioPorcentaje,
       descuentoCategoriaPorcentaje,
+      descuentoProductoPorcentaje,
       descuentoWebGlobalPorcentaje,
       descuentoPorcentajeAplicado,
       precioFinal: applyDiscountToMoney(precioLista, descuentoPorcentajeAplicado),
@@ -318,7 +353,7 @@ export async function createPricingResolver(
 
 export async function resolveEffectiveMoneyPrice(
   conn: Queryable,
-  options: PricingResolverOptions & { product: { precio_dinero: number | null | undefined; categoria?: string | null } },
+  options: PricingResolverOptions & { product: { id?: number | null; precio_dinero: number | null | undefined; categoria?: string | null } },
 ): Promise<ResolvedMoneyPrice> {
   const resolver = await createPricingResolver(conn, options);
   return resolver(options.product);

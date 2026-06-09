@@ -62,6 +62,7 @@ export type Producto = {
   precio_dinero_original?: number | null;
   precio_dinero_lista?: number | null;
   descuento_porcentaje_aplicado?: number;
+  descuento_producto_porcentaje?: number;
   tipo_cliente_precio?: TipoCliente;
   promo_eventbar_activa?: boolean;
   promo_eventbar_tipo?: "2x1" | "3x2" | "4x3" | null;

@@ -23,7 +23,7 @@ const shippingZones_1 = require("../services/shippingZones");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("cliente"));
 function getPrecioDineroConResolver(producto, resolvePrice) {
-    return resolvePrice({ precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
+    return resolvePrice({ id: producto.id, precio_dinero: producto.precio_dinero, categoria: producto.categoria }).precioFinal;
 }
 function getSubtotalDineroConPromo(precioDineroUnit, cantidad, eventbarDiscount) {
     return (0, customerPricing_1.calculateEventbarSpecialDiscountSubtotal)(precioDineroUnit, cantidad, eventbarDiscount);

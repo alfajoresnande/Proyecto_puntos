@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api";
 
 type EventBarResponse = {
@@ -10,6 +10,8 @@ type EventBarResponse = {
   fecha_fin?: string;
   color_fondo?: string;
   color_texto?: string;
+  descuento_especial_activo?: boolean;
+  descuento_especial_tipo?: "2x1" | "3x2" | "4x3" | null;
 };
 
 type CountdownParts = {
@@ -38,6 +40,13 @@ function isValidTargetDate(value: string | undefined): value is string {
   if (!value) return false;
   const timestamp = new Date(value).getTime();
   return Number.isFinite(timestamp);
+}
+
+function promoText(type: EventBarResponse["descuento_especial_tipo"]): string {
+  if (type === "2x1" || type === "3x2" || type === "4x3") {
+    return `${type.toUpperCase()} en productos seleccionados`;
+  }
+  return "Promos especiales en tienda online";
 }
 
 export function EventBar() {
@@ -124,15 +133,37 @@ export function EventBar() {
     "--eventbar-bg": eventbarQuery.data.color_fondo || "#2D1A0D",
     "--eventbar-fg": eventbarQuery.data.color_texto || "#F3C47B",
   } as CSSProperties & Record<"--eventbar-bg" | "--eventbar-fg", string>;
+  const discountText = promoText(eventbarQuery.data.descuento_especial_tipo);
 
   return (
     <div className="eventbar" style={style} role="status" aria-live="polite">
+      <span className="eventbar-ornament eventbar-ornament-left" aria-hidden="true" />
+      <span className="eventbar-ornament eventbar-ornament-right" aria-hidden="true" />
       <div className="eventbar-inner">
-        <div className="eventbar-copy">
-          <p className="eventbar-title">{eventbarQuery.data.titulo}</p>
-          {eventbarQuery.data.subtitulo ? (
-            <p className="eventbar-subtitle">{eventbarQuery.data.subtitulo}</p>
-          ) : null}
+        <div className="eventbar-copy" aria-label={`${eventbarQuery.data.titulo || ""} ${eventbarQuery.data.subtitulo || ""}`.trim()}>
+          <span className="eventbar-main-icon" aria-hidden="true">
+            <svg viewBox="0 0 28 28" focusable="false">
+              <path d="M5.5 14.4 14.4 5.5h6.2v6.2l-8.9 8.9a2.2 2.2 0 0 1-3.1 0l-3.1-3.1a2.2 2.2 0 0 1 0-3.1Z" />
+              <circle cx="18.2" cy="9.8" r="1.55" />
+              <path d="m9.4 15.2 3.4 3.4" />
+            </svg>
+          </span>
+          <span className="eventbar-copy-text">
+            <p className="eventbar-title">{eventbarQuery.data.titulo}</p>
+            {eventbarQuery.data.subtitulo ? (
+              <p className="eventbar-subtitle">{eventbarQuery.data.subtitulo}</p>
+            ) : null}
+          </span>
+        </div>
+        <span className="eventbar-divider" aria-hidden="true" />
+        <div className="eventbar-promo">
+          <span className="eventbar-promo-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M7.2 8.8h9.6l-.8 10H8l-.8-10Z" />
+              <path d="M9.2 8.8a2.8 2.8 0 0 1 5.6 0" />
+            </svg>
+          </span>
+          <span>{discountText}</span>
         </div>
         <div className="eventbar-countdown" aria-label={countdown.ariaLabel}>
           <span className="eventbar-time-card">
@@ -150,6 +181,10 @@ export function EventBar() {
             <small>MIN</small>
           </span>
         </div>
+        <Link className="eventbar-cta" to="/tienda">
+          Ver promos
+          <span aria-hidden="true">&gt;</span>
+        </Link>
       </div>
     </div>
   );

@@ -158,6 +158,22 @@ async function loadCategoryDiscounts(conn) {
     }
     return map;
 }
+async function loadProductDiscounts(conn) {
+    const rows = await (0, db_1.qAll)(conn, `SELECT d.tipo_cliente, d.producto_id, d.descuento_porcentaje, d.activo
+     FROM descuentos_tipo_producto d
+     INNER JOIN productos p ON p.id = d.producto_id
+     WHERE d.activo = 1
+       AND p.activo = 1`).catch(() => []);
+    const map = new Map();
+    for (const row of rows) {
+        const productoId = Number(row.producto_id);
+        if (!Number.isInteger(productoId) || productoId <= 0)
+            continue;
+        const tipoCliente = normalizeTipoCliente(row.tipo_cliente);
+        map.set(`${tipoCliente}:${productoId}`, normalizeDiscount(row.descuento_porcentaje));
+    }
+    return map;
+}
 async function loadWebGlobalDiscountConfig(conn) {
     const placeholders = GLOBAL_DISCOUNT_CONFIG_KEYS.map(() => "?").join(", ");
     const rows = await (0, db_1.qAll)(conn, `SELECT clave, valor
@@ -181,6 +197,7 @@ function getGlobalDiscountForType(config, tipoCliente) {
 async function createPricingResolver(conn, options) {
     const tipoCliente = normalizeTipoCliente(options.profile?.tipoCliente);
     const categoryDiscounts = await loadCategoryDiscounts(conn);
+    const productDiscounts = await loadProductDiscounts(conn);
     const webGlobalConfig = options.source === "web"
         ? await loadWebGlobalDiscountConfig(conn)
         : {
@@ -196,15 +213,20 @@ async function createPricingResolver(conn, options) {
         const descuentoCategoriaPorcentaje = categoriaKey
             ? normalizeDiscount(categoryDiscounts.get(`${tipoCliente}:${categoriaKey}`) ?? 0)
             : 0;
+        const productoId = Number(product.id ?? 0);
+        const descuentoProductoPorcentaje = Number.isInteger(productoId) && productoId > 0
+            ? normalizeDiscount(productDiscounts.get(`${tipoCliente}:${productoId}`) ?? 0)
+            : 0;
         const descuentoWebGlobalPorcentaje = options.source === "web" && webGlobalConfig.activo
             ? getGlobalDiscountForType(webGlobalConfig, tipoCliente)
             : 0;
         // Regla conservadora: aplica el mejor descuento individual y evita acumulaciones inesperadas.
-        const descuentoPorcentajeAplicado = Math.max(descuentoUsuarioPorcentaje, descuentoCategoriaPorcentaje, descuentoWebGlobalPorcentaje);
+        const descuentoPorcentajeAplicado = Math.max(descuentoUsuarioPorcentaje, descuentoCategoriaPorcentaje, descuentoProductoPorcentaje, descuentoWebGlobalPorcentaje);
         return {
             precioLista,
             descuentoUsuarioPorcentaje,
             descuentoCategoriaPorcentaje,
+            descuentoProductoPorcentaje,
             descuentoWebGlobalPorcentaje,
             descuentoPorcentajeAplicado,
             precioFinal: applyDiscountToMoney(precioLista, descuentoPorcentajeAplicado),

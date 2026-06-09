@@ -27,16 +27,18 @@
 }
 
 html.eventbar-visible {
-  --eventbar-height: 76px;
+  --eventbar-height: 92px;
 }
 
 .eventbar {
   align-items: center;
   background:
-    radial-gradient(circle at 18% 0%, rgba(214, 128, 45, 0.22), transparent 34%),
-    linear-gradient(90deg, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 82%, #000000 18%) 0%, var(--eventbar-bg, #2D1A0D) 52%, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 72%, #000000 28%) 100%);
-  border-bottom: 1px solid rgba(238, 177, 93, 0.26);
-  box-shadow: inset 0 -1px 0 rgba(255, 230, 180, 0.08), 0 8px 22px rgba(45, 24, 12, 0.2);
+    radial-gradient(circle at 8% 14%, rgba(255, 227, 186, 0.2), transparent 21%),
+    radial-gradient(circle at 92% 8%, rgba(255, 222, 176, 0.18), transparent 18%),
+    linear-gradient(90deg, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 78%, #000000 22%) 0%, var(--eventbar-bg, #2D1A0D) 42%, color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 64%, #d88948 36%) 100%);
+  border-bottom: 1px solid rgba(253, 219, 174, 0.28);
+  border-top: 1px solid rgba(255, 239, 212, 0.18);
+  box-shadow: inset 0 -1px 0 rgba(255, 230, 180, 0.12), 0 10px 24px rgba(45, 24, 12, 0.24);
   color: var(--eventbar-fg, #F3C47B);
   display: flex;
   height: var(--eventbar-height);
@@ -51,25 +53,67 @@ html.eventbar-visible {
 .eventbar-inner {
   align-items: center;
   display: grid;
-  gap: 1.4rem;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(0.85rem, 2vw, 2.1rem);
+  grid-template-columns: minmax(260px, 0.72fr) 1px minmax(210px, 0.52fr) auto auto;
   margin: 0 auto;
-  max-width: 1320px;
-  padding: 0 1.75rem;
+  max-width: 1540px;
+  padding: 0 clamp(1rem, 3vw, 3.5rem);
+  position: relative;
   width: 100%;
+  z-index: 1;
 }
 
 .eventbar-copy {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.eventbar-main-icon,
+.eventbar-promo-icon {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.eventbar-main-icon {
+  background:
+    radial-gradient(circle at 32% 24%, #fffaf2 0%, #f5dcc0 54%, #c98956 100%);
+  box-shadow: 0 10px 22px rgba(36, 16, 5, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  height: 58px;
+  width: 58px;
+}
+
+.eventbar-main-icon svg,
+.eventbar-promo-icon svg {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.eventbar-main-icon svg {
+  color: color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 84%, #000000 16%);
+  height: 31px;
+  stroke-width: 2.2;
+  width: 31px;
+}
+
+.eventbar-copy-text {
   display: grid;
-  gap: 0.28rem;
+  gap: 0.18rem;
   min-width: 0;
 }
 
 .eventbar-title {
   color: var(--eventbar-fg, #F3C47B);
-  font-size: clamp(1rem, 1.8vw, 1.55rem);
+  font-size: clamp(1.3rem, 2.25vw, 2.05rem);
   font-weight: 950;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   line-height: 1;
   margin: 0;
   min-width: 0;
@@ -81,8 +125,8 @@ html.eventbar-visible {
 
 .eventbar-subtitle {
   color: color-mix(in srgb, var(--eventbar-fg, #F3C47B) 82%, #ffffff 18%);
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: clamp(0.84rem, 1vw, 1.05rem);
+  font-weight: 850;
   line-height: 1.2;
   margin: 0;
   min-width: 0;
@@ -90,6 +134,39 @@ html.eventbar-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.eventbar-divider {
+  align-self: stretch;
+  background: linear-gradient(180deg, transparent, rgba(255, 236, 205, 0.54), transparent);
+  min-height: 58px;
+  opacity: 0.78;
+  width: 1px;
+}
+
+.eventbar-promo {
+  align-items: center;
+  color: color-mix(in srgb, var(--eventbar-fg, #F3C47B) 88%, #ffffff 12%);
+  display: inline-flex;
+  font-size: clamp(0.9rem, 1.2vw, 1.08rem);
+  font-weight: 900;
+  gap: 0.8rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.eventbar-promo-icon {
+  background: rgba(93, 45, 19, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  color: var(--eventbar-fg, #F3C47B);
+  height: 38px;
+  width: 38px;
+}
+
+.eventbar-promo-icon svg {
+  height: 21px;
+  stroke-width: 1.8;
+  width: 21px;
 }
 
 .eventbar-countdown {
@@ -103,19 +180,20 @@ html.eventbar-visible {
 
 .eventbar-time-card {
   align-items: center;
-  background: rgba(255, 201, 124, 0.06);
-  border: 1px solid rgba(243, 196, 123, 0.22);
-  border-radius: 8px;
-  color: var(--eventbar-fg, #F3C47B);
+  background: linear-gradient(180deg, #fff5e6, #f3d3ac);
+  border: 1px solid rgba(88, 43, 18, 0.2);
+  border-radius: 12px;
+  color: color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 84%, #000000 16%);
   display: grid;
-  height: 52px;
+  height: 58px;
   justify-items: center;
-  min-width: 70px;
+  min-width: 80px;
   padding: 0.38rem 0.65rem;
+  box-shadow: 0 10px 20px rgba(36, 17, 7, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .eventbar-time-card strong {
-  font-size: 1.32rem;
+  font-size: 1.44rem;
   font-variant-numeric: tabular-nums;
   font-weight: 950;
   line-height: 1;
@@ -131,34 +209,137 @@ html.eventbar-visible {
 
 .eventbar-count-separator {
   color: var(--eventbar-fg, #F3C47B);
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-weight: 900;
   opacity: 0.85;
 }
 
+.eventbar-cta {
+  align-items: center;
+  background: linear-gradient(180deg, #fff3e2, #edd0af);
+  border: 1px solid rgba(84, 39, 16, 0.22);
+  border-radius: 999px;
+  box-shadow: 0 10px 20px rgba(36, 17, 7, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  color: color-mix(in srgb, var(--eventbar-bg, #2D1A0D) 86%, #000000 14%);
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 900;
+  gap: 0.55rem;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0.62rem 1.35rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.eventbar-cta:hover {
+  transform: translateY(-1px);
+}
+
+.eventbar-ornament {
+  border: 1px solid rgba(255, 221, 172, 0.2);
+  border-radius: 50%;
+  height: 150px;
+  opacity: 0.36;
+  pointer-events: none;
+  position: absolute;
+  top: -32px;
+  width: 150px;
+}
+
+.eventbar-ornament::before,
+.eventbar-ornament::after {
+  border: 1px solid rgba(255, 221, 172, 0.36);
+  border-radius: 999px 0 999px 0;
+  content: "";
+  height: 34px;
+  position: absolute;
+  transform: rotate(-28deg);
+  width: 78px;
+}
+
+.eventbar-ornament::before {
+  left: 30px;
+  top: 38px;
+}
+
+.eventbar-ornament::after {
+  left: 46px;
+  top: 78px;
+}
+
+.eventbar-ornament-left {
+  left: -54px;
+}
+
+.eventbar-ornament-right {
+  right: -54px;
+  transform: scaleX(-1);
+}
+
 @media (max-width: 767px) {
   html.eventbar-visible {
-    --eventbar-height: 92px;
+    --eventbar-height: 118px;
   }
 
   .eventbar-inner {
     align-content: center;
-    gap: 0.24rem;
-    grid-template-columns: 1fr;
-    justify-items: center;
-    padding: 0.32rem 0.85rem;
+    gap: 0.46rem;
+    grid-template-columns: 1fr auto;
+    padding: 0.46rem 0.85rem;
     text-align: center;
   }
 
+  .eventbar-copy {
+    gap: 0.65rem;
+    justify-self: start;
+    text-align: left;
+  }
+
+  .eventbar-main-icon {
+    height: 40px;
+    width: 40px;
+  }
+
+  .eventbar-main-icon svg {
+    height: 22px;
+    width: 22px;
+  }
+
   .eventbar-title {
-    font-size: 0.82rem;
+    font-size: 1rem;
     letter-spacing: 0.1em;
     max-width: 100%;
   }
 
   .eventbar-subtitle {
-    font-size: 0.66rem;
+    font-size: 0.72rem;
     max-width: 100%;
+  }
+
+  .eventbar-divider,
+  .eventbar-cta {
+    display: none;
+  }
+
+  .eventbar-promo {
+    font-size: 0.78rem;
+    grid-column: 1 / -1;
+    justify-content: center;
+    justify-self: stretch;
+    min-width: 0;
+    opacity: 0.95;
+    white-space: normal;
+  }
+
+  .eventbar-promo-icon {
+    height: 28px;
+    width: 28px;
+  }
+
+  .eventbar-promo-icon svg {
+    height: 16px;
+    width: 16px;
   }
 
   .eventbar-countdown {
@@ -168,21 +349,41 @@ html.eventbar-visible {
   }
 
   .eventbar-time-card {
-    height: 34px;
+    border-radius: 10px;
+    height: 42px;
     min-width: 50px;
-    padding: 0.2rem 0.4rem;
+    padding: 0.22rem 0.38rem;
   }
 
   .eventbar-time-card strong {
-    font-size: 0.84rem;
+    font-size: 0.95rem;
   }
 
   .eventbar-time-card small {
-    font-size: 0.44rem;
+    font-size: 0.46rem;
   }
 
   .eventbar-count-separator {
     font-size: 0.82rem;
+  }
+
+  .eventbar-ornament {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1120px) {
+  .eventbar-inner {
+    grid-template-columns: minmax(220px, 1fr) minmax(190px, 0.8fr) auto;
+  }
+
+  .eventbar-divider,
+  .eventbar-cta {
+    display: none;
+  }
+
+  .eventbar-promo {
+    white-space: normal;
   }
 }
 

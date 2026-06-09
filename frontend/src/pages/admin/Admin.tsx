@@ -548,6 +548,18 @@ type DescuentoCategoriaAdmin = {
   updated_at: string;
 };
 
+type DescuentoProductoAdmin = {
+  id: number;
+  tipo_cliente: TipoCliente;
+  producto_id: number;
+  producto_nombre: string;
+  categoria: string | null;
+  descuento_porcentaje: number;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 type Codigo = {
   id: number;
   codigo: string;
@@ -1297,6 +1309,25 @@ function discountDraftKey(tipoCliente: TipoCliente, categoria: string): string {
   return `${tipoCliente}:${String(categoria || "").trim().toLowerCase()}`;
 }
 
+function productDiscountDraftKey(tipoCliente: TipoCliente, productoId: number): string {
+  return `${tipoCliente}:${Number(productoId)}`;
+}
+
+function tipoClienteFromLabel(value: string): TipoCliente | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "cliente" || normalized === "clientes") return "cliente";
+  if (normalized === "mayorista" || normalized === "mayoristas") return "mayorista";
+  if (normalized === "empleado" || normalized === "empleados") return "empleado";
+  return null;
+}
+
+function eventbarDiscountPromoText(value: EventbarDescuentoEspecialTipo): string {
+  if (value === "2x1" || value === "3x2" || value === "4x3") {
+    return `${value.toUpperCase()} en productos seleccionados`;
+  }
+  return "Promos especiales en tienda online";
+}
+
 function normalizeDiscountDraftValue(value: string): string {
   if (value.trim() === "") return "";
   const numeric = Number(value);
@@ -1961,10 +1992,14 @@ export function Admin() {
     mayorista: "",
     empleado: "",
   });
+  const [webDiscountProfileSearch, setWebDiscountProfileSearch] = useState("Cliente");
+  const [webDiscountSelectedType, setWebDiscountSelectedType] = useState<TipoCliente>("cliente");
   const [costosCobroLoaded, setCostosCobroLoaded] = useState(false);
   const [costosCobroDraft, setCostosCobroDraft] = useState<Record<string, PaymentFeeDraftValue>>({});
   const [descuentosCategoriasLoaded, setDescuentosCategoriasLoaded] = useState(false);
   const [descuentosCategoriasDraft, setDescuentosCategoriasDraft] = useState<Record<string, string>>({});
+  const [descuentosProductosLoaded, setDescuentosProductosLoaded] = useState(false);
+  const [descuentosProductosDraft, setDescuentosProductosDraft] = useState<Record<string, string>>({});
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
   const [backupErr, setBackupErr] = useState("");
@@ -2097,6 +2132,13 @@ export function Admin() {
   const descuentosCategoriasQuery = useQuery({
     queryKey: ["admin", "descuentos-categorias"],
     queryFn: () => api.get<DescuentoCategoriaAdmin[]>("/admin/descuentos-categorias"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const descuentosProductosQuery = useQuery({
+    queryKey: ["admin", "descuentos-productos"],
+    queryFn: () => api.get<DescuentoProductoAdmin[]>("/admin/descuentos-productos"),
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
@@ -2389,6 +2431,29 @@ export function Admin() {
     setDescuentosCategoriasLoaded(true);
   }, [categoriasQuery.data, descuentosCategoriasLoaded, descuentosCategoriasQuery.data]);
 
+  useEffect(() => {
+    if (!(productosQuery.data?.length) || !descuentosProductosQuery.data || descuentosProductosLoaded) return;
+    const currentRows = new Map(
+      descuentosProductosQuery.data.map((item) => [
+        productDiscountDraftKey(item.tipo_cliente, item.producto_id),
+        item.activo ? emptyZeroInputValue(item.descuento_porcentaje) : "",
+      ]),
+    );
+    const nextDraft: Record<string, string> = {};
+    for (const producto of productosQuery.data.filter((item) =>
+      item.activo !== false &&
+      (item.tipo_producto === "venta" || item.tipo_producto === "mixto") &&
+      Number(item.precio_dinero ?? item.precio_dinero_original ?? 0) > 0
+    )) {
+      for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
+        const key = productDiscountDraftKey(tipoCliente, Number(producto.id));
+        nextDraft[key] = currentRows.get(key) ?? "";
+      }
+    }
+    setDescuentosProductosDraft(nextDraft);
+    setDescuentosProductosLoaded(true);
+  }, [descuentosProductosLoaded, descuentosProductosQuery.data, productosQuery.data]);
+
   const uploadImageMutation = useMutation({
     mutationFn: (file: File) => {
       const form = new FormData();
@@ -2612,6 +2677,17 @@ export function Admin() {
 
   const categorias = categoriasQuery.data ?? [];
   const categoriasActivas = useMemo(() => categorias.filter((categoria) => categoria.activo !== false), [categorias]);
+  const productosDescuentoUnitario = useMemo(
+    () =>
+      productos
+        .filter((producto) =>
+          producto.activo !== false &&
+          (producto.tipo_producto === "venta" || producto.tipo_producto === "mixto") &&
+          Number(producto.precio_dinero ?? producto.precio_dinero_original ?? 0) > 0
+        )
+        .sort((left, right) => left.nombre.localeCompare(right.nombre, "es")),
+    [productos],
+  );
   const categoriasProductoEdit = useMemo(() => {
     if (!editDraft.categoria) return categoriasActivas;
     const current = categorias.find((categoria) => categoria.nombre === editDraft.categoria);
@@ -2619,6 +2695,7 @@ export function Admin() {
     return [...categoriasActivas, current];
   }, [categorias, categoriasActivas, editDraft.categoria]);
   const descuentosCategorias = descuentosCategoriasQuery.data ?? [];
+  const descuentosProductos = descuentosProductosQuery.data ?? [];
   const codigos = codigosQuery.data ?? [];
   const canjes = canjesQuery.data ?? [];
   const sucursales = sucursalesQuery.data ?? [];
@@ -2693,6 +2770,15 @@ export function Admin() {
     }
     return map;
   }, [descuentosCategorias]);
+  const descuentosProductosMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of descuentosProductos) {
+      const descuento = Number(item.descuento_porcentaje ?? 0);
+      if (!item.activo || !Number.isFinite(descuento) || descuento <= 0) continue;
+      map.set(productDiscountDraftKey(item.tipo_cliente, Number(item.producto_id)), Math.max(0, Math.min(100, descuento)));
+    }
+    return map;
+  }, [descuentosProductos]);
   const productosVentaLocal = useMemo(
     () =>
       productos.filter((producto) =>
@@ -2701,7 +2787,9 @@ export function Admin() {
         Number(producto.precio_dinero ?? 0) > 0
       ).map((producto) => {
         const tipoClientePrecio = clienteVentaLocalSeleccionado?.tipo_cliente ?? "cliente";
-        const descuento = descuentosCategoriasMap.get(discountDraftKey(tipoClientePrecio, producto.categoria ?? "")) ?? 0;
+        const descuentoCategoria = descuentosCategoriasMap.get(discountDraftKey(tipoClientePrecio, producto.categoria ?? "")) ?? 0;
+        const descuentoProducto = descuentosProductosMap.get(productDiscountDraftKey(tipoClientePrecio, Number(producto.id))) ?? 0;
+        const descuento = Math.max(descuentoCategoria, descuentoProducto);
         const precioBase = Number(producto.precio_dinero ?? 0);
         const precioFinal = Math.round((precioBase * (1 - descuento / 100) + Number.EPSILON) * 100) / 100;
         return {
@@ -2711,7 +2799,7 @@ export function Admin() {
           descuento_porcentaje_aplicado: descuento,
         };
       }),
-    [clienteVentaLocalSeleccionado?.tipo_cliente, descuentosCategoriasMap, productos],
+    [clienteVentaLocalSeleccionado?.tipo_cliente, descuentosCategoriasMap, descuentosProductosMap, productos],
   );
   const productoVentaLocalSeleccionado = useMemo(
     () => productosVentaLocal.find((producto) => Number(producto.id) === Number(ventaLocalProductoId)) ?? null,
@@ -4534,6 +4622,48 @@ export function Admin() {
     }
   }
 
+  function updateDescuentoProductoDraft(tipoCliente: TipoCliente, productoId: number, rawValue: string) {
+    const key = productDiscountDraftKey(tipoCliente, productoId);
+    setDescuentosProductosDraft((prev) => ({
+      ...prev,
+      [key]: normalizeDiscountDraftValue(rawValue),
+    }));
+  }
+
+  async function guardarDescuentosProductos() {
+    setErrMsg("");
+    setOkMsg("");
+    setBusy(true);
+    try {
+      for (const producto of productosDescuentoUnitario) {
+        for (const tipoCliente of DISCOUNT_CLIENT_TYPES) {
+          const rawValue = descuentosProductosDraft[productDiscountDraftKey(tipoCliente, Number(producto.id))] ?? "";
+          const descuento = Math.max(0, Math.min(100, Number(rawValue || 0)));
+          if (!Number.isFinite(descuento)) {
+            throw new Error(`Hay un descuento invalido en ${producto.nombre} para ${formatTipoClienteLabel(tipoCliente).toLowerCase()}.`);
+          }
+          await commandMutation.mutateAsync({
+            method: "put",
+            path: "/admin/descuentos-productos",
+            body: {
+              tipo_cliente: tipoCliente,
+              producto_id: Number(producto.id),
+              descuento_porcentaje: descuento,
+              activo: descuento > 0,
+            },
+          });
+        }
+      }
+      setDescuentosProductosLoaded(false);
+      setOkMsg("Descuentos por producto guardados.");
+      await refreshQueries([["admin", "descuentos-productos"], ["admin", "productos"], ["productos"], ["home", "productos"]]);
+    } catch (error) {
+      setErrMsg((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function guardarCampaniaWeb() {
     setErrMsg("");
     setOkMsg("");
@@ -4548,11 +4678,13 @@ export function Admin() {
         throw new Error("Revisa los porcentajes de la campana web.");
       }
 
+      const campaniaActiva = Object.values(values).some((value) => value > 0);
+
       await Promise.all([
         commandMutation.mutateAsync({
           method: "put",
           path: "/admin/configuracion/descuento_web_global_activo",
-          body: { valor: webDiscountDraft.activo ? "1" : "0", descripcion: "Activa una campana global web temporal." },
+          body: { valor: campaniaActiva ? "1" : "0", descripcion: "Activa una campana global web temporal si hay descuentos configurados." },
         }),
         commandMutation.mutateAsync({
           method: "put",
@@ -4571,7 +4703,8 @@ export function Admin() {
         }),
       ]);
 
-      setOkMsg("Campana global web actualizada.");
+      setWebDiscountDraft((prev) => ({ ...prev, activo: campaniaActiva }));
+      setOkMsg(campaniaActiva ? "Campana global web activada." : "Campana global web desactivada.");
       await refreshQueries([["admin", "configuracion"], ["admin", "productos"]]);
     } catch (error) {
       setErrMsg((error as Error).message);
@@ -5111,7 +5244,6 @@ export function Admin() {
     setEventbarErr("");
     setEventbarMsg("");
 
-    const eventbarActivo = configDraft.eventbar_activo;
     const eventbarTitulo = configDraft.eventbar_titulo.trim();
     const eventbarSubtitulo = configDraft.eventbar_subtitulo.trim();
     const eventbarFechaFinIso = datetimeLocalInputToIso(configDraft.eventbar_fecha_fin);
@@ -5119,6 +5251,13 @@ export function Admin() {
     const eventbarColorFondo = configDraft.eventbar_color_fondo.trim();
     const eventbarColorTexto = configDraft.eventbar_color_texto.trim();
     const eventbarDescuentoEspecialTipo = normalizeEventbarDescuentoEspecialTipo(configDraft.eventbar_descuento_especial_tipo);
+    const eventbarTieneDatos = Boolean(
+      eventbarTitulo ||
+      eventbarSubtitulo ||
+      configDraft.eventbar_fecha_fin.trim() ||
+      eventbarDescuentoEspecialTipo !== "none",
+    );
+    const eventbarActivo = eventbarTieneDatos && eventbarTitulo.length >= 2 && Number.isFinite(eventbarFechaFinMs) && eventbarFechaFinMs > Date.now();
 
     if (!isValidHexColor(eventbarColorFondo)) {
       setEventbarErr("El color de fondo de la eventbar debe tener formato #RRGGBB.");
@@ -5128,7 +5267,7 @@ export function Admin() {
       setEventbarErr("El color de texto de la eventbar debe tener formato #RRGGBB.");
       return;
     }
-    if (eventbarActivo) {
+    if (eventbarTieneDatos) {
       if (eventbarTitulo.length < 2 || eventbarTitulo.length > 120) {
         setEventbarErr("El titulo de la eventbar debe tener entre 2 y 120 caracteres.");
         return;
@@ -5145,10 +5284,6 @@ export function Admin() {
         setEventbarErr("La fecha final de la eventbar debe estar en el futuro.");
         return;
       }
-    }
-    if (eventbarDescuentoEspecialTipo !== "none" && !eventbarActivo) {
-      setEventbarErr("Para activar el descuento especial, primero activa la eventbar.");
-      return;
     }
 
     setConfigBusy(true);
@@ -5196,7 +5331,8 @@ export function Admin() {
         },
       ]);
 
-      setEventbarMsg("Eventbar actualizada correctamente.");
+      setConfigDraft((prev) => ({ ...prev, eventbar_activo: eventbarActivo }));
+      setEventbarMsg(eventbarActivo ? "Eventbar guardada y activa." : "Eventbar guardada desactivada.");
     } catch (error) {
       setEventbarErr((error as Error).message);
     } finally {
@@ -5410,6 +5546,7 @@ export function Admin() {
   const eventbarDescuentoEspecialOption =
     EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS.find((item) => item.value === configDraft.eventbar_descuento_especial_tipo)
     ?? EVENTBAR_DESCUENTO_ESPECIAL_OPTIONS[0];
+  const eventbarPreviewPromoText = eventbarDiscountPromoText(configDraft.eventbar_descuento_especial_tipo);
   const canjeCodigoAdminFinalizado = canjeCodigoAdmin
     ? ["entregado", "cancelado", "expirado"].includes(canjeCodigoAdmin.estado)
     : false;
@@ -5750,17 +5887,9 @@ export function Admin() {
                 <p className="adm-config-subtitle">
                   Crea una barra superior temporal para eventos, promociones o avisos con cuenta regresiva en dias, horas y minutos.
                 </p>
-                <div className="adm-field adm-field-checkbox adm-eventbar-toggle">
-                  <label className="adm-label-inline">
-                    <input
-                      type="checkbox"
-                      checked={configDraft.eventbar_activo}
-                      onChange={(event) => setConfigDraft((prev) => ({ ...prev, eventbar_activo: event.target.checked }))}
-                      disabled={configBusy}
-                    />
-                    Mostrar eventbar en la aplicacion
-                  </label>
-                </div>
+                <p className="adm-inline-tip" style={{ marginTop: "0.7rem" }}>
+                  La eventbar se activa automaticamente al guardar si tiene titulo y fecha final futura. Para apagarla, deja vacios el titulo o la fecha y guarda.
+                </p>
                 <div className="adm-config-grid adm-eventbar-grid">
                   <div className="adm-field">
                     <label className="adm-label">Titulo del evento</label>
@@ -5869,13 +5998,34 @@ export function Admin() {
                         "--adm-eventbar-fg": normalizeHexColorInput(configDraft.eventbar_color_texto, "#F3C47B"),
                       } as CSSProperties & Record<"--adm-eventbar-bg" | "--adm-eventbar-fg", string>}
                     >
+                      <span className="adm-eventbar-preview-ornament adm-eventbar-preview-ornament-left" aria-hidden="true" />
+                      <span className="adm-eventbar-preview-ornament adm-eventbar-preview-ornament-right" aria-hidden="true" />
                       <span className="adm-eventbar-preview-copy">
-                        <span className="adm-eventbar-preview-title">
-                          {configDraft.eventbar_titulo.trim() || "OFERTA 4X3 EN TODA LA WEB"}
+                        <span className="adm-eventbar-preview-main-icon" aria-hidden="true">
+                          <svg viewBox="0 0 28 28" focusable="false">
+                            <path d="M5.5 14.4 14.4 5.5h6.2v6.2l-8.9 8.9a2.2 2.2 0 0 1-3.1 0l-3.1-3.1a2.2 2.2 0 0 1 0-3.1Z" />
+                            <circle cx="18.2" cy="9.8" r="1.55" />
+                            <path d="m9.4 15.2 3.4 3.4" />
+                          </svg>
                         </span>
-                        <span className="adm-eventbar-preview-subtitle">
-                          {configDraft.eventbar_subtitulo.trim() || "Ultimas horas - termina hoy a la medianoche"}
+                        <span className="adm-eventbar-preview-copy-text">
+                          <span className="adm-eventbar-preview-title">
+                            {configDraft.eventbar_titulo.trim() || "HOT SALE"}
+                          </span>
+                          <span className="adm-eventbar-preview-subtitle">
+                            {configDraft.eventbar_subtitulo.trim() || "Ultimas horas de evento"}
+                          </span>
                         </span>
+                      </span>
+                      <span className="adm-eventbar-preview-divider" aria-hidden="true" />
+                      <span className="adm-eventbar-preview-promo">
+                        <span className="adm-eventbar-preview-promo-icon" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" focusable="false">
+                            <path d="M7.2 8.8h9.6l-.8 10H8l-.8-10Z" />
+                            <path d="M9.2 8.8a2.8 2.8 0 0 1 5.6 0" />
+                          </svg>
+                        </span>
+                        <span>{eventbarPreviewPromoText}</span>
                       </span>
                       <span className="adm-eventbar-preview-count">
                         <span className="adm-eventbar-preview-time-card">
@@ -5892,6 +6042,10 @@ export function Admin() {
                           <strong>{eventbarPreviewCountdown.minutes}</strong>
                           <small>MIN</small>
                         </span>
+                      </span>
+                      <span className="adm-eventbar-preview-cta">
+                        Ver promos
+                        <span aria-hidden="true">&gt;</span>
                       </span>
                     </div>
                   </div>
@@ -8681,56 +8835,116 @@ export function Admin() {
               </div>
 
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
+                <FieldLabel text="Descuentos por producto" tip="Aplica un descuento puntual a un producto especifico. Si tambien existe descuento por categoria, el sistema usa el mayor." />
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Usalo para promos unitarias sin afectar toda la categoria. Vacio o 0% deja ese producto sin descuento especial para ese perfil.
+                </p>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th><FieldLabel text="Producto" tip="Producto de venta online o mixto con precio en dinero." /></th>
+                        <th>Categoria</th>
+                        <th><FieldLabel text="Cliente" tip="Descuento puntual para clientes comunes." /></th>
+                        <th><FieldLabel text="Mayorista" tip="Descuento puntual para mayoristas." /></th>
+                        <th><FieldLabel text="Empleado" tip="Descuento puntual para empleados." /></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productosDescuentoUnitario.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className="adm-empty">No hay productos activos con precio de venta para asignar descuentos unitarios.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {productosDescuentoUnitario.map((producto) => (
+                        <tr key={`product-discount-${producto.id}`}>
+                          <td><strong>{producto.nombre}</strong></td>
+                          <td>{producto.categoria || "Sin categoria"}</td>
+                          {DISCOUNT_CLIENT_TYPES.map((tipoCliente) => (
+                            <td key={`${producto.id}-${tipoCliente}`}>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                className="adm-input"
+                                value={descuentosProductosDraft[productDiscountDraftKey(tipoCliente, Number(producto.id))] ?? ""}
+                                onChange={(event) => updateDescuentoProductoDraft(tipoCliente, Number(producto.id), event.target.value)}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button className="adm-btn-primary" disabled={busy || productosDescuentoUnitario.length === 0} onClick={guardarDescuentosProductos}>
+                  {busy ? "Guardando..." : "Guardar descuentos por producto"}
+                </button>
+              </div>
+
+              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.9rem" }}>
                 <FieldLabel text="Campana Web Global" tip="Esto es para promociones generales web como Hot Sale o Black Friday. No reemplaza los descuentos por categoria: se usa para campañas temporales." />
                 <p className="adm-inline-tip" style={{ margin: 0 }}>
                   Usa esta campana para Hot Sale, Black Friday o promos generales de la tienda online. Solo afecta compras web y no se aplica a ventas locales.
                 </p>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
-                  <input
-                    type="checkbox"
-                    checked={webDiscountDraft.activo}
-                    onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, activo: event.target.checked }))}
-                  />
-                  Activar campana global web
-                  <FloatingTip label="Campana global web" tip="Si se activa, la tienda online usa estos porcentajes temporales para cada perfil. No afecta ventas locales." />
-                </label>
+                <p className="adm-inline-tip" style={{ margin: 0 }}>
+                  Se activa automaticamente al guardar si algun perfil tiene descuento mayor a 0. Si dejas todos vacios o en 0, se desactiva.
+                </p>
                 <div className="adm-form-grid">
                   <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <FieldLabel text="Cliente" tip="Descuento global temporal para clientes comunes en la web." />
+                    <FieldLabel text="Tipo de cliente" tip="Escribi Cliente, Mayorista o Empleado y elegi de la lista." />
                     <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
+                      list="web-discount-profile-options"
                       className="adm-input"
-                      value={webDiscountDraft.cliente}
-                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, cliente: normalizeDiscountDraftValue(event.target.value) }))}
+                      value={webDiscountProfileSearch}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setWebDiscountProfileSearch(value);
+                        const matchedType = tipoClienteFromLabel(value);
+                        if (matchedType) {
+                          setWebDiscountSelectedType(matchedType);
+                        }
+                      }}
+                      placeholder="Cliente, Mayorista o Empleado"
                     />
+                    <datalist id="web-discount-profile-options">
+                      {DISCOUNT_CLIENT_TYPES.map((tipoCliente) => (
+                        <option key={tipoCliente} value={formatTipoClienteLabel(tipoCliente)} />
+                      ))}
+                    </datalist>
                   </label>
                   <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <FieldLabel text="Mayorista" tip="Descuento global temporal para usuarios mayoristas en la web." />
+                    <FieldLabel
+                      text={`Descuento ${formatTipoClienteLabel(webDiscountSelectedType)}`}
+                      tip="Porcentaje temporal que se aplicara en tienda online para el perfil seleccionado."
+                    />
                     <input
                       type="number"
                       min={0}
                       max={100}
                       step="0.01"
                       className="adm-input"
-                      value={webDiscountDraft.mayorista}
-                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, mayorista: normalizeDiscountDraftValue(event.target.value) }))}
+                      value={webDiscountDraft[webDiscountSelectedType]}
+                      onChange={(event) => {
+                        const value = normalizeDiscountDraftValue(event.target.value);
+                        setWebDiscountDraft((prev) => ({ ...prev, [webDiscountSelectedType]: value }));
+                      }}
                     />
                   </label>
-                  <label style={{ display: "grid", gap: "0.35rem" }}>
-                    <FieldLabel text="Empleado" tip="Descuento global temporal para empleados cuando compran desde la tienda web." />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      className="adm-input"
-                      value={webDiscountDraft.empleado}
-                      onChange={(event) => setWebDiscountDraft((prev) => ({ ...prev, empleado: normalizeDiscountDraftValue(event.target.value) }))}
-                    />
-                  </label>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.55rem" }}>
+                  {DISCOUNT_CLIENT_TYPES.map((tipoCliente) => (
+                    <span
+                      key={`web-discount-summary-${tipoCliente}`}
+                      className="adm-inline-tip"
+                      style={{ margin: 0, padding: "0.45rem 0.7rem" }}
+                    >
+                      {formatTipoClienteLabel(tipoCliente)}: {webDiscountDraft[tipoCliente] || "0"}%
+                    </span>
+                  ))}
                 </div>
                 <button className="adm-btn-primary" disabled={busy} onClick={guardarCampaniaWeb}>
                   {busy ? "Guardando..." : "Guardar campana web"}
