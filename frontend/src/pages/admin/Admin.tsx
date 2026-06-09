@@ -3249,6 +3249,8 @@ export function Admin() {
     const start = (cumpleanosPage - 1) * CUMPLEANOS_POR_PAGINA;
     return cumpleanosProximos.slice(start, start + CUMPLEANOS_POR_PAGINA);
   }, [cumpleanosPage, cumpleanosProximos]);
+  const cumpleanosPageStart = cumpleanosProximos.length === 0 ? 0 : (cumpleanosPage - 1) * CUMPLEANOS_POR_PAGINA + 1;
+  const cumpleanosPageEnd = Math.min(cumpleanosPage * CUMPLEANOS_POR_PAGINA, cumpleanosProximos.length);
 
   const productosPagina = useMemo(() => {
     const start = (productosPage - 1) * LISTA_POR_PAGINA;
@@ -6658,6 +6660,15 @@ export function Admin() {
               </div>
 
               <div className="admin-card">
+                <div className="adm-birthday-table-head">
+                  <div>
+                    <strong>Listado de cumpleanos</strong>
+                    <span>
+                      Mostrando {cumpleanosPageStart}-{cumpleanosPageEnd} de {cumpleanosProximos.length}
+                    </span>
+                  </div>
+                  <span>Pagina {cumpleanosPage} de {totalCumpleanosPages}</span>
+                </div>
                 <div className="admin-table-wrap">
                   <table className="admin-table">
                     <thead>

@@ -1258,14 +1258,18 @@
 
 .adm-area-explanation {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.85rem;
   margin-bottom: 1.25rem;
-  background: #fffaf4;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.95), rgba(255, 250, 244, 0.78) 46%, rgba(255, 245, 234, 0.82)),
+    #fffaf4;
+  border-color: rgba(107, 62, 38, 0.16);
+  box-shadow: 0 16px 34px rgba(74, 44, 26, 0.08);
 }
 
 .adm-area-explanation-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
 }
@@ -1273,13 +1277,35 @@
 .adm-area-explanation-title {
   margin: 0;
   color: #3D1A02;
-  font-size: 1rem;
-  font-weight: 800;
+  font-size: 0.96rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .adm-area-explanation-body {
   display: grid;
-  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.adm-area-explanation-card {
+  min-height: 92px;
+  border: 1px solid rgba(107, 62, 38, 0.15);
+  border-radius: 12px;
+  background: rgba(255, 253, 249, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 10px 22px rgba(74, 44, 26, 0.06);
+  display: flex;
+  align-items: center;
+  padding: 0.9rem 1rem;
+}
+
+.adm-area-explanation-card p {
+  margin: 0;
+  color: #4A2C1A;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.45;
 }
 
 .adm-category-guide {
@@ -2636,6 +2662,34 @@
   margin: 0.2rem 0 0;
 }
 
+.adm-birthday-table-head {
+  align-items: center;
+  background: linear-gradient(180deg, #fffaf4 0%, #fff4ea 100%);
+  border-bottom: 1px solid rgba(180,84,20,0.14);
+  color: #6B3E26;
+  display: flex;
+  gap: 0.85rem;
+  justify-content: space-between;
+  padding: 0.8rem 1rem;
+}
+
+.adm-birthday-table-head div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.adm-birthday-table-head strong {
+  color: #3D1A02;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.adm-birthday-table-head span {
+  color: #8B5A30;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
 .adm-birthday-name-cell,
 .adm-birthday-date-cell,
 .adm-birthday-meta-cell {
@@ -2690,6 +2744,11 @@
 
   .adm-birthday-window-actions {
     grid-template-columns: 1fr;
+  }
+
+  .adm-birthday-table-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

@@ -21,7 +21,9 @@ export function AreaExplanation({ items, defaultOpen = true }: AreaExplanationPr
       {open ? (
         <div className="adm-area-explanation-body">
           {items.map((item) => (
-            <p key={item} className="adm-inline-tip">{item}</p>
+            <article key={item} className="adm-area-explanation-card">
+              <p>{item}</p>
+            </article>
           ))}
         </div>
       ) : null}
