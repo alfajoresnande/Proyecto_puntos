@@ -461,25 +461,36 @@ export function Catalogo() {
       const lugarRetiro = sucursalElegida
         ? formatSucursalLabel(sucursalElegida)
         : (data.lugar_retiro || "informada por la administración").trim();
+      const totalUnidades =
+        typeof data.total_unidades === "number" && data.total_unidades > 0
+          ? data.total_unidades
+          : canjeCartTotalUnidades;
+      const puntosUsados =
+        typeof data.puntos_usados === "number" && data.puntos_usados > 0
+          ? data.puntos_usados
+          : canjeCartTotalPuntos;
       updateUserPoints(data.nuevo_saldo);
-      setToast({
-        variant: "redeem_notice",
-        title: "Canje de carrito hecho con exito",
-        msg:
-          typeof data.total_unidades === "number" && data.total_unidades > 0
-            ? `Tu canje se registro correctamente con ${data.total_unidades} producto(s).`
-            : "Tu canje se registro correctamente.",
-        codigoCanje: codigoRetiro ?? "Disponible en Mis Canjes",
-        sucursalDetalle: sucursalElegida ?? null,
-        lugarRetiroTexto: lugarRetiro,
-        diasLimiteRetiro:
-          typeof data.dias_limite_retiro === "number" && data.dias_limite_retiro > 0
-            ? data.dias_limite_retiro
-            : null,
-      });
       cartClear();
       setCanjeConfirmOpen(false);
       setProductoModal(null);
+      setToast(null);
+      navigate("/carrito-canjes", {
+        state: {
+          canjeConfirmado: {
+            canjeId: data.canje_id,
+            codigo: codigoRetiro ?? "Disponible en Mis Canjes",
+            puntosUsados,
+            totalUnidades,
+            diasLimiteRetiro:
+              typeof data.dias_limite_retiro === "number" && data.dias_limite_retiro > 0
+                ? data.dias_limite_retiro
+                : null,
+            sucursal: sucursalElegida ?? null,
+            lugarRetiro,
+            items: data.items,
+          },
+        },
+      });
     },
     onError: (error: Error) => {
       const message = error.message.toLowerCase();

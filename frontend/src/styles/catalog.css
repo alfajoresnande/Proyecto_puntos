@@ -91,6 +91,23 @@
   background: #FFF8F2;
 }
 
+.catalog-canje-approved-card {
+  margin-bottom: 0.9rem;
+}
+
+.catalog-canje-approved-code {
+  color: #4A2C1A;
+  margin-top: 0.35rem;
+}
+
+.catalog-canje-confirmed-items {
+  border-top: 1px solid #ECD8C4;
+  display: grid;
+  gap: 0.28rem;
+  margin-top: 0.2rem;
+  padding-top: 0.55rem;
+}
+
 .catalog-canje-item {
   display: flex;
   align-items: center;
