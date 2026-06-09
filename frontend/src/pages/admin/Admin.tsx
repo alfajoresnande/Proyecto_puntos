@@ -2675,6 +2675,47 @@ export function Admin() {
     setOkMsg("Aviso de cumpleaños guardado.");
   }
 
+  function guardarCumpleanosConfig() {
+    const rawMonths = cumpleanosWindowMonthsDraft.trim();
+    const rawDays = cumpleanosAlertDaysDraft.trim();
+    setErrMsg("");
+    setOkMsg("");
+
+    if (!rawMonths) {
+      setErrMsg("Completa cuántos meses quieres mostrar.");
+      return;
+    }
+
+    if (!rawDays) {
+      setErrMsg("Completa cuántos días antes quieres avisar.");
+      return;
+    }
+
+    const parsedMonths = Number(rawMonths);
+    if (!Number.isInteger(parsedMonths) || parsedMonths < 1) {
+      setErrMsg("Los próximos meses deben ser un número entero mayor o igual a 1.");
+      return;
+    }
+
+    const parsedDays = Number(rawDays);
+    if (!Number.isInteger(parsedDays) || parsedDays < 1) {
+      setErrMsg("Los días de aviso deben ser un número entero mayor o igual a 1.");
+      return;
+    }
+
+    const nextMonths = clampBirthdayWindowMonths(parsedMonths);
+    const nextDays = clampBirthdayAlertDays(parsedDays);
+    setCumpleanosWindowMonths(nextMonths);
+    setCumpleanosWindowMonthsDraft(String(nextMonths));
+    setCumpleanosAlertDays(nextDays);
+    setCumpleanosAlertDaysDraft(String(nextDays));
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(ADMIN_BIRTHDAY_WINDOW_MONTHS_KEY, String(nextMonths));
+      window.localStorage.setItem(ADMIN_BIRTHDAY_ALERT_DAYS_KEY, String(nextDays));
+    }
+    setOkMsg("Configuración de cumpleaños guardada.");
+  }
+
   const categorias = categoriasQuery.data ?? [];
   const categoriasActivas = useMemo(() => categorias.filter((categoria) => categoria.activo !== false), [categorias]);
   const productosDescuentoUnitario = useMemo(
@@ -6867,7 +6908,12 @@ export function Admin() {
                 <h2 className="admin-section-title">Cumpleaños</h2>
               </div>
 
-              <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "1rem" }}>
+              <div className="admin-card admin-card-padded adm-birthday-manager">
+                <div className="adm-birthday-manager-hero">
+                  <div className="adm-birthday-manager-copy">
+                    <h3>Gestor Integral de Cumpleaños</h3>
+                    <p>Configuración de alertas y vistas</p>
+                  </div>
                 <div className="adm-birthday-toolbar">
                   <label className="adm-birthday-window-field">
                     <span>Mostrar próximos meses</span>
@@ -6924,6 +6970,12 @@ export function Admin() {
                     <span>Desde hoy hasta {formatDateStamp(cumpleanosWindowEndStamp)}. Badge y aviso manual: {cumpleanosAlertDays} días antes.</span>
                   </div>
                 </div>
+                  <div className="adm-birthday-manager-actions">
+                    <button type="button" className="adm-btn-primary adm-birthday-save-btn" onClick={guardarCumpleanosConfig}>
+                      Guardar cambios
+                    </button>
+                  </div>
+                </div>
 
                 <p className="adm-field-help" style={{ margin: 0 }}>
                   El sistema calcula la próxima fecha de cumpleaños según la fecha de nacimiento de cada usuario activo. Si el cliente tiene teléfono cargado, puedes abrir su WhatsApp con el mensaje listo.
@@ -6945,6 +6997,10 @@ export function Admin() {
                   <article className="adm-birthday-summary-card">
                     <span>Sin fecha cargada</span>
                     <strong>{usuariosSinFechaNacimiento}</strong>
+                  </article>
+                  <article className="adm-birthday-summary-card adm-birthday-summary-card-whatsapp">
+                    <span>Recordatorios de WhatsApp</span>
+                    <strong>{cumpleanosPorAvisarConWhatsapp.length} pendientes</strong>
                   </article>
                 </div>
 

@@ -2568,78 +2568,178 @@
   }
 }
 
-.adm-birthday-toolbar {
-  align-items: end;
+.adm-birthday-manager {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 255, 255, 0.96), rgba(255, 247, 236, 0.9) 52%, rgba(250, 238, 221, 0.92)),
+    #fff8f0;
   display: grid;
-  gap: 0.85rem;
-  grid-template-columns: repeat(2, minmax(220px, 280px)) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.adm-birthday-manager-hero {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(230px, 1.05fr) minmax(0, 2.4fr) auto;
+}
+
+.adm-birthday-manager-copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.adm-birthday-manager-copy h3 {
+  color: #2D1200;
+  font-size: 1rem;
+  font-weight: 850;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.adm-birthday-manager-copy p {
+  color: #4A2C1A;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.adm-birthday-toolbar {
+  align-items: center;
+  background: rgba(255, 250, 244, 0.86);
+  border: 1px solid rgba(107, 62, 38, 0.12);
+  border-radius: 13px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, max-content) minmax(220px, 1fr);
+  padding: 0.75rem 0.85rem;
 }
 
 .adm-birthday-window-field {
-  display: grid;
-  gap: 0.35rem;
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  white-space: nowrap;
 }
 
 .adm-birthday-window-actions {
-  align-items: end;
-  display: grid;
-  gap: 0.65rem;
-  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.adm-birthday-window-actions .adm-btn-inline {
+  display: none;
+}
+
+.adm-birthday-window-actions .adm-input {
+  min-height: 36px;
+  padding: 0.45rem 0.65rem;
+  width: 66px;
 }
 
 .adm-birthday-window-field span {
   color: #6B3E26;
-  font-size: 0.8rem;
-  font-weight: 800;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .adm-birthday-range-note {
-  background: linear-gradient(180deg, rgba(255, 247, 236, 0.98) 0%, rgba(250, 238, 221, 0.9) 100%);
-  border: 1px solid rgba(164, 103, 54, 0.18);
-  border-radius: 14px;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(107, 62, 38, 0.14);
+  border-radius: 0;
   color: #6B3E26;
   display: grid;
   gap: 0.2rem;
-  min-height: 48px;
-  padding: 0.75rem 0.9rem;
+  min-height: auto;
+  padding: 0.1rem 0 0.1rem 0.8rem;
 }
 
 .adm-birthday-range-note strong {
   color: #4A1C08;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 .adm-birthday-range-note span {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.adm-birthday-manager-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.adm-birthday-save-btn {
+  min-height: 42px;
+  padding-inline: 1rem;
+  white-space: nowrap;
 }
 
 .adm-birthday-summary-grid {
   display: grid;
   gap: 0.85rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .adm-birthday-summary-card {
-  background: #FFF8F0;
-  border: 1px solid rgba(180,84,20,0.18);
+  align-items: center;
+  background: rgba(255, 253, 249, 0.84);
+  border: 1px solid rgba(107, 62, 38, 0.12);
   border-radius: 14px;
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.95rem 1rem;
+  box-shadow: 0 12px 24px rgba(74, 44, 26, 0.07);
+  display: flex;
+  gap: 0.72rem;
+  min-height: 70px;
+  padding: 0.82rem 0.9rem;
+}
+
+.adm-birthday-summary-card::before {
+  align-items: center;
+  background: #F2DFCE;
+  border-radius: 10px;
+  color: #6B3E26;
+  content: "*";
+  display: inline-flex;
+  flex: 0 0 34px;
+  font-size: 1rem;
+  font-weight: 900;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.adm-birthday-summary-card:nth-child(1)::before { content: "H"; }
+.adm-birthday-summary-card:nth-child(2)::before { content: "R"; }
+.adm-birthday-summary-card:nth-child(3)::before { content: "A"; }
+.adm-birthday-summary-card:nth-child(4)::before { content: "S"; }
+.adm-birthday-summary-card:nth-child(5)::before {
+  background: #DFF6E5;
+  color: #2F6E38;
+  content: "W";
 }
 
 .adm-birthday-summary-card span {
   color: #8B5A30;
-  font-size: 0.76rem;
-  font-weight: 800;
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 850;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .adm-birthday-summary-card strong {
   color: #4A1C08;
-  font-size: 1.5rem;
+  display: block;
+  font-size: 1.22rem;
   line-height: 1;
+  margin-top: 0.15rem;
+}
+
+.adm-birthday-summary-card-whatsapp strong {
+  color: #2F6E38;
+  font-size: 1.04rem;
 }
 
 .adm-birthday-today-box {
@@ -2732,8 +2832,20 @@
 }
 
 @media (max-width: 1200px) {
+  .adm-birthday-manager-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .adm-birthday-manager-actions {
+    justify-content: stretch;
+  }
+
+  .adm-birthday-save-btn {
+    width: 100%;
+  }
+
   .adm-birthday-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -2744,7 +2856,24 @@
   }
 
   .adm-birthday-window-actions {
-    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .adm-birthday-window-actions .adm-input {
+    flex: 1;
+    width: 100%;
+  }
+
+  .adm-birthday-window-field {
+    align-items: flex-start;
+    flex-direction: column;
+    white-space: normal;
+  }
+
+  .adm-birthday-range-note {
+    border-left: 0;
+    border-top: 1px solid rgba(107, 62, 38, 0.14);
+    padding: 0.65rem 0 0;
   }
 
   .adm-birthday-table-head {
