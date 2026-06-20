@@ -1,7 +1,7 @@
 {
   "siteOrigin": "https://alfajorescorrentinos.com",
-  "defaultTitle": "Ñandé Alfajores Correntinos",
-  "defaultDescription": "Comprá alfajores correntinos artesanales online. Tienda del NEA con retiro en sucursal, catálogo de productos y programa de puntos.",
+  "defaultTitle": "Nande Alfajores Correntinos",
+  "defaultDescription": "Compra alfajores correntinos artesanales online. Tienda del NEA con retiro en sucursal, catalogo de productos y programa de puntos.",
   "defaultRobots": "noindex, nofollow",
   "publicRobots": "index, follow",
   "routeAliases": {
@@ -9,37 +9,51 @@
   },
   "publicRoutes": {
     "/": {
-      "title": "Ñandé Alfajores Correntinos",
-      "description": "Descubrí Ñandé Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
+      "title": "Nande Alfajores Correntinos",
+      "description": "Descubri Nande Alfajores Correntinos: alfajores artesanales del NEA, compra online, retiro en sucursal, puntos y canjes.",
       "canonicalPath": "/",
       "changefreq": "daily",
       "priority": "1.0"
     },
     "/tienda": {
-      "title": "Comprar alfajores correntinos online | Ñandé Alfajores",
-      "description": "Comprá alfajores correntinos artesanales en la tienda online de Ñandé. Productos del Nordeste Argentino con retiro en sucursal.",
+      "title": "Comprar alfajores correntinos online | Nande Alfajores",
+      "description": "Compra alfajores correntinos artesanales en la tienda online de Nande. Productos del Nordeste Argentino con retiro en sucursal.",
       "canonicalPath": "/tienda",
       "changefreq": "daily",
       "priority": "1.0"
     },
     "/catalogo": {
-      "title": "Canjes y programa de puntos | Ñandé Alfajores Correntinos",
-      "description": "Canjeá tus puntos por alfajores y productos de Ñandé. Descubrí el catálogo de canjes y elegí tu sucursal de retiro.",
+      "title": "Canjes y programa de puntos | Nande Alfajores Correntinos",
+      "description": "Canjea tus puntos por alfajores y productos de Nande. Descubri el catalogo de canjes y elige tu sucursal de retiro.",
       "canonicalPath": "/catalogo",
       "changefreq": "daily",
       "priority": "0.9"
     },
     "/sobre-nosotros": {
-      "title": "Quiénes Somos | Ñandé Alfajores Correntinos",
-      "description": "Conocé la historia de Ñandé Alfajores Correntinos, nuestra propuesta artesanal y el sabor regional del Nordeste Argentino.",
+      "title": "Quienes Somos | Nande Alfajores Correntinos",
+      "description": "Conoce la historia de Nande Alfajores Correntinos, nuestra propuesta artesanal y el sabor regional del Nordeste Argentino.",
       "canonicalPath": "/sobre-nosotros",
       "changefreq": "monthly",
       "priority": "0.7"
     },
     "/terminos": {
-      "title": "Términos y Condiciones | Ñandé Alfajores Correntinos",
-      "description": "Consultá los términos y condiciones de compras online, retiro en sucursal, canjes y programa de puntos de Ñandé Alfajores.",
+      "title": "Terminos y Condiciones | Nande Alfajores Correntinos",
+      "description": "Consulta los terminos y condiciones de compras online, retiro en sucursal, canjes y programa de puntos de Nande Alfajores.",
       "canonicalPath": "/terminos",
+      "changefreq": "monthly",
+      "priority": "0.5"
+    },
+    "/politica-privacidad": {
+      "title": "Politica de Privacidad | Nande Alfajores Correntinos",
+      "description": "Consulta como Nande Alfajores Correntinos trata y protege los datos personales de clientes y visitantes.",
+      "canonicalPath": "/politica-privacidad",
+      "changefreq": "monthly",
+      "priority": "0.5"
+    },
+    "/boton-arrepentimiento": {
+      "title": "Boton de arrepentimiento | Nande Alfajores Correntinos",
+      "description": "Solicita la cancelacion de una compra desde el boton de arrepentimiento de Nande Alfajores Correntinos.",
+      "canonicalPath": "/boton-arrepentimiento",
       "changefreq": "monthly",
       "priority": "0.5"
     }

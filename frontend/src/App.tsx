@@ -32,6 +32,8 @@ import { MiPerfil } from "./pages/cliente/MiPerfil";
 import { SoporteCliente } from "./pages/cliente/SoporteCliente";
 import { Catalogo } from "./pages/public/Catalogo";
 import { Home } from "./pages/public/Home";
+import { BotonArrepentimiento } from "./pages/public/BotonArrepentimiento";
+import { PoliticaPrivacidad } from "./pages/public/PoliticaPrivacidad";
 import { SobreNosotros } from "./pages/public/SobreNosotros";
 import { TiendaOnline } from "./pages/public/TiendaOnline";
 import { Terminos } from "./pages/public/Terminos";
@@ -565,6 +567,8 @@ export default function App() {
             />
             <Route path="/sobre-nosotros" element={<SobreNosotros />} />
             <Route path="/terminos" element={<Terminos />} />
+            <Route path="/politica-privacidad" element={<PoliticaPrivacidad />} />
+            <Route path="/boton-arrepentimiento" element={<BotonArrepentimiento />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

@@ -324,6 +324,7 @@ export function Navbar() {
             <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos</NavLink> : null}
+            {!canSeeVendedor ? <NavLink to="/politica-privacidad" className={({ isActive }) => navClass(isActive)}>Privacidad</NavLink> : null}
             {canSeeCliente ? (
               <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)}>
                 {renderNavLabel("Mensajes", supportUnreadCount)}
@@ -519,6 +520,7 @@ export function Navbar() {
           <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos</NavLink> : null}
+          {!canSeeVendedor ? <NavLink to="/politica-privacidad" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Privacidad</NavLink> : null}
           {canSeeCliente ? (
             <NavLink to="/soporte" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
               {renderNavLabel("Mensajes", supportUnreadCount)}

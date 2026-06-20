@@ -39,6 +39,13 @@
   white-space: nowrap;
 }
 
+.footer .footer-link-wide {
+  white-space: normal;
+  max-width: 11rem;
+  line-height: 1.15;
+  text-align: center;
+}
+
 .footer .footer-logo img {
   height: 50px;
 }

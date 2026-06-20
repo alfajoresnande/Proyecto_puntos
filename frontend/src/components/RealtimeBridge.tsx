@@ -336,6 +336,11 @@ export function RealtimeBridge() {
         return;
       }
 
+      if (topic === "arrepentimiento") {
+        void queryClient.invalidateQueries({ queryKey: ["admin", "arrepentimiento"] });
+        return;
+      }
+
       if (topic === "admin-config") {
         void queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
       }

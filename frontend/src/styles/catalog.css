@@ -3461,6 +3461,166 @@ body.catalogo-background .pagina-page {
   color: #4A2C1A;
 }
 
+.arrepentimiento-card {
+  max-width: 1180px;
+}
+
+.arrepentimiento-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.2fr);
+  gap: clamp(1.5rem, 3vw, 3rem);
+  align-items: start;
+}
+
+.arrepentimiento-contact-panel,
+.arrepentimiento-form-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.arrepentimiento-eyebrow {
+  margin: 0;
+  color: #A86A3D;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.arrepentimiento-title {
+  margin-bottom: 0;
+}
+
+.arrepentimiento-lead {
+  margin: 0;
+  color: #6F4B35;
+  line-height: 1.65;
+}
+
+.arrepentimiento-contact-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.arrepentimiento-legal-note {
+  margin-top: 0.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #5f4a39;
+  line-height: 1.65;
+}
+
+.arrepentimiento-legal-note p {
+  margin: 0;
+}
+
+.arrepentimiento-legal-title {
+  margin-bottom: 0.45rem !important;
+  color: #4A2C1A;
+  font-weight: 800;
+}
+
+.arrepentimiento-contact-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  color: #4A2C1A;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.arrepentimiento-contact-item-static {
+  color: #4A2C1A;
+}
+
+.arrepentimiento-contact-item:hover {
+  color: #A86A3D;
+}
+
+.arrepentimiento-contact-icon {
+  width: 1.6rem;
+  height: 1.6rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.arrepentimiento-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.arrepentimiento-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.arrepentimiento-field span {
+  color: #4A2C1A;
+  font-weight: 800;
+}
+
+.arrepentimiento-field input,
+.arrepentimiento-field textarea {
+  width: 100%;
+  border: 1px solid #D8C2A7;
+  background: #FFFDF8;
+  color: #4A2C1A;
+  border-radius: 16px;
+  padding: 0.95rem 1rem;
+  font: inherit;
+  resize: vertical;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.arrepentimiento-field input:focus,
+.arrepentimiento-field textarea:focus {
+  outline: none;
+  border-color: #A86A3D;
+  box-shadow: 0 0 0 3px rgba(168, 106, 61, 0.16);
+}
+
+.arrepentimiento-confirmation {
+  background: linear-gradient(135deg, rgba(107, 62, 38, 0.08), rgba(168, 106, 61, 0.12));
+  border: 1px solid rgba(107, 62, 38, 0.14);
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  color: #4A2C1A;
+}
+
+.arrepentimiento-confirmation h2,
+.arrepentimiento-confirmation p {
+  margin: 0;
+}
+
+.arrepentimiento-confirmation h2 {
+  margin-bottom: 0.35rem;
+}
+
+.arrepentimiento-feedback {
+  margin: 0;
+  font-weight: 700;
+}
+
+.arrepentimiento-feedback.is-error {
+  color: #8C2F24;
+}
+
+.arrepentimiento-submit {
+  justify-self: start;
+  min-width: 14rem;
+}
+
+@media (max-width: 900px) {
+  .arrepentimiento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .arrepentimiento-submit {
+    width: 100%;
+  }
+}
+
 .catalog-filters-trigger:hover {
   border-color: #A86A3D;
   color: #6B3E26;

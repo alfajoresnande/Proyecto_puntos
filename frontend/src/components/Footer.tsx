@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { WHATSAPP_COMPANY_URL } from "../lib/contact";
+import { INSTAGRAM_PROFILE_URL, WHATSAPP_COMPANY_URL } from "../lib/contact";
 import { useAuthStore } from "../store/authStore";
 
 export function Footer() {
@@ -20,16 +20,18 @@ export function Footer() {
             <Link to="/" className="footer-link">Inicio</Link>
             <Link to="/tienda" className="footer-link">Tienda Online</Link>
             <Link to="/catalogo" className="footer-link">Canjes</Link>
-            {!user ? <Link to="/login" className="footer-link">Iniciar Sesión</Link> : null}
+            {!user ? <Link to="/login" className="footer-link">Iniciar Sesion</Link> : null}
             {!user ? <Link to="/registro" className="footer-link">Registrarse</Link> : null}
             {user?.rol === "cliente" ? <Link to="/cliente" className="footer-link">Mis Puntos</Link> : null}
             {user?.rol === "admin" ? <Link to="/admin" className="footer-link">Panel Admin</Link> : null}
-            <Link to="/sobre-nosotros" className="footer-link">Quiénes Somos</Link>
-            <Link to="/terminos" className="footer-link">Términos</Link>
+            <Link to="/sobre-nosotros" className="footer-link">Quienes Somos</Link>
+            <Link to="/terminos" className="footer-link footer-link-wide">Terminos y condiciones</Link>
+            <Link to="/politica-privacidad" className="footer-link footer-link-wide">Politica de privacidad</Link>
+            <Link to="/boton-arrepentimiento" className="footer-link footer-link-wide">Boton de arrepentimiento</Link>
             <a href={WHATSAPP_COMPANY_URL} target="_blank" rel="noreferrer" className="footer-link" aria-label="WhatsApp">
               WhatsApp
             </a>
-            <a href="https://www.instagram.com/alfajorescorrentinos/" target="_blank" rel="noreferrer" className="footer-link" aria-label="Instagram">
+            <a href={INSTAGRAM_PROFILE_URL} target="_blank" rel="noreferrer" className="footer-link" aria-label="Instagram">
               Instagram
             </a>
           </nav>

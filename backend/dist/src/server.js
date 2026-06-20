@@ -20,6 +20,7 @@ const pagos_1 = __importDefault(require("./routes/pagos"));
 const soporte_1 = __importDefault(require("./routes/soporte"));
 const ubicaciones_1 = __importDefault(require("./routes/ubicaciones"));
 const postulaciones_1 = __importDefault(require("./routes/postulaciones"));
+const arrepentimiento_1 = __importDefault(require("./routes/arrepentimiento"));
 const meAddresses_1 = __importDefault(require("./routes/meAddresses"));
 const presencia_1 = __importDefault(require("./routes/presencia"));
 const aiChat_routes_1 = __importDefault(require("./routes/aiChat.routes"));
@@ -227,6 +228,7 @@ app.use("/api/admin", admin_1.default);
 app.use("/api/pagos", pagos_1.default);
 app.use("/api/soporte", soporte_1.default);
 app.use("/api/postulaciones", postulaciones_1.default);
+app.use("/api/arrepentimiento", arrepentimiento_1.default);
 // Manejo global de errores
 app.use((err, req, res, _next) => {
     if (err instanceof Error && err.message === "CORS no permitido para este origen") {

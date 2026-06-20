@@ -1721,6 +1721,55 @@ async function ensureLayoutTimelineSchema() {
     await exports.pool.query("UPDATE layout_timeline_eventos SET imagen_url = '/came.webp' WHERE (titulo LIKE '%CAME%' OR titulo LIKE '%Corrientes en alfajores%') AND imagen_url LIKE '%alfajorescorrentinos.com%'");
     await exports.pool.query("UPDATE layout_timeline_eventos SET imagen_url = '/lafalta.webp' WHERE titulo LIKE '%La Falda%' AND imagen_url LIKE '%alfajorescorrentinos.com%'");
 }
+async function ensurePaginasContenidoSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS paginas_contenido (
+      slug VARCHAR(50) PRIMARY KEY,
+      titulo VARCHAR(200) NOT NULL,
+      contenido LONGTEXT NOT NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    const defaultPages = [
+        {
+            slug: "sobre-nosotros",
+            titulo: "Sobre Nosotros",
+            contenido: "# Sobre Nosotros\n\nNande nacio como una propuesta familiar para compartir alfajores, dulces y chocolates con identidad correntina.\n\n## Nuestra esencia\n\nTrabajamos con foco en la calidad, el sabor regional y una experiencia cercana para quienes nos eligen.\n\n## Contacto\n\n- Instagram: [@alfajorescorrentinos](https://www.instagram.com/alfajorescorrentinos/)\n- WhatsApp: [+54 3794 632610](https://wa.me/5493794632610)\n- Email: [alfajorescorrentinosnande@gmail.com](mailto:alfajorescorrentinosnande@gmail.com)\n",
+        },
+        {
+            slug: "terminos",
+            titulo: "Terminos y Condiciones",
+            contenido: "# Terminos y Condiciones\n\nAqui puedes mantener actualizadas las condiciones de uso, compra, canjes, envios y programa de puntos.\n",
+        },
+        {
+            slug: "politica-privacidad",
+            titulo: "Politica de Privacidad",
+            contenido: "# Politica de Privacidad\n\nAqui puedes detallar como se recopilan, utilizan, almacenan y protegen los datos personales de clientes y visitantes.\n",
+        },
+    ];
+    for (const page of defaultPages) {
+        await exports.pool.query(`INSERT INTO paginas_contenido (slug, titulo, contenido)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE slug = slug`, [page.slug, page.titulo, page.contenido]);
+    }
+}
+async function ensureArrepentimientoSolicitudesSchema() {
+    await exports.pool.query(`CREATE TABLE IF NOT EXISTS arrepentimiento_solicitudes (
+      codigo_tramite CHAR(36) PRIMARY KEY,
+      numero_orden VARCHAR(80) NOT NULL,
+      nombre_apellido VARCHAR(160) NOT NULL,
+      email VARCHAR(160) NOT NULL,
+      telefono VARCHAR(40) NOT NULL,
+      mensaje TEXT NOT NULL,
+      estado ENUM('pendiente','revisado','resuelto') NOT NULL DEFAULT 'pendiente',
+      ip_origen VARCHAR(64) NULL,
+      user_agent VARCHAR(255) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_arrepentimiento_created_at (created_at),
+      INDEX idx_arrepentimiento_email_created_at (email, created_at),
+      INDEX idx_arrepentimiento_numero_orden (numero_orden),
+      INDEX idx_arrepentimiento_estado_created_at (estado, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+}
 exports.pool
     .getConnection()
     .then(async (conn) => {
@@ -1809,6 +1858,12 @@ exports.pool
     }
     catch (err) {
         console.error("Migracion configuracion global:", err.message);
+    }
+    try {
+        await ensurePaginasContenidoSchema();
+    }
+    catch (err) {
+        console.error("Migracion paginas de contenido:", err.message);
     }
     try {
         await ensureCategoriasSchema();
@@ -1911,6 +1966,12 @@ exports.pool
     }
     catch (err) {
         console.error("Migracion layout timeline:", err.message);
+    }
+    try {
+        await ensureArrepentimientoSolicitudesSchema();
+    }
+    catch (err) {
+        console.error("Migracion solicitudes de arrepentimiento:", err.message);
     }
 })
     .catch((err) => {

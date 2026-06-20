@@ -2877,6 +2877,47 @@ router.put("/paginas/:slug", async (req, res) => {
     (0, realtime_1.emitRealtime)(["paginas"]);
     res.json({ ok: true });
 });
+router.get("/arrepentimiento", async (req, res) => {
+    const page = Math.max(1, Number(req.query.page ?? 1) || 1);
+    const requestedLimit = Number(req.query.limit ?? 10) || 10;
+    const limit = Math.min(50, Math.max(1, requestedLimit));
+    const offset = (page - 1) * limit;
+    const search = String(req.query.q ?? "").trim();
+    const like = `%${search}%`;
+    const whereSql = search
+        ? `WHERE codigo_tramite LIKE ?
+        OR numero_orden LIKE ?
+        OR nombre_apellido LIKE ?
+        OR email LIKE ?
+        OR telefono LIKE ?`
+        : "";
+    const whereParams = search ? [like, like, like, like, like] : [];
+    const totalRow = await (0, db_1.qOne)(db_1.pool, `SELECT COUNT(*) as total
+     FROM arrepentimiento_solicitudes
+     ${whereSql}`, whereParams);
+    const items = await (0, db_1.qAll)(db_1.pool, `SELECT
+       codigo_tramite,
+       numero_orden,
+       nombre_apellido,
+       email,
+       telefono,
+       mensaje,
+       estado,
+       created_at,
+       updated_at
+     FROM arrepentimiento_solicitudes
+     ${whereSql}
+     ORDER BY created_at DESC
+     LIMIT ? OFFSET ?`, [...whereParams, limit, offset]);
+    const total = Number(totalRow?.total ?? 0);
+    res.json({
+        items,
+        total,
+        page,
+        pageSize: limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+});
 /**
  * POST /admin/puntos/reconciliar-saldos
  * Recalcula puntos_saldo de uno o todos los usuarios desde movimientos_puntos.

@@ -17,6 +17,7 @@ import pagosRoutes from "./routes/pagos";
 import soporteRoutes from "./routes/soporte";
 import ubicacionesRoutes from "./routes/ubicaciones";
 import postulacionesRoutes from "./routes/postulaciones";
+import arrepentimientoRoutes from "./routes/arrepentimiento";
 import meAddressesRoutes from "./routes/meAddresses";
 import presenciaRoutes from "./routes/presencia";
 import aiChatRoutes from "./routes/aiChat.routes";
@@ -257,6 +258,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/pagos", pagosRoutes);
 app.use("/api/soporte", soporteRoutes);
 app.use("/api/postulaciones", postulacionesRoutes);
+app.use("/api/arrepentimiento", arrepentimientoRoutes);
 
 // Manejo global de errores
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {

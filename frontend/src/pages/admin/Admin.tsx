@@ -44,6 +44,8 @@ type AdminTab =
   | "crear"
   | "sobre-nosotros"
   | "terminos"
+  | "politica-privacidad"
+  | "arrepentimiento"
   | "layout-timeline"
   | "layout-donde";
 
@@ -79,7 +81,10 @@ const ADMIN_TABS: AdminTab[] = [
   "crear",
   "sobre-nosotros",
   "terminos",
+  "politica-privacidad",
+  "arrepentimiento",
   "layout-timeline",
+  "layout-donde",
 ];
 
 const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
@@ -198,6 +203,16 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se editan los Terminos y Condiciones que ven los clientes.",
     "Conviene mantener esta pagina clara para explicar canjes, pedidos, retiros, vencimientos y condiciones de uso.",
     "El editor permite guardar texto e imagenes sin tocar codigo.",
+  ],
+  "politica-privacidad": [
+    "Aca se edita la Politica de Privacidad publica.",
+    "Conviene mantener esta pagina alineada con los datos que la app realmente recopila y con los canales de contacto vigentes.",
+    "El editor permite guardar texto e imagenes sin tocar codigo.",
+  ],
+  arrepentimiento: [
+    "Aca se listan las solicitudes del boton de arrepentimiento.",
+    "Puedes buscar por codigo de tramite, numero de orden, nombre, email o telefono.",
+    "La vista se actualiza periodicamente para ayudarte a seguir ingresos nuevos.",
   ],
   "layout-timeline": [
     "Aca se editan los eventos de la Línea de Tiempo de la página principal.",
@@ -638,6 +653,18 @@ type Pagina = {
   contenido: string;
 };
 
+type ArrepentimientoSolicitudAdmin = {
+  codigo_tramite: string;
+  numero_orden: string;
+  nombre_apellido: string;
+  email: string;
+  telefono: string;
+  mensaje: string;
+  estado: "pendiente" | "revisado" | "resuelto" | string;
+  created_at: string;
+  updated_at: string;
+};
+
 type PaginatedResponse<T> = {
   items: T[];
   total: number;
@@ -913,7 +940,7 @@ type VentaLocalSubmitResult = {
   totalPuntosGanados?: number;
 };
 
-type StaticPageSlug = "sobre-nosotros" | "terminos";
+type StaticPageSlug = "sobre-nosotros" | "terminos" | "politica-privacidad";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
@@ -1196,6 +1223,8 @@ function mapPresencePathToView(path: string | null | undefined): string {
   if (normalized === "/soporte") return "Soporte";
   if (normalized === "/sobre-nosotros") return "Sobre nosotros";
   if (normalized === "/terminos") return "Terminos y condiciones";
+  if (normalized === "/politica-privacidad") return "Politica de privacidad";
+  if (normalized === "/boton-arrepentimiento") return "Boton de arrepentimiento";
   return normalized;
 }
 
@@ -2046,6 +2075,14 @@ export function Admin() {
     okMsg: "",
     errMsg: "",
   });
+  const [politicaPrivacidadDraft, setPoliticaPrivacidadDraft] = useState<EditorDraft>({
+    titulo: "",
+    contenido: "",
+    okMsg: "",
+    errMsg: "",
+  });
+  const [arrepentimientoSearch, setArrepentimientoSearch] = useState("");
+  const [arrepentimientoPage, setArrepentimientoPage] = useState(1);
 
   const [confirmacion, setConfirmacion] = useState<ConfirmacionCanje | null>(null);
   const [codigoCanjeAdmin, setCodigoCanjeAdmin] = useState("");
@@ -2243,6 +2280,27 @@ export function Admin() {
     refetchIntervalInBackground: true,
   });
 
+  const politicaPrivacidadQuery = useQuery({
+    queryKey: ["admin", "paginas", "politica-privacidad"],
+    queryFn: () => api.get<Pagina>("/admin/paginas/politica-privacidad"),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
+  const arrepentimientoQuery = useQuery({
+    queryKey: ["admin", "arrepentimiento", arrepentimientoPage, arrepentimientoSearch],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(arrepentimientoPage),
+        limit: "10",
+      });
+      if (arrepentimientoSearch.trim()) params.set("q", arrepentimientoSearch.trim());
+      return api.get<PaginatedResponse<ArrepentimientoSolicitudAdmin>>(`/admin/arrepentimiento?${params.toString()}`);
+    },
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  });
+
   useEffect(() => {
     if (!sobreQuery.data) return;
     setSobreDraft((prev) =>
@@ -2268,6 +2326,30 @@ export function Admin() {
           },
     );
   }, [terminosQuery.data]);
+
+  useEffect(() => {
+    if (!politicaPrivacidadQuery.data) return;
+    setPoliticaPrivacidadDraft((prev) =>
+      prev.titulo || prev.contenido
+        ? prev
+        : {
+            ...prev,
+            titulo: politicaPrivacidadQuery.data.titulo,
+            contenido: politicaPrivacidadQuery.data.contenido,
+          },
+    );
+  }, [politicaPrivacidadQuery.data]);
+
+  useEffect(() => {
+    setArrepentimientoPage(1);
+  }, [arrepentimientoSearch]);
+
+  useEffect(() => {
+    const totalPages = arrepentimientoQuery.data?.totalPages ?? 1;
+    if (arrepentimientoPage > totalPages) {
+      setArrepentimientoPage(totalPages);
+    }
+  }, [arrepentimientoPage, arrepentimientoQuery.data?.totalPages]);
 
   useEffect(() => {
     if (!adminHint) return;
@@ -3346,9 +3428,19 @@ export function Admin() {
     () => extractPageImageUrls(terminosDraft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES),
     [terminosDraft.contenido],
   );
+  const politicaPrivacidadImagenes = useMemo(
+    () => extractPageImageUrls(politicaPrivacidadDraft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES),
+    [politicaPrivacidadDraft.contenido],
+  );
 
   const sobreHtml = useMemo(() => renderSafeMarkdown(stripPageImages(sobreDraft.contenido || "")), [sobreDraft.contenido]);
   const terminosHtml = useMemo(() => renderSafeMarkdown(stripPageImages(terminosDraft.contenido || "")), [terminosDraft.contenido]);
+  const politicaPrivacidadHtml = useMemo(
+    () => renderSafeMarkdown(stripPageImages(politicaPrivacidadDraft.contenido || "")),
+    [politicaPrivacidadDraft.contenido],
+  );
+  const arrepentimientoItems = arrepentimientoQuery.data?.items ?? [];
+  const arrepentimientoTotalPages = arrepentimientoQuery.data?.totalPages ?? 1;
 
   async function subirImagenProducto(file: File, target: "nuevo" | "edit") {
     if (!file) return;
@@ -5476,9 +5568,21 @@ export function Admin() {
     return rebuildPageContent(cuerpo, imagenes);
   }
 
+  function getPageDraft(slug: StaticPageSlug): EditorDraft {
+    if (slug === "sobre-nosotros") return sobreDraft;
+    if (slug === "terminos") return terminosDraft;
+    return politicaPrivacidadDraft;
+  }
+
+  function getPageDraftSetter(slug: StaticPageSlug) {
+    if (slug === "sobre-nosotros") return setSobreDraft;
+    if (slug === "terminos") return setTerminosDraft;
+    return setPoliticaPrivacidadDraft;
+  }
+
   async function guardarPagina(slug: StaticPageSlug) {
-    const draft = slug === "sobre-nosotros" ? sobreDraft : terminosDraft;
-    const setDraft = slug === "sobre-nosotros" ? setSobreDraft : setTerminosDraft;
+    const draft = getPageDraft(slug);
+    const setDraft = getPageDraftSetter(slug);
     const totalImagenes = extractPageImageUrls(draft.contenido || "").length;
     if (totalImagenes > MAX_STATIC_PAGE_IMAGES) {
       setDraft((prev) => ({
@@ -5525,8 +5629,8 @@ export function Admin() {
   }
 
   async function subirImagenPagina(slug: StaticPageSlug, file: File) {
-    const draft = slug === "sobre-nosotros" ? sobreDraft : terminosDraft;
-    const setDraft = slug === "sobre-nosotros" ? setSobreDraft : setTerminosDraft;
+    const draft = getPageDraft(slug);
+    const setDraft = getPageDraftSetter(slug);
     const imagenesActuales = extractPageImageUrls(draft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
 
     if (!isAllowedImageFile(file)) {
@@ -5571,7 +5675,7 @@ export function Admin() {
   }
 
   function quitarImagenPagina(slug: StaticPageSlug, index: number) {
-    const setDraft = slug === "sobre-nosotros" ? setSobreDraft : setTerminosDraft;
+    const setDraft = getPageDraftSetter(slug);
     setDraft((prev) => {
       const cuerpo = stripPageImages(prev.contenido || "");
       const imagenes = extractPageImageUrls(prev.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
@@ -5755,6 +5859,12 @@ export function Admin() {
           </button>
           <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => seleccionarTab("terminos")}>
             {renderAdminNavLabel("Terminos")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "politica-privacidad" ? "active" : ""}`} onClick={() => seleccionarTab("politica-privacidad")}>
+            {renderAdminNavLabel("Privacidad")}
+          </button>
+          <button className={`admin-nav-btn ${tab === "arrepentimiento" ? "active" : ""}`} onClick={() => seleccionarTab("arrepentimiento")}>
+            {renderAdminNavLabel("Arrepentimiento")}
           </button>
           <button className={`admin-nav-btn ${tab === "layout-timeline" ? "active" : ""}`} onClick={() => seleccionarTab("layout-timeline")}>
             {renderAdminNavLabel("Línea de Tiempo")}
@@ -9796,6 +9906,130 @@ export function Admin() {
                   </div>
                 </div>
               </div>
+            </>
+          ) : null}
+
+          {tab === "politica-privacidad" ? (
+            <>
+              <SectionTitle title="Politica de Privacidad" />
+              <div className="adm-page-editor-grid">
+                <div className="adm-page-editor-col">
+                  <div className="adm-notepad">
+                    <div className="adm-notepad-header">
+                      <p className="adm-notepad-header-title">Editor Markdown</p>
+                      <span className="adm-notepad-md-badge">MD</span>
+                    </div>
+                    <div className="adm-notepad-body">
+                      <p className="adm-md-hint">
+                        Guia rapida Markdown: <code>#</code> titulo grande, <code>##</code> subtitulo, <code>-</code> listas,
+                        <code> **texto** </code> negrita y <code>[texto](https://url)</code> para enlaces.
+                      </p>
+                      <input className="adm-notepad-title-input" value={politicaPrivacidadDraft.titulo} onChange={(event) => setPoliticaPrivacidadDraft((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" />
+                      <textarea className="adm-notepad-textarea adm-page-textarea" value={politicaPrivacidadDraft.contenido} onChange={(event) => setPoliticaPrivacidadDraft((prev) => ({ ...prev, contenido: event.target.value }))} placeholder="Contenido en markdown" />
+                      <div className="adm-page-images-panel">
+                        <div className="adm-page-images-head">
+                          <p className="adm-page-images-title">Fotos debajo ({politicaPrivacidadImagenes.length}/{MAX_STATIC_PAGE_IMAGES})</p>
+                          <label className={`adm-btn-secondary adm-page-images-upload ${politicaPrivacidadImagenes.length >= MAX_STATIC_PAGE_IMAGES ? "is-disabled" : ""}`}>
+                            Agregar foto
+                            <input
+                              type="file"
+                              accept={IMAGE_FILE_ACCEPT}
+                              style={{ display: "none" }}
+                              disabled={politicaPrivacidadImagenes.length >= MAX_STATIC_PAGE_IMAGES}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.currentTarget.value = "";
+                                if (file) void subirImagenPagina("politica-privacidad", file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                        {politicaPrivacidadImagenes.length ? (
+                          <div className="adm-page-images-grid">
+                            {politicaPrivacidadImagenes.map((url, index) => (
+                              <div className="adm-page-image-card" key={`${url}-${index}`}>
+                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
+                                <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("politica-privacidad", index)}>
+                                  Quitar
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="adm-page-images-empty">No hay fotos cargadas.</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="adm-notepad-footer">
+                      <span className="adm-notepad-ok">{politicaPrivacidadDraft.okMsg}</span>
+                      <span className="adm-notepad-err">{politicaPrivacidadDraft.errMsg}</span>
+                      <button className="adm-notepad-save" onClick={() => guardarPagina("politica-privacidad")}>
+                        Guardar cambios
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="adm-page-editor-col">
+                  <div className="adm-notepad adm-notepad-preview">
+                    <div className="adm-notepad-header">
+                      <p className="adm-notepad-header-title">Preview</p>
+                      <span className="adm-notepad-md-badge">LIVE</span>
+                    </div>
+                    <div className="adm-md-preview" dangerouslySetInnerHTML={{ __html: politicaPrivacidadHtml }} />
+                    <StaticPageGallery images={politicaPrivacidadImagenes} className="adm-page-preview-gallery" />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {tab === "arrepentimiento" ? (
+            <>
+              <SectionTitle title="Solicitudes de arrepentimiento" />
+              <div className="adm-list-search" style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  value={arrepentimientoSearch}
+                  onChange={(event) => setArrepentimientoSearch(event.target.value)}
+                  placeholder="Buscar por codigo, orden, nombre, email o telefono"
+                />
+                <span style={{ color: "#7b553a", fontWeight: 700 }}>
+                  {arrepentimientoQuery.data?.total ?? 0} solicitud{(arrepentimientoQuery.data?.total ?? 0) === 1 ? "" : "es"}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gap: "1rem" }}>
+                {arrepentimientoQuery.isLoading ? (
+                  <div className="adm-empty">Cargando solicitudes...</div>
+                ) : arrepentimientoItems.length === 0 ? (
+                  <div className="adm-empty">No hay solicitudes para mostrar.</div>
+                ) : (
+                  arrepentimientoItems.map((item) => (
+                    <article key={item.codigo_tramite} className="admin-card" style={{ padding: "1rem 1.1rem" }}>
+                      <div style={{ display: "grid", gap: "0.55rem" }}>
+                        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center" }}>
+                          <strong style={{ color: "#4A2C1A" }}>{item.nombre_apellido}</strong>
+                          <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
+                        </div>
+                        <div style={{ display: "grid", gap: "0.3rem", color: "#6F4B35" }}>
+                          <span><strong>Codigo:</strong> <code>{item.codigo_tramite}</code></span>
+                          <span><strong>Orden:</strong> {item.numero_orden}</span>
+                          <span><strong>Email:</strong> {item.email}</span>
+                          <span><strong>Telefono:</strong> {item.telefono}</span>
+                          <span><strong>Estado:</strong> {item.estado}</span>
+                        </div>
+                        <p style={{ margin: 0, color: "#5f4a39", lineHeight: 1.6 }}>{item.mensaje}</p>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+
+              <PaginationControls
+                page={arrepentimientoPage}
+                totalPages={arrepentimientoTotalPages}
+                onPrev={() => setArrepentimientoPage((prev) => Math.max(1, prev - 1))}
+                onNext={() => setArrepentimientoPage((prev) => Math.min(arrepentimientoTotalPages, prev + 1))}
+              />
             </>
           ) : null}
 
