@@ -39,6 +39,22 @@ type ClienteOrderNav = {
   direccion_envio?: unknown | null;
 };
 
+type ArrepentimientoSolicitudNav = {
+  codigo_tramite: string;
+  numero_orden: string;
+  estado: "pendiente" | "revisado" | "resuelto" | "desestimado" | string;
+  created_at: string;
+  updated_at: string;
+};
+
+function formatArrepentimientoEstado(estado: string): string {
+  const normalized = estado.trim().toLowerCase();
+  if (normalized === "resuelto") return "Aceptado";
+  if (normalized === "desestimado") return "Rechazado";
+  if (normalized === "revisado") return "En revision";
+  return "Pendiente";
+}
+
 function hasActiveShippingOrder(order: ClienteOrderNav): boolean {
   const estado = order.estado.trim().toLowerCase();
   return Boolean(order.direccion_envio) && ["pagada", "preparandose", "preparada", "enviada", "entregando"].includes(estado);
@@ -95,6 +111,13 @@ export function Navbar() {
     },
     refetchIntervalInBackground: true,
   });
+  const arrepentimientosQuery = useQuery({
+    queryKey: ["cliente", "arrepentimientos"],
+    queryFn: () => api.get<ArrepentimientoSolicitudNav[]>("/cliente/arrepentimientos"),
+    enabled: authReady && canSeeCliente,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  });
   const staffOrdersQuery = useQuery({
     queryKey: ["navbar", "staff-orders-alert"],
     queryFn: () => api.get<StaffOrderNav[]>("/vendedor/ordenes"),
@@ -139,6 +162,7 @@ export function Navbar() {
     () => (clienteOrdersQuery.data ?? []).filter(hasPendingCustomerOrder).length,
     [clienteOrdersQuery.data],
   );
+  const arrepentimientoSolicitudes = arrepentimientosQuery.data ?? [];
   const pendingOrdersLabel = pendingOrdersCount === 1
     ? "Tenes un pedido pendiente en Mis pedidos"
     : `Tenes ${pendingOrdersCount} pedidos pendientes en Mis pedidos`;
@@ -202,6 +226,29 @@ export function Navbar() {
           />
         ) : null}
       </span>
+    );
+  }
+
+  function renderArrepentimientosSummary(variant: "desktop" | "mobile") {
+    if (arrepentimientoSolicitudes.length === 0) return null;
+
+    return (
+      <div className={`navbar-arrepentimiento-summary navbar-arrepentimiento-summary-${variant}`}>
+        <p className="navbar-arrepentimiento-title">Mis formularios de arrepentimiento</p>
+        <div className="navbar-arrepentimiento-list">
+          {arrepentimientoSolicitudes.slice(0, 3).map((item) => {
+            const estado = item.estado.trim().toLowerCase();
+            return (
+              <div key={item.codigo_tramite} className="navbar-arrepentimiento-item">
+                <span className="navbar-arrepentimiento-order">Pedido {item.numero_orden}</span>
+                <span className={`navbar-arrepentimiento-status is-${estado}`}>
+                  {formatArrepentimientoEstado(item.estado)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     );
   }
 
@@ -415,6 +462,7 @@ export function Navbar() {
                           >
                             Mensajes
                           </Link>
+                          {renderArrepentimientosSummary("desktop")}
                         </>
                       ) : null}
                       {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (
@@ -563,6 +611,7 @@ export function Navbar() {
                     <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
                     <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>{renderOrdersLabel()}</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
+                    {renderArrepentimientosSummary("mobile")}
                   </div>
                 ) : null}
                 {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (

@@ -337,7 +337,10 @@ export function RealtimeBridge() {
       }
 
       if (topic === "arrepentimiento") {
-        void queryClient.invalidateQueries({ queryKey: ["admin", "arrepentimiento"] });
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["admin", "arrepentimiento"] }),
+          queryClient.invalidateQueries({ queryKey: ["cliente", "arrepentimientos"] }),
+        ]);
         return;
       }
 

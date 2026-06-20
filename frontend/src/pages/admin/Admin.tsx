@@ -646,14 +646,17 @@ type Pagina = {
   contenido: string;
 };
 
+type ArrepentimientoEstado = "pendiente" | "revisado" | "resuelto" | "desestimado";
+
 type ArrepentimientoSolicitudAdmin = {
   codigo_tramite: string;
+  usuario_id?: number | null;
   numero_orden: string;
   nombre_apellido: string;
   email: string;
   telefono: string;
   mensaje: string;
-  estado: "pendiente" | "revisado" | "resuelto" | string;
+  estado: ArrepentimientoEstado;
   created_at: string;
   updated_at: string;
 };
@@ -1076,6 +1079,17 @@ function buildArrepentimientoWhatsAppMessage(item: {
   codigo_tramite: string;
 }): string {
   return `Hola ${item.nombre_apellido}, te escribimos desde Nande Alfajores por tu solicitud de arrepentimiento del pedido ${item.numero_orden}. Tu codigo de tramite es ${item.codigo_tramite}.`;
+}
+
+const ARREPENTIMIENTO_ESTADOS: Array<{ value: ArrepentimientoEstado; label: string }> = [
+  { value: "pendiente", label: "Pendiente" },
+  { value: "revisado", label: "En revision" },
+  { value: "resuelto", label: "Aceptado" },
+  { value: "desestimado", label: "Rechazado" },
+];
+
+function formatArrepentimientoEstado(estado: string): string {
+  return ARREPENTIMIENTO_ESTADOS.find((item) => item.value === estado)?.label ?? estado;
 }
 
 function formatBirthdayCountdownLabel(daysUntil: number): string {
@@ -9858,7 +9872,7 @@ export function Admin() {
                           </div>
                           <div style={{ display: "grid", gap: "0.2rem" }}>
                             <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
-                            <span style={{ fontSize: "0.85rem", color: item.estado === "Pendiente" ? "#e65100" : "#2e7d32", fontWeight: 700, textTransform: "capitalize" }}>{item.estado}</span>
+                            <span style={{ fontSize: "0.85rem", color: item.estado === "pendiente" ? "#e65100" : item.estado === "desestimado" ? "#b91c1c" : "#2e7d32", fontWeight: 700 }}>{formatArrepentimientoEstado(item.estado)}</span>
                           </div>
                         </div>
                         <button type="button" className="adm-btn-secondary" onClick={() => setArrepentimientoModalItem(item)}>
@@ -10111,7 +10125,7 @@ export function Admin() {
                 <div>
                   <strong style={{ color: "#4A2C1A" }}>Estado actual</strong>
                   <p style={{ margin: "0.2rem 0 0", color: "#5f4a39", textTransform: "capitalize", fontWeight: 700 }}>
-                    {arrepentimientoModalItem.estado}
+                    {formatArrepentimientoEstado(arrepentimientoModalItem.estado)}
                   </p>
                 </div>
               </div>
@@ -10135,20 +10149,21 @@ export function Admin() {
               <div style={{ borderTop: "1px solid #e9d5c5", paddingTop: "1rem" }}>
                 <strong style={{ color: "#4A2C1A", display: "block", marginBottom: "0.5rem" }}>Cambiar estado</strong>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  {["pendiente", "resuelto", "desestimado"].map((st) => (
+                  {ARREPENTIMIENTO_ESTADOS.map((st) => (
                     <button
-                      key={st}
+                      key={st.value}
                       type="button"
-                      disabled={commandMutation.isPending || arrepentimientoModalItem.estado === st}
-                      className={arrepentimientoModalItem.estado === st ? "adm-btn-primary" : "adm-btn-secondary"}
+                      disabled={commandMutation.isPending || arrepentimientoModalItem.estado === st.value}
+                      className={arrepentimientoModalItem.estado === st.value ? "adm-btn-primary" : "adm-btn-secondary"}
                       onClick={() => {
                         commandMutation.mutate(
-                          { method: "patch", path: `/admin/arrepentimiento/${arrepentimientoModalItem.codigo_tramite}/estado`, body: { estado: st } },
+                          { method: "patch", path: `/admin/arrepentimiento/${arrepentimientoModalItem.codigo_tramite}/estado`, body: { estado: st.value } },
                           {
-                            onSuccess: () => {
+                            onSuccess: (data) => {
+                              const result = data as { solicitud?: ArrepentimientoSolicitudAdmin };
                               arrepentimientoQuery.refetch();
                               statsQuery.refetch();
-                              setArrepentimientoModalItem({ ...arrepentimientoModalItem, estado: st as any });
+                              setArrepentimientoModalItem(result.solicitud ?? { ...arrepentimientoModalItem, estado: st.value });
                               setEventbarMsg("Estado actualizado.");
                             },
                             onError: (err: any) => setEventbarErr(err?.message || "Error al actualizar estado")
@@ -10156,7 +10171,7 @@ export function Admin() {
                         );
                       }}
                     >
-                      <span style={{ textTransform: "capitalize" }}>{st}</span>
+                      <span>{st.label}</span>
                     </button>
                   ))}
                 </div>

@@ -2182,6 +2182,7 @@ async function ensureArrepentimientoSolicitudesSchema() {
   await pool.query(
     `CREATE TABLE IF NOT EXISTS arrepentimiento_solicitudes (
       codigo_tramite CHAR(36) PRIMARY KEY,
+      usuario_id INT NULL,
       numero_orden VARCHAR(80) NOT NULL,
       nombre_apellido VARCHAR(160) NOT NULL,
       email VARCHAR(160) NOT NULL,
@@ -2193,11 +2194,22 @@ async function ensureArrepentimientoSolicitudesSchema() {
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_arrepentimiento_created_at (created_at),
+      INDEX idx_arrepentimiento_usuario_created_at (usuario_id, created_at),
       INDEX idx_arrepentimiento_email_created_at (email, created_at),
       INDEX idx_arrepentimiento_numero_orden (numero_orden),
       INDEX idx_arrepentimiento_estado_created_at (estado, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
+  try {
+    await pool.query(
+      "ALTER TABLE arrepentimiento_solicitudes ADD COLUMN IF NOT EXISTS usuario_id INT NULL AFTER codigo_tramite"
+    );
+    await pool.query(
+      "ALTER TABLE arrepentimiento_solicitudes ADD INDEX idx_arrepentimiento_usuario_created_at (usuario_id, created_at)"
+    );
+  } catch (err) {
+    // No-op si la columna o el indice ya existen.
+  }
   try {
     await pool.query(
       "ALTER TABLE arrepentimiento_solicitudes MODIFY estado ENUM('pendiente','revisado','resuelto','desestimado') NOT NULL DEFAULT 'pendiente'"

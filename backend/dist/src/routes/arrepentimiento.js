@@ -7,6 +7,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const express_1 = require("express");
 const zod_1 = require("zod");
 const db_1 = require("../db");
+const auth_1 = require("../auth");
 const realtime_1 = require("../realtime");
 const router = (0, express_1.Router)();
 const arrepentimientoSchema = zod_1.z.object({
@@ -22,10 +23,13 @@ router.post("/", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Datos invalidos." });
         return;
     }
-    const codigoTramite = crypto_1.default.randomUUID();
+    const codigoTramite = crypto_1.default.randomUUID().split("-").join("").slice(0, 12).toUpperCase();
     const userAgent = req.get("user-agent")?.trim().slice(0, 255) || null;
+    const authUser = (0, auth_1.getAuthPayload)(req);
+    const usuarioId = authUser?.rol === "cliente" ? authUser.id : null;
     await (0, db_1.qRun)(db_1.pool, `INSERT INTO arrepentimiento_solicitudes (
       codigo_tramite,
+      usuario_id,
       numero_orden,
       nombre_apellido,
       email,
@@ -33,8 +37,9 @@ router.post("/", async (req, res) => {
       mensaje,
       ip_origen,
       user_agent
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
         codigoTramite,
+        usuarioId,
         parsed.data.numero_orden,
         parsed.data.nombre_apellido,
         parsed.data.email,

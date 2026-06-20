@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { pool, qRun } from "../db";
+import { getAuthPayload } from "../auth";
 import { emitRealtime } from "../realtime";
 
 const router = Router();
@@ -23,11 +24,14 @@ router.post("/", async (req, res) => {
 
   const codigoTramite = crypto.randomUUID().split("-").join("").slice(0, 12).toUpperCase();
   const userAgent = req.get("user-agent")?.trim().slice(0, 255) || null;
+  const authUser = getAuthPayload(req);
+  const usuarioId = authUser?.rol === "cliente" ? authUser.id : null;
 
   await qRun(
     pool,
     `INSERT INTO arrepentimiento_solicitudes (
       codigo_tramite,
+      usuario_id,
       numero_orden,
       nombre_apellido,
       email,
@@ -35,9 +39,10 @@ router.post("/", async (req, res) => {
       mensaje,
       ip_origen,
       user_agent
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       codigoTramite,
+      usuarioId,
       parsed.data.numero_orden,
       parsed.data.nombre_apellido,
       parsed.data.email,

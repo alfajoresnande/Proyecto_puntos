@@ -3457,13 +3457,35 @@ router.patch("/arrepentimiento/:codigo_tramite/estado", async (req, res) => {
     res.status(400).json({ error: "Codigo invalido." });
     return;
   }
-  if (!["pendiente", "resuelto", "desestimado"].includes(estado)) {
+  if (!["pendiente", "revisado", "resuelto", "desestimado"].includes(estado)) {
     res.status(400).json({ error: "Estado invalido." });
     return;
   }
-  await qRun(pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE codigo_tramite = ?", [estado, codigo_tramite]);
+  const { affectedRows } = await qRun(pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE codigo_tramite = ?", [estado, codigo_tramite]);
+  if (affectedRows === 0) {
+    res.status(404).json({ error: "Solicitud no encontrada." });
+    return;
+  }
+  const solicitud = await qOne(
+    pool,
+    `SELECT
+       codigo_tramite,
+       usuario_id,
+       numero_orden,
+       nombre_apellido,
+       email,
+       telefono,
+       mensaje,
+       estado,
+       created_at,
+       updated_at
+     FROM arrepentimiento_solicitudes
+     WHERE codigo_tramite = ?
+     LIMIT 1`,
+    [codigo_tramite],
+  );
   emitRealtime(["arrepentimiento"]);
-  res.json({ ok: true });
+  res.json({ ok: true, solicitud });
 });
 
 /**

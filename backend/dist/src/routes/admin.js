@@ -2918,6 +2918,39 @@ router.get("/arrepentimiento", async (req, res) => {
         totalPages: Math.max(1, Math.ceil(total / limit)),
     });
 });
+router.patch("/arrepentimiento/:codigo_tramite/estado", async (req, res) => {
+    const codigo_tramite = req.params.codigo_tramite;
+    const { estado } = req.body;
+    if (!codigo_tramite || typeof codigo_tramite !== "string") {
+        res.status(400).json({ error: "Codigo invalido." });
+        return;
+    }
+    if (!["pendiente", "revisado", "resuelto", "desestimado"].includes(estado)) {
+        res.status(400).json({ error: "Estado invalido." });
+        return;
+    }
+    const { affectedRows } = await (0, db_1.qRun)(db_1.pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE codigo_tramite = ?", [estado, codigo_tramite]);
+    if (affectedRows === 0) {
+        res.status(404).json({ error: "Solicitud no encontrada." });
+        return;
+    }
+    const solicitud = await (0, db_1.qOne)(db_1.pool, `SELECT
+       codigo_tramite,
+       usuario_id,
+       numero_orden,
+       nombre_apellido,
+       email,
+       telefono,
+       mensaje,
+       estado,
+       created_at,
+       updated_at
+     FROM arrepentimiento_solicitudes
+     WHERE codigo_tramite = ?
+     LIMIT 1`, [codigo_tramite]);
+    (0, realtime_1.emitRealtime)(["arrepentimiento"]);
+    res.json({ ok: true, solicitud });
+});
 /**
  * POST /admin/puntos/reconciliar-saldos
  * Recalcula puntos_saldo de uno o todos los usuarios desde movimientos_puntos.

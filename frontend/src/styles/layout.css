@@ -869,6 +869,74 @@ html.eventbar-visible {
   color: #A86A3D;
 }
 
+.navbar-arrepentimiento-summary {
+  border-top: 1px solid rgba(107, 62, 38, 0.14);
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.28rem;
+  padding: 0.62rem 0.55rem 0.45rem;
+}
+
+.navbar-arrepentimiento-title {
+  color: #6B3E26;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.navbar-arrepentimiento-list {
+  display: grid;
+  gap: 0.36rem;
+}
+
+.navbar-arrepentimiento-item {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  justify-content: space-between;
+}
+
+.navbar-arrepentimiento-order {
+  color: #4A2C1A;
+  font-size: 0.76rem;
+  font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-arrepentimiento-status {
+  border: 1px solid rgba(107, 62, 38, 0.16);
+  border-radius: 999px;
+  color: #6B3E26;
+  flex: 0 0 auto;
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 0.16rem 0.42rem;
+}
+
+.navbar-arrepentimiento-status.is-resuelto {
+  background: #E8F7E7;
+  border-color: #B9E7BA;
+  color: #24732A;
+}
+
+.navbar-arrepentimiento-status.is-desestimado {
+  background: #FCEAEA;
+  border-color: #F0B8B8;
+  color: #9C2C2C;
+}
+
+.navbar-arrepentimiento-status.is-revisado {
+  background: #FFF4D8;
+  border-color: #F0D08B;
+  color: #815400;
+}
+
 .navbar-points {
   background: #6B3E26;
   color: #ffffff;
@@ -1048,6 +1116,14 @@ html.eventbar-visible {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+}
+
+.navbar-arrepentimiento-summary-mobile {
+  background: rgba(255, 248, 240, 0.72);
+  border: 1px solid rgba(107, 62, 38, 0.14);
+  border-radius: 12px;
+  margin-top: 0.35rem;
+  padding: 0.7rem;
 }
 
 .navbar-mobile-user .navbar-name {

@@ -1094,6 +1094,21 @@ router.get("/movimientos", async (req, res) => {
      ORDER BY mp.created_at DESC LIMIT 100`, [req.user.id]);
     res.json(rows);
 });
+router.get("/arrepentimientos", async (req, res) => {
+    const email = req.user.email.trim().toLowerCase();
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT
+       codigo_tramite,
+       numero_orden,
+       estado,
+       created_at,
+       updated_at
+     FROM arrepentimiento_solicitudes
+     WHERE usuario_id = ?
+        OR LOWER(email) = ?
+     ORDER BY created_at DESC
+     LIMIT 10`, [req.user.id, email]);
+    res.json(rows);
+});
 router.get("/canjes", async (req, res) => {
     const rows = await (0, db_1.qAll)(db_1.pool, `SELECT c.id, c.codigo_retiro, c.puntos_usados, c.estado, c.fecha_limite_retiro, c.notas, c.created_at,
             p.nombre AS producto_nombre, p.imagen_url AS producto_imagen,
