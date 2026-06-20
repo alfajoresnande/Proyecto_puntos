@@ -6,7 +6,7 @@ const PAGE_LINKS = [
   { to: "/catalogo", label: "Canjes" },
   { to: "/sobre-nosotros", label: "Quienes Somos" },
   { to: "/terminos", label: "Terminos y condiciones" },
-  { to: "/politica-privacidad", label: "Politica de privacidad" },
+  { to: "/politica-privacidad", label: "Politicas de privacidad" },
   { to: "/boton-arrepentimiento", label: "Boton de arrepentimiento" },
 ] as const;
 
