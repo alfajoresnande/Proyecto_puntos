@@ -2187,7 +2187,7 @@ async function ensureArrepentimientoSolicitudesSchema() {
       email VARCHAR(160) NOT NULL,
       telefono VARCHAR(40) NOT NULL,
       mensaje TEXT NOT NULL,
-      estado ENUM('pendiente','revisado','resuelto') NOT NULL DEFAULT 'pendiente',
+      estado ENUM('pendiente','revisado','resuelto','desestimado') NOT NULL DEFAULT 'pendiente',
       ip_origen VARCHAR(64) NULL,
       user_agent VARCHAR(255) NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2198,6 +2198,13 @@ async function ensureArrepentimientoSolicitudesSchema() {
       INDEX idx_arrepentimiento_estado_created_at (estado, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
+  try {
+    await pool.query(
+      "ALTER TABLE arrepentimiento_solicitudes MODIFY estado ENUM('pendiente','revisado','resuelto','desestimado') NOT NULL DEFAULT 'pendiente'"
+    );
+  } catch (err) {
+    // No-op si falla
+  }
 }
 
 pool

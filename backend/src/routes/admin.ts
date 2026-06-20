@@ -3457,7 +3457,7 @@ router.patch("/arrepentimiento/:codigo_tramite/estado", async (req, res) => {
     res.status(400).json({ error: "Codigo invalido." });
     return;
   }
-  if (!["Pendiente", "Resuelto", "Desestimado"].includes(estado)) {
+  if (!["pendiente", "resuelto", "desestimado"].includes(estado)) {
     res.status(400).json({ error: "Estado invalido." });
     return;
   }

@@ -10135,7 +10135,7 @@ export function Admin() {
               <div style={{ borderTop: "1px solid #e9d5c5", paddingTop: "1rem" }}>
                 <strong style={{ color: "#4A2C1A", display: "block", marginBottom: "0.5rem" }}>Cambiar estado</strong>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
-                  {["Pendiente", "Resuelto", "Desestimado"].map((st) => (
+                  {["pendiente", "resuelto", "desestimado"].map((st) => (
                     <button
                       key={st}
                       type="button"
@@ -10156,7 +10156,7 @@ export function Admin() {
                         );
                       }}
                     >
-                      {st}
+                      <span style={{ textTransform: "capitalize" }}>{st}</span>
                     </button>
                   ))}
                 </div>
