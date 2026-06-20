@@ -3497,6 +3497,10 @@ body.catalogo-background .pagina-page {
   line-height: 1.65;
 }
 
+.arrepentimiento-form-lead {
+  padding-top: 0.2rem;
+}
+
 .arrepentimiento-contact-list {
   display: grid;
   gap: 0.85rem;

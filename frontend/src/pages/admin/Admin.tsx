@@ -1068,6 +1068,14 @@ function buildBirthdayCustomerWhatsAppMessage(item: UpcomingBirthday): string {
     : `Hola ${item.usuario.nombre}, desde Ñandé Alfajores queremos saludarte por tu próximo cumpleaños del ${formatDateStamp(item.nextBirthdayStamp)}.`;
 }
 
+function buildArrepentimientoWhatsAppMessage(item: {
+  nombre_apellido: string;
+  numero_orden: string;
+  codigo_tramite: string;
+}): string {
+  return `Hola ${item.nombre_apellido}, te escribimos desde Nande Alfajores por tu solicitud de arrepentimiento del pedido ${item.numero_orden}. Tu codigo de tramite es ${item.codigo_tramite}.`;
+}
+
 function formatBirthdayCountdownLabel(daysUntil: number): string {
   if (daysUntil <= 0) return "Hoy";
   if (daysUntil === 1) return "Mañana";
@@ -9821,24 +9829,70 @@ export function Admin() {
                 ) : arrepentimientoItems.length === 0 ? (
                   <div className="adm-empty">No hay solicitudes para mostrar.</div>
                 ) : (
-                  arrepentimientoItems.map((item) => (
-                    <article key={item.codigo_tramite} className="admin-card" style={{ padding: "1rem 1.1rem" }}>
-                      <div style={{ display: "grid", gap: "0.55rem" }}>
-                        <div style={{ display: "flex", gap: "0.75rem", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center" }}>
-                          <strong style={{ color: "#4A2C1A" }}>{item.nombre_apellido}</strong>
-                          <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
+                  arrepentimientoItems.map((item) => {
+                    const clientPhone = normalizeWhatsAppPhone(item.telefono);
+                    const whatsappUrl = clientPhone
+                      ? buildWhatsAppUrl(clientPhone, buildArrepentimientoWhatsAppMessage(item))
+                      : "";
+
+                    return (
+                      <article key={item.codigo_tramite} className="admin-card" style={{ padding: "1rem 1.1rem" }}>
+                        <div style={{ display: "grid", gap: "0.9rem" }}>
+                          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center" }}>
+                            <div style={{ display: "grid", gap: "0.2rem" }}>
+                              <strong style={{ color: "#4A2C1A", fontSize: "1rem" }}>{item.nombre_apellido}</strong>
+                              <span style={{ color: "#7b553a", fontSize: "0.88rem", fontWeight: 700 }}>Pedido {item.numero_orden}</span>
+                            </div>
+                            <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
+                          </div>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
+                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
+                              <strong>Codigo de tramite</strong>
+                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39" }}><code>{item.codigo_tramite}</code></p>
+                            </div>
+                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
+                              <strong>Email</strong>
+                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39", wordBreak: "break-word" }}>{item.email}</p>
+                            </div>
+                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
+                              <strong>Telefono</strong>
+                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39" }}>{item.telefono}</p>
+                            </div>
+                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
+                              <strong>Estado</strong>
+                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39", textTransform: "capitalize" }}>{item.estado}</p>
+                            </div>
+                          </div>
+
+                          <div className="admin-card" style={{ padding: "0.95rem 1rem", background: "#fffaf4" }}>
+                            <strong style={{ color: "#4A2C1A" }}>Mensaje del cliente</strong>
+                            <p style={{ margin: "0.55rem 0 0", color: "#5f4a39", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{item.mensaje}</p>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                            <a
+                              href={`mailto:${item.email}`}
+                              className="adm-btn-secondary"
+                              style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                            >
+                              Enviar email
+                            </a>
+                            <button
+                              type="button"
+                              className="adm-btn-secondary"
+                              disabled={!whatsappUrl}
+                              onClick={() => {
+                                if (whatsappUrl) window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              {whatsappUrl ? "WhatsApp reclamo" : "Sin WhatsApp"}
+                            </button>
+                          </div>
                         </div>
-                        <div style={{ display: "grid", gap: "0.3rem", color: "#6F4B35" }}>
-                          <span><strong>Codigo:</strong> <code>{item.codigo_tramite}</code></span>
-                          <span><strong>Orden:</strong> {item.numero_orden}</span>
-                          <span><strong>Email:</strong> {item.email}</span>
-                          <span><strong>Telefono:</strong> {item.telefono}</span>
-                          <span><strong>Estado:</strong> {item.estado}</span>
-                        </div>
-                        <p style={{ margin: 0, color: "#5f4a39", lineHeight: 1.6 }}>{item.mensaje}</p>
-                      </div>
-                    </article>
-                  ))
+                      </article>
+                    );
+                  })
                 )}
               </div>
 

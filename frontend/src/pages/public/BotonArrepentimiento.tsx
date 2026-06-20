@@ -89,10 +89,6 @@ export function BotonArrepentimiento() {
           <aside className="arrepentimiento-contact-panel">
             <p className="arrepentimiento-eyebrow">Contacto</p>
             <h1 className="pagina-title arrepentimiento-title">Boton de arrepentimiento</h1>
-            <p className="arrepentimiento-lead">
-              Si te arrepentiste de una compra, puedes pedir la cancelacion enviando este formulario con tu numero de orden.
-              Tienes un maximo de 10 dias corridos desde que recibiste el producto.
-            </p>
 
             <div className="arrepentimiento-contact-list">
               <a href={INSTAGRAM_PROFILE_URL} target="_blank" rel="noreferrer" className="arrepentimiento-contact-item">
@@ -125,6 +121,11 @@ export function BotonArrepentimiento() {
           </aside>
 
           <div className="arrepentimiento-form-panel">
+            <p className="arrepentimiento-lead arrepentimiento-form-lead">
+              Si te arrepentiste de una compra, puedes pedir la cancelacion enviando este formulario con tu numero de
+              pedido. Tienes un maximo de 10 dias corridos desde que recibiste el producto.
+            </p>
+
             {successCode ? (
               <div className="arrepentimiento-confirmation" role="status">
                 <h2>Solicitud enviada</h2>
@@ -137,7 +138,7 @@ export function BotonArrepentimiento() {
 
             <form className="arrepentimiento-form" onSubmit={handleSubmit}>
               <label className="arrepentimiento-field">
-                <span>Numero de orden</span>
+                <span>Numero de pedido</span>
                 <input
                   value={form.numero_orden}
                   onChange={(event) => updateField("numero_orden", event.target.value)}

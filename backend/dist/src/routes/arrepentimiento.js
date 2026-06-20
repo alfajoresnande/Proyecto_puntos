@@ -10,7 +10,7 @@ const db_1 = require("../db");
 const realtime_1 = require("../realtime");
 const router = (0, express_1.Router)();
 const arrepentimientoSchema = zod_1.z.object({
-    numero_orden: zod_1.z.string().trim().min(1, "Debes indicar el numero de orden.").max(80, "El numero de orden es demasiado largo."),
+    numero_orden: zod_1.z.string().trim().min(1, "Debes indicar tu numero de pedido.").max(80, "El numero de pedido es demasiado largo."),
     nombre_apellido: zod_1.z.string().trim().min(3, "Debes indicar tu nombre y apellido.").max(160, "El nombre es demasiado largo."),
     email: zod_1.z.string().trim().email("Debes ingresar un email valido.").max(160, "El email es demasiado largo."),
     telefono: zod_1.z.string().trim().min(6, "Debes indicar un telefono de contacto.").max(40, "El telefono es demasiado largo."),
