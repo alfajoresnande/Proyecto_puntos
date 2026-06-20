@@ -1,14 +1,15 @@
 .footer {
-  padding: 1.85rem clamp(1.25rem, 4vw, 5rem);
+  width: 100%;
+  padding: 2.5rem 0;
 }
 
 .footer .footer-inner {
   width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 0 clamp(0.5rem, 2vw, 3rem);
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 0 clamp(3rem, 10vw, 8rem);
   display: grid;
-  grid-template-columns: minmax(220px, 0.85fr) minmax(440px, 1.2fr) minmax(260px, 0.95fr);
+  grid-template-columns: minmax(250px, 1fr) minmax(440px, 1.2fr) minmax(290px, 1fr);
   align-items: center;
   gap: clamp(1rem, 2.2vw, 2rem);
 }
@@ -32,12 +33,12 @@
 }
 
 .footer .footer-logo img {
-  height: 52px;
+  height: 90px;
   width: auto;
   object-fit: contain;
   background: #fff;
-  border-radius: 10px;
-  padding: 4px 10px;
+  border-radius: 14px;
+  padding: 6px 14px;
 }
 
 .footer .footer-tagline {
@@ -112,17 +113,18 @@
 }
 
 .footer .footer-badge-orgullo {
-  height: 72px;
+  height: 120px;
 }
 
 .footer .footer-badge-hecho {
-  height: 104px;
-  border-radius: 12px;
+  height: 160px;
+  border-radius: 16px;
 }
 
 @media (max-width: 1180px) {
   .footer .footer-inner {
     grid-template-columns: minmax(180px, 0.8fr) minmax(340px, 1.05fr) minmax(220px, 0.9fr);
+    padding: 0 clamp(1.5rem, 5vw, 3rem);
   }
 
   .footer .footer-link {
@@ -130,11 +132,11 @@
   }
 
   .footer .footer-badge-orgullo {
-    height: 62px;
+    height: 90px;
   }
 
   .footer .footer-badge-hecho {
-    height: 90px;
+    height: 120px;
   }
 }
 
@@ -142,8 +144,9 @@
   .footer .footer-inner {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 2rem;
     text-align: center;
+    padding: 0 2rem;
   }
 
   .footer .footer-col-left,
@@ -170,7 +173,11 @@
 
 @media (max-width: 640px) {
   .footer {
-    padding: 1.3rem 0.9rem;
+    padding: 2rem 0;
+  }
+
+  .footer .footer-inner {
+    padding: 0 1.5rem;
   }
 
   .footer .footer-col-center {
@@ -178,14 +185,14 @@
   }
 
   .footer .footer-logo img {
-    height: 42px;
+    height: 70px;
   }
 
   .footer .footer-badge-orgullo {
-    height: 52px;
+    height: 70px;
   }
 
   .footer .footer-badge-hecho {
-    height: 76px;
+    height: 100px;
   }
 }

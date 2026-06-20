@@ -3450,6 +3450,22 @@ router.get("/arrepentimiento", async (req, res) => {
   });
 });
 
+router.patch("/arrepentimiento/:id/estado", async (req, res) => {
+  const id = Number(req.params.id);
+  const { estado } = req.body;
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "ID invalido." });
+    return;
+  }
+  if (!["Pendiente", "Resuelto", "Desestimado"].includes(estado)) {
+    res.status(400).json({ error: "Estado invalido." });
+    return;
+  }
+  await qRun(pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE id = ?", [estado, id]);
+  emitRealtime(["arrepentimiento"]);
+  res.json({ ok: true });
+});
+
 /**
  * POST /admin/puntos/reconciliar-saldos
  * Recalcula puntos_saldo de uno o todos los usuarios desde movimientos_puntos.

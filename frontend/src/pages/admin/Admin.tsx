@@ -278,6 +278,7 @@ type Stats = {
   codigos_activos: number;
   canjes_pendientes: number;
   puntos_emitidos: number;
+  arrepentimientos_pendientes: number;
 };
 
 type SecurityEventPersisted = {
@@ -951,6 +952,7 @@ const DISCOUNT_CLIENT_TYPES: TipoCliente[] = ["cliente", "mayorista", "empleado"
 type AdminAlertState = {
   ordenes: number;
   canjes: number;
+  arrepentimiento: number;
 };
 
 type SaveFilePickerWindow = Window & {
@@ -2089,6 +2091,7 @@ export function Admin() {
   });
   const [arrepentimientoSearch, setArrepentimientoSearch] = useState("");
   const [arrepentimientoPage, setArrepentimientoPage] = useState(1);
+  const [arrepentimientoModalItem, setArrepentimientoModalItem] = useState<ArrepentimientoSolicitudAdmin | null>(null);
 
   const [confirmacion, setConfirmacion] = useState<ConfirmacionCanje | null>(null);
   const [codigoCanjeAdmin, setCodigoCanjeAdmin] = useState("");
@@ -2097,7 +2100,7 @@ export function Admin() {
   const [canjeCodigoAdminOk, setCanjeCodigoAdminOk] = useState("");
   const [buscandoCanjeAdmin, setBuscandoCanjeAdmin] = useState(false);
   const [procesandoCanjeAdmin, setProcesandoCanjeAdmin] = useState(false);
-  const [adminAlerts, setAdminAlerts] = useState<AdminAlertState>({ ordenes: 0, canjes: 0 });
+  const [adminAlerts, setAdminAlerts] = useState<AdminAlertState>({ ordenes: 0, canjes: 0, arrepentimiento: 0 });
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">(
     typeof window !== "undefined" && "Notification" in window ? window.Notification.permission : "unsupported",
   );
@@ -3144,6 +3147,21 @@ export function Admin() {
       setAdminAlerts((prev) => ({ ...prev, canjes: 0 }));
     }
   }, [adminAlerts.canjes, tab]);
+
+  useEffect(() => {
+    if (tab === "arrepentimiento" && adminAlerts.arrepentimiento > 0) {
+      setAdminAlerts((prev) => ({ ...prev, arrepentimiento: 0 }));
+    }
+  }, [adminAlerts.arrepentimiento, tab]);
+
+  useEffect(() => {
+    if (statsQuery.data) {
+      setAdminAlerts((prev) => ({
+        ...prev,
+        arrepentimiento: statsQuery.data.arrepentimientos_pendientes ?? 0,
+      }));
+    }
+  }, [statsQuery.data]);
 
   useEffect(() => {
     if (!cumpleanosPorAvisarConWhatsapp.length) return;
@@ -5758,7 +5776,7 @@ export function Admin() {
             {renderAdminNavLabel("Privacidad")}
           </button>
           <button className={`admin-nav-btn ${tab === "arrepentimiento" ? "active" : ""}`} onClick={() => seleccionarTab("arrepentimiento")}>
-            {renderAdminNavLabel("Arrepentimiento")}
+            {renderAdminNavLabel("Arrepentimiento", adminAlerts.arrepentimiento)}
           </button>
           <button className={`admin-nav-btn ${tab === "layout-timeline" ? "active" : ""}`} onClick={() => seleccionarTab("layout-timeline")}>
             {renderAdminNavLabel("Línea de Tiempo")}
@@ -9830,66 +9848,22 @@ export function Admin() {
                   <div className="adm-empty">No hay solicitudes para mostrar.</div>
                 ) : (
                   arrepentimientoItems.map((item) => {
-                    const clientPhone = normalizeWhatsAppPhone(item.telefono);
-                    const whatsappUrl = clientPhone
-                      ? buildWhatsAppUrl(clientPhone, buildArrepentimientoWhatsAppMessage(item))
-                      : "";
-
+                    const shortCode = item.codigo_tramite.split("-")[0] || item.codigo_tramite;
                     return (
-                      <article key={item.codigo_tramite} className="admin-card" style={{ padding: "1rem 1.1rem" }}>
-                        <div style={{ display: "grid", gap: "0.9rem" }}>
-                          <div style={{ display: "flex", gap: "0.75rem", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center" }}>
-                            <div style={{ display: "grid", gap: "0.2rem" }}>
-                              <strong style={{ color: "#4A2C1A", fontSize: "1rem" }}>{item.nombre_apellido}</strong>
-                              <span style={{ color: "#7b553a", fontSize: "0.88rem", fontWeight: 700 }}>Pedido {item.numero_orden}</span>
-                            </div>
+                      <article key={item.codigo_tramite} className="admin-card" style={{ padding: "0.8rem 1.1rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+                        <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                          <div style={{ display: "grid", gap: "0.2rem" }}>
+                            <strong style={{ color: "#4A2C1A", fontSize: "1rem" }}>{item.nombre_apellido}</strong>
+                            <span style={{ color: "#7b553a", fontSize: "0.85rem", fontWeight: 700 }}><code>{shortCode}...</code></span>
+                          </div>
+                          <div style={{ display: "grid", gap: "0.2rem" }}>
                             <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
-                          </div>
-
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "0.75rem" }}>
-                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
-                              <strong>Codigo de tramite</strong>
-                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39" }}><code>{item.codigo_tramite}</code></p>
-                            </div>
-                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
-                              <strong>Email</strong>
-                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39", wordBreak: "break-word" }}>{item.email}</p>
-                            </div>
-                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
-                              <strong>Telefono</strong>
-                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39" }}>{item.telefono}</p>
-                            </div>
-                            <div className="admin-card" style={{ padding: "0.8rem", background: "#fffaf4" }}>
-                              <strong>Estado</strong>
-                              <p style={{ margin: "0.3rem 0 0", color: "#5f4a39", textTransform: "capitalize" }}>{item.estado}</p>
-                            </div>
-                          </div>
-
-                          <div className="admin-card" style={{ padding: "0.95rem 1rem", background: "#fffaf4" }}>
-                            <strong style={{ color: "#4A2C1A" }}>Mensaje del cliente</strong>
-                            <p style={{ margin: "0.55rem 0 0", color: "#5f4a39", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{item.mensaje}</p>
-                          </div>
-
-                          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                            <a
-                              href={`mailto:${item.email}`}
-                              className="adm-btn-secondary"
-                              style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                            >
-                              Enviar email
-                            </a>
-                            <button
-                              type="button"
-                              className="adm-btn-secondary"
-                              disabled={!whatsappUrl}
-                              onClick={() => {
-                                if (whatsappUrl) window.open(whatsappUrl, "_blank", "noopener,noreferrer");
-                              }}
-                            >
-                              {whatsappUrl ? "WhatsApp reclamo" : "Sin WhatsApp"}
-                            </button>
+                            <span style={{ fontSize: "0.85rem", color: item.estado === "Pendiente" ? "#e65100" : "#2e7d32", fontWeight: 700, textTransform: "capitalize" }}>{item.estado}</span>
                           </div>
                         </div>
+                        <button type="button" className="adm-btn-secondary" onClick={() => setArrepentimientoModalItem(item)}>
+                          Ver
+                        </button>
                       </article>
                     );
                   })
@@ -10113,6 +10087,106 @@ export function Admin() {
           </div>
         </div>
       )}
+          {arrepentimientoModalItem ? (
+        <div className="adm-modal-overlay" onClick={() => setArrepentimientoModalItem(null)}>
+          <div className="adm-modal-content" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="adm-modal-header">
+              <h2>Detalle de Arrepentimiento</h2>
+              <button className="adm-btn-close" onClick={() => setArrepentimientoModalItem(null)}>✕</button>
+            </div>
+            <div className="adm-modal-body" style={{ display: "grid", gap: "1rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Nombre</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39" }}>{arrepentimientoModalItem.nombre_apellido}</p>
+                </div>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Pedido</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39" }}>{arrepentimientoModalItem.numero_orden}</p>
+                </div>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Codigo de trámite</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39" }}><code>{arrepentimientoModalItem.codigo_tramite}</code></p>
+                </div>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Estado actual</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39", textTransform: "capitalize", fontWeight: 700 }}>
+                    {arrepentimientoModalItem.estado}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Email</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39", wordBreak: "break-all" }}>{arrepentimientoModalItem.email}</p>
+                </div>
+                <div>
+                  <strong style={{ color: "#4A2C1A" }}>Telefono</strong>
+                  <p style={{ margin: "0.2rem 0 0", color: "#5f4a39" }}>{arrepentimientoModalItem.telefono}</p>
+                </div>
+              </div>
+
+              <div className="admin-card" style={{ padding: "0.95rem 1rem", background: "#fffaf4" }}>
+                <strong style={{ color: "#4A2C1A" }}>Mensaje del cliente</strong>
+                <p style={{ margin: "0.55rem 0 0", color: "#5f4a39", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{arrepentimientoModalItem.mensaje}</p>
+              </div>
+
+              <div style={{ borderTop: "1px solid #e9d5c5", paddingTop: "1rem" }}>
+                <strong style={{ color: "#4A2C1A", display: "block", marginBottom: "0.5rem" }}>Cambiar estado</strong>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  {["Pendiente", "Resuelto", "Desestimado"].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      disabled={commandMutation.isPending || arrepentimientoModalItem.estado === st}
+                      className={arrepentimientoModalItem.estado === st ? "adm-btn-primary" : "adm-btn-secondary"}
+                      onClick={() => {
+                        commandMutation.mutate(
+                          { method: "patch", path: `/admin/arrepentimiento/${arrepentimientoModalItem.id}/estado`, body: { estado: st } },
+                          {
+                            onSuccess: () => {
+                              arrepentimientoQuery.refetch();
+                              statsQuery.refetch();
+                              setArrepentimientoModalItem({ ...arrepentimientoModalItem, estado: st as any });
+                              setEventbarMsg("Estado actualizado.");
+                            },
+                            onError: (err: any) => setEventbarErr(err?.message || "Error al actualizar estado")
+                          }
+                        );
+                      }}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="adm-modal-footer">
+              <a
+                href={`mailto:${arrepentimientoModalItem.email}`}
+                className="adm-btn-secondary"
+                style={{ textDecoration: "none" }}
+              >
+                Enviar email
+              </a>
+              <button
+                type="button"
+                className="adm-btn-secondary"
+                onClick={() => {
+                  const clientPhone = normalizeWhatsAppPhone(arrepentimientoModalItem.telefono);
+                  const whatsappUrl = clientPhone ? buildWhatsAppUrl(clientPhone, buildArrepentimientoWhatsAppMessage(arrepentimientoModalItem)) : "";
+                  if (whatsappUrl) window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+                  else setEventbarErr("El teléfono no es válido para WhatsApp");
+                }}
+              >
+                WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </section>
   );
 }
