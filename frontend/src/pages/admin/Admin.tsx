@@ -10143,7 +10143,7 @@ export function Admin() {
                       className={arrepentimientoModalItem.estado === st ? "adm-btn-primary" : "adm-btn-secondary"}
                       onClick={() => {
                         commandMutation.mutate(
-                          { method: "patch", path: `/admin/arrepentimiento/${arrepentimientoModalItem.id}/estado`, body: { estado: st } },
+                          { method: "patch", path: `/admin/arrepentimiento/${arrepentimientoModalItem.codigo_tramite}/estado`, body: { estado: st } },
                           {
                             onSuccess: () => {
                               arrepentimientoQuery.refetch();
