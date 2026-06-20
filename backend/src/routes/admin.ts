@@ -3450,18 +3450,18 @@ router.get("/arrepentimiento", async (req, res) => {
   });
 });
 
-router.patch("/arrepentimiento/:id/estado", async (req, res) => {
-  const id = Number(req.params.id);
+router.patch("/arrepentimiento/:codigo_tramite/estado", async (req, res) => {
+  const codigo_tramite = req.params.codigo_tramite;
   const { estado } = req.body;
-  if (!Number.isFinite(id) || id <= 0) {
-    res.status(400).json({ error: "ID invalido." });
+  if (!codigo_tramite || typeof codigo_tramite !== "string") {
+    res.status(400).json({ error: "Codigo invalido." });
     return;
   }
   if (!["Pendiente", "Resuelto", "Desestimado"].includes(estado)) {
     res.status(400).json({ error: "Estado invalido." });
     return;
   }
-  await qRun(pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE id = ?", [estado, id]);
+  await qRun(pool, "UPDATE arrepentimiento_solicitudes SET estado = ? WHERE codigo_tramite = ?", [estado, codigo_tramite]);
   emitRealtime(["arrepentimiento"]);
   res.json({ ok: true });
 });
