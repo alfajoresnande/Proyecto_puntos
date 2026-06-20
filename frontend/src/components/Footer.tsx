@@ -1,47 +1,59 @@
 import { Link } from "react-router-dom";
 import { INSTAGRAM_PROFILE_URL, WHATSAPP_COMPANY_URL } from "../lib/contact";
-import { useAuthStore } from "../store/authStore";
+
+const PAGE_LINKS = [
+  { to: "/tienda", label: "Tienda Online" },
+  { to: "/catalogo", label: "Canjes" },
+  { to: "/sobre-nosotros", label: "Quienes Somos" },
+  { to: "/terminos", label: "Terminos y condiciones" },
+  { to: "/politica-privacidad", label: "Politica de privacidad" },
+  { to: "/boton-arrepentimiento", label: "Boton de arrepentimiento" },
+] as const;
+
+const SOCIAL_LINKS = [
+  { href: INSTAGRAM_PROFILE_URL, label: "Instagram" },
+  { href: WHATSAPP_COMPANY_URL, label: "WhatsApp" },
+] as const;
 
 export function Footer() {
-  const user = useAuthStore((state) => state.user);
-
   return (
     <footer className="footer">
-      <div className="footer-inner">
-        <div className="footer-col footer-col-left">
-          <Link to="/" className="footer-logo">
+      <div className="footer-shell">
+        <div className="footer-brand">
+          <Link to="/" className="footer-logo" aria-label="Ir al inicio de Nande">
             <img src="/logo.png" alt="Nande" />
           </Link>
           <p className="footer-tagline">Casa de Alfajores, Dulces y Chocolates</p>
         </div>
 
-        <div className="footer-col footer-col-center">
-          <nav className="footer-nav-inline">
-            <Link to="/" className="footer-link">Inicio</Link>
-            <Link to="/tienda" className="footer-link">Tienda Online</Link>
-            <Link to="/catalogo" className="footer-link">Canjes</Link>
-            {!user ? <Link to="/login" className="footer-link">Iniciar Sesion</Link> : null}
-            {!user ? <Link to="/registro" className="footer-link">Registrarse</Link> : null}
-            {user?.rol === "cliente" ? <Link to="/cliente" className="footer-link">Mis Puntos</Link> : null}
-            {user?.rol === "admin" ? <Link to="/admin" className="footer-link">Panel Admin</Link> : null}
-            <Link to="/sobre-nosotros" className="footer-link">Quienes Somos</Link>
-            <Link to="/terminos" className="footer-link footer-link-wide">Terminos y condiciones</Link>
-            <Link to="/politica-privacidad" className="footer-link footer-link-wide">Politica de privacidad</Link>
-            <Link to="/boton-arrepentimiento" className="footer-link footer-link-wide">Boton de arrepentimiento</Link>
-            <a href={WHATSAPP_COMPANY_URL} target="_blank" rel="noreferrer" className="footer-link" aria-label="WhatsApp">
-              WhatsApp
-            </a>
-            <a href={INSTAGRAM_PROFILE_URL} target="_blank" rel="noreferrer" className="footer-link" aria-label="Instagram">
-              Instagram
-            </a>
-          </nav>
-        </div>
+        <div className="footer-sections">
+          <section className="footer-section" aria-labelledby="footer-pages-title">
+            <h3 id="footer-pages-title" className="footer-title">Paginas</h3>
+            <nav className="footer-links" aria-label="Paginas del sitio">
+              {PAGE_LINKS.map((item) => (
+                <Link key={item.to} to={item.to} className="footer-link">
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </section>
 
-        <div className="footer-col footer-col-right">
-          <div className="footer-badges">
-            <img src="/orgullosamente_footer.png" alt="Orgullosamente Correntinos" className="footer-badge footer-badge-orgullo" />
-            <img src="/hecho_en_corrientes.png" alt="Hecho en Corrientes" className="footer-badge footer-badge-hecho" />
-          </div>
+          <section className="footer-section" aria-labelledby="footer-social-title">
+            <h3 id="footer-social-title" className="footer-title">Seguinos en</h3>
+            <div className="footer-links footer-links-social">
+              {SOCIAL_LINKS.map((item) => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="footer-link footer-social-link"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
     </footer>

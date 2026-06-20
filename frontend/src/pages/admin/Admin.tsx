@@ -3,7 +3,6 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
-import { StaticPageGallery } from "../../components/StaticPageGallery";
 import { apiUrl, mediaUrl } from "../../lib/apiBase";
 import { getCsrfToken } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
@@ -11,7 +10,7 @@ import {
   getLocalSaleQuickProductImage,
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
-import { MAX_STATIC_PAGE_IMAGES, extractPageImageUrls, rebuildPageContent, renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
+import { renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
 import { calculatePointsByAmount } from "../../lib/points";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { AreaExplanation } from "./components/AreaExplanation";
@@ -42,7 +41,6 @@ type AdminTab =
   | "canjes"
   | "codigos"
   | "crear"
-  | "sobre-nosotros"
   | "terminos"
   | "politica-privacidad"
   | "arrepentimiento"
@@ -79,7 +77,6 @@ const ADMIN_TABS: AdminTab[] = [
   "canjes",
   "codigos",
   "crear",
-  "sobre-nosotros",
   "terminos",
   "politica-privacidad",
   "arrepentimiento",
@@ -193,11 +190,6 @@ const ADMIN_AREA_EXPLANATIONS: Record<AdminTab, string[]> = {
     "Aca se crean usuarios manualmente cuando no queres que la persona pase por el registro normal.",
     "Podes crear clientes web, vendedores o administradores. Si es cliente, tambien podes elegir si sera cliente comun, mayorista o empleado.",
     "Los permisos deben asignarse con cuidado: vendedor puede operar ventas locales y admin puede gestionar el panel.",
-  ],
-  "sobre-nosotros": [
-    "Aca se edita la pagina publica Quienes Somos.",
-    "El contenido se escribe en Markdown y se puede previsualizar antes de guardar.",
-    "Tambien podes agregar fotos para acompanar la historia o informacion de la marca.",
   ],
   terminos: [
     "Aca se editan los Terminos y Condiciones que ven los clientes.",
@@ -940,7 +932,7 @@ type VentaLocalSubmitResult = {
   totalPuntosGanados?: number;
 };
 
-type StaticPageSlug = "sobre-nosotros" | "terminos" | "politica-privacidad";
+type StaticPageSlug = "terminos" | "politica-privacidad";
 
 const MOVIMIENTOS_INICIO_POR_PAGINA = 5;
 const LISTA_POR_PAGINA = 5;
@@ -1074,6 +1066,18 @@ function buildBirthdayCustomerWhatsAppMessage(item: UpcomingBirthday): string {
   return item.isToday
     ? `Hola ${item.usuario.nombre}, desde Ñandé Alfajores queremos desearte un muy feliz cumpleaños. Que tengas un hermoso día.`
     : `Hola ${item.usuario.nombre}, desde Ñandé Alfajores queremos saludarte por tu próximo cumpleaños del ${formatDateStamp(item.nextBirthdayStamp)}.`;
+}
+
+function formatBirthdayCountdownLabel(daysUntil: number): string {
+  if (daysUntil <= 0) return "Hoy";
+  if (daysUntil === 1) return "Mañana";
+  return `${daysUntil} dias`;
+}
+
+function formatBirthdayCountdownPhrase(daysUntil: number): string {
+  if (daysUntil <= 0) return "hoy";
+  if (daysUntil === 1) return "mañana";
+  return `en ${daysUntil} dias`;
 }
 
 function isAdminTab(value: string | null): value is AdminTab {
@@ -2063,12 +2067,6 @@ export function Admin() {
   const [editSucursalId, setEditSucursalId] = useState<number | null>(null);
   const [editSucursalDraft, setEditSucursalDraft] = useState<SucursalForm>(emptySucursalForm());
 
-  const [sobreDraft, setSobreDraft] = useState<EditorDraft>({
-    titulo: "",
-    contenido: "",
-    okMsg: "",
-    errMsg: "",
-  });
   const [terminosDraft, setTerminosDraft] = useState<EditorDraft>({
     titulo: "",
     contenido: "",
@@ -2266,13 +2264,6 @@ export function Admin() {
     refetchIntervalInBackground: true,
   });
 
-  const sobreQuery = useQuery({
-    queryKey: ["admin", "paginas", "sobre-nosotros"],
-    queryFn: () => api.get<Pagina>("/admin/paginas/sobre-nosotros"),
-    refetchInterval: 30000,
-    refetchIntervalInBackground: true,
-  });
-
   const terminosQuery = useQuery({
     queryKey: ["admin", "paginas", "terminos"],
     queryFn: () => api.get<Pagina>("/admin/paginas/terminos"),
@@ -2300,19 +2291,6 @@ export function Admin() {
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   });
-
-  useEffect(() => {
-    if (!sobreQuery.data) return;
-    setSobreDraft((prev) =>
-      prev.titulo || prev.contenido
-        ? prev
-        : {
-            ...prev,
-            titulo: sobreQuery.data.titulo,
-            contenido: sobreQuery.data.contenido,
-          },
-    );
-  }, [sobreQuery.data]);
 
   useEffect(() => {
     if (!terminosQuery.data) return;
@@ -3165,17 +3143,18 @@ export function Admin() {
     const alreadyShownForDay = window.localStorage.getItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY);
     if (alreadyShownForDay === todayStamp) return;
     window.localStorage.setItem(ADMIN_BIRTHDAY_TOAST_DAY_KEY, todayStamp);
+    const nextBirthday = cumpleanosPorAvisarConWhatsapp[0];
     showToast({
       tone: "info",
       title: cumpleanosPorAvisarConWhatsapp.length === 1 ? "Cumpleaños por avisar" : "Cumpleaños por avisar",
       message: cumpleanosPorAvisarConWhatsapp.length === 1
-        ? `${cumpleanosPorAvisarConWhatsapp[0]?.usuario.nombre} tiene cumpleaños dentro de ${cumpleanosAlertDays} días.`
-        : `Tienes ${cumpleanosPorAvisarConWhatsapp.length} clientes para avisar por cumpleaños dentro de ${cumpleanosAlertDays} días.`,
+        ? `${nextBirthday?.usuario.nombre} cumple ${formatBirthdayCountdownPhrase(nextBirthday?.daysUntil ?? 0)}.`
+        : `${nextBirthday?.usuario.nombre} cumple ${formatBirthdayCountdownPhrase(nextBirthday?.daysUntil ?? 0)}. Hay ${cumpleanosPorAvisarConWhatsapp.length} clientes para avisar.`,
       actionLabel: "Ver cumpleaños",
       onAction: () => navigate(`${panelBasePath}/cumpleanos`),
       duration: 9500,
     });
-  }, [cumpleanosAlertDays, cumpleanosPorAvisarConWhatsapp, navigate, panelBasePath, showToast, todayStamp]);
+  }, [cumpleanosPorAvisarConWhatsapp, navigate, panelBasePath, showToast, todayStamp]);
 
   useEffect(() => {
     setMovimientosInicioPage((prev) => Math.min(prev, totalMovimientosInicioPages));
@@ -3420,20 +3399,6 @@ export function Admin() {
     return sucursales.slice(start, start + LISTA_POR_PAGINA);
   }, [sucursales, sucursalesPage]);
 
-  const sobreImagenes = useMemo(
-    () => extractPageImageUrls(sobreDraft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES),
-    [sobreDraft.contenido],
-  );
-  const terminosImagenes = useMemo(
-    () => extractPageImageUrls(terminosDraft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES),
-    [terminosDraft.contenido],
-  );
-  const politicaPrivacidadImagenes = useMemo(
-    () => extractPageImageUrls(politicaPrivacidadDraft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES),
-    [politicaPrivacidadDraft.contenido],
-  );
-
-  const sobreHtml = useMemo(() => renderSafeMarkdown(stripPageImages(sobreDraft.contenido || "")), [sobreDraft.contenido]);
   const terminosHtml = useMemo(() => renderSafeMarkdown(stripPageImages(terminosDraft.contenido || "")), [terminosDraft.contenido]);
   const politicaPrivacidadHtml = useMemo(
     () => renderSafeMarkdown(stripPageImages(politicaPrivacidadDraft.contenido || "")),
@@ -5563,36 +5528,20 @@ export function Admin() {
   }
 
   function normalizarContenidoPagina(contenido: string): string {
-    const cuerpo = stripPageImages(contenido || "");
-    const imagenes = extractPageImageUrls(contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
-    return rebuildPageContent(cuerpo, imagenes);
+    return stripPageImages(contenido || "").trim();
   }
 
   function getPageDraft(slug: StaticPageSlug): EditorDraft {
-    if (slug === "sobre-nosotros") return sobreDraft;
-    if (slug === "terminos") return terminosDraft;
-    return politicaPrivacidadDraft;
+    return slug === "terminos" ? terminosDraft : politicaPrivacidadDraft;
   }
 
   function getPageDraftSetter(slug: StaticPageSlug) {
-    if (slug === "sobre-nosotros") return setSobreDraft;
-    if (slug === "terminos") return setTerminosDraft;
-    return setPoliticaPrivacidadDraft;
+    return slug === "terminos" ? setTerminosDraft : setPoliticaPrivacidadDraft;
   }
 
   async function guardarPagina(slug: StaticPageSlug) {
     const draft = getPageDraft(slug);
     const setDraft = getPageDraftSetter(slug);
-    const totalImagenes = extractPageImageUrls(draft.contenido || "").length;
-    if (totalImagenes > MAX_STATIC_PAGE_IMAGES) {
-      setDraft((prev) => ({
-        ...prev,
-        okMsg: "",
-        errMsg: `Solo se permiten hasta ${MAX_STATIC_PAGE_IMAGES} fotos.`,
-      }));
-      return;
-    }
-
     const contenidoNormalizado = normalizarContenidoPagina(draft.contenido || "");
     setDraft((prev) => ({ ...prev, okMsg: "", errMsg: "" }));
     try {
@@ -5626,66 +5575,6 @@ export function Admin() {
     } finally {
       setBusy(false);
     }
-  }
-
-  async function subirImagenPagina(slug: StaticPageSlug, file: File) {
-    const draft = getPageDraft(slug);
-    const setDraft = getPageDraftSetter(slug);
-    const imagenesActuales = extractPageImageUrls(draft.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
-
-    if (!isAllowedImageFile(file)) {
-      setDraft((prev) => ({
-        ...prev,
-        okMsg: "",
-        errMsg: "Solo puedes subir imagenes JPG, PNG o WEBP.",
-      }));
-      return;
-    }
-
-    if (imagenesActuales.length >= MAX_STATIC_PAGE_IMAGES) {
-      setDraft((prev) => ({
-        ...prev,
-        okMsg: "",
-        errMsg: `Llegaste al maximo de ${MAX_STATIC_PAGE_IMAGES} fotos.`,
-      }));
-      return;
-    }
-
-    try {
-      const upload = await uploadImageMutation.mutateAsync(file);
-      setDraft((prev) => {
-        const cuerpo = stripPageImages(prev.contenido || "");
-        const imagenes = extractPageImageUrls(prev.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
-        if (imagenes.length >= MAX_STATIC_PAGE_IMAGES) {
-          return {
-            ...prev,
-            okMsg: "",
-            errMsg: `Llegaste al maximo de ${MAX_STATIC_PAGE_IMAGES} fotos.`,
-          };
-        }
-        return {
-          ...prev,
-          errMsg: "",
-          contenido: rebuildPageContent(cuerpo, [...imagenes, upload.url]),
-        };
-      });
-    } catch (error) {
-      setDraft((prev) => ({ ...prev, errMsg: (error as Error).message }));
-    }
-  }
-
-  function quitarImagenPagina(slug: StaticPageSlug, index: number) {
-    const setDraft = getPageDraftSetter(slug);
-    setDraft((prev) => {
-      const cuerpo = stripPageImages(prev.contenido || "");
-      const imagenes = extractPageImageUrls(prev.contenido || "").slice(0, MAX_STATIC_PAGE_IMAGES);
-      const actualizadas = imagenes.filter((_, imageIndex) => imageIndex !== index);
-      return {
-        ...prev,
-        errMsg: "",
-        contenido: rebuildPageContent(cuerpo, actualizadas),
-      };
-    });
   }
 
   const stats = statsQuery.data;
@@ -5853,9 +5742,6 @@ export function Admin() {
           <span className="admin-nav-section">Configuracion</span>
           <button className={`admin-nav-btn ${tab === "crear" ? "active" : ""}`} onClick={() => seleccionarTab("crear")}>
             {renderAdminNavLabel("Crear usuario")}
-          </button>
-          <button className={`admin-nav-btn ${tab === "sobre-nosotros" ? "active" : ""}`} onClick={() => seleccionarTab("sobre-nosotros")}>
-            {renderAdminNavLabel("Quienes Somos")}
           </button>
           <button className={`admin-nav-btn ${tab === "terminos" ? "active" : ""}`} onClick={() => seleccionarTab("terminos")}>
             {renderAdminNavLabel("Terminos")}
@@ -7121,7 +7007,7 @@ export function Admin() {
                       <p>
                         {cumpleanosPorAvisarConWhatsapp
                           .slice(0, 4)
-                          .map((item) => `${item.usuario.nombre} (${item.isToday ? "hoy" : `${item.daysUntil} días`})`)
+                          .map((item) => `${item.usuario.nombre} (${formatBirthdayCountdownLabel(item.daysUntil)})`)
                           .join(", ")}
                         {cumpleanosPorAvisarConWhatsapp.length > 4 ? ` y ${cumpleanosPorAvisarConWhatsapp.length - 4} más.` : ""}
                       </p>
@@ -7172,7 +7058,7 @@ export function Admin() {
                             </td>
                             <td>
                               <span className={`adm-birthday-days-badge${item.isToday ? " is-today" : ""}`}>
-                                {item.isToday ? "Hoy" : `${item.daysUntil} dias`}
+                                {formatBirthdayCountdownLabel(item.daysUntil)}
                               </span>
                             </td>
                             <td>
@@ -9761,9 +9647,9 @@ export function Admin() {
             </>
           ) : null}
 
-          {tab === "sobre-nosotros" ? (
-            <>
-              <SectionTitle title="Quienes Somos" />
+          {false ? (
+            <>{/*
+              <SectionTitle title="TMP" />
               <div className="adm-page-editor-grid">
                 <div className="adm-page-editor-col">
                   <div className="adm-notepad">
@@ -9832,7 +9718,7 @@ export function Admin() {
                   </div>
                 </div>
               </div>
-            </>
+            */}</>
           ) : null}
 
           {tab === "terminos" ? (
@@ -9852,39 +9738,6 @@ export function Admin() {
                       </p>
                       <input className="adm-notepad-title-input" value={terminosDraft.titulo} onChange={(event) => setTerminosDraft((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" />
                       <textarea className="adm-notepad-textarea adm-page-textarea" value={terminosDraft.contenido} onChange={(event) => setTerminosDraft((prev) => ({ ...prev, contenido: event.target.value }))} placeholder="Contenido en markdown" />
-                      <div className="adm-page-images-panel">
-                        <div className="adm-page-images-head">
-                          <p className="adm-page-images-title">Fotos debajo ({terminosImagenes.length}/{MAX_STATIC_PAGE_IMAGES})</p>
-                          <label className={`adm-btn-secondary adm-page-images-upload ${terminosImagenes.length >= MAX_STATIC_PAGE_IMAGES ? "is-disabled" : ""}`}>
-                            Agregar foto
-                            <input
-                              type="file"
-                              accept={IMAGE_FILE_ACCEPT}
-                              style={{ display: "none" }}
-                              disabled={terminosImagenes.length >= MAX_STATIC_PAGE_IMAGES}
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                event.currentTarget.value = "";
-                                if (file) void subirImagenPagina("terminos", file);
-                              }}
-                            />
-                          </label>
-                        </div>
-                        {terminosImagenes.length ? (
-                          <div className="adm-page-images-grid">
-                            {terminosImagenes.map((url, index) => (
-                              <div className="adm-page-image-card" key={`${url}-${index}`}>
-                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
-                                <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("terminos", index)}>
-                                  Quitar
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="adm-page-images-empty">No hay fotos cargadas.</p>
-                        )}
-                      </div>
                     </div>
                     <div className="adm-notepad-footer">
                       <span className="adm-notepad-ok">{terminosDraft.okMsg}</span>
@@ -9902,7 +9755,6 @@ export function Admin() {
                       <span className="adm-notepad-md-badge">LIVE</span>
                     </div>
                     <div className="adm-md-preview" dangerouslySetInnerHTML={{ __html: terminosHtml }} />
-                    <StaticPageGallery images={terminosImagenes} className="adm-page-preview-gallery" />
                   </div>
                 </div>
               </div>
@@ -9926,39 +9778,6 @@ export function Admin() {
                       </p>
                       <input className="adm-notepad-title-input" value={politicaPrivacidadDraft.titulo} onChange={(event) => setPoliticaPrivacidadDraft((prev) => ({ ...prev, titulo: event.target.value }))} placeholder="Titulo" />
                       <textarea className="adm-notepad-textarea adm-page-textarea" value={politicaPrivacidadDraft.contenido} onChange={(event) => setPoliticaPrivacidadDraft((prev) => ({ ...prev, contenido: event.target.value }))} placeholder="Contenido en markdown" />
-                      <div className="adm-page-images-panel">
-                        <div className="adm-page-images-head">
-                          <p className="adm-page-images-title">Fotos debajo ({politicaPrivacidadImagenes.length}/{MAX_STATIC_PAGE_IMAGES})</p>
-                          <label className={`adm-btn-secondary adm-page-images-upload ${politicaPrivacidadImagenes.length >= MAX_STATIC_PAGE_IMAGES ? "is-disabled" : ""}`}>
-                            Agregar foto
-                            <input
-                              type="file"
-                              accept={IMAGE_FILE_ACCEPT}
-                              style={{ display: "none" }}
-                              disabled={politicaPrivacidadImagenes.length >= MAX_STATIC_PAGE_IMAGES}
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                event.currentTarget.value = "";
-                                if (file) void subirImagenPagina("politica-privacidad", file);
-                              }}
-                            />
-                          </label>
-                        </div>
-                        {politicaPrivacidadImagenes.length ? (
-                          <div className="adm-page-images-grid">
-                            {politicaPrivacidadImagenes.map((url, index) => (
-                              <div className="adm-page-image-card" key={`${url}-${index}`}>
-                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
-                                <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("politica-privacidad", index)}>
-                                  Quitar
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="adm-page-images-empty">No hay fotos cargadas.</p>
-                        )}
-                      </div>
                     </div>
                     <div className="adm-notepad-footer">
                       <span className="adm-notepad-ok">{politicaPrivacidadDraft.okMsg}</span>
@@ -9976,7 +9795,6 @@ export function Admin() {
                       <span className="adm-notepad-md-badge">LIVE</span>
                     </div>
                     <div className="adm-md-preview" dangerouslySetInnerHTML={{ __html: politicaPrivacidadHtml }} />
-                    <StaticPageGallery images={politicaPrivacidadImagenes} className="adm-page-preview-gallery" />
                   </div>
                 </div>
               </div>
