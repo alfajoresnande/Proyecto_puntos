@@ -21,7 +21,7 @@ router.post("/", async (req, res) => {
     return;
   }
 
-  const codigoTramite = crypto.randomUUID();
+  const codigoTramite = crypto.randomUUID().split("-").join("").slice(0, 12).toUpperCase();
   const userAgent = req.get("user-agent")?.trim().slice(0, 255) || null;
 
   await qRun(

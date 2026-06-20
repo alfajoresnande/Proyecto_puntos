@@ -9854,7 +9854,7 @@ export function Admin() {
                         <div style={{ display: "flex", gap: "1.5rem", alignItems: "center", flexWrap: "wrap" }}>
                           <div style={{ display: "grid", gap: "0.2rem" }}>
                             <strong style={{ color: "#4A2C1A", fontSize: "1rem" }}>{item.nombre_apellido}</strong>
-                            <span style={{ color: "#7b553a", fontSize: "0.85rem", fontWeight: 700 }}><code>{shortCode}...</code></span>
+                            <span style={{ color: "#7b553a", fontSize: "0.85rem", fontWeight: 700 }}><code>{shortCode}{item.codigo_tramite.length > 12 ? "..." : ""}</code></span>
                           </div>
                           <div style={{ display: "grid", gap: "0.2rem" }}>
                             <span style={{ fontSize: "0.85rem", color: "#7b553a", fontWeight: 700 }}>{formatDate(item.created_at)}</span>
