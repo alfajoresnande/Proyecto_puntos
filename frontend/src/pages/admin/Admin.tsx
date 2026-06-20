@@ -10089,10 +10089,10 @@ export function Admin() {
       )}
           {arrepentimientoModalItem ? (
         <div className="adm-modal-overlay" onClick={() => setArrepentimientoModalItem(null)}>
-          <div className="adm-modal-content" style={{ maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
-            <div className="adm-modal-header">
-              <h2>Detalle de Arrepentimiento</h2>
-              <button className="adm-btn-close" onClick={() => setArrepentimientoModalItem(null)}>✕</button>
+          <div className="adm-modal" style={{ maxWidth: 600, textAlign: "left", padding: "1.6rem" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
+              <h2 style={{ fontSize: "1.2rem", color: "#4A2C1A", margin: 0 }}>Detalle de Arrepentimiento</h2>
+              <button className="adm-btn-secondary" style={{ padding: "0.2rem 0.6rem", fontSize: "1.2rem" }} onClick={() => setArrepentimientoModalItem(null)}>✕</button>
             </div>
             <div className="adm-modal-body" style={{ display: "grid", gap: "1rem" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -10162,7 +10162,7 @@ export function Admin() {
                 </div>
               </div>
             </div>
-            <div className="adm-modal-footer">
+            <div className="adm-modal-actions" style={{ marginTop: "1.5rem", paddingTop: "1rem", borderTop: "1px solid #e9d5c5", display: "flex", gap: "0.5rem" }}>
               <a
                 href={`mailto:${arrepentimientoModalItem.email}`}
                 className="adm-btn-secondary"
