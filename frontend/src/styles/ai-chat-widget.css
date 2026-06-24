@@ -457,18 +457,19 @@
 
   .ai-chat-form textarea {
     min-height: 58px;
-    max-height: 58px;
+    max-height: 108px;
     height: 58px;
     border-color: #e8eaf3;
-    border-radius: 999px;
+    border-radius: 29px;
     background: #ffffff;
     box-shadow: 0 10px 26px rgba(44, 39, 64, 0.1);
     color: #31303f;
     font-size: 1rem;
     line-height: 1.4;
-    overflow: hidden;
+    overflow-y: auto;
     padding: 17px 76px 14px 56px;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .ai-chat-form textarea::placeholder {
