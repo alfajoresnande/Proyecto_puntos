@@ -220,6 +220,12 @@
 }
 
 @media (max-width: 767px) {
+  html.ai-chat-mobile-open,
+  html.ai-chat-mobile-open body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   .ai-chat-widget {
     right: 24px;
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
@@ -229,6 +235,8 @@
     inset: 0;
     right: auto;
     bottom: auto;
+    height: 100svh;
+    overflow: hidden;
     z-index: 1300;
     pointer-events: none;
   }
@@ -258,7 +266,8 @@
     right: 0;
     bottom: 0;
     width: 100vw;
-    height: min(78dvh, calc(100dvh - 92px));
+    height: min(78svh, calc(100svh - 92px));
+    max-height: 78svh;
     display: flex;
     flex-direction: column;
     border: 0;
@@ -267,6 +276,7 @@
     box-shadow: 0 -18px 48px rgba(30, 25, 45, 0.16);
     transform-origin: bottom center;
     animation: ai-chat-mobile-sheet 0.22s ease-out;
+    overflow: hidden;
     pointer-events: auto;
   }
 
@@ -448,6 +458,7 @@
   .ai-chat-form textarea {
     min-height: 58px;
     max-height: 58px;
+    height: 58px;
     border-color: #e8eaf3;
     border-radius: 999px;
     background: #ffffff;
@@ -457,6 +468,7 @@
     line-height: 1.4;
     overflow: hidden;
     padding: 17px 76px 14px 56px;
+    white-space: nowrap;
   }
 
   .ai-chat-form textarea::placeholder {

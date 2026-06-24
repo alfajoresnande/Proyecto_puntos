@@ -199,6 +199,14 @@ export function AiChatWidget() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isSending]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    document.documentElement.classList.add("ai-chat-mobile-open");
+    return () => {
+      document.documentElement.classList.remove("ai-chat-mobile-open");
+    };
+  }, [isOpen]);
+
   function resetConversation() {
     setMessages([{ id: createMessageId(), role: "assistant", content: getDynamicGreeting(user) }]);
     setInput("");
@@ -341,7 +349,7 @@ export function AiChatWidget() {
               value={input}
               maxLength={MAX_MESSAGE_LENGTH}
               rows={2}
-              placeholder="Preguntá sobre pedidos, puntos, pagos o envíos..."
+              placeholder="Pregunte..."
               onChange={(event) => setInput(event.target.value.slice(0, MAX_MESSAGE_LENGTH))}
               onKeyDown={onInputKeyDown}
               disabled={isSending}
