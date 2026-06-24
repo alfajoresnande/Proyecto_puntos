@@ -215,7 +215,7 @@
 @media (max-width: 767px) {
   .ai-chat-widget {
     right: 24px;
-    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px));
   }
 
   .ai-chat-fab {
