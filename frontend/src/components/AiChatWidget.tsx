@@ -191,10 +191,18 @@ export function AiChatWidget() {
   }, [user]);
 
   const initialGreeting = messages[0]?.content || getDynamicGreeting(user);
+  const isInitialConversation = messages.length <= 1 && messages[0]?.role === "assistant" && !isSending;
+  const firstName = user?.nombre?.trim().split(/\s+/)[0] || "";
+  const mobileGreetingName = firstName ? `, ${firstName}` : "";
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isSending]);
+
+  function resetConversation() {
+    setMessages([{ id: createMessageId(), role: "assistant", content: getDynamicGreeting(user) }]);
+    setInput("");
+  }
 
   async function sendMessage() {
     const message = input.trim().slice(0, MAX_MESSAGE_LENGTH);
@@ -260,12 +268,20 @@ export function AiChatWidget() {
   return (
     <section className={`ai-chat-widget ${isOpen ? "ai-chat-widget--open" : ""}`} aria-label="Chat de ayuda Alfi">
       {isOpen ? (
-        <div className="ai-chat-panel" role="dialog" aria-modal="false" aria-label="Alfi">
+        <div className={`ai-chat-panel ${isInitialConversation ? "ai-chat-panel--fresh" : ""}`} role="dialog" aria-modal="false" aria-label="Alfi">
           <div className="ai-chat-header">
-            <div>
+            <div className="ai-chat-header-copy">
               <p className="ai-chat-eyebrow">Alfi</p>
               <h2>Ñandé te ayuda</h2>
             </div>
+            <button
+              type="button"
+              className="ai-chat-mobile-action ai-chat-mobile-action-reset"
+              onClick={resetConversation}
+              aria-label="Reiniciar chat"
+            >
+              ↻
+            </button>
             <button
               type="button"
               className="ai-chat-icon-button"
@@ -275,6 +291,12 @@ export function AiChatWidget() {
               x
             </button>
           </div>
+
+          {isInitialConversation ? (
+            <div className="ai-chat-mobile-hero" aria-hidden="true">
+              <h3>¡Hola{mobileGreetingName}!<br />¿Cómo puedo ayudarte?</h3>
+            </div>
+          ) : null}
 
           <div className="ai-chat-messages" aria-live="polite">
             {messages.map((message) => (
@@ -294,6 +316,21 @@ export function AiChatWidget() {
             ) : null}
             <div ref={messagesEndRef} />
           </div>
+
+          {isInitialConversation ? (
+            <div className="ai-chat-mobile-suggestions">
+              {[
+                "Quiero consultar mis puntos",
+                "Necesito ayuda con un pedido",
+                "Como funcionan los canjes",
+              ].map((suggestion) => (
+                <button key={suggestion} type="button" onClick={() => setInput(suggestion)}>
+                  <span className="ai-chat-mobile-suggestion-icon" aria-hidden="true" />
+                  <span>{suggestion}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <form className="ai-chat-form" onSubmit={onSubmit}>
             <label className="sr-only" htmlFor="ai-chat-message">
