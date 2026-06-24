@@ -142,7 +142,9 @@
 .footer .footer-badge-hecho {
   height: auto;
   width: clamp(110px, 7.6vw, 150px);
-  border-radius: 14px;
+  border-radius: 22px;
+  clip-path: inset(3px round 20px);
+  overflow: hidden;
 }
 
 @media (max-width: 1320px) {
