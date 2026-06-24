@@ -135,14 +135,13 @@
 
 .footer .footer-badge-orgullo {
   height: auto;
-  width: clamp(132px, 10vw, 190px);
-  max-height: 92px;
+  width: clamp(190px, 14vw, 280px);
+  max-height: 120px;
 }
 
 .footer .footer-badge-hecho {
   height: auto;
-  width: clamp(86px, 7.2vw, 132px);
-  aspect-ratio: 1 / 1;
+  width: clamp(110px, 7.6vw, 150px);
   border-radius: 14px;
 }
 
@@ -172,11 +171,11 @@
   }
 
   .footer .footer-badge-orgullo {
-    width: 132px;
+    width: 170px;
   }
 
   .footer .footer-badge-hecho {
-    width: 88px;
+    width: 108px;
   }
 }
 
@@ -192,11 +191,11 @@
   }
 
   .footer .footer-badge-orgullo {
-    width: 118px;
+    width: 150px;
   }
 
   .footer .footer-badge-hecho {
-    width: 76px;
+    width: 92px;
   }
 }
 
