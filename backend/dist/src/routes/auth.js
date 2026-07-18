@@ -54,18 +54,27 @@ function sendRateLimited(res, result) {
         retryAfterSeconds,
     });
 }
-async function enforceAuthRateLimit(req, res, input, details) {
-    const result = await (0, authRateLimit_1.checkRateLimit)(input);
-    if (result.allowed)
-        return true;
+function reportBlockedAuthRateLimit(req, res, action, details, result) {
     (0, securityMonitor_1.recordSecurityEvent)("auth_rate_limit_bloqueado", req, {
-        action: input.action,
+        action,
         retryAfterSeconds: result.retryAfterSeconds,
         reason: result.reason,
         ...details,
     });
     sendRateLimited(res, result);
     return false;
+}
+async function enforceAuthRateLimit(req, res, input, details) {
+    const result = await (0, authRateLimit_1.checkRateLimit)(input);
+    if (result.allowed)
+        return true;
+    return reportBlockedAuthRateLimit(req, res, input.action, details, result);
+}
+async function enforceActiveAuthCooldown(req, res, input, details) {
+    const result = await (0, authRateLimit_1.checkActiveCooldown)(input);
+    if (result.allowed)
+        return true;
+    return reportBlockedAuthRateLimit(req, res, input.action, details, result);
 }
 function addSeconds(date, seconds) {
     return new Date(date.getTime() + seconds * 1000);
@@ -646,10 +655,10 @@ router.post("/login", async (req, res) => {
     const emailHash = (0, authIdentity_1.hashIdentifier)(email);
     const deviceId = (0, authIdentity_1.getOrCreateDeviceId)(req, res);
     const ip = (0, authIdentity_1.getClientIp)(req);
-    const allowed = await enforceAuthRateLimit(req, res, {
+    const sharedLoginKeys = (0, authLimits_1.loginLimitKeys)({ emailHash, ip, deviceId });
+    const allowed = await enforceActiveAuthCooldown(req, res, {
         action: "login",
-        keys: (0, authLimits_1.loginLimitKeys)({ emailHash, ip, deviceId }),
-        progressiveCooldown: true,
+        keys: sharedLoginKeys,
     }, { emailHash, ip, deviceId });
     if (!allowed)
         return;
@@ -658,10 +667,10 @@ router.post("/login", async (req, res) => {
             puntos_saldo, codigo_invitacion, password_hash, activo, email_verificado
      FROM usuarios WHERE email = ?`, [email]);
     if (user?.id) {
-        const userAllowed = await enforceAuthRateLimit(req, res, {
+        const userLoginKeys = (0, authLimits_1.loginUserLimitKeys)({ userId: user.id });
+        const userAllowed = await enforceActiveAuthCooldown(req, res, {
             action: "login",
-            keys: (0, authLimits_1.loginUserLimitKeys)({ userId: user.id }),
-            progressiveCooldown: true,
+            keys: userLoginKeys,
         }, { userId: user.id, ip, deviceId });
         if (!userAllowed)
             return;
@@ -669,6 +678,26 @@ router.post("/login", async (req, res) => {
     const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
     const validPassword = await bcryptjs_1.default.compare(password, passwordHash);
     if (!user || !validPassword) {
+        const sharedAttempt = await (0, authRateLimit_1.checkRateLimit)({
+            action: "login",
+            keys: sharedLoginKeys,
+            progressiveCooldown: true,
+        });
+        if (!sharedAttempt.allowed) {
+            reportBlockedAuthRateLimit(req, res, "login", { emailHash, ip, deviceId }, sharedAttempt);
+            return;
+        }
+        if (user?.id) {
+            const userAttempt = await (0, authRateLimit_1.checkRateLimit)({
+                action: "login",
+                keys: (0, authLimits_1.loginUserLimitKeys)({ userId: user.id }),
+                progressiveCooldown: true,
+            });
+            if (!userAttempt.allowed) {
+                reportBlockedAuthRateLimit(req, res, "login", { userId: user.id, ip, deviceId }, userAttempt);
+                return;
+            }
+        }
         res.status(401).json({ error: "Credenciales invalidas" });
         return;
     }

@@ -9,7 +9,7 @@ import { clearAuthCookie, getAuthPayload, requireAuth, setAuthCookie, signToken 
 import { recordSecurityEvent } from "../securityMonitor";
 import { sendEmailVerificationCode, sendPasswordResetEmail } from "../services/email";
 import { getClientIp, getOrCreateDeviceId, hashIdentifier, normalizeEmail } from "../services/authIdentity";
-import { checkRateLimit, type RateLimitCheckResult } from "../services/authRateLimit";
+import { checkActiveCooldown, checkRateLimit, type RateLimitCheckResult } from "../services/authRateLimit";
 import {
   confirmRegisterLimitKeys,
   googleLimitKeys,
@@ -66,6 +66,23 @@ function sendRateLimited(res: Response, result: RateLimitCheckResult) {
   });
 }
 
+function reportBlockedAuthRateLimit(
+  req: Request,
+  res: Response,
+  action: string,
+  details: Record<string, unknown>,
+  result: RateLimitCheckResult,
+): false {
+  recordSecurityEvent("auth_rate_limit_bloqueado", req, {
+    action,
+    retryAfterSeconds: result.retryAfterSeconds,
+    reason: result.reason,
+    ...details,
+  });
+  sendRateLimited(res, result);
+  return false;
+}
+
 async function enforceAuthRateLimit(
   req: Request,
   res: Response,
@@ -75,14 +92,19 @@ async function enforceAuthRateLimit(
   const result = await checkRateLimit(input);
   if (result.allowed) return true;
 
-  recordSecurityEvent("auth_rate_limit_bloqueado", req, {
-    action: input.action,
-    retryAfterSeconds: result.retryAfterSeconds,
-    reason: result.reason,
-    ...details,
-  });
-  sendRateLimited(res, result);
-  return false;
+  return reportBlockedAuthRateLimit(req, res, input.action, details, result);
+}
+
+async function enforceActiveAuthCooldown(
+  req: Request,
+  res: Response,
+  input: Parameters<typeof checkActiveCooldown>[0],
+  details: Record<string, unknown>,
+): Promise<boolean> {
+  const result = await checkActiveCooldown(input);
+  if (result.allowed) return true;
+
+  return reportBlockedAuthRateLimit(req, res, input.action, details, result);
 }
 
 function addSeconds(date: Date, seconds: number): Date {
@@ -840,14 +862,14 @@ router.post("/login", async (req, res) => {
   const emailHash = hashIdentifier(email);
   const deviceId = getOrCreateDeviceId(req, res);
   const ip = getClientIp(req);
+  const sharedLoginKeys = loginLimitKeys({ emailHash, ip, deviceId });
 
-  const allowed = await enforceAuthRateLimit(
+  const allowed = await enforceActiveAuthCooldown(
     req,
     res,
     {
       action: "login",
-      keys: loginLimitKeys({ emailHash, ip, deviceId }),
-      progressiveCooldown: true,
+      keys: sharedLoginKeys,
     },
     { emailHash, ip, deviceId },
   );
@@ -862,13 +884,13 @@ router.post("/login", async (req, res) => {
   );
 
   if (user?.id) {
-    const userAllowed = await enforceAuthRateLimit(
+    const userLoginKeys = loginUserLimitKeys({ userId: user.id });
+    const userAllowed = await enforceActiveAuthCooldown(
       req,
       res,
       {
         action: "login",
-        keys: loginUserLimitKeys({ userId: user.id }),
-        progressiveCooldown: true,
+        keys: userLoginKeys,
       },
       { userId: user.id, ip, deviceId },
     );
@@ -878,6 +900,28 @@ router.post("/login", async (req, res) => {
   const passwordHash = user?.password_hash || DUMMY_PASSWORD_HASH;
   const validPassword = await bcrypt.compare(password, passwordHash);
   if (!user || !validPassword) {
+    const sharedAttempt = await checkRateLimit({
+      action: "login",
+      keys: sharedLoginKeys,
+      progressiveCooldown: true,
+    });
+    if (!sharedAttempt.allowed) {
+      reportBlockedAuthRateLimit(req, res, "login", { emailHash, ip, deviceId }, sharedAttempt);
+      return;
+    }
+
+    if (user?.id) {
+      const userAttempt = await checkRateLimit({
+        action: "login",
+        keys: loginUserLimitKeys({ userId: user.id }),
+        progressiveCooldown: true,
+      });
+      if (!userAttempt.allowed) {
+        reportBlockedAuthRateLimit(req, res, "login", { userId: user.id, ip, deviceId }, userAttempt);
+        return;
+      }
+    }
+
     res.status(401).json({ error: "Credenciales invalidas" });
     return;
   }

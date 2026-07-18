@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkRateLimit = checkRateLimit;
+exports.checkActiveCooldown = checkActiveCooldown;
 exports.recordAbuseOrCooldown = recordAbuseOrCooldown;
 const db_1 = require("../db");
 const COOLDOWN_SECONDS = [5 * 60, 30 * 60, 24 * 60 * 60];
@@ -40,6 +41,21 @@ class DatabaseAuthRateLimitStore {
         finally {
             conn.release();
         }
+    }
+    async checkActiveCooldown(input) {
+        if (!input.keys.length)
+            return { allowed: true };
+        for (const item of input.keys) {
+            const currentCooldown = await (0, db_1.qOne)(db_1.pool, "SELECT strikes, blocked_until, expires_at FROM auth_cooldowns WHERE cooldown_key = ?", [cooldownKey(input.action, item.key)]);
+            if (currentCooldown && toMs(currentCooldown.blocked_until) > Date.now()) {
+                return {
+                    allowed: false,
+                    retryAfterSeconds: secondsUntil(currentCooldown.blocked_until),
+                    reason: `cooldown:${item.key}`,
+                };
+            }
+        }
+        return { allowed: true };
     }
     async recordAbuseOrCooldown(action, key) {
         const conn = await db_1.pool.getConnection();
@@ -136,6 +152,9 @@ class DatabaseAuthRateLimitStore {
 const store = new DatabaseAuthRateLimitStore();
 function checkRateLimit(input) {
     return store.checkRateLimit(input);
+}
+function checkActiveCooldown(input) {
+    return store.checkActiveCooldown(input);
 }
 function recordAbuseOrCooldown(action, key) {
     return store.recordAbuseOrCooldown(action, key);

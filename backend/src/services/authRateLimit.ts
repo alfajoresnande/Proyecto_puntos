@@ -8,6 +8,8 @@ export type RateLimitCheckInput = {
   progressiveCooldown?: boolean;
 };
 
+export type RateLimitCooldownInput = Pick<RateLimitCheckInput, "action" | "keys">;
+
 export type RateLimitCheckResult = {
   allowed: boolean;
   retryAfterSeconds?: number;
@@ -27,6 +29,7 @@ type CooldownRow = {
 
 type AuthRateLimitStore = {
   checkRateLimit(input: RateLimitCheckInput): Promise<RateLimitCheckResult>;
+  checkActiveCooldown(input: RateLimitCooldownInput): Promise<RateLimitCheckResult>;
   recordAbuseOrCooldown(action: string, key: string): Promise<RateLimitCheckResult>;
 };
 
@@ -70,6 +73,27 @@ class DatabaseAuthRateLimitStore implements AuthRateLimitStore {
     } finally {
       conn.release();
     }
+  }
+
+  async checkActiveCooldown(input: RateLimitCooldownInput): Promise<RateLimitCheckResult> {
+    if (!input.keys.length) return { allowed: true };
+
+    for (const item of input.keys) {
+      const currentCooldown = await qOne<CooldownRow>(
+        pool,
+        "SELECT strikes, blocked_until, expires_at FROM auth_cooldowns WHERE cooldown_key = ?",
+        [cooldownKey(input.action, item.key)],
+      );
+      if (currentCooldown && toMs(currentCooldown.blocked_until) > Date.now()) {
+        return {
+          allowed: false,
+          retryAfterSeconds: secondsUntil(currentCooldown.blocked_until),
+          reason: `cooldown:${item.key}`,
+        };
+      }
+    }
+
+    return { allowed: true };
   }
 
   async recordAbuseOrCooldown(action: string, key: string): Promise<RateLimitCheckResult> {
@@ -209,6 +233,10 @@ const store: AuthRateLimitStore = new DatabaseAuthRateLimitStore();
 
 export function checkRateLimit(input: RateLimitCheckInput): Promise<RateLimitCheckResult> {
   return store.checkRateLimit(input);
+}
+
+export function checkActiveCooldown(input: RateLimitCooldownInput): Promise<RateLimitCheckResult> {
+  return store.checkActiveCooldown(input);
 }
 
 export function recordAbuseOrCooldown(action: string, key: string): Promise<RateLimitCheckResult> {
