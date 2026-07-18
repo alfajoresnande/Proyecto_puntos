@@ -68,7 +68,14 @@ type MercadoPagoReturnResponse = {
 type ReturnNotice = {
   variant: "success" | "error" | "info";
   msg: string;
+  orderId?: number;
 };
+
+const APPROVED_ORDER_STATES = new Set(["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"]);
+
+function isApprovedOrderState(estado: string | null | undefined): boolean {
+  return APPROVED_ORDER_STATES.has(String(estado ?? "").trim().toLowerCase());
+}
 
 function money(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);
@@ -154,6 +161,7 @@ function hasActiveShippingTracking(orden: Orden): boolean {
 const SHIPPING_TRACKING_STEPS = [
   { key: "recibido", label: "Recibido" },
   { key: "preparandose", label: "Preparandose" },
+  { key: "preparada", label: "Preparado" },
   { key: "enviado", label: "Enviado" },
   { key: "entregando", label: "Entregando" },
   { key: "entregado", label: "Entregado" },
@@ -162,10 +170,10 @@ const SHIPPING_TRACKING_STEPS = [
 const SHIPPING_TRACKING_INDEX: Record<string, number> = {
   pagada: 0,
   preparandose: 1,
-  preparada: 1,
-  enviada: 2,
-  entregando: 3,
-  entregada: 4,
+  preparada: 2,
+  enviada: 3,
+  entregando: 4,
+  entregada: 5,
 };
 
 const SHIPPING_TRACKING_COPY: Record<string, string> = {
@@ -230,16 +238,19 @@ export function MisPedidos() {
     mutationFn: (payload: { payment_id?: string | null; external_reference?: string | null; status?: string | null }) =>
       api.post<MercadoPagoReturnResponse>("/cliente/checkout/mercadopago/confirm-return", payload),
     onSuccess: async (response) => {
+      const approvedState = isApprovedOrderState(response.estado);
       setPedidosPage(1);
       setReturnNotice(
-        response.estado === "pagada"
+        approvedState
           ? {
               variant: "success",
               msg: "Pago aprobado. Ya registramos tu pedido y el equipo va a prepararlo.",
+              orderId: response.orden_id > 0 ? response.orden_id : undefined,
             }
           : {
               variant: "info",
               msg: "Recibimos el retorno de Mercado Pago. Si el pago queda pendiente, lo actualizamos automaticamente al recibir la confirmacion.",
+              orderId: response.orden_id > 0 ? response.orden_id : undefined,
             },
       );
       await queryClient.invalidateQueries({ queryKey: ["cliente", "ordenes"] });
@@ -288,7 +299,7 @@ export function MisPedidos() {
         status,
       },
       {
-        onSettled: () => {
+        onSettled: (data) => {
           const nextParams = new URLSearchParams(searchParams);
           [
             "payment_id",
@@ -300,6 +311,9 @@ export function MisPedidos() {
             "preference_id",
             "mp_return",
           ].forEach((key) => nextParams.delete(key));
+          if (data?.orden_id && data.orden_id > 0) {
+            nextParams.set("pedido", String(data.orden_id));
+          }
           setSearchParams(nextParams, { replace: true });
         },
       },
@@ -353,6 +367,11 @@ export function MisPedidos() {
             ) : null}
             <p>{returnNotice.msg}</p>
             <div className="catalog-float-toast-actions catalog-canje-actions">
+              {returnNotice.orderId ? (
+                <Link className="catalog-float-toast-btn-primary" to={`/mis-pedidos/${returnNotice.orderId}`}>
+                  Ver comprobante
+                </Link>
+              ) : null}
               <button className="catalog-float-toast-btn-secondary" onClick={() => setReturnNotice(null)}>
                 Cerrar
               </button>

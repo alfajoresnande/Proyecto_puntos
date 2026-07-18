@@ -161,6 +161,11 @@ type CheckoutOrderDetail = {
 };
 
 const LAST_APPROVED_ORDER_STORAGE_KEY = "nande-last-approved-order";
+const APPROVED_ORDER_STATES = new Set(["pagada", "preparandose", "preparada", "enviada", "entregando", "entregada"]);
+
+function isApprovedOrderState(estado: string | null | undefined): boolean {
+  return APPROVED_ORDER_STATES.has(String(estado ?? "").trim().toLowerCase());
+}
 
 function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
   if (typeof window === "undefined") return null;
@@ -168,7 +173,7 @@ function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as CheckoutConfirmResponse | null;
-    if (!parsed || !Number.isInteger(Number(parsed.orden_id)) || Number(parsed.orden_id) <= 0 || String(parsed.estado).trim().toLowerCase() !== "pagada") {
+    if (!parsed || !Number.isInteger(Number(parsed.orden_id)) || Number(parsed.orden_id) <= 0 || !isApprovedOrderState(parsed.estado)) {
       window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
       return null;
     }
@@ -181,7 +186,7 @@ function readStoredApprovedCheckout(): CheckoutConfirmResponse | null {
 
 function storeApprovedCheckout(checkout: CheckoutConfirmResponse | null) {
   if (typeof window === "undefined") return;
-  if (!checkout || Number(checkout.orden_id) <= 0 || String(checkout.estado).trim().toLowerCase() !== "pagada") {
+  if (!checkout || Number(checkout.orden_id) <= 0 || !isApprovedOrderState(checkout.estado)) {
     window.sessionStorage.removeItem(LAST_APPROVED_ORDER_STORAGE_KEY);
     return;
   }
@@ -448,9 +453,7 @@ export function CarritoTienda() {
   const [message, setMessage] = useState<string | null>(null);
   const [needsProfile, setNeedsProfile] = useState(false);
   const [confirmed, setConfirmed] = useState<CheckoutConfirmResponse | null>(storedApprovedCheckoutRef.current);
-  const [paymentApproved, setPaymentApproved] = useState(
-    storedApprovedCheckoutRef.current?.estado === "pagada",
-  );
+  const [paymentApproved, setPaymentApproved] = useState(() => isApprovedOrderState(storedApprovedCheckoutRef.current?.estado));
   const [paymentNotice, setPaymentNotice] = useState<PaymentNotice | null>(null);
   const [cartToast, setCartToast] = useState<CartToast | null>(null);
   const [pendingPaymentId, setPendingPaymentId] = useState("");
@@ -462,6 +465,7 @@ export function CarritoTienda() {
     const orden = await api.get<CheckoutOrderDetail>(`/cliente/ordenes/${ordenId}`);
     const totalPuntosGanados = Number(orden.total_puntos_ganados ?? 0);
     const estadoNormalizado = orden.estado.trim().toLowerCase();
+    const approvedState = isApprovedOrderState(estadoNormalizado);
 
     const nextConfirmed: CheckoutConfirmResponse = {
       orden_id: Number(orden.id),
@@ -489,10 +493,10 @@ export function CarritoTienda() {
         : null,
     };
     setConfirmed(nextConfirmed);
-    setPaymentApproved(estadoNormalizado === "pagada");
+    setPaymentApproved(approvedState);
     setMessage(null);
     setNeedsProfile(false);
-    if (estadoNormalizado === "pagada") {
+    if (approvedState) {
       storeApprovedCheckout(nextConfirmed);
     }
   }, []);
@@ -575,19 +579,20 @@ export function CarritoTienda() {
   const hasRealOrder = Number(confirmed?.orden_id ?? 0) > 0;
   const isPendingCheckoutRef = Number(confirmed?.orden_id ?? 0) < 0;
   const confirmedEstado = confirmed?.estado.trim().toLowerCase() ?? "";
+  const confirmedIsPaidState = isApprovedOrderState(confirmed?.estado);
   const confirmedPendingPayment = confirmedEstado === "pendiente_pago" || confirmedEstado === "borrador";
+  const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmedIsPaidState));
   const confirmedTitle =
     confirmedEstado === "cancelada"
       ? "Pedido cancelado"
       : confirmedEstado === "expirada"
         ? "Pedido expirado"
-        : paymentApproved
+        : confirmedPaymentApproved
           ? "Pago aprobado"
           : isCashOrder
             ? "Pedido reservado"
             : "Pedido pendiente de pago";
   const confirmedHasShipping = Boolean(confirmed && (confirmed.metodo_entrega === "envio" || deliveryMethod === "envio" || confirmed.envio));
-  const confirmedPaymentApproved = Boolean(confirmed && (paymentApproved || confirmed.estado === "pagada"));
   const confirmedTrackingPath = confirmed && hasRealOrder ? `/mis-pedidos?pedido=${confirmed.orden_id}` : "/mis-pedidos";
   const currentPendingPaymentId = confirmed?.pago
     ? paymentOptions.find((option) => option.provider === confirmed.pago?.proveedor && option.method === confirmed.pago?.metodo)?.id ?? ""
@@ -650,8 +655,8 @@ export function CarritoTienda() {
     if (!resumeOrderId) return;
     if (resumePaymentQuery.data) {
       setConfirmed(resumePaymentQuery.data);
-      setPaymentApproved(resumePaymentQuery.data.estado === "pagada");
-      if (resumePaymentQuery.data.estado === "pagada") {
+      setPaymentApproved(isApprovedOrderState(resumePaymentQuery.data.estado));
+      if (isApprovedOrderState(resumePaymentQuery.data.estado)) {
         storeApprovedCheckout(resumePaymentQuery.data);
       }
       setPaymentNotice(null);
@@ -747,8 +752,8 @@ export function CarritoTienda() {
     const nextState = currentOrder?.estado?.trim().toLowerCase();
     if (!nextState || nextState === "pendiente_pago" || nextState === "borrador") return;
 
-    if (nextState === "pagada") {
-      if (!paymentApproved || confirmed.estado !== "pagada") {
+    if (isApprovedOrderState(nextState)) {
+      if (!paymentApproved || !confirmedIsPaidState) {
         setPaymentApproved(true);
         const pts = Number(currentOrder.total_puntos_ganados ?? 0);
         setPaymentNotice({
@@ -763,7 +768,7 @@ export function CarritoTienda() {
               ? {
                   ...prev,
                   orden_id: Number(currentOrder.orden_id ?? prev.orden_id),
-                  estado: "pagada",
+                  estado: currentOrder.estado || prev.estado,
                   pago_pendiente: false,
                   total_puntos_ganados: pts,
                 }
@@ -795,6 +800,7 @@ export function CarritoTienda() {
   }, [
     confirmed?.estado,
     confirmed?.orden_id,
+    confirmedIsPaidState,
     confirmedOrderQuery.data,
     paymentApproved,
     queryClient,
@@ -880,11 +886,11 @@ export function CarritoTienda() {
       }),
     onSuccess: async (data) => {
       setConfirmed(data);
-      setPaymentApproved(data.estado === "pagada");
-      if (data.estado === "pagada") {
+      setPaymentApproved(isApprovedOrderState(data.estado));
+      if (isApprovedOrderState(data.estado)) {
         storeApprovedCheckout(data);
       }
-      if (data.estado === "pagada") {
+      if (isApprovedOrderState(data.estado)) {
         const pts = Number(data.total_puntos_ganados ?? 0);
         setPaymentNotice({
           variant: "success",
@@ -917,7 +923,7 @@ export function CarritoTienda() {
     },
     onSuccess: async (data) => {
       setConfirmed(data);
-      setPaymentApproved(data.estado === "pagada");
+      setPaymentApproved(isApprovedOrderState(data.estado));
       setPaymentNotice({
         variant: "info",
         msg: data.pago?.metodo === "qr"
@@ -1013,7 +1019,7 @@ export function CarritoTienda() {
     const confirmedReferenceLabel = hasRealOrder
       ? `Orden #${confirmed.orden_id}`
       : `Referencia de pago #${Math.abs(Number(confirmed.orden_id ?? 0))}`;
-    if (paymentApproved || confirmed.estado === "pagada") {
+    if (confirmedPaymentApproved) {
       return (
         <section className="catalog-page catalog-canje-page">
           <div className="catalog-products-shell">
@@ -1215,10 +1221,10 @@ export function CarritoTienda() {
                         ...prev,
                         orden_id: response.orden_id,
                         estado: response.estado,
-                        pago_pendiente: response.estado !== "pagada",
+                        pago_pendiente: !isApprovedOrderState(response.estado),
                       }
                     : prev;
-                  if (nextConfirmed && response.estado === "pagada" && response.orden_id > 0) {
+                  if (nextConfirmed && isApprovedOrderState(response.estado) && response.orden_id > 0) {
                     storeApprovedCheckout(nextConfirmed);
                   }
                   return nextConfirmed;
@@ -1267,8 +1273,12 @@ export function CarritoTienda() {
         ) : cartQuery.isLoading ? (
           <div className="catalog-skeleton store-skeleton" />
         ) : !cartItems.length ? (
-          <div className="catalog-canje-block">
-            <p>Tu carrito esta vacio.</p>
+          <div className="catalog-canje-block store-cart-empty-state">
+            <p className="store-cart-empty-title">Tu carrito esta vacio.</p>
+            <p className="store-cart-empty-copy">
+              Cuando agregues productos, aqui vas a poder revisar la compra, elegir la entrega y confirmar el pago.
+            </p>
+            <div className="store-cart-empty-divider" aria-hidden="true" />
             <Link className="product-card-btn product-card-btn-canjear" to="/tienda">Ir a tienda</Link>
           </div>
         ) : (

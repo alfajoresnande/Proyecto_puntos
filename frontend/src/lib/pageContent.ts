@@ -3,6 +3,109 @@ import { marked } from "marked";
 
 export const MAX_STATIC_PAGE_IMAGES = 4;
 const SAFE_IMAGE_PROTOCOLS = new Set(["http:", "https:"]);
+const TOC_HEADING_SLUGS = new Set(["indice", "indice-del-documento"]);
+const MARKDOWN_HEADING_LINE_REGEX = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/;
+
+export type StaticPageHeading = {
+  id: string;
+  text: string;
+  depth: number;
+};
+
+function slugifyHeading(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " y ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function buildUniqueHeadingId(text: string, usedIds: Map<string, number>): string {
+  const baseId = slugifyHeading(text) || "seccion";
+  const currentCount = usedIds.get(baseId) ?? 0;
+  usedIds.set(baseId, currentCount + 1);
+  return currentCount === 0 ? baseId : `${baseId}-${currentCount + 1}`;
+}
+
+function renderMarkdownDocument(content: string): { html: string; headings: StaticPageHeading[] } {
+  const rawHtml = marked.parse(content, { async: false }) as string;
+  let htmlWithHeadingIds = rawHtml;
+  const headings: StaticPageHeading[] = [];
+
+  if (typeof DOMParser !== "undefined") {
+    const documentWithAnchors = new DOMParser().parseFromString(rawHtml, "text/html");
+    const usedHeadingIds = new Map<string, number>();
+
+    documentWithAnchors.querySelectorAll<HTMLHeadingElement>("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+      const text = heading.textContent?.trim() || "";
+      if (!text) return;
+
+      let id = heading.id.trim();
+      if (!id) {
+        id = buildUniqueHeadingId(text, usedHeadingIds);
+        heading.id = id;
+      } else {
+        usedHeadingIds.set(id, (usedHeadingIds.get(id) ?? 0) + 1);
+      }
+
+      headings.push({
+        id,
+        text,
+        depth: Number(heading.tagName.slice(1)),
+      });
+    });
+
+    htmlWithHeadingIds = documentWithAnchors.body.innerHTML;
+  }
+
+  return {
+    html: DOMPurify.sanitize(htmlWithHeadingIds, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ["style", "script", "iframe", "object", "embed", "form"],
+      FORBID_ATTR: ["style"],
+    }),
+    headings,
+  };
+}
+
+function stripMarkdownTableOfContents(content: string): string {
+  const lines = content.replace(/\r/g, "").trimEnd().split("\n");
+  const result: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const headingMatch = lines[index]?.match(MARKDOWN_HEADING_LINE_REGEX);
+    if (!headingMatch) {
+      result.push(lines[index] || "");
+      index += 1;
+      continue;
+    }
+
+    const headingDepth = headingMatch[1]?.length ?? 0;
+    const headingText = headingMatch[2]?.trim() || "";
+
+    if (!TOC_HEADING_SLUGS.has(slugifyHeading(headingText))) {
+      result.push(lines[index] || "");
+      index += 1;
+      continue;
+    }
+
+    index += 1;
+    while (index < lines.length) {
+      const nextHeadingMatch = lines[index]?.match(MARKDOWN_HEADING_LINE_REGEX);
+      if (nextHeadingMatch && (nextHeadingMatch[1]?.length ?? 0) <= headingDepth) {
+        break;
+      }
+
+      index += 1;
+    }
+  }
+
+  return result.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
 
 export function normalizeSafeImageUrl(input: string): string | null {
   const value = input.trim();
@@ -29,12 +132,7 @@ export function normalizeSafeImageUrl(input: string): string | null {
 // Uso obligatorio donde se haga dangerouslySetInnerHTML con contenido
 // editable por admins: si el admin es comprometido, sin esto = XSS.
 export function renderSafeMarkdown(content: string): string {
-  const rawHtml = marked.parse(content, { async: false }) as string;
-  return DOMPurify.sanitize(rawHtml, {
-    USE_PROFILES: { html: true },
-    FORBID_TAGS: ["style", "script", "iframe", "object", "embed", "form"],
-    FORBID_ATTR: ["style"],
-  });
+  return renderMarkdownDocument(content).html;
 }
 
 const MARKDOWN_IMAGE_LINE_REGEX = /^!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)$/;
@@ -85,6 +183,20 @@ export function stripPageImages(content: string): string {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+export function prepareStaticPageBody(content: string): string {
+  return stripMarkdownTableOfContents(stripPageImages(content));
+}
+
+export function renderStaticPageMarkdown(content: string): { html: string; headings: StaticPageHeading[] } {
+  const preparedContent = prepareStaticPageBody(content);
+  const rendered = renderMarkdownDocument(preparedContent);
+
+  return {
+    html: rendered.html,
+    headings: rendered.headings.filter((heading) => heading.depth >= 2),
+  };
 }
 
 export function rebuildPageContent(body: string, imageUrls: string[]): string {

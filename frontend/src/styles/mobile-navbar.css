@@ -29,4 +29,15 @@
     height: 40px;
     width: 40px;
   }
+
+  .navbar-app-shell .navbar-cart-badge,
+  .navbar-app-shell .navbar-hamburger-badge {
+    background: #D7332F;
+    color: #FFF8F0;
+  }
+
+  .navbar-app-shell .navbar-cart-badge,
+  .navbar-app-shell .navbar-cart-btn-canje .navbar-cart-badge {
+    box-shadow: 0 0 0 2px #FFF8F0;
+  }
 }

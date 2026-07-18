@@ -83,6 +83,37 @@
   padding: 0.25rem 0.1rem;
 }
 
+.store-cart-empty-state {
+  border: 1px solid #E8D7C4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 0.75rem;
+}
+
+.store-cart-empty-title {
+  color: #4A2C1A;
+  font-size: 1rem;
+  font-weight: 900;
+  margin: 0;
+}
+
+.store-cart-empty-copy {
+  color: #8B5A30;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.store-cart-empty-divider {
+  background: linear-gradient(90deg, rgba(224, 194, 161, 0), rgba(224, 194, 161, 0.95), rgba(224, 194, 161, 0));
+  height: 1px;
+  width: 100%;
+}
+
+.store-cart-empty-state .product-card-btn {
+  width: 100%;
+}
+
 .catalog-canje-page .catalog-canje-branch {
   background: #FFFBF6;
 }
@@ -811,7 +842,7 @@
 .store-order-track-steps {
   display: grid;
   gap: 0.45rem;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
@@ -882,7 +913,7 @@
   }
 
   .store-order-track-step p {
-    font-size: 0.66rem;
+    font-size: 0.62rem;
   }
 }
 
@@ -2744,6 +2775,7 @@ body.catalogo-background .pagina-page {
   font-size: 2rem;
   font-weight: 800;
   color: #3D1A02;                   /* ← color del título de la página */
+  text-align: center;
   letter-spacing: -0.5px;
   margin: 0 0 1.75rem;
   padding-bottom: 1rem;
@@ -2751,16 +2783,79 @@ body.catalogo-background .pagina-page {
 }
 
 /* ── Estilos del contenido markdown renderizado ── */
+.pagina-indice {
+  margin: 0 0 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #F5C8A8;
+}
+
+.pagina-indice-title {
+  margin: 0 0 0.9rem;
+  color: #D4621A;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pagina-indice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pagina-indice-item {
+  margin: 0;
+}
+
+.pagina-indice-depth-3 {
+  padding-left: 1rem;
+}
+
+.pagina-indice-depth-4 {
+  padding-left: 1.5rem;
+}
+
+.pagina-indice-depth-5 {
+  padding-left: 2rem;
+}
+
+.pagina-indice-depth-6 {
+  padding-left: 2.5rem;
+}
+
+.pagina-indice-link {
+  color: #D4621A;
+  text-decoration: underline;
+  text-decoration-color: #F5C8A8;
+  font-weight: 500;
+}
+
+.pagina-indice-link:hover {
+  color: #B85415;
+}
+
 .markdown-body {
   color: #374151;                   /* ← color del texto del cuerpo */
   font-size: 0.95rem;
   line-height: 1.75;
 }
 
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  scroll-margin-top: 5.75rem;
+}
+
 .markdown-body h1 {
   font-size: 1.6rem;
   font-weight: 800;
   color: #3D1A02;                   /* ← color de los H1 en el markdown */
+  text-align: center;
   margin: 1.5rem 0 0.75rem;
   letter-spacing: -0.3px;
 }
@@ -2769,6 +2864,7 @@ body.catalogo-background .pagina-page {
   font-size: 1.2rem;
   font-weight: 700;
   color: #D4621A;                   /* ← color de los H2 en el markdown */
+  text-align: center;
   margin: 1.75rem 0 0.6rem;
   padding-bottom: 0.3rem;
   border-bottom: 1px solid #F5C8A8;
@@ -2778,6 +2874,7 @@ body.catalogo-background .pagina-page {
   font-size: 1rem;
   font-weight: 700;
   color: #3D1A02;                   /* ← color de los H3 en el markdown */
+  text-align: center;
   margin: 1.25rem 0 0.4rem;
 }
 

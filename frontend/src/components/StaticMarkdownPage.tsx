@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import { extractPageImageUrls, renderSafeMarkdown, stripPageImages } from "../lib/pageContent";
+import { extractPageImageUrls, renderStaticPageMarkdown } from "../lib/pageContent";
 import { StaticPageGallery } from "./StaticPageGallery";
+import { StaticPageTableOfContents } from "./StaticPageTableOfContents";
 
 type PaginaContenido = {
   slug: string;
@@ -40,7 +41,30 @@ export function StaticMarkdownPage({
 
   const contenido = pageQuery.data?.contenido ?? "";
   const imagenes = useMemo(() => extractPageImageUrls(contenido), [contenido]);
-  const html = useMemo(() => renderSafeMarkdown(stripPageImages(contenido)), [contenido]);
+  const renderedPage = useMemo(() => renderStaticPageMarkdown(contenido), [contenido]);
+  const html = renderedPage.html;
+
+  useEffect(() => {
+    if (!html || pageQuery.isLoading || pageQuery.isError) return;
+
+    const rawHash = window.location.hash.slice(1).trim();
+    if (!rawHash) return;
+
+    let targetId = rawHash;
+    try {
+      targetId = decodeURIComponent(rawHash);
+    } catch {
+      targetId = rawHash;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [html, pageQuery.isError, pageQuery.isLoading]);
 
   return (
     <section className="pagina-page">
@@ -52,6 +76,7 @@ export function StaticMarkdownPage({
           <p className="pagina-content">{errorMessage}</p>
         ) : (
           <>
+            <StaticPageTableOfContents headings={renderedPage.headings} />
             <div className="markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
             <StaticPageGallery images={imagenes} />
           </>

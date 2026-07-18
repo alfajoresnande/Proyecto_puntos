@@ -10,7 +10,8 @@ import {
   getLocalSaleQuickProductImage,
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
-import { renderSafeMarkdown, stripPageImages } from "../../lib/pageContent";
+import { renderStaticPageMarkdown, stripPageImages } from "../../lib/pageContent";
+import { StaticPageTableOfContents } from "../../components/StaticPageTableOfContents";
 import { calculatePointsByAmount } from "../../lib/points";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { AreaExplanation } from "./components/AreaExplanation";
@@ -3439,9 +3440,9 @@ export function Admin() {
     return sucursales.slice(start, start + LISTA_POR_PAGINA);
   }, [sucursales, sucursalesPage]);
 
-  const terminosHtml = useMemo(() => renderSafeMarkdown(stripPageImages(terminosDraft.contenido || "")), [terminosDraft.contenido]);
-  const politicaPrivacidadHtml = useMemo(
-    () => renderSafeMarkdown(stripPageImages(politicaPrivacidadDraft.contenido || "")),
+  const terminosRendered = useMemo(() => renderStaticPageMarkdown(terminosDraft.contenido || ""), [terminosDraft.contenido]);
+  const politicaPrivacidadRendered = useMemo(
+    () => renderStaticPageMarkdown(politicaPrivacidadDraft.contenido || ""),
     [politicaPrivacidadDraft.contenido],
   );
   const arrepentimientoItems = arrepentimientoQuery.data?.items ?? [];
@@ -9794,7 +9795,10 @@ export function Admin() {
                       <p className="adm-notepad-header-title">Preview</p>
                       <span className="adm-notepad-md-badge">LIVE</span>
                     </div>
-                    <div className="adm-md-preview" dangerouslySetInnerHTML={{ __html: terminosHtml }} />
+                    <div className="adm-md-preview">
+                      <StaticPageTableOfContents headings={terminosRendered.headings} />
+                      <div dangerouslySetInnerHTML={{ __html: terminosRendered.html }} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -9834,7 +9838,10 @@ export function Admin() {
                       <p className="adm-notepad-header-title">Preview</p>
                       <span className="adm-notepad-md-badge">LIVE</span>
                     </div>
-                    <div className="adm-md-preview" dangerouslySetInnerHTML={{ __html: politicaPrivacidadHtml }} />
+                    <div className="adm-md-preview">
+                      <StaticPageTableOfContents headings={politicaPrivacidadRendered.headings} />
+                      <div dangerouslySetInnerHTML={{ __html: politicaPrivacidadRendered.html }} />
+                    </div>
                   </div>
                 </div>
               </div>
