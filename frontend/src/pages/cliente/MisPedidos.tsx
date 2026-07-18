@@ -193,11 +193,18 @@ function OrderShippingTracking({ orden }: { orden: Orden }) {
   const activeIndex = SHIPPING_TRACKING_INDEX[normalized];
   if (activeIndex === undefined) return null;
   const progress = activeIndex <= 0 ? 0 : (activeIndex / (SHIPPING_TRACKING_STEPS.length - 1)) * 100;
+  const currentLabel = estadoPedidoLabel(orden.estado);
 
   return (
     <div className="store-order-tracking" aria-label={`Seguimiento del pedido ${orden.id}`}>
+      <div className="store-order-track-current-row">
+        {SHIPPING_TRACKING_STEPS.map((step, index) => (
+          <div key={step.key} className="store-order-track-current-slot">
+            {index === activeIndex ? <strong>{currentLabel}</strong> : null}
+          </div>
+        ))}
+      </div>
       <div className="store-order-tracking-head">
-        <strong>{estadoPedidoLabel(orden.estado)}</strong>
         <span>{SHIPPING_TRACKING_COPY[normalized] ?? "Actualizamos el estado cuando avance el pedido."}</span>
       </div>
       <div className="store-order-track-line" aria-hidden="true">

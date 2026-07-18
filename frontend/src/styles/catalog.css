@@ -87,7 +87,9 @@
   border: 1px solid #E8D7C4;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   display: grid;
-  gap: 0.75rem;
+  gap: 0.9rem;
+  justify-items: center;
+  text-align: center;
 }
 
 .store-cart-empty-title {
@@ -111,6 +113,7 @@
 }
 
 .store-cart-empty-state .product-card-btn {
+  margin-top: 0.2rem;
   width: 100%;
 }
 
@@ -806,16 +809,32 @@
   padding-top: 0.85rem;
 }
 
-.store-order-tracking-head {
-  align-items: baseline;
-  color: #4A2C1A;
-  display: flex;
-  gap: 0.65rem;
-  justify-content: space-between;
+.store-order-track-current-row {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
-.store-order-tracking-head strong {
+.store-order-track-current-slot {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.store-order-track-current-slot strong {
+  color: #4A2C1A;
   font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.store-order-tracking-head {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .store-order-tracking-head span {
@@ -898,6 +917,14 @@
 }
 
 @media (max-width: 520px) {
+  .store-order-track-current-row {
+    gap: 0.25rem;
+  }
+
+  .store-order-track-current-slot strong {
+    font-size: 0.76rem;
+  }
+
   .store-order-tracking-head {
     align-items: start;
     display: grid;
