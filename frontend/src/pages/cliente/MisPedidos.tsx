@@ -194,18 +194,19 @@ function OrderShippingTracking({ orden }: { orden: Orden }) {
   if (activeIndex === undefined) return null;
   const progress = activeIndex <= 0 ? 0 : (activeIndex / (SHIPPING_TRACKING_STEPS.length - 1)) * 100;
   const currentLabel = estadoPedidoLabel(orden.estado);
+  const currentCopy = SHIPPING_TRACKING_COPY[normalized] ?? "Actualizamos el estado cuando avance el pedido.";
+  const currentInfoStartColumn = Math.max(0, Math.min(activeIndex - 1, SHIPPING_TRACKING_STEPS.length - 3)) + 1;
 
   return (
     <div className="store-order-tracking" aria-label={`Seguimiento del pedido ${orden.id}`}>
       <div className="store-order-track-current-row">
-        {SHIPPING_TRACKING_STEPS.map((step, index) => (
-          <div key={step.key} className="store-order-track-current-slot">
-            {index === activeIndex ? <strong>{currentLabel}</strong> : null}
-          </div>
-        ))}
-      </div>
-      <div className="store-order-tracking-head">
-        <span>{SHIPPING_TRACKING_COPY[normalized] ?? "Actualizamos el estado cuando avance el pedido."}</span>
+        <div
+          className="store-order-track-current-card"
+          style={{ gridColumn: `${currentInfoStartColumn} / span 3` }}
+        >
+          <strong>{currentLabel}</strong>
+          <span>{currentCopy}</span>
+        </div>
       </div>
       <div className="store-order-track-line" aria-hidden="true">
         <span style={{ width: `${progress}%` }} />
