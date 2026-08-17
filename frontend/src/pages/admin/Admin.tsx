@@ -11,6 +11,7 @@ import {
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
 import { renderStaticPageMarkdown, stripPageImages } from "../../lib/pageContent";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import { StaticPageTableOfContents } from "../../components/StaticPageTableOfContents";
 import { calculatePointsByAmount } from "../../lib/points";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
@@ -715,6 +716,7 @@ type ConfiguracionDraft = {
   empresa_horario_retiro: string;
   pedido_comprobante_leyenda: string;
   chatbot_activo: boolean;
+  puntos_activo: boolean;
   eventbar_activo: boolean;
   eventbar_titulo: string;
   eventbar_subtitulo: string;
@@ -1873,6 +1875,9 @@ function PaginationControls({
 
 export function Admin() {
   const queryClient = useQueryClient();
+  // Estado real (guardado) del programa de puntos; gobierna el modo lectura
+  // de las tabs de canjes/codigos y la asignacion manual.
+  const puntosProgramaActivo = usePointsVisible();
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast, confirmToast } = useToast();
@@ -2080,6 +2085,7 @@ export function Admin() {
     empresa_horario_retiro: "08:00 a 18:00",
     pedido_comprobante_leyenda: "Este documento no es valido como factura.",
     chatbot_activo: true,
+    puntos_activo: true,
     eventbar_activo: false,
     eventbar_titulo: "",
     eventbar_subtitulo: "",
@@ -2460,6 +2466,7 @@ export function Admin() {
       empresa_horario_retiro: getConfig("empresa_horario_retiro", "08:00 a 18:00"),
       pedido_comprobante_leyenda: getConfig("pedido_comprobante_leyenda", "Este documento no es valido como factura."),
       chatbot_activo: isTruthyConfigValue(getConfig("chatbot_activo", "1")),
+      puntos_activo: isTruthyConfigValue(getConfig("puntos_activo", "1")),
       eventbar_activo: isTruthyConfigValue(getConfig("eventbar_activo", "0")),
       eventbar_titulo: getConfig("eventbar_titulo", ""),
       eventbar_subtitulo: getConfig("eventbar_subtitulo", ""),
@@ -5214,6 +5221,7 @@ export function Admin() {
     const empresaHorarioRetiro = configDraft.empresa_horario_retiro.trim();
     const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
     const chatbotActivo = configDraft.chatbot_activo;
+    const puntosActivo = configDraft.puntos_activo;
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -5370,9 +5378,16 @@ export function Admin() {
           valor: chatbotActivo ? "1" : "0",
           descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
         },
+        {
+          clave: "puntos_activo",
+          valor: puntosActivo ? "1" : "0",
+          descripcion: "Activa o desactiva el programa de puntos completo (acreditaciones, canjes y vencimientos).",
+        },
       ];
 
       await guardarConfiguracionItems(updates);
+      // Refrescar el estado publico del programa de puntos en toda la app.
+      await queryClient.invalidateQueries({ queryKey: ["layout", "puntos"] });
       setConfigMsg("Configuracion general actualizada.");
     } catch (error) {
       setConfigErr((error as Error).message);
@@ -5947,6 +5962,43 @@ export function Admin() {
                         Activar chatbot (si esta desactivado, se mostrara el boton de WhatsApp)
                       </label>
                     </div>
+                    <div className="adm-actions" style={{ marginTop: "1rem" }}>
+                      <button
+                        className="adm-btn-primary adm-btn-inline"
+                        onClick={guardarConfiguracionGeneral}
+                        disabled={configBusy}
+                      >
+                        {configBusy ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="admin-section-header adm-config-header">
+                    <h2 className="admin-section-title">Programa de Puntos</h2>
+                  </div>
+                  <div className="admin-card admin-card-padded adm-config-card">
+                    <p className="adm-config-subtitle">
+                      Interruptor general del programa de puntos (solo visible para superAdmin).
+                    </p>
+                    <div className="adm-field adm-field-checkbox" style={{ marginTop: "1rem" }}>
+                      <label className="adm-label-inline">
+                        <input
+                          type="checkbox"
+                          checked={configDraft.puntos_activo}
+                          onChange={(e) =>
+                            setConfigDraft((prev) => ({ ...prev, puntos_activo: e.target.checked }))
+                          }
+                          disabled={configBusy}
+                        />
+                        Activar programa de puntos
+                      </label>
+                    </div>
+                    <p className="adm-inline-tip" style={{ marginTop: "0.7rem" }}>
+                      Al desactivarlo: las compras dejan de acreditar puntos, se bloquean los canjes,
+                      las cargas manuales y los bonos por referidos, el vencimiento de puntos se pausa
+                      y toda la seccion de puntos se oculta en la app. Los saldos de los clientes se
+                      CONSERVAN intactos: al reactivarlo todo vuelve como estaba.
+                    </p>
                     <div className="adm-actions" style={{ marginTop: "1rem" }}>
                       <button
                         className="adm-btn-primary adm-btn-inline"
@@ -6913,7 +6965,12 @@ export function Admin() {
                                     />
                                   </div>
                                   <div className="adm-inline-points-actions">
-                                    <button className="adm-btn-primary adm-btn-inline" disabled={busy} onClick={asignarPuntosManual}>
+                                    <button
+                                      className="adm-btn-primary adm-btn-inline"
+                                      disabled={busy || !puntosProgramaActivo}
+                                      title={!puntosProgramaActivo ? "El programa de puntos esta desactivado" : undefined}
+                                      onClick={asignarPuntosManual}
+                                    >
                                       {busy ? "Asignando..." : "Confirmar asignacion"}
                                     </button>
                                     <button className="adm-btn-secondary adm-btn-inline" onClick={cancelarAsignacion}>
@@ -9339,6 +9396,14 @@ export function Admin() {
           {tab === "canjes" ? (
             <>
               <SectionTitle title="Gestion de canjes" />
+              {!puntosProgramaActivo ? (
+                <div className="admin-card admin-card-padded" style={{ marginBottom: "1rem", borderLeft: "4px solid #D4621A" }}>
+                  <p style={{ margin: 0, fontWeight: 600, color: "#7A5A3C" }}>
+                    El programa de puntos esta desactivado. Los canjes ya realizados se pueden consultar
+                    y entregar, pero no se pueden generar canjes nuevos hasta reactivarlo.
+                  </p>
+                </div>
+              ) : null}
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.8rem", marginBottom: "1rem" }}>
                 <p style={{ margin: 0, fontSize: "0.8rem", color: "#7A5A3C" }}>
                   Reclama canjes por codigo sin salir del panel admin.
@@ -9539,6 +9604,14 @@ export function Admin() {
           {tab === "codigos" ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <SectionTitle title="Nuevo codigo promocional" />
+              {!puntosProgramaActivo ? (
+                <div className="admin-card admin-card-padded" style={{ borderLeft: "4px solid #D4621A" }}>
+                  <p style={{ margin: 0, fontWeight: 600, color: "#7A5A3C" }}>
+                    El programa de puntos esta desactivado. Los codigos existentes quedan en solo
+                    lectura y no se pueden crear ni activar codigos hasta reactivarlo.
+                  </p>
+                </div>
+              ) : null}
               <div className="admin-card admin-card-padded adm-code-guide">
                 <p className="adm-code-guide-title">Guia para crear codigos</p>
                 <div className="adm-code-guide-grid">
@@ -9585,7 +9658,7 @@ export function Admin() {
                     <p className="adm-field-help">Opcional. Si no completas, el codigo queda sin vencimiento.</p>
                   </div>
                 </div>
-                <button className="adm-btn-primary" disabled={busy} onClick={crearCodigo}>
+                <button className="adm-btn-primary" disabled={busy || !puntosProgramaActivo} onClick={crearCodigo}>
                   {busy ? "Creando..." : "Crear codigo"}
                 </button>
               </div>
@@ -9620,7 +9693,7 @@ export function Admin() {
                           <td>{codigo.fecha_expiracion ? formatDate(codigo.fecha_expiracion) : "Sin vencimiento"}</td>
                           <td>{codigo.activo ? "Activo" : "Inactivo"}</td>
                           <td>
-                            <button className={codigo.activo ? "adm-btn-danger" : "adm-btn-success"} onClick={() => toggleCodigo(codigo)}>
+                            <button className={codigo.activo ? "adm-btn-danger" : "adm-btn-success"} disabled={!puntosProgramaActivo} onClick={() => toggleCodigo(codigo)}>
                               {codigo.activo ? "Desactivar" : "Activar"}
                             </button>
                           </td>

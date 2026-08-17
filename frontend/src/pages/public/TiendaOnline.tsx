@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
 import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
@@ -173,6 +174,7 @@ function isCajaSabores(producto: Producto): boolean {
 
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
+  const pointsVisible = usePointsVisible();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -769,7 +771,7 @@ export function TiendaOnline() {
           <p className="catalog-subtitle">Compra productos con dinero y reserva para retiro en sucursal</p>
         </div>
         <div className="catalog-redemption-account">
-          {user?.rol === "cliente" ? (
+          {user?.rol === "cliente" && pointsVisible ? (
             <div className="catalog-user-banner">
               <div className="catalog-user-copy">
                 <span className="catalog-user-icon" aria-hidden="true">
@@ -1222,7 +1224,7 @@ export function TiendaOnline() {
                           </div>
                         </>
                       ) : null}
-                      {productPrice(producto) > 0 ? (
+                      {pointsVisible && productPrice(producto) > 0 ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>

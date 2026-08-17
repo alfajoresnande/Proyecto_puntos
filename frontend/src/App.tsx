@@ -12,6 +12,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { RealtimeBridge } from "./components/RealtimeBridge";
 import { SeoRouteMeta } from "./components/SeoRouteMeta";
 import { scrollPageToTop } from "./lib/scrollTop";
+import { usePointsEnabled } from "./lib/pointsProgram";
 import { AppVersionChecker } from "./components/AppVersionChecker";
 import { Admin } from "./pages/admin/Admin";
 import { EnviosAdmin } from "./pages/admin/EnviosAdmin";
@@ -133,6 +134,17 @@ function NumberInputGuards() {
   return null;
 }
 
+/**
+ * Envuelve las rutas del programa de puntos: si el superAdmin lo apagó,
+ * redirige a la tienda. Mientras el estado carga (null) renderiza normal
+ * para no cortar la navegación con un flash de redirect.
+ */
+function PointsRoute({ children, to = "/tienda" }: { children: JSX.Element; to?: string }) {
+  const pointsEnabled = usePointsEnabled();
+  if (pointsEnabled === false) return <Navigate to={to} replace />;
+  return children;
+}
+
 export default function App() {
   const [chatbotEnabled, setChatbotEnabled] = useState<boolean | null>(null);
 
@@ -167,7 +179,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/inicio" element={<Navigate to="/" replace />} />
-            <Route path="/catalogo" element={<Catalogo />} />
+            <Route path="/catalogo" element={<PointsRoute><Catalogo /></PointsRoute>} />
             <Route path="/tienda" element={<TiendaOnline />} />
             <Route path="/login" element={<Login />} />
             <Route path="/registro" element={<Registro />} />
@@ -176,9 +188,11 @@ export default function App() {
             <Route
               path="/cliente"
               element={
-                <ProtectedRoute rol="cliente">
-                  <Cliente />
-                </ProtectedRoute>
+                <PointsRoute>
+                  <ProtectedRoute rol="cliente">
+                    <Cliente />
+                  </ProtectedRoute>
+                </PointsRoute>
               }
             />
             <Route
@@ -192,17 +206,21 @@ export default function App() {
             <Route
               path="/mis-canjes"
               element={
-                <ProtectedRoute rol="cliente">
-                  <MisCanjes />
-                </ProtectedRoute>
+                <PointsRoute>
+                  <ProtectedRoute rol="cliente">
+                    <MisCanjes />
+                  </ProtectedRoute>
+                </PointsRoute>
               }
             />
             <Route
               path="/mis-canjes/:id"
               element={
-                <ProtectedRoute rol="cliente">
-                  <ComprobanteCanje />
-                </ProtectedRoute>
+                <PointsRoute>
+                  <ProtectedRoute rol="cliente">
+                    <ComprobanteCanje />
+                  </ProtectedRoute>
+                </PointsRoute>
               }
             />
             <Route
@@ -216,9 +234,11 @@ export default function App() {
             <Route
               path="/carrito-canjes"
               element={
-                <ProtectedRoute rol="cliente">
-                  <ConfirmarCanje />
-                </ProtectedRoute>
+                <PointsRoute>
+                  <ProtectedRoute rol="cliente">
+                    <ConfirmarCanje />
+                  </ProtectedRoute>
+                </PointsRoute>
               }
             />
             <Route
@@ -265,9 +285,11 @@ export default function App() {
             <Route
               path="/vendedor"
               element={
-                <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
-                  <Vendedor />
-                </ProtectedRoute>
+                <PointsRoute to="/vendedor/ventas/pedidos">
+                  <ProtectedRoute rol={["vendedor", "admin", "superAdmin"]}>
+                    <Vendedor />
+                  </ProtectedRoute>
+                </PointsRoute>
               }
             />
             <Route path="/vendedor/ventas" element={<Navigate to="/vendedor/ventas/pedidos" replace />} />

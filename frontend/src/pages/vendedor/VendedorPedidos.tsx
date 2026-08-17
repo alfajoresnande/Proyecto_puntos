@@ -9,6 +9,7 @@ import {
   getLocalSaleQuickProductSubtitle,
 } from "../../lib/localSaleQuickProducts";
 import { calculatePointsByAmount } from "../../lib/points";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import type { Producto } from "../../types";
 import "../../styles/vendedor-ventas.css";
 
@@ -290,6 +291,7 @@ function isVendedorVentasPage(value: string | undefined): value is VendedorVenta
 export function VendedorPedidos() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const pointsVisible = usePointsVisible();
   const params = useParams<{ ventasPage?: string }>();
   const [searchParams] = useSearchParams();
   const currentPage: VendedorVentasPage = isVendedorVentasPage(params.ventasPage) ? params.ventasPage : "pedidos";
@@ -1664,10 +1666,10 @@ export function VendedorPedidos() {
 
               <p className="local-sale-help-text">
                 {ventaCliente
-                  ? `Cliente web: ${ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}. La compra acredita puntos automaticamente por monto.`
-                  : "Puedes registrar la venta sin cliente. Si no eliges cliente web registrado, no se acreditan puntos a nadie."}
+                  ? `Cliente web: ${ventaCliente.tipo_cliente === "empleado" ? "Empleado" : ventaCliente.tipo_cliente === "mayorista" ? "Mayorista" : "Cliente"}.${pointsVisible ? " La compra acredita puntos automaticamente por monto." : ""}`
+                  : `Puedes registrar la venta sin cliente.${pointsVisible ? " Si no eliges cliente web registrado, no se acreditan puntos a nadie." : ""}`}
               </p>
-              {ventaCliente ? (
+              {ventaCliente && pointsVisible ? (
                 <p className="local-sale-points-preview">
                   Puntos estimados a acreditar: <strong>{puntosVentaLocalEstimados}</strong> pts
                 </p>

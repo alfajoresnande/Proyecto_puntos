@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
@@ -78,6 +79,7 @@ function isInternalNavigationLink(value: string): boolean {
 
 export function Home() {
   const user = useAuthStore((state) => state.user);
+  const pointsVisible = usePointsVisible();
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
@@ -385,33 +387,35 @@ export function Home() {
         <section id="como-funciona" className="home-flow-section home-section home-section-flow">
           <div className="home-section-head home-flow-head">
             <span className="home-kicker home-kicker-accent">Para vos</span>
-            <h2>Comprá, acumulá puntos y volvé cuando quieras</h2>
-            <p>Te dejamos una guía simple para que entiendas rápido cómo comprar y cómo usar tus puntos dentro de Ñandé.</p>
+            <h2>{pointsVisible ? "Comprá, acumulá puntos y volvé cuando quieras" : "Comprá online y retirá en sucursal"}</h2>
+            <p>{pointsVisible ? "Te dejamos una guía simple para que entiendas rápido cómo comprar y cómo usar tus puntos dentro de Ñandé." : "Te dejamos una guía simple para que entiendas rápido cómo comprar dentro de Ñandé."}</p>
           </div>
 
           <div className="home-flow-steps">
             <div className="home-flow-step">
               <article className="home-flow-card">
                 <span className="home-flow-number">01</span>
-                <p>Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra.</p>
+                <p>{pointsVisible ? "Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra." : "Comprás desde la tienda y elegís tus productos favoritos."}</p>
               </article>
               <article className="home-flow-detail-card">
                 <h3>¿Cómo comprás?</h3>
-                <p>Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos.</p>
+                <p>{pointsVisible ? "Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos." : "Entrás a la tienda online, elegís los productos que querés y confirmás tu pedido para retiro en sucursal o envío a domicilio."}</p>
                 <Link to="/tienda" className="home-flow-action">Comprar</Link>
               </article>
             </div>
-            <div className="home-flow-step">
-              <article className="home-flow-card">
-                <span className="home-flow-number">02</span>
-                <p>Canjeás tus puntos por productos y los retirás en la sucursal que selecciones.</p>
-              </article>
-              <article className="home-flow-detail-card">
-                <h3>¿Cómo canjeás?</h3>
-                <p>Entrás al catálogo de canjes, elegís el producto que querés usar con tus puntos, lo reservás desde tu cuenta y después lo retirás en la sucursal seleccionada.</p>
-                <Link to="/catalogo" className="home-flow-action">Canjear</Link>
-              </article>
-            </div>
+            {pointsVisible ? (
+              <div className="home-flow-step">
+                <article className="home-flow-card">
+                  <span className="home-flow-number">02</span>
+                  <p>Canjeás tus puntos por productos y los retirás en la sucursal que selecciones.</p>
+                </article>
+                <article className="home-flow-detail-card">
+                  <h3>¿Cómo canjeás?</h3>
+                  <p>Entrás al catálogo de canjes, elegís el producto que querés usar con tus puntos, lo reservás desde tu cuenta y después lo retirás en la sucursal seleccionada.</p>
+                  <Link to="/catalogo" className="home-flow-action">Canjear</Link>
+                </article>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -486,7 +490,7 @@ export function Home() {
                         {hasFreeShipping(producto) ? (
                           <span className="home-product-free-shipping">Envio gratis</span>
                         ) : null}
-                        {canEarnPurchasePoints(producto) ? (
+                        {pointsVisible && canEarnPurchasePoints(producto) ? (
                           <span className="home-product-earned-points">Suma puntos segun el total de la compra</span>
                         ) : null}
                       </div>

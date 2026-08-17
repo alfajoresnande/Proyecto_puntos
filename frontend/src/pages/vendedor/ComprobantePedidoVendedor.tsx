@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import "../../styles/comprobante.css";
 
 type OrdenVendedorDetalle = {
@@ -156,6 +157,7 @@ function staffBackRoute(pathname: string): string {
 export function ComprobantePedidoVendedor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const pointsVisible = usePointsVisible();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const backRoute = staffBackRoute(location.pathname);
@@ -231,7 +233,9 @@ export function ComprobantePedidoVendedor() {
     : Math.max(0, Number(orden.total_dinero || 0) - costoEnvio);
   const puntosGanados = Number(orden.total_puntos_ganados ?? 0);
   const isCancelledOrder = orden.estado.trim().toLowerCase() === "cancelada";
-  const shouldShowPuntosGanados = !isCancelledOrder && puntosGanados > 0;
+  // "Puntos usados" es dato histórico y se mantiene; "ganados" es una
+  // promesa de acreditación, se oculta con el programa apagado.
+  const shouldShowPuntosGanados = pointsVisible && !isCancelledOrder && puntosGanados > 0;
   const receiptTitle = isLocalSale ? "Comprobante de venta local" : "Comprobante de pedido";
   const orderLabel = isLocalSale ? `Venta local #${orden.id}` : `Pedido web #${orden.id}`;
 

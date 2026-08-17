@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import { useAuthStore } from "../../store/authStore";
 import "../../styles/comprobante.css";
 import { useEffect } from "react";
@@ -150,6 +151,7 @@ export function ComprobantePedido() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const pointsVisible = usePointsVisible();
 
   const { data: orden, isLoading, isError } = useQuery({
     queryKey: ["cliente", "orden", id],
@@ -309,13 +311,13 @@ export function ComprobantePedido() {
               <span>{money(costoEnvio)}</span>
             </div>
           ) : null}
-          {orden.total_puntos > 0 && (
+          {pointsVisible && orden.total_puntos > 0 && (
             <div className="comprobante-total-row">
               <span>Puntos usados:</span>
               <span>{orden.total_puntos} pts</span>
             </div>
           )}
-          {puntosGanados > 0 && (
+          {pointsVisible && puntosGanados > 0 && (
             <div className="comprobante-total-row">
               <span>Puntos ganados:</span>
               <span style={{ color: "#D4621A", fontWeight: 600 }}>+{puntosGanados} pts</span>

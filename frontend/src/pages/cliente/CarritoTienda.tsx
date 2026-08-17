@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { AddressSelector } from "../../components/addresses/AddressSelector";
 import { useToast } from "../../components/ToastProvider";
+import { usePointsVisible } from "../../lib/pointsProgram";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { ShippingQuote, UserAddress } from "../../types";
@@ -443,6 +444,8 @@ export function CarritoTienda() {
   const navigate = useNavigate();
   const { confirmToast, showToast } = useToast();
   const user = useAuthStore((state) => state.user);
+  // Con el programa de puntos apagado no se promete acreditación alguna.
+  const pointsVisible = usePointsVisible();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
   const storedApprovedCheckoutRef = useRef<CheckoutConfirmResponse | null>(readStoredApprovedCheckout());
@@ -755,7 +758,7 @@ export function CarritoTienda() {
     if (isApprovedOrderState(nextState)) {
       if (!paymentApproved || !confirmedIsPaidState) {
         setPaymentApproved(true);
-        const pts = Number(currentOrder.total_puntos_ganados ?? 0);
+        const pts = pointsVisible ? Number(currentOrder.total_puntos_ganados ?? 0) : 0;
         setPaymentNotice({
           variant: "success",
           msg: pts > 0
@@ -891,7 +894,7 @@ export function CarritoTienda() {
         storeApprovedCheckout(data);
       }
       if (isApprovedOrderState(data.estado)) {
-        const pts = Number(data.total_puntos_ganados ?? 0);
+        const pts = pointsVisible ? Number(data.total_puntos_ganados ?? 0) : 0;
         setPaymentNotice({
           variant: "success",
           msg: pts > 0
@@ -1241,7 +1244,7 @@ export function CarritoTienda() {
                   estado: "pagada",
                   pago_pendiente: false,
                 });
-                const pts = Number(confirmed.total_puntos_ganados ?? 0);
+                const pts = pointsVisible ? Number(confirmed.total_puntos_ganados ?? 0) : 0;
                 setPaymentNotice({
                   variant: "success",
                   msg: pts > 0

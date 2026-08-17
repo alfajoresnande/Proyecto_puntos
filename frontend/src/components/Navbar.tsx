@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { scrollPageToTop } from "../lib/scrollTop";
+import { usePointsVisible } from "../lib/pointsProgram";
 import { useAuthStore } from "../store/authStore";
 import { useCartStore } from "../store/cartStore";
 
@@ -81,6 +82,8 @@ export function Navbar() {
   const authReady = hasRestoredSession && !isRestoringSession;
   const canSeeCliente = user?.rol === "cliente";
   const canSeeVendedor = user?.rol === "vendedor" || user?.rol === "admin" || user?.rol === "superAdmin";
+  // false solo cuando el backend confirmo que el programa esta apagado.
+  const pointsVisible = usePointsVisible();
   const canSeeAdmin = user?.rol === "admin" || user?.rol === "superAdmin";
   const canSeeSupport = canSeeCliente || canSeeVendedor;
   const adminPanelPath = user?.rol === "superAdmin" ? "/superadmin" : "/admin";
@@ -368,7 +371,7 @@ export function Navbar() {
           <div className="navbar-links">
             <NavLink to="/" className={({ isActive }) => navClass(isActive)}>Inicio</NavLink>
             <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={() => scrollPageToTop()}>Tienda Online</NavLink>
-            <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink>
+            {pointsVisible ? <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)}>Canjes</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)}>Quienes Somos</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)}>Terminos y condiciones</NavLink> : null}
             {!canSeeVendedor ? <NavLink to="/politica-privacidad" className={({ isActive }) => navClass(isActive)}>Politicas de privacidad</NavLink> : null}
@@ -382,7 +385,7 @@ export function Navbar() {
                 {renderNavLabel("Mensajes", supportUnreadCount)}
               </NavLink>
             ) : null}
-            {canSeeVendedor ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
+            {canSeeVendedor && pointsVisible ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)}>Puntos y Canjes</NavLink> : null}
             {canSeeVendedor ? (
               <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)}>
                 {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
@@ -394,7 +397,7 @@ export function Navbar() {
           </div>
 
           <div className="navbar-auth">
-            {canSeeCliente ? (
+            {canSeeCliente && pointsVisible ? (
               <NavLink to="/cliente" className={({ isActive }) => `navbar-points-action${isActive ? " active" : ""}`}>
                 Mis Puntos
               </NavLink>
@@ -441,13 +444,15 @@ export function Navbar() {
                           >
                             Mis Direcciones
                           </Link>
-                          <Link
-                            to="/mis-canjes"
-                            className="navbar-user-dropdown-item"
-                            onClick={() => setUserMenuOpen(false)}
-                          >
-                            Mis Canjes
-                          </Link>
+                          {pointsVisible ? (
+                            <Link
+                              to="/mis-canjes"
+                              className="navbar-user-dropdown-item"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              Mis Canjes
+                            </Link>
+                          ) : null}
                           <Link
                             to="/mis-pedidos"
                             className="navbar-user-dropdown-item"
@@ -474,13 +479,15 @@ export function Navbar() {
                           >
                             Mensajes
                           </Link>
-                          <Link
-                            to="/vendedor"
-                            className="navbar-user-dropdown-item"
-                            onClick={() => setUserMenuOpen(false)}
-                          >
-                            Puntos y Canjes
-                          </Link>
+                          {pointsVisible ? (
+                            <Link
+                              to="/vendedor"
+                              className="navbar-user-dropdown-item"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              Puntos y Canjes
+                            </Link>
+                          ) : null}
                           <Link
                             to="/vendedor/ventas/pedidos"
                             className="navbar-user-dropdown-item"
@@ -565,7 +572,7 @@ export function Navbar() {
         <div className="navbar-mobile navbar-mobile-shell">
           <NavLink to="/" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Inicio</NavLink>
           <NavLink to="/tienda" className={({ isActive }) => navClass(isActive)} onClick={closeMenuAndScrollTop}>Tienda Online</NavLink>
-          <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink>
+          {pointsVisible ? <NavLink to="/catalogo" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Canjes</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/sobre-nosotros" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Quienes Somos</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/terminos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Terminos y condiciones</NavLink> : null}
           {!canSeeVendedor ? <NavLink to="/politica-privacidad" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Politicas de privacidad</NavLink> : null}
@@ -579,8 +586,8 @@ export function Navbar() {
               {renderNavLabel("Mensajes", supportUnreadCount)}
             </NavLink>
           ) : null}
-          {canSeeCliente ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
-          {canSeeVendedor ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
+          {canSeeCliente && pointsVisible ? <NavLink to="/cliente" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos</NavLink> : null}
+          {canSeeVendedor && pointsVisible ? <NavLink end to="/vendedor" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Puntos y Canjes</NavLink> : null}
           {canSeeVendedor ? (
             <NavLink to="/vendedor/ventas/pedidos" className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>
               {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
@@ -597,7 +604,7 @@ export function Navbar() {
               <div className="navbar-mobile-user">
                 <div className="navbar-mobile-user-head">
                   <span className="navbar-name">{user.nombre}</span>
-                  {user.rol === "cliente" ? (
+                  {user.rol === "cliente" && pointsVisible ? (
                     <span className="navbar-points" style={{ marginLeft: "0.5rem" }}>
                       {user.puntos_saldo ?? 0} pts
                     </span>
@@ -608,7 +615,7 @@ export function Navbar() {
                   <div className="navbar-mobile-user-links">
                     <Link to="/mi-perfil" className="navbar-link" onClick={closeMenu}>Perfil</Link>
                     <Link to="/mis-direcciones" className="navbar-link" onClick={closeMenu}>Mis Direcciones</Link>
-                    <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link>
+                    {pointsVisible ? <Link to="/mis-canjes" className="navbar-link" onClick={closeMenu}>Mis Canjes</Link> : null}
                     <Link to="/mis-pedidos" className="navbar-link" onClick={closeMenu}>{renderOrdersLabel()}</Link>
                     <Link to="/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     {renderArrepentimientosSummary("mobile")}
@@ -617,7 +624,7 @@ export function Navbar() {
                 {user.rol === "vendedor" || user.rol === "admin" || user.rol === "superAdmin" ? (
                   <div className="navbar-mobile-user-links">
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
-                    <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link>
+                    {pointsVisible ? <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link> : null}
                     <Link to="/vendedor/ventas/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
                     <Link to={ordersMapPath} className="navbar-link" onClick={closeMenu}>Mapa pedidos</Link>
                     {user.rol === "vendedor" ? (
