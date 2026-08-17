@@ -421,6 +421,41 @@
   width: 100%;
 }
 
+/*
+ * Con el programa de puntos desactivado el paso de canje no se renderiza y
+ * queda un solo paso. Sin esto se apoyaria en la primera columna de la grilla,
+ * descolgado a la izquierda y con medio ancho vacio al lado.
+ */
+.home-flow-step:only-child {
+  grid-column: 1 / -1;
+  max-width: 560px;
+  gap: 1rem;
+}
+
+/* Un "01" sin "02" no comunica secuencia, solo confunde. */
+.home-flow-step:only-child .home-flow-number {
+  display: none;
+}
+
+/* El conector punteado unia paso con paso: sin segundo paso, sobra. */
+.home-flow-step:only-child .home-flow-card::after {
+  display: none;
+}
+
+.home-flow-step:only-child .home-flow-card {
+  grid-template-rows: auto;
+  min-height: 0;
+  padding-top: 0;
+}
+
+.home-flow-step:only-child .home-flow-detail-card {
+  min-height: 0;
+}
+
+.home-flow-step:only-child .home-flow-detail-card p {
+  min-height: 0;
+}
+
 .home-flow-card {
   position: relative;
   display: grid;
