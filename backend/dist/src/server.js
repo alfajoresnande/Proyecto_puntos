@@ -30,6 +30,7 @@ const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
 const fs_1 = __importDefault(require("fs"));
 const paths_1 = require("./paths");
+const variantOnDemand_1 = require("./services/variantOnDemand");
 const startupBackfills_1 = require("./services/startupBackfills");
 const imageVariants_1 = require("./services/imageVariants");
 const app = (0, express_1.default)();
@@ -232,8 +233,13 @@ const uploadsStatic = express_1.default.static(uploadsPath, {
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     },
 });
-app.use("/uploads", uploadsStatic);
-app.use("/api/uploads", uploadsStatic);
+// Se registra ANTES del static: si falta una variante -card/-thumb la genera
+// y la guarda, y recien despues el static la sirve. Necesario porque en el
+// hosting la carpeta uploads se copia a mano despues del deploy, o sea que al
+// arrancar el servidor todavia no estan las imagenes reales.
+const variantOnDemand = (0, variantOnDemand_1.createVariantOnDemandMiddleware)(uploadsPath);
+app.use("/uploads", variantOnDemand, uploadsStatic);
+app.use("/api/uploads", variantOnDemand, uploadsStatic);
 app.use("/api", (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     next();

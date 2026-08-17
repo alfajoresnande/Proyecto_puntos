@@ -27,6 +27,7 @@ import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 import fs from "fs";
 import { UPLOADS_DIR, UPLOADS_DIR_SOURCE, UPLOADS_DIR_AMBIGUOUS } from "./paths";
+import { createVariantOnDemandMiddleware } from "./services/variantOnDemand";
 import { runOneTimeWebCheckoutPointsBackfill, runOneTimeUploadsWebpMigration } from "./services/startupBackfills";
 import { checkImageProcessingAvailable } from "./services/imageVariants";
 
@@ -260,8 +261,13 @@ const uploadsStatic = express.static(uploadsPath, {
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   },
 });
-app.use("/uploads", uploadsStatic);
-app.use("/api/uploads", uploadsStatic);
+// Se registra ANTES del static: si falta una variante -card/-thumb la genera
+// y la guarda, y recien despues el static la sirve. Necesario porque en el
+// hosting la carpeta uploads se copia a mano despues del deploy, o sea que al
+// arrancar el servidor todavia no estan las imagenes reales.
+const variantOnDemand = createVariantOnDemandMiddleware(uploadsPath);
+app.use("/uploads", variantOnDemand, uploadsStatic);
+app.use("/api/uploads", variantOnDemand, uploadsStatic);
 
 app.use("/api", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
