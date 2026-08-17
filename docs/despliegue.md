@@ -30,7 +30,7 @@ Y mueve un enlace `current` para apuntar a la última. **Nada de lo que esté
 dentro de esa carpeta sobrevive al siguiente deploy.** Incluida `uploads`.
 
 > Para saber tu `<TU_USUARIO>`: abrí el gestor de archivos y mirá la barra de
-> ruta parado en la casita. Es algo tipo `u734172603`.
+> ruta parado en la casita. Tiene la forma `uXXXXXXXXX` (una `u` y nueve dígitos).
 
 ---
 
