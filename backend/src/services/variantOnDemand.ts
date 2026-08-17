@@ -22,8 +22,20 @@ import { ensureVariantsFor, reencodeExistingUploadToWebp, IMAGE_VARIANTS } from 
 // backup anterior a la conversion). En ese caso se regenera desde el original.
 const WEBP_REQUEST = /^([A-Za-z0-9_-]+?)(-card|-thumb)?\.webp$/;
 
-const CANONICAL_EXTS = [".webp", ".png", ".jpg", ".jpeg"];
-const ORIGINAL_EXTS = [".png", ".jpg", ".jpeg"];
+/** Pedido de un original que puede haber sido reemplazado por su .webp. */
+const ORIGINAL_REQUEST = /^([A-Za-z0-9_-]+?)\.(png|jpe?g)$/i;
+
+/**
+ * El hosting es Linux: `foo.JPG` y `foo.jpg` son archivos distintos. Se
+ * prueban ambas grafias porque no hay garantia de como quedaron nombrados
+ * los archivos historicos.
+ */
+function withCaseVariants(exts: string[]): string[] {
+  return exts.flatMap((ext) => [ext, ext.toUpperCase()]);
+}
+
+const CANONICAL_EXTS = withCaseVariants([".webp", ".png", ".jpg", ".jpeg"]);
+const ORIGINAL_EXTS = withCaseVariants([".png", ".jpg", ".jpeg"]);
 
 /** Evita que N pedidos simultaneos generen la misma variante N veces. */
 const inFlight = new Map<string, Promise<void>>();
@@ -48,6 +60,31 @@ export function createVariantOnDemandMiddleware(uploadsDir: string) {
     // req.path viene decodificado y normalizado por express; igual se valida
     // contra la regex, asi que no puede haber traversal ni subcarpetas.
     const filename = path.posix.basename(req.path);
+
+    // Caso inverso: la base referencia un .png/.jpg que ya no esta porque en
+    // disco quedo solo el .webp (backup posterior a una conversion). Se sirve
+    // el .webp con su Content-Type real: mandarlo como image/png lo bloquearia
+    // el nosniff que ponemos en las cabeceras.
+    const originalMatch = ORIGINAL_REQUEST.exec(filename);
+    if (originalMatch) {
+      const originalPath = path.join(uploadsDir, filename);
+      try {
+        await fs.access(originalPath);
+        return next(); // el original existe, lo sirve el static
+      } catch {
+        const webpName = `${originalMatch[1]}.webp`;
+        try {
+          await fs.access(path.join(uploadsDir, webpName));
+          console.log(`[uploads] ${filename} no existe, se sirve ${webpName}`);
+          res.type("image/webp");
+          req.url = `/${webpName}`; // que el static resuelva el .webp
+        } catch {
+          // tampoco hay webp: que siga y devuelva 404
+        }
+      }
+      return next();
+    }
+
     const match = WEBP_REQUEST.exec(filename);
     if (!match) return next();
 
