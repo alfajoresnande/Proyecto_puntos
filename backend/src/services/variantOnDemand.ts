@@ -40,6 +40,57 @@ const ORIGINAL_EXTS = withCaseVariants([".png", ".jpg", ".jpeg"]);
 /** Evita que N pedidos simultaneos generen la misma variante N veces. */
 const inFlight = new Map<string, Promise<void>>();
 
+/**
+ * Tope de conversiones simultaneas.
+ *
+ * Al abrir la tienda el navegador pide ~20 imagenes de una. Si ninguna tiene
+ * su .webp todavia, sin este limite arrancan 20 procesos de sharp a la vez
+ * sobre PNGs de 1-2MB: en un hosting compartido eso agota la memoria y el
+ * proxy empieza a devolver 503. Con el tope, las conversiones se hacen de a
+ * poco y el resto de los pedidos espera su turno unos milisegundos.
+ */
+const MAX_CONCURRENT_ENCODES = 2;
+
+/** Cuanto espera un pedido por su turno antes de rendirse y devolver 404. */
+const QUEUE_TIMEOUT_MS = 8000;
+
+let activeEncodes = 0;
+const waiting: Array<() => void> = [];
+
+async function acquireSlot(): Promise<boolean> {
+  if (activeEncodes < MAX_CONCURRENT_ENCODES) {
+    activeEncodes += 1;
+    return true;
+  }
+  // Cola con timeout: mas vale un 404 rapido (el frontend cae al canonico)
+  // que dejar la conexion colgada hasta que el proxy la corte.
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const idx = waiting.indexOf(grant);
+      if (idx !== -1) waiting.splice(idx, 1);
+      resolve(false);
+    }, QUEUE_TIMEOUT_MS);
+
+    function grant() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      activeEncodes += 1;
+      resolve(true);
+    }
+    waiting.push(grant);
+  });
+}
+
+function releaseSlot(): void {
+  activeEncodes -= 1;
+  const next = waiting.shift();
+  if (next) next();
+}
+
 async function findExisting(uploadsDir: string, base: string, exts: string[]): Promise<string | null> {
   for (const ext of exts) {
     const candidate = path.join(uploadsDir, `${base}${ext}`);
@@ -102,6 +153,23 @@ export function createVariantOnDemandMiddleware(uploadsDir: string) {
     let job = inFlight.get(key);
     if (!job) {
       job = (async () => {
+        // Antes de tocar sharp: esperar turno. Sin esto, abrir la tienda
+        // dispara una veintena de conversiones a la vez y el proxy 503ea.
+        const gotSlot = await acquireSlot();
+        if (!gotSlot) {
+          console.warn(`[uploads] cola llena, se posterga ${filename}`);
+          return; // 404 ahora; el proximo pedido lo vuelve a intentar
+        }
+        try {
+          await encodeMissing();
+        } finally {
+          releaseSlot();
+        }
+      })().finally(() => inFlight.delete(key));
+      inFlight.set(key, job);
+    }
+
+    async function encodeMissing() {
         if (!suffix) {
           // Falta el CANONICO .webp. Pasa cuando la base ya fue migrada a
           // .webp pero en disco quedo el original (carpeta restaurada desde
@@ -118,8 +186,6 @@ export function createVariantOnDemandMiddleware(uploadsDir: string) {
         if (!canonical) return;
         await ensureVariantsFor(uploadsDir, canonical);
         console.log(`[uploads] variante generada al vuelo: ${filename}`);
-      })().finally(() => inFlight.delete(key));
-      inFlight.set(key, job);
     }
 
     try {
