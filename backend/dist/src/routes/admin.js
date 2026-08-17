@@ -16,6 +16,7 @@ const realtime_1 = require("../realtime");
 const urlSafety_1 = require("../urlSafety");
 const securityMonitor_1 = require("../securityMonitor");
 const uploadSecurity_1 = require("../uploadSecurity");
+const imageVariants_1 = require("../services/imageVariants");
 const backup_1 = require("../services/backup");
 const paths_1 = require("../paths");
 const stock_1 = require("../services/stock");
@@ -115,7 +116,7 @@ const storage = multer_1.default.diskStorage({
 });
 const upload = (0, multer_1.default)({
     storage,
-    limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB máx
+    limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB máx (el pipeline reencodea igual)
     fileFilter: (_req, file, cb) => {
         if (getAllowedImageExtension(file))
             cb(null, true);
@@ -2128,6 +2129,8 @@ router.post("/productos/upload", (req, res, next) => {
             res.status(400).json({ error: "No se recibió ningún archivo" });
             return;
         }
+        // 1) Validación de magic bytes ANTES de cualquier procesamiento: es lo
+        //    que impide que un ejecutable renombrado llegue a sharp.
         const check = await (0, uploadSecurity_1.verifyUploadedImageFile)(req.file);
         if (!check.ok) {
             (0, securityMonitor_1.recordSecurityEvent)("upload_bloqueado_firma_invalida", req, {
@@ -2137,7 +2140,15 @@ router.post("/productos/upload", (req, res, next) => {
             res.status(400).json({ error: check.errorMessage || "Archivo de imagen inválido" });
             return;
         }
-        res.json({ url: `/uploads/${req.file.filename}` });
+        // 2) Recién con la imagen validada: reencode a WebP canónico + variantes.
+        try {
+            const canonical = await (0, imageVariants_1.processUploadedImage)(paths_1.UPLOADS_DIR, req.file.filename);
+            res.json({ url: `/uploads/${canonical}` });
+        }
+        catch (error) {
+            console.error("[upload] Error procesando imagen:", error instanceof Error ? error.message : error);
+            res.status(500).json({ error: "No se pudo procesar la imagen. Probá con otro archivo." });
+        }
     });
 });
 router.post("/productos", async (req, res) => {
