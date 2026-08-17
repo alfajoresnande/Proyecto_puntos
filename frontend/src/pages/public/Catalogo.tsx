@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
-import { mediaUrl } from "../../lib/apiBase";
+import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import { usePickupStore } from "../../store/pickupStore";
@@ -1226,7 +1226,14 @@ export function Catalogo() {
                       {producto.imagen_mobile_url && (
                         <source media="(max-width: 768px)" srcSet={mediaUrl(producto.imagen_mobile_url)} />
                       )}
-                      <img src={getProductoImagen(producto) as string} alt={producto.nombre} className="product-card-img" />
+                      <img
+                        src={getProductoImagen(producto) as string}
+                        srcSet={mediaCardSrcSet(getProductoImagen(producto))}
+                        sizes={CARD_IMG_SIZES}
+                        onError={dropSrcSetOnError}
+                        alt={producto.nombre}
+                        className="product-card-img"
+                      />
                     </picture>
                   ) : (
                     <div className="product-card-placeholder" />

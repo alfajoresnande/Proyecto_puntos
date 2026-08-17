@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
-import { mediaUrl } from "../../lib/apiBase";
+import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
@@ -444,7 +444,14 @@ export function Home() {
                     return (
                       <article key={`${producto.id}-${index}`} className="home-product-card" aria-hidden={isDuplicate || undefined}>
                     <div className="home-product-media">
-                      <img src={productImage(producto)} alt={producto.nombre} className="home-product-image" />
+                      <img
+                        src={productImage(producto)}
+                        srcSet={mediaCardSrcSet(productImage(producto))}
+                        sizes={CARD_IMG_SIZES}
+                        onError={dropSrcSetOnError}
+                        alt={producto.nombre}
+                        className="home-product-image"
+                      />
                       <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
                     </div>
                     <div className="home-product-body">

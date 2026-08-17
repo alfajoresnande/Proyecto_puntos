@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
-import { mediaUrl } from "../../lib/apiBase";
+import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
@@ -1153,7 +1153,14 @@ export function TiendaOnline() {
                         {producto.imagen_mobile_url && (
                           <source media="(max-width: 768px)" srcSet={mediaUrl(producto.imagen_mobile_url)} />
                         )}
-                        <img className="product-card-img" src={img} alt={producto.nombre} />
+                        <img
+                          className="product-card-img"
+                          src={img}
+                          srcSet={mediaCardSrcSet(img)}
+                          sizes={CARD_IMG_SIZES}
+                          onError={dropSrcSetOnError}
+                          alt={producto.nombre}
+                        />
                       </picture>
                     ) : (
                       <div className="product-card-placeholder" />
