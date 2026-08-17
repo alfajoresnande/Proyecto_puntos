@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/generate-seo-assets.mjs",
+    "check:images": "node scripts/check-images.mjs",
+    "build": "npm run check:images && tsc -b && vite build && node scripts/generate-seo-assets.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
