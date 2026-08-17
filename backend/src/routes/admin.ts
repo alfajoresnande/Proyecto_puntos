@@ -11,6 +11,7 @@ import { emitRealtime } from "../realtime";
 import { normalizeSafeImageUrl } from "../urlSafety";
 import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
 import { verifyUploadedImageFile } from "../uploadSecurity";
+import { processUploadedImage } from "../services/imageVariants";
 import { createFullBackupArchive } from "../services/backup";
 import { UPLOADS_DIR } from "../paths";
 import {
@@ -152,7 +153,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB máx
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB máx (el pipeline reencodea igual)
   fileFilter: (_req, file, cb) => {
     if (getAllowedImageExtension(file)) cb(null, true);
     else cb(new Error("Solo se permiten imágenes JPG, PNG o WEBP"));
@@ -2545,6 +2546,8 @@ router.post("/productos/upload", (req, res, next) => {
     if (err) { res.status(400).json({ error: err.message }); return; }
     if (!req.file) { res.status(400).json({ error: "No se recibió ningún archivo" }); return; }
 
+    // 1) Validación de magic bytes ANTES de cualquier procesamiento: es lo
+    //    que impide que un ejecutable renombrado llegue a sharp.
     const check = await verifyUploadedImageFile(req.file);
     if (!check.ok) {
       recordSecurityEvent("upload_bloqueado_firma_invalida", req, {
@@ -2555,7 +2558,14 @@ router.post("/productos/upload", (req, res, next) => {
       return;
     }
 
-    res.json({ url: `/uploads/${req.file.filename}` });
+    // 2) Recién con la imagen validada: reencode a WebP canónico + variantes.
+    try {
+      const canonical = await processUploadedImage(UPLOADS_DIR, req.file.filename);
+      res.json({ url: `/uploads/${canonical}` });
+    } catch (error) {
+      console.error("[upload] Error procesando imagen:", error instanceof Error ? error.message : error);
+      res.status(500).json({ error: "No se pudo procesar la imagen. Probá con otro archivo." });
+    }
   });
 });
 
