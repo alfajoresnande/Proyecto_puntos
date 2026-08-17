@@ -120,7 +120,20 @@ npm run seed --prefix backend                           # datos iniciales
 
 ## Despliegue
 
-- **Frontend:** build estático servido por Apache. `frontend/public/.htaccess`
-  define el cacheo de assets y la política de `index.html`.
-- **Backend:** proceso Node que arranca desde `backend/dist/src/server.js`.
-- La carpeta de subidas debe persistir entre despliegues.
+**→ Guía completa: [docs/despliegue.md](docs/despliegue.md)**
+
+Ahí está el paso a paso para producción, dónde va la carpeta `uploads`, cómo
+leer los logs sin consola y qué hacer cuando algo falla.
+
+Lo mínimo indispensable:
+
+- **Frontend:** build estático servido por Apache en `alfajorescorrentinos.com`.
+  `frontend/public/.htaccess` define el cacheo.
+- **Backend:** proceso Node en `nandengineer.shop`, arranca desde
+  `backend/dist/src/server.js` — que **se commitea**, no se compila en el servidor.
+- **Las dependencias del backend van en el `package.json` de la raíz.** El
+  hosting instala solo desde ahí; lo que esté únicamente en `backend/package.json`
+  no llega a producción.
+- **Reiniciar la app después de cada deploy**, o sigue corriendo el código viejo.
+- La carpeta `uploads` debe vivir **fuera** del directorio desplegado (variable
+  `UPLOADS_DIR`), porque cada deploy crea una carpeta de versión nueva.
