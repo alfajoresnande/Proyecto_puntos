@@ -140,15 +140,18 @@ export async function processUploadedImage(uploadsDir: string, originalFilename:
  * viejo evita que una referencia no migrada quede rota.
  *
  * Idempotente: si el .webp ya existe, no lo regenera.
- * Devuelve el nombre del archivo WebP.
+ * Devuelve el nombre del WebP y si hubo que crearlo en esta corrida.
  */
-export async function reencodeExistingUploadToWebp(uploadsDir: string, filename: string): Promise<string> {
+export async function reencodeExistingUploadToWebp(
+  uploadsDir: string,
+  filename: string,
+): Promise<{ webpName: string; created: boolean }> {
   const webpName = `${stripExt(filename)}.webp`;
   const webpPath = path.join(uploadsDir, webpName);
 
   try {
     await fs.access(webpPath);
-    return webpName; // ya existe
+    return { webpName, created: false }; // ya existe
   } catch {
     // falta: generarlo
   }
@@ -160,7 +163,7 @@ export async function reencodeExistingUploadToWebp(uploadsDir: string, filename:
     await fs.unlink(webpPath).catch(() => {});
     throw error;
   }
-  return webpName;
+  return { webpName, created: true };
 }
 
 /**

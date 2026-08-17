@@ -260,4 +260,9 @@ server.listen(PORT, () => {
     void (0, startupBackfills_1.runOneTimeWebCheckoutPointsBackfill)().catch((error) => {
         console.error("[startup-backfill] Error ejecutando backfill unico de puntos web:", error instanceof Error ? error.message : error);
     });
+    // Migracion unica de imagenes viejas a WebP. Si falla, solo quedan las
+    // imagenes como estaban: el servidor arranca igual.
+    void (0, startupBackfills_1.runOneTimeUploadsWebpMigration)().catch((error) => {
+        console.error("[uploads-webp] Error ejecutando la migracion unica a WebP:", error instanceof Error ? error.message : error);
+    });
 });

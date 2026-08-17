@@ -1,5 +1,10 @@
 import { pool, qAll, qOne, qRun } from "../db";
 import { acreditarPuntosPorCompra } from "./points";
+import { migrateUploadsToWebp } from "./uploadsWebpMigration";
+
+const UPLOADS_WEBP_MIGRATION_KEY = "migracion_uploads_webp_20260817";
+const UPLOADS_WEBP_MIGRATION_DESCRIPTION =
+  "Marca si ya se ejecuto la migracion unica de imagenes subidas a formato WebP.";
 
 const WEB_CHECKOUT_POINTS_BACKFILL_KEY = "backfill_puntos_checkout_web_20260606";
 const WEB_CHECKOUT_POINTS_BACKFILL_DESCRIPTION =
@@ -106,4 +111,77 @@ export async function runOneTimeWebCheckoutPointsBackfill(): Promise<void> {
 export async function previewMissingWebCheckoutPointOrders(): Promise<number[]> {
   const rows = await loadMissingWebCheckoutPointOrders();
   return rows.map((row) => Number(row.id));
+}
+
+/**
+ * Migra a WebP las imagenes subidas antes del pipeline y reescribe sus
+ * referencias en la base. Corre sola al arrancar el servidor, una unica vez
+ * (bandera en `configuracion`), porque en el hosting no hay consola para
+ * ejecutar scripts a mano.
+ *
+ * Los archivos originales NO se borran: si alguna referencia quedara sin
+ * migrar, la imagen sigue funcionando. Ocupan poco y son un conjunto fijo:
+ * las subidas nuevas ya nacen en WebP.
+ */
+export async function runOneTimeUploadsWebpMigration(): Promise<void> {
+  await qRun(
+    pool,
+    `INSERT INTO configuracion (clave, valor, descripcion)
+     VALUES (?, '0', ?)
+     ON DUPLICATE KEY UPDATE
+       descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`,
+    [UPLOADS_WEBP_MIGRATION_KEY, UPLOADS_WEBP_MIGRATION_DESCRIPTION],
+  );
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // FOR UPDATE: si el hosting levanta dos procesos a la vez, solo uno migra.
+    const flag = await qOne<{ valor: string }>(
+      conn,
+      "SELECT valor FROM configuracion WHERE clave = ? LIMIT 1 FOR UPDATE",
+      [UPLOADS_WEBP_MIGRATION_KEY],
+    );
+
+    if ((flag?.valor || "").trim() === "1") {
+      await conn.rollback();
+      return;
+    }
+
+    const result = await migrateUploadsToWebp(conn, {
+      onFile: ({ from, to, bytesBefore, bytesAfter }) => {
+        console.log(
+          `[uploads-webp] ${from} -> ${to} (${Math.round(bytesBefore / 1024)}KB -> ${Math.round(bytesAfter / 1024)}KB)`,
+        );
+      },
+      onReference: (table, column, to, rows) => {
+        console.log(`[uploads-webp] ${table}.${column}: ${rows} fila(s) -> ${to}`);
+      },
+    });
+
+    await qRun(conn, "UPDATE configuracion SET valor = '1' WHERE clave = ?", [UPLOADS_WEBP_MIGRATION_KEY]);
+    await conn.commit();
+
+    if (result.converted.length === 0) {
+      console.log(
+        `[uploads-webp] nada nuevo para convertir (${result.alreadyWebp} imagen/es ya en WebP` +
+          `${result.referencesUpdated > 0 ? `, ${result.referencesUpdated} referencia(s) puestas al dia` : ""}).`,
+      );
+    } else {
+      const before = result.converted.reduce((acc, r) => acc + r.bytesBefore, 0);
+      const after = result.converted.reduce((acc, r) => acc + r.bytesAfter, 0);
+      console.log(
+        `[uploads-webp] migracion completada: ${result.converted.length} imagen/es, ` +
+          `${Math.round(before / 1024)}KB -> ${Math.round(after / 1024)}KB, ` +
+          `${result.referencesUpdated} referencia(s) actualizada(s).`,
+      );
+      console.log("[uploads-webp] los archivos originales quedaron en disco como respaldo.");
+    }
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
 }

@@ -26,7 +26,7 @@ import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 import { UPLOADS_DIR } from "./paths";
-import { runOneTimeWebCheckoutPointsBackfill } from "./services/startupBackfills";
+import { runOneTimeWebCheckoutPointsBackfill, runOneTimeUploadsWebpMigration } from "./services/startupBackfills";
 import { checkImageProcessingAvailable } from "./services/imageVariants";
 
 const app = express();
@@ -296,6 +296,14 @@ server.listen(PORT, () => {
   void runOneTimeWebCheckoutPointsBackfill().catch((error) => {
     console.error(
       "[startup-backfill] Error ejecutando backfill unico de puntos web:",
+      error instanceof Error ? error.message : error,
+    );
+  });
+  // Migracion unica de imagenes viejas a WebP. Si falla, solo quedan las
+  // imagenes como estaban: el servidor arranca igual.
+  void runOneTimeUploadsWebpMigration().catch((error) => {
+    console.error(
+      "[uploads-webp] Error ejecutando la migracion unica a WebP:",
       error instanceof Error ? error.message : error,
     );
   });
