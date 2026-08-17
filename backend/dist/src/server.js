@@ -289,9 +289,9 @@ server.listen(PORT, () => {
     void (0, startupBackfills_1.runOneTimeWebCheckoutPointsBackfill)().catch((error) => {
         console.error("[startup-backfill] Error ejecutando backfill unico de puntos web:", error instanceof Error ? error.message : error);
     });
-    // Migracion unica de imagenes viejas a WebP. Si falla, solo quedan las
-    // imagenes como estaban: el servidor arranca igual.
-    void (0, startupBackfills_1.runOneTimeUploadsWebpMigration)().catch((error) => {
-        console.error("[uploads-webp] Error ejecutando la migracion unica a WebP:", error instanceof Error ? error.message : error);
-    });
+    // La migracion masiva a WebP NO corre automaticamente: reescribia las
+    // referencias de la base y, al restaurarse la carpeta uploads desde un
+    // backup anterior, quedaban apuntando a archivos inexistentes. Ahora cada
+    // imagen se resuelve al vuelo en variantOnDemand.ts. Para migrar en serio,
+    // usar scripts/migrateUploadsToWebp.ts a mano.
 });

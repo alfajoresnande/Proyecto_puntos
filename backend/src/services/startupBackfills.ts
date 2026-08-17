@@ -118,14 +118,20 @@ export async function previewMissingWebCheckoutPointOrders(): Promise<number[]> 
 }
 
 /**
- * Migra a WebP las imagenes subidas antes del pipeline y reescribe sus
- * referencias en la base. Corre sola al arrancar el servidor, una unica vez
- * (bandera en `configuracion`), porque en el hosting no hay consola para
- * ejecutar scripts a mano.
+ * DESACTIVADA a proposito. No la llames desde el arranque.
  *
- * Los archivos originales NO se borran: si alguna referencia quedara sin
- * migrar, la imagen sigue funcionando. Ocupan poco y son un conjunto fijo:
- * las subidas nuevas ya nacen en WebP.
+ * Reescribir las referencias de la base a .webp es peligroso en este hosting:
+ * la carpeta uploads se copia a mano despues de cada deploy, y si el backup
+ * que se restaura es anterior a la conversion, la base queda apuntando a
+ * archivos .webp que en disco no existen y NINGUNA imagen carga.
+ *
+ * En su lugar, las imagenes se resuelven al vuelo en variantOnDemand.ts: si
+ * falta un .webp (canonico o variante) se genera desde el original que haya
+ * en disco. Eso tolera cualquier combinacion de base y carpeta.
+ *
+ * Queda disponible para ejecucion manual desde
+ * scripts/migrateUploadsToWebp.ts, donde se puede correr con --dry-run y
+ * con la carpeta ya en su lugar definitivo.
  */
 export async function runOneTimeUploadsWebpMigration(): Promise<void> {
   await qRun(

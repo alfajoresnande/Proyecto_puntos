@@ -28,7 +28,7 @@ import { startReservationExpirationWorker } from "./services/expirations";
 import fs from "fs";
 import { UPLOADS_DIR, UPLOADS_DIR_SOURCE, UPLOADS_DIR_AMBIGUOUS } from "./paths";
 import { createVariantOnDemandMiddleware } from "./services/variantOnDemand";
-import { runOneTimeWebCheckoutPointsBackfill, runOneTimeUploadsWebpMigration } from "./services/startupBackfills";
+import { runOneTimeWebCheckoutPointsBackfill } from "./services/startupBackfills";
 import { checkImageProcessingAvailable } from "./services/imageVariants";
 
 const app = express();
@@ -328,12 +328,9 @@ server.listen(PORT, () => {
       error instanceof Error ? error.message : error,
     );
   });
-  // Migracion unica de imagenes viejas a WebP. Si falla, solo quedan las
-  // imagenes como estaban: el servidor arranca igual.
-  void runOneTimeUploadsWebpMigration().catch((error) => {
-    console.error(
-      "[uploads-webp] Error ejecutando la migracion unica a WebP:",
-      error instanceof Error ? error.message : error,
-    );
-  });
+  // La migracion masiva a WebP NO corre automaticamente: reescribia las
+  // referencias de la base y, al restaurarse la carpeta uploads desde un
+  // backup anterior, quedaban apuntando a archivos inexistentes. Ahora cada
+  // imagen se resuelve al vuelo en variantOnDemand.ts. Para migrar en serio,
+  // usar scripts/migrateUploadsToWebp.ts a mano.
 });
