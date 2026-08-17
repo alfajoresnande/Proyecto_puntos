@@ -1,6 +1,5 @@
 import { promises as fs } from "fs";
 import path from "path";
-import sharp from "sharp";
 
 /**
  * Pipeline de imágenes subidas desde el panel de admin.
@@ -14,7 +13,53 @@ import sharp from "sharp";
  * encuadre cambia por breakpoint (16/9 desktop, 1/1 mobile). Acá solo se
  * redimensiona por ancho máximo conservando la proporción, sin agrandar
  * imágenes chicas. El canal alfa se preserva (WebP lo soporta).
+ *
+ * sharp trae binarios nativos y puede fallar al cargar en algunos hostings
+ * (version de Node distinta, glibc vieja, npm install sin binarios
+ * opcionales). Por eso se carga de forma diferida: si no está disponible,
+ * lo unico que se rompe es la subida de imagenes, no el arranque del server.
  */
+
+type SharpModule = typeof import("sharp").default;
+
+let sharpModule: SharpModule | null = null;
+let sharpLoadError: string | null = null;
+
+export class ImageProcessingUnavailableError extends Error {
+  constructor(cause: string) {
+    super(`El procesamiento de imagenes no esta disponible en este servidor: ${cause}`);
+    this.name = "ImageProcessingUnavailableError";
+  }
+}
+
+function getSharp(): SharpModule {
+  if (sharpModule) return sharpModule;
+  if (sharpLoadError !== null) throw new ImageProcessingUnavailableError(sharpLoadError);
+  try {
+    // require diferido a proposito: ver el comentario de arriba.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const loaded = require("sharp");
+    // Segun como se resuelva el paquete, el callable puede venir en .default.
+    sharpModule = (loaded?.default ?? loaded) as SharpModule;
+    return sharpModule;
+  } catch (error) {
+    sharpLoadError = error instanceof Error ? error.message : String(error);
+    throw new ImageProcessingUnavailableError(sharpLoadError);
+  }
+}
+
+/**
+ * Chequeo no destructivo para logear al arrancar. Nunca tira: devuelve el
+ * motivo del fallo para que quede visible en los logs del servidor.
+ */
+export function checkImageProcessingAvailable(): { ok: boolean; reason?: string } {
+  try {
+    getSharp();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 export const IMAGE_VARIANTS = [
   { suffix: "-card", width: 600 },
@@ -42,6 +87,7 @@ export function isVariantFilename(filename: string): boolean {
 }
 
 async function encodeTo(input: Buffer, width: number, outputPath: string): Promise<void> {
+  const sharp = getSharp();
   await sharp(input)
     .rotate() // aplica la orientación EXIF antes de que se pierda la metadata
     .resize({ width, fit: "inside", withoutEnlargement: true })

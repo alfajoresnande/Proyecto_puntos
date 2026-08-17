@@ -3,27 +3,54 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.IMAGE_VARIANTS = void 0;
+exports.IMAGE_VARIANTS = exports.ImageProcessingUnavailableError = void 0;
+exports.checkImageProcessingAvailable = checkImageProcessingAvailable;
 exports.variantFilename = variantFilename;
 exports.isVariantFilename = isVariantFilename;
 exports.processUploadedImage = processUploadedImage;
 exports.ensureVariantsFor = ensureVariantsFor;
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
-const sharp_1 = __importDefault(require("sharp"));
+let sharpModule = null;
+let sharpLoadError = null;
+class ImageProcessingUnavailableError extends Error {
+    constructor(cause) {
+        super(`El procesamiento de imagenes no esta disponible en este servidor: ${cause}`);
+        this.name = "ImageProcessingUnavailableError";
+    }
+}
+exports.ImageProcessingUnavailableError = ImageProcessingUnavailableError;
+function getSharp() {
+    if (sharpModule)
+        return sharpModule;
+    if (sharpLoadError !== null)
+        throw new ImageProcessingUnavailableError(sharpLoadError);
+    try {
+        // require diferido a proposito: ver el comentario de arriba.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const loaded = require("sharp");
+        // Segun como se resuelva el paquete, el callable puede venir en .default.
+        sharpModule = (loaded?.default ?? loaded);
+        return sharpModule;
+    }
+    catch (error) {
+        sharpLoadError = error instanceof Error ? error.message : String(error);
+        throw new ImageProcessingUnavailableError(sharpLoadError);
+    }
+}
 /**
- * Pipeline de imágenes subidas desde el panel de admin.
- *
- * Toda subida validada se reencodea a WebP:
- *   - canónico:  tope 1600px de ancho (la URL que se guarda en la base)
- *   - -card:     600px de ancho (grillas de producto)
- *   - -thumb:    300px de ancho (miniaturas)
- *
- * Nunca se recorta: el CSS del frontend ya encuadra con object-fit y el
- * encuadre cambia por breakpoint (16/9 desktop, 1/1 mobile). Acá solo se
- * redimensiona por ancho máximo conservando la proporción, sin agrandar
- * imágenes chicas. El canal alfa se preserva (WebP lo soporta).
+ * Chequeo no destructivo para logear al arrancar. Nunca tira: devuelve el
+ * motivo del fallo para que quede visible en los logs del servidor.
  */
+function checkImageProcessingAvailable() {
+    try {
+        getSharp();
+        return { ok: true };
+    }
+    catch (error) {
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+}
 exports.IMAGE_VARIANTS = [
     { suffix: "-card", width: 600 },
     { suffix: "-thumb", width: 300 },
@@ -44,7 +71,8 @@ function isVariantFilename(filename) {
     return exports.IMAGE_VARIANTS.some((v) => base.endsWith(v.suffix));
 }
 async function encodeTo(input, width, outputPath) {
-    await (0, sharp_1.default)(input)
+    const sharp = getSharp();
+    await sharp(input)
         .rotate() // aplica la orientación EXIF antes de que se pierda la metadata
         .resize({ width, fit: "inside", withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })

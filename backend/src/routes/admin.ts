@@ -11,7 +11,7 @@ import { emitRealtime } from "../realtime";
 import { normalizeSafeImageUrl } from "../urlSafety";
 import { getPersistedSecurityEvents, getSecurityMonitorSnapshot, recordSecurityEvent } from "../securityMonitor";
 import { verifyUploadedImageFile } from "../uploadSecurity";
-import { processUploadedImage } from "../services/imageVariants";
+import { processUploadedImage, ImageProcessingUnavailableError } from "../services/imageVariants";
 import { createFullBackupArchive } from "../services/backup";
 import { UPLOADS_DIR } from "../paths";
 import {
@@ -2564,6 +2564,12 @@ router.post("/productos/upload", (req, res, next) => {
       res.json({ url: `/uploads/${canonical}` });
     } catch (error) {
       console.error("[upload] Error procesando imagen:", error instanceof Error ? error.message : error);
+      if (error instanceof ImageProcessingUnavailableError) {
+        res.status(503).json({
+          error: "El servidor no puede procesar imágenes en este momento. Contactá a soporte técnico.",
+        });
+        return;
+      }
       res.status(500).json({ error: "No se pudo procesar la imagen. Probá con otro archivo." });
     }
   });

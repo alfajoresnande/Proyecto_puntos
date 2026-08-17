@@ -27,6 +27,7 @@ import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 import { UPLOADS_DIR } from "./paths";
 import { runOneTimeWebCheckoutPointsBackfill } from "./services/startupBackfills";
+import { checkImageProcessingAvailable } from "./services/imageVariants";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -217,6 +218,15 @@ app.use(express.json({ limit: "1mb" }));
 // Usa UPLOADS_DIR de paths.ts para que funcione tanto en dev (src/) como en prod (dist/src/)
 const uploadsPath = UPLOADS_DIR;
 console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
+
+// sharp es nativo y puede no cargar en algunos hostings. El server arranca
+// igual (solo se caen las subidas), pero conviene que se vea en los logs.
+const imageProcessing = checkImageProcessingAvailable();
+if (!imageProcessing.ok) {
+  console.error(
+    `[uploads] ATENCION: sharp no se pudo cargar, la subida de imagenes va a fallar. Motivo: ${imageProcessing.reason}`
+  );
+}
 const uploadsStatic = express.static(uploadsPath, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
