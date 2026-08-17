@@ -29,6 +29,7 @@ import {
 } from "../services/stock";
 import {
   acreditarPuntosPorCompra,
+  isPointsProgramEnabled,
   recalcularSaldoPuntosUsuario,
   registrarMovimientoPuntos,
 } from "../services/points";
@@ -841,6 +842,10 @@ router.patch("/usuarios/:id/activo", async (req, res) => {
 // ════════════════════════════════════════════════════════
 
 router.post("/puntos", async (req, res) => {
+  if (!(await isPointsProgramEnabled(pool))) {
+    res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+    return;
+  }
   const schema = z.object({
     usuario_id:  z.number().int().positive(),
     puntos:      z.number().int().refine((n) => n !== 0, "No puede ser 0"),

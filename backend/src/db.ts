@@ -588,6 +588,11 @@ async function ensureGlobalConfigurationSchema() {
       descripcion: "Cantidad maxima por producto para clientes empleados. 0 significa sin tope comercial.",
     },
     {
+      clave: "puntos_activo",
+      valor: "1",
+      descripcion: "Activa o desactiva el programa de puntos completo (acreditaciones, canjes y vencimientos).",
+    },
+    {
       clave: "eventbar_activo",
       valor: "0",
       descripcion: "Activa o desactiva la barra superior de evento temporal.",

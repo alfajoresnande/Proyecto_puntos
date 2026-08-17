@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
-import { recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "../services/points";
+import { isPointsProgramEnabled, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "../services/points";
 import { clearAuthCookie, getAuthPayload, requireAuth, setAuthCookie, signToken } from "../auth";
 import { recordSecurityEvent } from "../securityMonitor";
 import { sendEmailVerificationCode, sendPasswordResetEmail } from "../services/email";
@@ -282,6 +282,11 @@ function pendingRegistrationPayload(input: {
 }
 
 async function grantReferralBonusAfterVerification(conn: Queryable, usuarioId: number): Promise<void> {
+  // Con el programa de puntos apagado no se otorgan bonos de referido.
+  // Early return silencioso: esto corre durante la verificación de email
+  // y un error acá rompería la verificación de la cuenta.
+  if (!(await isPointsProgramEnabled(conn))) return;
+
   const invited = await qOne<{
     id: number;
     nombre: string;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool, qAll } from "../db";
+import { isPointsProgramEnabled } from "../services/points";
 
 const router = Router();
 const EVENTBAR_KEYS = [
@@ -58,6 +59,13 @@ router.get("/version", async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Error interno" });
   }
+});
+
+// Estado público del programa de puntos. El frontend lo usa para ocultar
+// toda la sección de puntos/canjes cuando el superAdmin lo desactiva.
+router.get("/puntos", async (_req, res) => {
+  // isPointsProgramEnabled ya devuelve true si la consulta falla (default seguro).
+  res.json({ enabled: await isPointsProgramEnabled(pool) });
 });
 
 router.get("/eventbar", async (_req, res) => {

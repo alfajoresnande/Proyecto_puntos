@@ -106,6 +106,49 @@ function normalizeAlertUnit(value: unknown): PointsExpirationAlertUnit {
   return value === "semanas" ? "semanas" : DEFAULT_POINTS_EXPIRATION_ALERT_UNIT;
 }
 
+/**
+ * Interruptor global del programa de puntos (clave `puntos_activo`).
+ * Con el programa apagado no ENTRA ningún punto nuevo y los vencimientos
+ * se pausan; solo se permiten los movimientos que deshacen operaciones
+ * previas (ver BLOCKED_MOVEMENT_TYPES_WHEN_DISABLED).
+ * Default seguro: si la clave no existe o la consulta falla, está activo.
+ */
+export async function isPointsProgramEnabled(conn: Queryable): Promise<boolean> {
+  try {
+    const row = await qOne<{ valor: string }>(
+      conn,
+      "SELECT valor FROM configuracion WHERE clave = 'puntos_activo' LIMIT 1",
+    );
+    const valor = (row?.valor ?? "1").trim().toLowerCase();
+    return !["0", "false", "no", "off"].includes(valor);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Tipos bloqueados con el programa apagado: todos los que hacen ENTRAR
+ * puntos nuevos. `ajuste` y `devolucion_canje` quedan permitidos porque
+ * no suman: deshacen compras canceladas o canjes devueltos de cuando el
+ * programa estaba prendido. `vencimiento_puntos` también pasa (el job se
+ * pausa aparte, pero un vencimiento en vuelo no debe romper).
+ */
+const BLOCKED_MOVEMENT_TYPES_WHEN_DISABLED: ReadonlySet<PointMovementType> = new Set([
+  "acreditacion_compra",
+  "asignacion_manual",
+  "codigo_canje",
+  "referido_invitador",
+  "referido_invitado",
+  "canje_producto",
+]);
+
+export class PointsProgramDisabledError extends Error {
+  constructor(tipo: PointMovementType) {
+    super(`El programa de puntos está desactivado: movimiento '${tipo}' rechazado.`);
+    this.name = "PointsProgramDisabledError";
+  }
+}
+
 export async function getPointsProgramConfig(conn: Queryable): Promise<PointsProgramConfig> {
   const row = await qOne<{
     monto_base: string | number | null;
@@ -353,6 +396,12 @@ export async function registrarMovimientoPuntos(
 ): Promise<number> {
   const { usuarioId, tipo, puntos, descripcion, referenciaId, referenciaTipo, creadoPor } = params;
 
+  // Corte central del toggle: todas las vías de suma (checkout, ventas
+  // locales, asignación manual, referidos, códigos) pasan por acá.
+  if (BLOCKED_MOVEMENT_TYPES_WHEN_DISABLED.has(tipo) && !(await isPointsProgramEnabled(conn))) {
+    throw new PointsProgramDisabledError(tipo);
+  }
+
   if (puntos === 0) {
     return await recalcularSaldoPuntosUsuario(conn, usuarioId);
   }
@@ -454,6 +503,11 @@ export async function removerPuntosAcreditadosPorCompra(
 }
 
 export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number): Promise<void> {
+  if (!(await isPointsProgramEnabled(conn))) {
+    console.log(`[puntos] programa desactivado: la orden #${orderId} no acredita puntos.`);
+    return;
+  }
+
   console.log("[puntos] iniciando acreditacion", { orderId });
 
   try {
@@ -504,6 +558,10 @@ export async function acreditarPuntosPorCompra(conn: Queryable, orderId: number)
 }
 
 export async function expirarPuntosVencidos(conn: Queryable): Promise<number> {
+  // Con el programa apagado los vencimientos se pausan por completo:
+  // nadie pierde puntos que no puede usar.
+  if (!(await isPointsProgramEnabled(conn))) return 0;
+
   const users = await qAll<{ usuario_id: number; puntos: number }>(
     conn,
     `SELECT usuario_id, COALESCE(SUM(puntos_disponibles), 0) AS puntos
