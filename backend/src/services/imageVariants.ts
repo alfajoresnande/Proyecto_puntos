@@ -134,6 +134,36 @@ export async function processUploadedImage(uploadsDir: string, originalFilename:
 }
 
 /**
+ * Reencodea a WebP un upload preexistente (anterior al pipeline) SIN borrar
+ * el original: lo usa migrateUploadsToWebp, que primero escribe el .webp y
+ * recién después actualiza las referencias en la base. Dejar el archivo
+ * viejo evita que una referencia no migrada quede rota.
+ *
+ * Idempotente: si el .webp ya existe, no lo regenera.
+ * Devuelve el nombre del archivo WebP.
+ */
+export async function reencodeExistingUploadToWebp(uploadsDir: string, filename: string): Promise<string> {
+  const webpName = `${stripExt(filename)}.webp`;
+  const webpPath = path.join(uploadsDir, webpName);
+
+  try {
+    await fs.access(webpPath);
+    return webpName; // ya existe
+  } catch {
+    // falta: generarlo
+  }
+
+  const input = await fs.readFile(path.join(uploadsDir, filename));
+  try {
+    await encodeTo(input, CANONICAL_MAX_WIDTH, webpPath);
+  } catch (error) {
+    await fs.unlink(webpPath).catch(() => {});
+    throw error;
+  }
+  return webpName;
+}
+
+/**
  * Genera las variantes que falten para un archivo ya existente, sin tocar
  * el original (hay URLs en la base apuntando a él). Idempotente.
  */

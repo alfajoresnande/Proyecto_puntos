@@ -8,6 +8,7 @@ exports.checkImageProcessingAvailable = checkImageProcessingAvailable;
 exports.variantFilename = variantFilename;
 exports.isVariantFilename = isVariantFilename;
 exports.processUploadedImage = processUploadedImage;
+exports.reencodeExistingUploadToWebp = reencodeExistingUploadToWebp;
 exports.ensureVariantsFor = ensureVariantsFor;
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
@@ -111,6 +112,35 @@ async function processUploadedImage(uploadsDir, originalFilename) {
         await fs_1.promises.unlink(originalPath).catch(() => { });
     }
     return canonicalFilename;
+}
+/**
+ * Reencodea a WebP un upload preexistente (anterior al pipeline) SIN borrar
+ * el original: lo usa migrateUploadsToWebp, que primero escribe el .webp y
+ * recién después actualiza las referencias en la base. Dejar el archivo
+ * viejo evita que una referencia no migrada quede rota.
+ *
+ * Idempotente: si el .webp ya existe, no lo regenera.
+ * Devuelve el nombre del archivo WebP.
+ */
+async function reencodeExistingUploadToWebp(uploadsDir, filename) {
+    const webpName = `${stripExt(filename)}.webp`;
+    const webpPath = path_1.default.join(uploadsDir, webpName);
+    try {
+        await fs_1.promises.access(webpPath);
+        return webpName; // ya existe
+    }
+    catch {
+        // falta: generarlo
+    }
+    const input = await fs_1.promises.readFile(path_1.default.join(uploadsDir, filename));
+    try {
+        await encodeTo(input, CANONICAL_MAX_WIDTH, webpPath);
+    }
+    catch (error) {
+        await fs_1.promises.unlink(webpPath).catch(() => { });
+        throw error;
+    }
+    return webpName;
 }
 /**
  * Genera las variantes que falten para un archivo ya existente, sin tocar
