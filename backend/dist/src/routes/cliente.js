@@ -942,6 +942,10 @@ router.patch("/perfil", async (req, res) => {
     }
 });
 router.post("/usar-codigo-invitacion", async (req, res) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const schema = zod_1.z.object({ codigo: zod_1.z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -1049,6 +1053,18 @@ router.get("/mi-codigo", async (req, res) => {
     res.json({ codigo: user?.codigo_invitacion, total_invitados: total?.c ?? 0 });
 });
 router.get("/puntos/proximos-vencer", async (req, res) => {
+    // Con el programa apagado los vencimientos están pausados: lista vacía.
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.json({
+            ventana_dias: 0,
+            ventana_valor: 0,
+            ventana_unidad: "meses",
+            total_puntos: 0,
+            proximo_vencimiento: null,
+            lotes: [],
+        });
+        return;
+    }
     const summary = await (0, points_1.getUpcomingPointExpirations)(db_1.pool, req.user.id);
     res.json({
         ventana_dias: summary.windowDays,
@@ -3259,6 +3275,10 @@ router.post("/ordenes/:id/cancelar", async (req, res) => {
     }
 });
 router.post("/canjear-codigo", async (req, res) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const schema = zod_1.z.object({ codigo: zod_1.z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -3321,6 +3341,10 @@ router.post("/canjear-codigo", async (req, res) => {
     }
 });
 router.post("/canjear-carrito", async (req, res) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const schema = zod_1.z.object({
         items: zod_1.z.array(zod_1.z.object({
             producto_id: zod_1.z.number().int().positive(),
@@ -3363,6 +3387,10 @@ router.post("/canjear-carrito", async (req, res) => {
     }
 });
 router.post("/canjear-producto", async (req, res) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const schema = zod_1.z.object({
         producto_id: zod_1.z.number().int().positive(),
         sucursal_id: zod_1.z.number().int().positive().optional().nullable(),

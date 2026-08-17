@@ -193,6 +193,11 @@ function pendingRegistrationPayload(input) {
     ];
 }
 async function grantReferralBonusAfterVerification(conn, usuarioId) {
+    // Con el programa de puntos apagado no se otorgan bonos de referido.
+    // Early return silencioso: esto corre durante la verificación de email
+    // y un error acá rompería la verificación de la cuenta.
+    if (!(await (0, points_1.isPointsProgramEnabled)(conn)))
+        return;
     const invited = await (0, db_1.qOne)(conn, "SELECT id, nombre, referido_por FROM usuarios WHERE id = ? FOR UPDATE", [usuarioId]);
     if (!invited?.referido_por)
         return;

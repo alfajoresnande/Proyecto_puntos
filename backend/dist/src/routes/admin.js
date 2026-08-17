@@ -675,6 +675,10 @@ router.patch("/usuarios/:id/activo", async (req, res) => {
 //  PUNTOS MANUALES
 // ════════════════════════════════════════════════════════
 router.post("/puntos", async (req, res) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const schema = zod_1.z.object({
         usuario_id: zod_1.z.number().int().positive(),
         puntos: zod_1.z.number().int().refine((n) => n !== 0, "No puede ser 0"),

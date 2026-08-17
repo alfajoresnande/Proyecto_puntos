@@ -369,6 +369,10 @@ const cargarSchema = zod_1.z.object({
     path: ["items"],
 });
 router.post("/cargar", async (req, res, next) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const parsed = cargarSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0].message });
@@ -488,6 +492,10 @@ router.get("/canje/:codigo", async (req, res, next) => {
 });
 // Actualizar estado de un canje (entregado / no_disponible / cancelado)
 router.patch("/canje/:codigo", async (req, res, next) => {
+    if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+        res.status(409).json({ error: "El programa de puntos está desactivado en este momento." });
+        return;
+    }
     const codigo = req.params.codigo.trim().toUpperCase();
     const schema = zod_1.z.object({
         estado: zod_1.z.enum(["entregado", "no_disponible", "cancelado"]),

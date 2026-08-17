@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const db_1 = require("../db");
+const points_1 = require("../services/points");
 const router = (0, express_1.Router)();
 const EVENTBAR_KEYS = [
     "eventbar_activo",
@@ -51,6 +52,12 @@ router.get("/version", async (_req, res) => {
     catch (err) {
         res.status(500).json({ error: "Error interno" });
     }
+});
+// Estado público del programa de puntos. El frontend lo usa para ocultar
+// toda la sección de puntos/canjes cuando el superAdmin lo desactiva.
+router.get("/puntos", async (_req, res) => {
+    // isPointsProgramEnabled ya devuelve true si la consulta falla (default seguro).
+    res.json({ enabled: await (0, points_1.isPointsProgramEnabled)(db_1.pool) });
 });
 router.get("/eventbar", async (_req, res) => {
     try {

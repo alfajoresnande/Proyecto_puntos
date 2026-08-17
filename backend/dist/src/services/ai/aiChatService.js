@@ -39,6 +39,13 @@ function normalizePromptInteger(value, fallback) {
 }
 async function getPointsProgramContext() {
     try {
+        if (!(await (0, points_1.isPointsProgramEnabled)(db_1.pool))) {
+            return `PROGRAMA DE PUNTOS ACTUAL:
+- El programa de puntos esta DESACTIVADO temporalmente.
+- Las compras no acumulan puntos y no se pueden hacer canjes por ahora.
+- Si el usuario pregunta por puntos, canjes o referidos, explicale que el programa esta pausado y que puede seguir comprando normalmente.
+- No expliques como funciona la acumulacion ni menciones valores de puntos.`;
+        }
         const [pointsConfig, referralConfig] = await Promise.all([
             (0, points_1.getPointsProgramConfig)(db_1.pool),
             (0, db_1.qOne)(db_1.pool, `SELECT
