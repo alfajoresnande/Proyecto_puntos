@@ -1033,6 +1033,8 @@ export function CarritoTienda() {
                 src="/nande_muchas_gracias.webp"
                 alt="Pedido pagado con exito"
                 className="store-order-thanks-image"
+                loading="lazy"
+                decoding="async"
               />
               <p className="checkout-approved-title">Muchas gracias por tu compra</p>
               <p className="checkout-approved-text">
@@ -1090,6 +1092,8 @@ export function CarritoTienda() {
                 src="/nande_muchas_gracias.webp"
                 alt="Pedido pagado con exito"
                 className="store-order-thanks-image"
+                loading="lazy"
+                decoding="async"
               />
               <p className="checkout-approved-title">Muchas gracias por tu compra</p>
               <p className="checkout-approved-text">

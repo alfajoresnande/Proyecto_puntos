@@ -137,17 +137,17 @@ export function AdminLayoutDonde() {
         }}>
           {/* Imagen 1: Izquierda (ocupa 2 filas) */}
           <div style={{ gridRow: "1 / span 2", position: "relative", borderRadius: "8px", overflow: "hidden", background: "#f0f0f0" }}>
-            <img src={img1} alt="Prev 1" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={img1} alt="Prev 1" style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" decoding="async" />
             <div style={{ position: "absolute", top: 0, left: 0, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 8px", fontSize: "12px", borderBottomRightRadius: "8px" }}>1. Izquierda</div>
           </div>
           {/* Imagen 2: Superior derecha */}
           <div style={{ position: "relative", borderRadius: "8px", overflow: "hidden", background: "#f0f0f0" }}>
-            <img src={img2} alt="Prev 2" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={img2} alt="Prev 2" style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" decoding="async" />
             <div style={{ position: "absolute", top: 0, left: 0, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 8px", fontSize: "12px", borderBottomRightRadius: "8px" }}>2. Sup. Derecha</div>
           </div>
           {/* Imagen 3: Inferior derecha */}
           <div style={{ position: "relative", borderRadius: "8px", overflow: "hidden", background: "#f0f0f0" }}>
-            <img src={img3} alt="Prev 3" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img src={img3} alt="Prev 3" style={{ width: "100%", height: "100%", objectFit: "cover" }} loading="lazy" decoding="async" />
             <div style={{ position: "absolute", top: 0, left: 0, background: "rgba(0,0,0,0.6)", color: "#fff", padding: "4px 8px", fontSize: "12px", borderBottomRightRadius: "8px" }}>3. Inf. Derecha</div>
           </div>
         </div>

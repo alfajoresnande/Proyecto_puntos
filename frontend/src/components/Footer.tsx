@@ -21,7 +21,7 @@ export function Footer() {
       <div className="footer-inner">
         <div className="footer-col footer-col-left">
           <Link to="/" className="footer-logo" aria-label="Ir al inicio de Nande">
-            <img src="/logo.png" alt="Nande" />
+            <img src="/logo.png" alt="Nande" loading="lazy" decoding="async" />
           </Link>
           <p className="footer-tagline">Casa de Alfajores, Dulces y Chocolates</p>
         </div>
@@ -56,11 +56,15 @@ export function Footer() {
               src="/orgullosamente_footer.png"
               alt="Orgullosamente Correntinos"
               className="footer-badge footer-badge-orgullo"
+              loading="lazy"
+              decoding="async"
             />
             <img
               src="/hecho_en_corrientes.png"
               alt="Hecho en Corrientes"
               className="footer-badge footer-badge-hecho"
+              loading="lazy"
+              decoding="async"
             />
           </div>
         </div>

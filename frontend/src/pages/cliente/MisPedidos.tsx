@@ -371,6 +371,8 @@ export function MisPedidos() {
                 src="/nande_muchas_gracias.webp"
                 alt="Pedido pagado con exito"
                 className="store-order-thanks-image"
+                loading="lazy"
+                decoding="async"
               />
             ) : null}
             <p>{returnNotice.msg}</p>

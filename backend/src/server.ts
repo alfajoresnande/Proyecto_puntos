@@ -220,7 +220,9 @@ console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
 const uploadsStatic = express.static(uploadsPath, {
   setHeaders: (res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Cache-Control", "public, max-age=3600");
+    // Los nombres de archivo son únicos por contenido (uuid+timestamp),
+    // así que el contenido de una URL nunca cambia: cache inmutable de 1 año.
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
     // Permitir que el frontend (otro dominio) cargue las imágenes en <img> tags
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   },

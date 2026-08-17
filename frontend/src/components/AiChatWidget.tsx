@@ -396,6 +396,8 @@ export function AiChatWidget() {
           alt=""
           aria-hidden="true"
           className="ai-chat-fab-img"
+          loading="lazy"
+          decoding="async"
         />
       </button>
     </section>

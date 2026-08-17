@@ -256,7 +256,16 @@ export function Home() {
   return (
     <div className="home-page">
       <section className="home-hero" aria-label="Imagen principal de Ñandé">
-        <img src={heroImage} alt="Imagen principal de Ñandé Alfajores Correntinos" className="home-hero-image" />
+        <img
+          src={heroImage}
+          alt="Imagen principal de Ñandé Alfajores Correntinos"
+          className="home-hero-image"
+          width={1672}
+          height={941}
+          loading="eager"
+          decoding="async"
+          {...({ fetchpriority: "high" } as Record<string, string>)}
+        />
         <button
           type="button"
           className="home-hero-scroll-hint"
@@ -289,6 +298,8 @@ export function Home() {
                     <img
                       src={image.src}
                       alt={image.alt}
+                      loading="lazy"
+                      decoding="async"
                       onError={(event) => {
                         event.currentTarget.src = "/logo.png";
                         event.currentTarget.classList.add("is-placeholder");
@@ -305,6 +316,8 @@ export function Home() {
                     <img
                       src={image.src}
                       alt={image.alt}
+                      loading="lazy"
+                      decoding="async"
                       onError={(event) => {
                         event.currentTarget.src = "/logo.png";
                         event.currentTarget.classList.add("is-placeholder");
@@ -316,6 +329,8 @@ export function Home() {
                 <img
                   src={image.src}
                   alt={image.alt}
+                  loading="lazy"
+                  decoding="async"
                   onError={(event) => {
                     event.currentTarget.src = "/logo.png";
                     event.currentTarget.classList.add("is-placeholder");
@@ -423,6 +438,8 @@ export function Home() {
                           src={cat.imagen_url.startsWith("http") ? cat.imagen_url : mediaUrl(cat.imagen_url)}
                           alt=""
                           className="home-category-chip-img"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <span className="home-category-chip-fallback">{cat.nombre.slice(0, 1).toUpperCase()}</span>
@@ -451,6 +468,10 @@ export function Home() {
                         onError={dropSrcSetOnError}
                         alt={producto.nombre}
                         className="home-product-image"
+                        width={600}
+                        height={338}
+                        loading="lazy"
+                        decoding="async"
                       />
                       <span className="home-product-category">{producto.categoria || "Ñandé"}</span>
                     </div>
@@ -519,7 +540,7 @@ export function Home() {
                 <article className="home-timeline-card">
                   <div className="home-timeline-media">
                     {entry.imagen_url ? (
-                      <img src={entry.imagen_url.startsWith("http") ? entry.imagen_url : mediaUrl(entry.imagen_url)} alt={entry.titulo} />
+                      <img src={entry.imagen_url.startsWith("http") ? entry.imagen_url : mediaUrl(entry.imagen_url)} alt={entry.titulo} loading="lazy" decoding="async" />
                     ) : (
                       <div className="home-timeline-media-placeholder"></div>
                     )}

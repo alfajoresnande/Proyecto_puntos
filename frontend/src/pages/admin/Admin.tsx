@@ -7459,7 +7459,7 @@ export function Admin() {
                   <div className="adm-product-images-grid">
                     {nuevoProducto.imagenes.map((url, index) => (
                       <div key={`${url}-${index}`} className="adm-product-image-card">
-                        <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
+                        <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} loading="lazy" decoding="async" />
                         <div className="adm-product-image-row">
                           <span>Imagen {index + 1}</span>
                           <button type="button" className="adm-btn-danger" onClick={() => quitarImagenProducto("nuevo", index)}>
@@ -7476,7 +7476,7 @@ export function Admin() {
                   <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
                     {nuevoProducto.imagen_mobile_url ? (
                       <div className="adm-product-image-card" style={{ width: "fit-content" }}>
-                        <img src={mediaUrl(nuevoProducto.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} />
+                        <img src={mediaUrl(nuevoProducto.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} loading="lazy" decoding="async" />
                         <div className="adm-product-image-row">
                           <span>Imagen Móvil</span>
                           <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("nuevo")}>
@@ -7757,7 +7757,7 @@ export function Admin() {
                           <div className="adm-product-images-grid">
                             {editDraft.imagenes.map((url, index) => (
                               <div key={`${url}-${index}`} className="adm-product-image-card">
-                                <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} />
+                                <img src={mediaUrl(url)} className="adm-product-image-thumb" alt={`Imagen ${index + 1}`} loading="lazy" decoding="async" />
                                 <div className="adm-product-image-row">
                                   <span>Imagen {index + 1}</span>
                                   <button type="button" className="adm-btn-danger" onClick={() => quitarImagenProducto("edit", index)}>
@@ -7774,7 +7774,7 @@ export function Admin() {
                           <div className="adm-upload" style={{ minHeight: "80px", padding: "1rem" }}>
                             {editDraft.imagen_mobile_url ? (
                               <div className="adm-product-image-card" style={{ width: "fit-content" }}>
-                                <img src={mediaUrl(editDraft.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} />
+                                <img src={mediaUrl(editDraft.imagen_mobile_url)} className="adm-product-image-thumb" alt="Imagen Móvil" style={{ width: "80px", height: "80px", objectFit: "cover" }} loading="lazy" decoding="async" />
                                 <div className="adm-product-image-row">
                                   <span>Imagen Móvil</span>
                                   <button type="button" className="adm-btn-danger" onClick={() => quitarImagenMobileProducto("edit")}>
@@ -9116,7 +9116,7 @@ export function Admin() {
                     <label className="adm-upload-zone">
                       <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "nuevo"); }} />
                       <span className="adm-upload-btn">Elegir imagen</span>
-                      {nuevaCategoria.imagen_url && <img src={nuevaCategoria.imagen_url} alt="Preview" style={{ height: "40px", borderRadius: "4px" }} />}
+                      {nuevaCategoria.imagen_url && <img src={nuevaCategoria.imagen_url} alt="Preview" style={{ height: "40px", borderRadius: "4px" }} loading="lazy" decoding="async" />}
                     </label>
                     <p className="adm-field-help">Ideal: PNG o WebP cuadrado, fondo transparente y un solo icono centrado.</p>
                   </div>
@@ -9182,7 +9182,7 @@ export function Admin() {
                             </td>
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                                {categoria.imagen_url && <img src={categoria.imagen_url} alt="" style={{ height: "30px", borderRadius: "4px" }} />}
+                                {categoria.imagen_url && <img src={categoria.imagen_url} alt="" style={{ height: "30px", borderRadius: "4px" }} loading="lazy" decoding="async" />}
                                 <div style={{ display: "flex", flexDirection: "column" }}>
                                   <span style={{ fontSize: "0.85em" }}>Orden: {categoria.orden ?? 0}</span>
                                   {categoria.mostrar_en_home ? <span className="adm-badge adm-badge-active" style={{ padding: "0.1rem 0.3rem", fontSize: "0.7em" }}>En Home</span> : null}
@@ -9232,7 +9232,7 @@ export function Admin() {
                                     <label className="adm-upload-zone" style={{ margin: 0, padding: "0.4rem", minHeight: "44px" }}>
                                       <input type="file" accept="image/jpeg, image/png, image/webp" onChange={(e) => { if (e.target.files?.[0]) void subirImagenCategoria(e.target.files[0], "edit"); }} />
                                       <span className="adm-upload-btn" style={{ padding: "0.2rem 0.5rem" }}>Elegir imagen</span>
-                                      {categoriaEditDraft.imagen_url && <img src={categoriaEditDraft.imagen_url} alt="Preview" style={{ height: "30px", borderRadius: "4px" }} />}
+                                      {categoriaEditDraft.imagen_url && <img src={categoriaEditDraft.imagen_url} alt="Preview" style={{ height: "30px", borderRadius: "4px" }} loading="lazy" decoding="async" />}
                                     </label>
                                     <label style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: "#4A2C1A", fontWeight: 700 }}>
                                       <input
@@ -9727,7 +9727,7 @@ export function Admin() {
                           <div className="adm-page-images-grid">
                             {sobreImagenes.map((url, index) => (
                               <div className="adm-page-image-card" key={`${url}-${index}`}>
-                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" />
+                                <img src={mediaUrl(url)} alt={`Foto ${index + 1}`} className="adm-page-image-thumb" loading="lazy" decoding="async" />
                                 <button type="button" className="adm-page-image-remove" onClick={() => quitarImagenPagina("sobre-nosotros", index)}>
                                   Quitar
                                 </button>

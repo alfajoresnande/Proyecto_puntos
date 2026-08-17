@@ -177,6 +177,8 @@ export function MisCanjes() {
                 <img
                   src={canje.producto_imagen ? mediaUrl(canje.producto_imagen) : "https://via.placeholder.com/48"}
                   className="w-12 h-12 rounded-lg object-cover bg-ios-gray6 flex-shrink-0"
+                  loading="lazy"
+                  decoding="async"
                 />
                 <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>

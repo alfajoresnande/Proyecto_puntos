@@ -129,7 +129,7 @@ export function AdminLayoutTimeline() {
               <input type="file" accept="image/*" onChange={(e) => {
                 if (e.target.files?.[0]) subirImagen(e.target.files[0], false);
               }} />
-              {eventoNuevo.imagen_url && <img src={eventoNuevo.imagen_url.startsWith("http") ? eventoNuevo.imagen_url : mediaUrl(eventoNuevo.imagen_url)} alt="preview" style={{ height: "60px", borderRadius: "4px" }} />}
+              {eventoNuevo.imagen_url && <img src={eventoNuevo.imagen_url.startsWith("http") ? eventoNuevo.imagen_url : mediaUrl(eventoNuevo.imagen_url)} alt="preview" style={{ height: "60px", borderRadius: "4px" }} loading="lazy" decoding="async" />}
             </div>
           </label>
         </div>
@@ -150,7 +150,7 @@ export function AdminLayoutTimeline() {
         {eventos.map((evento) => (
           <div key={evento.id} className="admin-card" style={{ padding: "1.5rem", display: "flex", gap: "1.5rem", alignItems: "flex-start" }}>
             {evento.imagen_url ? (
-              <img src={evento.imagen_url.startsWith("http") ? evento.imagen_url : mediaUrl(evento.imagen_url)} alt={evento.titulo} style={{ width: "120px", height: "120px", objectFit: "cover", borderRadius: "8px" }} />
+              <img src={evento.imagen_url.startsWith("http") ? evento.imagen_url : mediaUrl(evento.imagen_url)} alt={evento.titulo} style={{ width: "120px", height: "120px", objectFit: "cover", borderRadius: "8px" }} loading="lazy" decoding="async" />
             ) : (
               <div style={{ width: "120px", height: "120px", background: "#f0f0f0", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>Sin imagen</div>
             )}

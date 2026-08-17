@@ -5,3 +5,16 @@
     Header set Pragma "no-cache"
     Header set Expires "Wed, 11 Jan 1984 05:00:00 GMT"
 </Files>
+
+# Assets compilados por Vite: llevan hash de contenido en el nombre
+# (index-C1xgieQw.js), la URL nunca cambia de contenido -> immutable.
+<FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+
+# Imágenes y fuentes de public/: sin hash en el nombre, asi que cache
+# largo PERO con revalidación (nada de immutable: si se reemplaza
+# hero.webp el navegador tiene que poder enterarse).
+<FilesMatch "\.(png|jpe?g|webp|gif|svg|ico|woff2?)$">
+    Header set Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+</FilesMatch>

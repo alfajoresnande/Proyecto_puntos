@@ -1160,6 +1160,10 @@ export function TiendaOnline() {
                           sizes={CARD_IMG_SIZES}
                           onError={dropSrcSetOnError}
                           alt={producto.nombre}
+                          width={600}
+                          height={338}
+                          loading="lazy"
+                          decoding="async"
                         />
                       </picture>
                     ) : (
@@ -1335,6 +1339,7 @@ export function TiendaOnline() {
                   src={productoModalImagenActual}
                   alt={`${productoModal.nombre} - imagen ${productoModalImageIndex + 1}`}
                   className="producto-modal-img"
+                  decoding="async"
                   style={{
                     transformOrigin: zoomOrigin,
                     transform: imgZoomed ? `translate(${pan.x}px, ${pan.y}px) scale(2.4)` : "none",
