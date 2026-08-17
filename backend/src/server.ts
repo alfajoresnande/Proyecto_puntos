@@ -25,7 +25,8 @@ import layoutRoutes from "./routes/layout";
 import { recordSecurityEvent } from "./securityMonitor";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
-import { UPLOADS_DIR } from "./paths";
+import fs from "fs";
+import { UPLOADS_DIR, UPLOADS_DIR_SOURCE, UPLOADS_DIR_AMBIGUOUS } from "./paths";
 import { runOneTimeWebCheckoutPointsBackfill, runOneTimeUploadsWebpMigration } from "./services/startupBackfills";
 import { checkImageProcessingAvailable } from "./services/imageVariants";
 
@@ -217,7 +218,29 @@ app.use(express.json({ limit: "1mb" }));
 // Servir imagenes subidas estaticamente
 // Usa UPLOADS_DIR de paths.ts para que funcione tanto en dev (src/) como en prod (dist/src/)
 const uploadsPath = UPLOADS_DIR;
-console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
+console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath} (origen: ${UPLOADS_DIR_SOURCE})`);
+// Diagnostico de arranque: sin consola en el hosting, este resumen en el log
+// es la unica forma de saber si el backend esta mirando la carpeta correcta.
+if (UPLOADS_DIR_AMBIGUOUS) {
+  console.warn(
+    `[uploads] ATENCION: tambien existe ${UPLOADS_DIR_AMBIGUOUS}. Se esta usando ${uploadsPath}. ` +
+      "Si la carpeta buena es la otra, defini UPLOADS_DIR en el entorno o las subidas nuevas se pierden en el proximo deploy.",
+  );
+}
+try {
+  if (!fs.existsSync(uploadsPath)) {
+    console.error(`[uploads] ATENCION: la carpeta ${uploadsPath} NO existia. Defini UPLOADS_DIR en el entorno.`);
+    // Se crea igual para que las subidas no fallen mientras tanto.
+    fs.mkdirSync(uploadsPath, { recursive: true });
+  } else {
+    const archivos = fs.readdirSync(uploadsPath).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+    const canonicos = archivos.filter((f) => !/-(card|thumb)\.webp$/i.test(f));
+    const variantes = archivos.length - canonicos.length;
+    console.log(`[uploads] ${canonicos.length} imagen(es) canonica(s), ${variantes} variante(s) generada(s).`);
+  }
+} catch (error) {
+  console.error("[uploads] No se pudo inspeccionar la carpeta:", error instanceof Error ? error.message : error);
+}
 
 // sharp es nativo y puede no cargar en algunos hostings. El server arranca
 // igual (solo se caen las subidas), pero conviene que se vea en los logs.

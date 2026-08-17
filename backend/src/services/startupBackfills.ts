@@ -1,6 +1,7 @@
 import { pool, qAll, qOne, qRun } from "../db";
 import { acreditarPuntosPorCompra } from "./points";
 import { migrateUploadsToWebp } from "./uploadsWebpMigration";
+import { UPLOADS_DIR } from "../paths";
 
 // Version 2: la v1 solo generaba variantes para los archivos que convertia,
 // asi que los uploads que ya venian en WebP quedaron sin -card/-thumb y el
@@ -152,6 +153,7 @@ export async function runOneTimeUploadsWebpMigration(): Promise<void> {
       return;
     }
 
+    console.log(`[uploads-webp] revisando ${UPLOADS_DIR}`);
     const result = await migrateUploadsToWebp(conn, {
       onFile: ({ from, to, bytesBefore, bytesAfter }) => {
         console.log(

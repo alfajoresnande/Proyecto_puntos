@@ -28,6 +28,7 @@ const layout_1 = __importDefault(require("./routes/layout"));
 const securityMonitor_1 = require("./securityMonitor");
 const realtime_1 = require("./realtime");
 const expirations_1 = require("./services/expirations");
+const fs_1 = __importDefault(require("fs"));
 const paths_1 = require("./paths");
 const startupBackfills_1 = require("./services/startupBackfills");
 const imageVariants_1 = require("./services/imageVariants");
@@ -192,7 +193,29 @@ app.use(express_1.default.json({ limit: "1mb" }));
 // Servir imagenes subidas estaticamente
 // Usa UPLOADS_DIR de paths.ts para que funcione tanto en dev (src/) como en prod (dist/src/)
 const uploadsPath = paths_1.UPLOADS_DIR;
-console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath}`);
+console.log(`[uploads] Sirviendo archivos estáticos desde: ${uploadsPath} (origen: ${paths_1.UPLOADS_DIR_SOURCE})`);
+// Diagnostico de arranque: sin consola en el hosting, este resumen en el log
+// es la unica forma de saber si el backend esta mirando la carpeta correcta.
+if (paths_1.UPLOADS_DIR_AMBIGUOUS) {
+    console.warn(`[uploads] ATENCION: tambien existe ${paths_1.UPLOADS_DIR_AMBIGUOUS}. Se esta usando ${uploadsPath}. ` +
+        "Si la carpeta buena es la otra, defini UPLOADS_DIR en el entorno o las subidas nuevas se pierden en el proximo deploy.");
+}
+try {
+    if (!fs_1.default.existsSync(uploadsPath)) {
+        console.error(`[uploads] ATENCION: la carpeta ${uploadsPath} NO existia. Defini UPLOADS_DIR en el entorno.`);
+        // Se crea igual para que las subidas no fallen mientras tanto.
+        fs_1.default.mkdirSync(uploadsPath, { recursive: true });
+    }
+    else {
+        const archivos = fs_1.default.readdirSync(uploadsPath).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+        const canonicos = archivos.filter((f) => !/-(card|thumb)\.webp$/i.test(f));
+        const variantes = archivos.length - canonicos.length;
+        console.log(`[uploads] ${canonicos.length} imagen(es) canonica(s), ${variantes} variante(s) generada(s).`);
+    }
+}
+catch (error) {
+    console.error("[uploads] No se pudo inspeccionar la carpeta:", error instanceof Error ? error.message : error);
+}
 // sharp es nativo y puede no cargar en algunos hostings. El server arranca
 // igual (solo se caen las subidas), pero conviene que se vea en los logs.
 const imageProcessing = (0, imageVariants_1.checkImageProcessingAvailable)();

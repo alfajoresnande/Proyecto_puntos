@@ -6,6 +6,7 @@ exports.runOneTimeUploadsWebpMigration = runOneTimeUploadsWebpMigration;
 const db_1 = require("../db");
 const points_1 = require("./points");
 const uploadsWebpMigration_1 = require("./uploadsWebpMigration");
+const paths_1 = require("../paths");
 // Version 2: la v1 solo generaba variantes para los archivos que convertia,
 // asi que los uploads que ya venian en WebP quedaron sin -card/-thumb y el
 // frontend comia un 404 por imagen. Clave nueva para que vuelva a correr.
@@ -106,6 +107,7 @@ async function runOneTimeUploadsWebpMigration() {
             await conn.rollback();
             return;
         }
+        console.log(`[uploads-webp] revisando ${paths_1.UPLOADS_DIR}`);
         const result = await (0, uploadsWebpMigration_1.migrateUploadsToWebp)(conn, {
             onFile: ({ from, to, bytesBefore, bytesAfter }) => {
                 console.log(`[uploads-webp] ${from} -> ${to} (${Math.round(bytesBefore / 1024)}KB -> ${Math.round(bytesAfter / 1024)}KB)`);
