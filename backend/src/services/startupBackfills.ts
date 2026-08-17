@@ -2,9 +2,12 @@ import { pool, qAll, qOne, qRun } from "../db";
 import { acreditarPuntosPorCompra } from "./points";
 import { migrateUploadsToWebp } from "./uploadsWebpMigration";
 
-const UPLOADS_WEBP_MIGRATION_KEY = "migracion_uploads_webp_20260817";
+// Version 2: la v1 solo generaba variantes para los archivos que convertia,
+// asi que los uploads que ya venian en WebP quedaron sin -card/-thumb y el
+// frontend comia un 404 por imagen. Clave nueva para que vuelva a correr.
+const UPLOADS_WEBP_MIGRATION_KEY = "migracion_uploads_webp_v2";
 const UPLOADS_WEBP_MIGRATION_DESCRIPTION =
-  "Marca si ya se ejecuto la migracion unica de imagenes subidas a formato WebP.";
+  "Marca si ya se ejecuto la migracion de imagenes subidas a WebP y la generacion de variantes -card/-thumb.";
 
 const WEB_CHECKOUT_POINTS_BACKFILL_KEY = "backfill_puntos_checkout_web_20260606";
 const WEB_CHECKOUT_POINTS_BACKFILL_DESCRIPTION =
@@ -158,6 +161,12 @@ export async function runOneTimeUploadsWebpMigration(): Promise<void> {
       onReference: (table, column, to, rows) => {
         console.log(`[uploads-webp] ${table}.${column}: ${rows} fila(s) -> ${to}`);
       },
+      onVariants: (filename, created) => {
+        console.log(`[uploads-webp] variantes generadas para ${filename}: ${created}`);
+      },
+      onVariantError: (filename, message) => {
+        console.error(`[uploads-webp] no se pudieron generar variantes de ${filename}: ${message}`);
+      },
     });
 
     await qRun(conn, "UPDATE configuracion SET valor = '1' WHERE clave = ?", [UPLOADS_WEBP_MIGRATION_KEY]);
@@ -166,6 +175,7 @@ export async function runOneTimeUploadsWebpMigration(): Promise<void> {
     if (result.converted.length === 0) {
       console.log(
         `[uploads-webp] nada nuevo para convertir (${result.alreadyWebp} imagen/es ya en WebP` +
+          `${result.variantsCreated > 0 ? `, ${result.variantsCreated} variante(s) generada(s)` : ""}` +
           `${result.referencesUpdated > 0 ? `, ${result.referencesUpdated} referencia(s) puestas al dia` : ""}).`,
       );
     } else {

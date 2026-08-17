@@ -51,6 +51,8 @@ export type UploadsWebpMigrationResult = {
   renames: UploadRename[];
   alreadyWebp: number;
   referencesUpdated: number;
+  /** Variantes -card/-thumb creadas en esta corrida. */
+  variantsCreated: number;
 };
 
 async function tableExists(conn: Queryable, table: string): Promise<boolean> {
@@ -78,6 +80,18 @@ export async function listPendingUploads(uploadsDir: string = UPLOADS_DIR): Prom
   const entries = await fs.readdir(uploadsDir, { withFileTypes: true });
   return entries
     .filter((e) => e.isFile() && !isVariantFilename(e.name) && /\.(png|jpe?g)$/i.test(e.name))
+    .map((e) => e.name);
+}
+
+/**
+ * Todos los archivos canonicos (cualquier formato soportado, sin variantes).
+ * Se usa para garantizar que TODOS tengan sus -card/-thumb, incluidos los que
+ * ya estaban en WebP y por lo tanto nunca pasaron por la conversion.
+ */
+export async function listCanonicalUploads(uploadsDir: string = UPLOADS_DIR): Promise<string[]> {
+  const entries = await fs.readdir(uploadsDir, { withFileTypes: true });
+  return entries
+    .filter((e) => e.isFile() && !isVariantFilename(e.name) && /\.(png|jpe?g|webp)$/i.test(e.name))
     .map((e) => e.name);
 }
 
@@ -142,27 +156,46 @@ export async function migrateUploadsToWebp(
     uploadsDir?: string;
     onFile?: (rename: UploadRename) => void;
     onReference?: (table: string, column: string, to: string, rows: number) => void;
+    onVariants?: (filename: string, created: number) => void;
+    onVariantError?: (filename: string, message: string) => void;
   } = {},
 ): Promise<UploadsWebpMigrationResult> {
   const uploadsDir = options.uploadsDir ?? UPLOADS_DIR;
   const pending = await listPendingUploads(uploadsDir);
   const alreadyWebp = await countWebpUploads(uploadsDir);
 
-  if (pending.length === 0) {
-    return { converted: [], renames: [], alreadyWebp, referencesUpdated: 0 };
-  }
-
   // 1) Archivos primero: si algo falla acá, la base queda intacta.
   const renames: UploadRename[] = [];
   for (const filename of pending) {
     const bytesBefore = (await fs.stat(path.join(uploadsDir, filename))).size;
     const { webpName, created } = await reencodeExistingUploadToWebp(uploadsDir, filename);
-    await ensureVariantsFor(uploadsDir, webpName);
     const bytesAfter = (await fs.stat(path.join(uploadsDir, webpName))).size;
     const rename = { from: filename, to: webpName, bytesBefore, bytesAfter, created };
     renames.push(rename);
     // Solo se reporta lo que realmente se convirtió en esta corrida.
     if (created) options.onFile?.(rename);
+  }
+
+  // 2) Variantes para TODOS los canonicos, no solo los recien convertidos.
+  //    Los uploads que ya venian en WebP nunca pasan por el paso anterior, y
+  //    sin esto se quedaban sin -card/-thumb: el srcset del frontend pedia
+  //    archivos inexistentes y el navegador comia un 404 por imagen.
+  let variantsCreated = 0;
+  for (const filename of await listCanonicalUploads(uploadsDir)) {
+    try {
+      const created = await ensureVariantsFor(uploadsDir, filename);
+      if (created > 0) {
+        variantsCreated += created;
+        options.onVariants?.(filename, created);
+      }
+    } catch (error) {
+      // Un archivo corrupto no debe frenar al resto.
+      options.onVariantError?.(filename, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (pending.length === 0) {
+    return { converted: [], renames: [], alreadyWebp, referencesUpdated: 0, variantsCreated };
   }
 
   // 2) Recién ahora, las referencias. Se reescriben para TODOS los renames,
@@ -171,7 +204,7 @@ export async function migrateUploadsToWebp(
   //    UPDATE no matchea nada y no hace daño.
   const referencesUpdated = await rewriteReferences(conn, renames, options.onReference);
 
-  return { converted: renames.filter((r) => r.created), renames, alreadyWebp, referencesUpdated };
+  return { converted: renames.filter((r) => r.created), renames, alreadyWebp, referencesUpdated, variantsCreated };
 }
 
 /** Borra los archivos originales ya migrados. Se llama aparte, a propósito. */
