@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { pool, qAll, qOne, qRun } from "../db";
-import { calcularPuntosPorMonto } from "./points";
+import { calcularPuntosPorMonto, isPointsProgramEnabled } from "./points";
 
 type PasswordResetEmailInput = {
   to: string;
@@ -263,7 +263,9 @@ export async function sendOrderReceiptEmail(orderId: number): Promise<boolean> {
   const costoEnvio = numberField(direccionEnvio, "costo_envio") || numberField(envioSnapshot, "costo_envio");
   const zonaEnvio = stringField(envioSnapshot, "zona_nombre");
   const subtotalProductos = items.reduce((acc, item) => acc + Number(item.subtotal_dinero || 0), 0);
-  const puntosGanados = await calcularPuntosPorMonto(pool, Number(order.total_dinero ?? 0));
+  // Con el programa de puntos apagado el comprobante no menciona puntos.
+  const puntosEnabled = await isPointsProgramEnabled(pool);
+  const puntosGanados = puntosEnabled ? await calcularPuntosPorMonto(pool, Number(order.total_dinero ?? 0)) : 0;
   const safeName = escapeHtml(order.cliente_nombre || "Cliente");
   const itemRows = items
     .map((item) => {
@@ -317,7 +319,7 @@ export async function sendOrderReceiptEmail(orderId: number): Promise<boolean> {
       <div style="text-align:right;font-size:16px;">
         <p style="margin:4px 0;">Subtotal productos: ${money(subtotalProductos)}</p>
         ${costoEnvio > 0 ? `<p style="margin:4px 0;">Envio: ${money(costoEnvio)}</p>` : ""}
-        ${Number(order.total_puntos ?? 0) > 0 ? `<p style="margin:4px 0;">Puntos usados: ${Number(order.total_puntos)} pts</p>` : ""}
+        ${puntosEnabled && Number(order.total_puntos ?? 0) > 0 ? `<p style="margin:4px 0;">Puntos usados: ${Number(order.total_puntos)} pts</p>` : ""}
         ${puntosGanados > 0 ? `<p style="margin:4px 0;color:#D4621A;">Puntos ganados: +${puntosGanados} pts</p>` : ""}
         <p style="font-size:20px;margin:8px 0 0;"><strong>Total: ${money(order.total_dinero)}</strong></p>
       </div>

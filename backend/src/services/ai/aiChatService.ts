@@ -9,7 +9,7 @@ import {
 } from "./aiRouter";
 import { checkAndConsumeAiUsage } from "./aiUsageLimiter";
 import { pool, qOne, qAll } from "../../db";
-import { getPointsProgramConfig } from "../points";
+import { getPointsProgramConfig, isPointsProgramEnabled } from "../points";
 
 export type AiChatUserRole = "cliente" | "vendedor" | "admin" | "superadmin" | "anonimo";
 
@@ -88,6 +88,14 @@ function normalizePromptInteger(value: unknown, fallback: number): number {
 
 async function getPointsProgramContext(): Promise<string> {
   try {
+    if (!(await isPointsProgramEnabled(pool))) {
+      return `PROGRAMA DE PUNTOS ACTUAL:
+- El programa de puntos esta DESACTIVADO temporalmente.
+- Las compras no acumulan puntos y no se pueden hacer canjes por ahora.
+- Si el usuario pregunta por puntos, canjes o referidos, explicale que el programa esta pausado y que puede seguir comprando normalmente.
+- No expliques como funciona la acumulacion ni menciones valores de puntos.`;
+    }
+
     const [pointsConfig, referralConfig] = await Promise.all([
       getPointsProgramConfig(pool),
       qOne<{
