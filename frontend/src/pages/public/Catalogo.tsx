@@ -1517,6 +1517,7 @@ export function Catalogo() {
                   alt={`${productoModal.nombre} - imagen ${productoModalImageIndex + 1}`}
                   className="producto-modal-img"
                   decoding="async"
+                  onError={dropSrcSetOnError}
                   style={{
                     transformOrigin: zoomOrigin,
                     transform: imgZoomed ? `translate(${pan.x}px, ${pan.y}px) scale(2.4)` : "none",

@@ -54,11 +54,36 @@ export const CARD_IMG_SIZES = "(min-width: 1024px) 330px, (min-width: 640px) 50v
  * Fallback para imágenes viejas sin variantes generadas: si el candidato
  * del srcset da 404, se quita el srcset y el navegador recarga desde src
  * (el archivo canónico, que sí existe).
+ *
+ * Si el canónico TAMBIÉN falla, se reintenta con espera creciente: el backend
+ * puede estar generando el WebP en ese preciso momento y responder error
+ * mientras tanto. Sin esto la imagen queda rota hasta que el usuario recarga
+ * la página a mano.
  */
+const MAX_IMAGE_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 700;
+
 export function dropSrcSetOnError(event: { currentTarget: HTMLImageElement }): void {
   const img = event.currentTarget;
+
+  // 1) Falló el candidato del srcset (una variante). Puede ser la única que
+  //    falta, así que se reintenta con el canónico antes de dar nada por perdido.
   if (img.hasAttribute("srcset")) {
     img.removeAttribute("srcset");
     img.removeAttribute("sizes");
+    return;
   }
+
+  // 2) El canónico tampoco cargó. Reintentar por si se está generando.
+  const attempts = Number(img.dataset.imgRetry ?? "0");
+  if (attempts >= MAX_IMAGE_RETRIES) return;
+  img.dataset.imgRetry = String(attempts + 1);
+
+  // El query string fuerza un pedido nuevo (evita el 404 cacheado) y el
+  // backend lo ignora: resuelve por nombre de archivo, no por la URL completa.
+  const baseUrl = img.src.split("?")[0];
+  const nextAttempt = attempts + 1;
+  window.setTimeout(() => {
+    img.src = `${baseUrl}?reintento=${nextAttempt}`;
+  }, RETRY_BASE_DELAY_MS * nextAttempt);
 }
