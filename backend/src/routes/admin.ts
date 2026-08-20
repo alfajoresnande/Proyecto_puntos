@@ -70,6 +70,7 @@ import {
   updateShippingZone,
 } from "../services/shippingZones";
 import { getAppPresenceOverview } from "../services/appPresence";
+import { SALES_MODE_ECOMMERCE, SALES_MODE_WHATSAPP } from "../services/salesMode";
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -3368,6 +3369,45 @@ router.put("/configuracion/:clave", async (req, res) => {
   const { clave } = req.params;
   const { valor, descripcion } = req.body;
   if (valor === undefined || valor === null) { res.status(400).json({ error: "valor requerido" }); return; }
+  if (["modo_venta", "whatsapp_pedidos_numero"].includes(clave) && req.user?.rol !== "superAdmin") {
+    res.status(403).json({ error: "Solo un superAdmin puede cambiar el modo de venta y el WhatsApp de pedidos." });
+    return;
+  }
+  if (clave === "modo_venta" && ![SALES_MODE_ECOMMERCE, SALES_MODE_WHATSAPP].includes(String(valor) as typeof SALES_MODE_ECOMMERCE)) {
+    res.status(400).json({ error: "Modo de venta invalido." });
+    return;
+  }
+  if (clave === "whatsapp_pedidos_numero") {
+    const digits = String(valor).replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15) {
+      res.status(400).json({ error: "El WhatsApp debe incluir codigo de pais y contener entre 8 y 15 digitos." });
+      return;
+    }
+  }
+  if (clave === "modo_venta" && String(valor) === SALES_MODE_WHATSAPP) {
+    const pending = await qOne<{ total: number }>(
+      pool,
+      `SELECT
+         (SELECT COUNT(*)
+          FROM checkout_pendientes cp
+          WHERE cp.estado = 'pendiente_pago'
+            AND cp.pago_estado = 'iniciado'
+            AND cp.proveedor = 'mercadopago')
+         +
+         (SELECT COUNT(*)
+          FROM pagos p
+          JOIN ordenes o ON o.id = p.orden_id
+          WHERE p.estado = 'iniciado'
+            AND p.proveedor = 'mercadopago'
+            AND o.estado IN ('borrador', 'pendiente_pago')) AS total`,
+    );
+    if (Number(pending?.total ?? 0) > 0) {
+      res.status(409).json({
+        error: `Hay ${Number(pending?.total)} pago(s) online pendiente(s). Cancelalos o espera su resolucion antes de activar el catalogo para no dejar links de cobro abiertos.`,
+      });
+      return;
+    }
+  }
   await qRun(
     pool,
     `INSERT INTO configuracion (clave, valor, descripcion)

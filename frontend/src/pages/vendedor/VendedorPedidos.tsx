@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../api";
 import { CatalogPagination } from "../../components/CatalogPagination";
+import { ManualPaymentGenerator } from "../../components/ManualPaymentGenerator";
 import { formatBuenosAiresDateTime } from "../../lib/dateTime";
 import {
   getLocalSaleQuickProductImage,
@@ -271,7 +272,7 @@ function isGenericLocalOrderCustomer(orden: OrdenVendedor): boolean {
   return !orden.usuario_id && orden.cliente_nombre.trim().toLowerCase() === "cliente" && String(orden.cliente_dni ?? "").trim() === "00000000";
 }
 
-type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores";
+type VendedorVentasPage = "pedidos" | "local" | "caja" | "gastos" | "proveedores" | "cobros";
 
 const ORDENES_POR_PAGINA = 5;
 const LOCAL_SALE_CATALOG_VIEW_STORAGE_KEY = "nande_vendedor_local_sale_catalog_view";
@@ -285,7 +286,7 @@ function getInitialLocalSaleCatalogView(): LocalSaleCatalogView {
 }
 
 function isVendedorVentasPage(value: string | undefined): value is VendedorVentasPage {
-  return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores";
+  return value === "pedidos" || value === "local" || value === "caja" || value === "gastos" || value === "proveedores" || value === "cobros";
 }
 
 export function VendedorPedidos() {
@@ -1229,10 +1230,23 @@ export function VendedorPedidos() {
           >
             Proveedores
           </button>
+          <button
+            type="button"
+            className={`vendedor-ventas-nav-btn${currentPage === "cobros" ? " active" : ""}`}
+            onClick={() => navigate("/vendedor/ventas/cobros")}
+          >
+            Links de cobro
+          </button>
         </div>
 
         {ordenErr ? <div className="status-err-box mt-3"><p>{ordenErr}</p></div> : null}
         {ordenMsg ? <div className="status-ok-box mt-3"><p>{ordenMsg}</p></div> : null}
+
+        {currentPage === "cobros" ? (
+          <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>
+            <ManualPaymentGenerator />
+          </div>
+        ) : null}
 
         {currentPage === "caja" ? (
         <div className="ios-card p-4 vendedor-ventas-panel" style={{ marginTop: "1rem", background: "#FFF8F1", border: "1px solid #F5C8A8" }}>

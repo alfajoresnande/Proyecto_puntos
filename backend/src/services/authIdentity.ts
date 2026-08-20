@@ -92,16 +92,9 @@ function normalizeIpCandidate(raw: string | undefined): string | null {
 }
 
 export function getClientIp(req: Request): string {
-  const forwardedFor = req.get("x-forwarded-for");
-  if (forwardedFor) {
-    for (const part of forwardedFor.split(",")) {
-      const ip = normalizeIpCandidate(part);
-      if (ip) return ip;
-    }
-  }
-
+  // Express calcula req.ip usando TRUST_PROXY. Leer X-Forwarded-For a mano
+  // permitiria que un cliente directo falsifique la IP y eluda los limites.
   return (
-    normalizeIpCandidate(req.get("x-real-ip")) ||
     normalizeIpCandidate(req.ip) ||
     normalizeIpCandidate(req.socket.remoteAddress) ||
     "unknown"

@@ -65,7 +65,11 @@ function getClientAuth(req) {
 }
 const clients = new Set();
 function attachRealtimeServer(server, allowedOrigins) {
-    const wss = new ws_1.WebSocketServer({ noServer: true });
+    const wss = new ws_1.WebSocketServer({
+        noServer: true,
+        maxPayload: 64 * 1024,
+        perMessageDeflate: false,
+    });
     server.on("upgrade", (req, socket, head) => {
         if (!req.url?.startsWith("/api/realtime")) {
             socket.destroy();

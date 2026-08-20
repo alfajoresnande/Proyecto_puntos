@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../auth";
 import { pool, qAll, qOne, qRun } from "../db";
 import { verifyUploadedCvFile } from "../uploadSecurity";
+import { requestRateLimit } from "../middleware/requestRateLimit";
 import { BACKEND_ROOT } from "../paths";
 
 const router = Router();
@@ -78,7 +79,17 @@ const postulacionSchema = z.object({
   mensaje: z.string().trim().min(5).max(1500),
 });
 
-router.post("/", cvUpload.single("cv"), async (req, res) => {
+router.post(
+  "/",
+  requestRateLimit({
+    action: "postulacion_cv",
+    windows: [
+      { name: "hora", limit: 5, windowSeconds: 60 * 60 },
+      { name: "dia", limit: 15, windowSeconds: 24 * 60 * 60 },
+    ],
+  }),
+  cvUpload.single("cv"),
+  async (req, res) => {
   const parsed = postulacionSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     if (req.file?.path) fs.promises.unlink(req.file.path).catch(() => undefined);
@@ -139,7 +150,8 @@ router.get("/admin", requireAuth, requireRole("admin", "superAdmin"), async (_re
     created_at: row.created_at,
     archivo_disponible: storedCvExists(row.archivo_guardado),
   })));
-});
+  },
+);
 
 router.patch("/admin/limpiar", requireAuth, requireRole("admin", "superAdmin"), async (_req, res) => {
   const result = await qRun(pool, "UPDATE postulaciones_cv SET estado = 'archivada' WHERE estado <> 'archivada'");

@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
 import { usePointsVisible } from "../../lib/pointsProgram";
+import { useSalesMode } from "../../lib/salesMode";
 import { useAuthStore } from "../../store/authStore";
 import type { Producto } from "../../types";
 
@@ -80,6 +81,7 @@ function isInternalNavigationLink(value: string): boolean {
 export function Home() {
   const user = useAuthStore((state) => state.user);
   const pointsVisible = usePointsVisible();
+  const { mode: salesMode, isWhatsappCatalog } = useSalesMode();
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
   const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
@@ -150,7 +152,7 @@ export function Home() {
   const [selectedCategoria, setSelectedCategoria] = useState<string>("Alfajores");
 
   const productosDestacadosQuery = useQuery({
-    queryKey: ["home", "productos", "destacados"],
+    queryKey: ["home", "productos", "destacados", salesMode],
     queryFn: () => api.get<Producto[]>("/productos/destacados?limit=12"),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -182,7 +184,7 @@ export function Home() {
   });
 
   const productosCategoriaQuery = useQuery({
-    queryKey: ["home", "productos", "categoria", selectedCategoria],
+    queryKey: ["home", "productos", "categoria", selectedCategoria, salesMode],
     queryFn: () => api.get<Producto[]>(`/productos?categoria=${encodeURIComponent(selectedCategoria)}&modo=venta`),
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -387,19 +389,19 @@ export function Home() {
         <section id="como-funciona" className="home-flow-section home-section home-section-flow">
           <div className="home-section-head home-flow-head">
             <span className="home-kicker home-kicker-accent">Para vos</span>
-            <h2>{pointsVisible ? "Comprá, acumulá puntos y volvé cuando quieras" : "Comprá online y retirá en sucursal"}</h2>
-            <p>{pointsVisible ? "Te dejamos una guía simple para que entiendas rápido cómo comprar y cómo usar tus puntos dentro de Ñandé." : "Te dejamos una guía simple para que entiendas rápido cómo comprar dentro de Ñandé."}</p>
+            <h2>{isWhatsappCatalog ? "Elegí tus productos y coordiná por WhatsApp" : pointsVisible ? "Comprá, acumulá puntos y volvé cuando quieras" : "Comprá online y retirá en sucursal"}</h2>
+            <p>{isWhatsappCatalog ? "Armá el carrito sin pagar: confirmamos disponibilidad, entrega y total personalmente." : pointsVisible ? "Te dejamos una guía simple para que entiendas rápido cómo comprar y cómo usar tus puntos dentro de Ñandé." : "Te dejamos una guía simple para que entiendas rápido cómo comprar dentro de Ñandé."}</p>
           </div>
 
           <div className="home-flow-steps">
             <div className="home-flow-step">
               <article className="home-flow-card">
                 <span className="home-flow-number">01</span>
-                <p>{pointsVisible ? "Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra." : "Comprás desde la tienda y elegís tus productos favoritos."}</p>
+                <p>{isWhatsappCatalog ? "Elegís tus productos y enviás la consulta por WhatsApp, sin pagar desde la web." : pointsVisible ? "Comprás desde la tienda, elegís tus productos y acumulás puntos con cada compra." : "Comprás desde la tienda y elegís tus productos favoritos."}</p>
               </article>
               <article className="home-flow-detail-card">
                 <h3>¿Cómo comprás?</h3>
-                <p>{pointsVisible ? "Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos." : "Entrás a la tienda online, elegís los productos que querés y confirmás tu pedido para retiro en sucursal o envío a domicilio."}</p>
+                <p>{isWhatsappCatalog ? "Entrás al catálogo, armás el carrito y lo enviás por WhatsApp. El equipo revisa el stock físico, confirma si llega a tu zona y te pasa el total y la forma de pago." : pointsVisible ? "Entrás a la tienda online, elegís los productos que querés, confirmás tu pedido para retiro en sucursal y con cada compra acumulás puntos para canjearlos más adelante por otros productos." : "Entrás a la tienda online, elegís los productos que querés y confirmás tu pedido para retiro en sucursal o envío a domicilio."}</p>
                 <Link to="/tienda" className="home-flow-action">Comprar</Link>
               </article>
             </div>
@@ -487,10 +489,10 @@ export function Home() {
                           <span>Precio</span>
                           <strong>{money(producto.precio_dinero)}</strong>
                         </div>
-                        {hasFreeShipping(producto) ? (
+                        {!isWhatsappCatalog && hasFreeShipping(producto) ? (
                           <span className="home-product-free-shipping">Envio gratis</span>
                         ) : null}
-                        {pointsVisible && canEarnPurchasePoints(producto) ? (
+                        {pointsVisible && !isWhatsappCatalog && canEarnPurchasePoints(producto) ? (
                           <span className="home-product-earned-points">Suma puntos segun el total de la compra</span>
                         ) : null}
                       </div>

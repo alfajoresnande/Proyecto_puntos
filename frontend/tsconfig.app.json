@@ -13,7 +13,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "strict": false
   },
   "include": ["src"]

@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { AddressSelector } from "../../components/addresses/AddressSelector";
 import { useToast } from "../../components/ToastProvider";
 import { usePointsVisible } from "../../lib/pointsProgram";
+import { useSalesMode } from "../../lib/salesMode";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { ShippingQuote, UserAddress } from "../../types";
@@ -40,6 +41,7 @@ type CartItem = {
 };
 
 type CartResponse = {
+  modo_venta?: "ecommerce" | "catalogo_whatsapp";
   items: CartItem[];
   resumen: {
     total_items: number;
@@ -446,6 +448,7 @@ export function CarritoTienda() {
   const user = useAuthStore((state) => state.user);
   // Con el programa de puntos apagado no se promete acreditación alguna.
   const pointsVisible = usePointsVisible();
+  const { isWhatsappCatalog } = useSalesMode();
   const [searchParams, setSearchParams] = useSearchParams();
   const hasProcessedReturnRef = useRef(false);
   const storedApprovedCheckoutRef = useRef<CheckoutConfirmResponse | null>(readStoredApprovedCheckout());
@@ -463,6 +466,8 @@ export function CarritoTienda() {
   const [deliveryMethod, setDeliveryMethod] = useState<"retiro" | "envio">("retiro");
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<UserAddress | null>(null);
+  const [manualLocalidad, setManualLocalidad] = useState("");
+  const [manualNotas, setManualNotas] = useState("");
 
   const hydrateConfirmedOrder = useCallback(async (ordenId: number) => {
     const orden = await api.get<CheckoutOrderDetail>(`/cliente/ordenes/${ordenId}`);
@@ -516,6 +521,7 @@ export function CarritoTienda() {
   const sucursalesQuery = useQuery({
     queryKey: ["cliente", "sucursales-retiro"],
     queryFn: () => api.get<SucursalRetiro[]>("/cliente/sucursales"),
+    enabled: !isWhatsappCatalog,
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   });
@@ -523,6 +529,7 @@ export function CarritoTienda() {
   const paymentOptionsQuery = useQuery({
     queryKey: ["cliente", "payment-options"],
     queryFn: () => api.get<PaymentOptionsResponse>("/cliente/checkout/payment-options"),
+    enabled: !isWhatsappCatalog,
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   });
@@ -530,14 +537,14 @@ export function CarritoTienda() {
   const shippingQuoteQuery = useQuery({
     queryKey: ["cliente", "shipping-quote", selectedAddressId],
     queryFn: () => api.get<ShippingQuote>(`/cliente/checkout/shipping-quote?direccion_id=${selectedAddressId}`),
-    enabled: deliveryMethod === "envio" && Boolean(selectedAddressId),
+    enabled: !isWhatsappCatalog && deliveryMethod === "envio" && Boolean(selectedAddressId),
     retry: false,
   });
 
   const resumePaymentQuery = useQuery({
     queryKey: ["cliente", "resume-payment", resumeOrderId],
     queryFn: () => api.get<CheckoutConfirmResponse>(`/cliente/checkout/ordenes/${resumeOrderId}/resume-payment`),
-    enabled: Boolean(resumeOrderId),
+    enabled: !isWhatsappCatalog && Boolean(resumeOrderId),
     retry: false,
   });
 
@@ -731,11 +738,12 @@ export function CarritoTienda() {
   }, [currentPendingPaymentId]);
 
   useEffect(() => {
+    if (isWhatsappCatalog) return;
     if (!sucursales.length) return;
     if (!sucursalId || !sucursales.some((sucursal) => String(sucursal.id) === sucursalId)) {
       setSucursalId(String(sucursales[0].id));
     }
-  }, [sucursalId, sucursales]);
+  }, [isWhatsappCatalog, setSucursalId, sucursalId, sucursales]);
 
   useEffect(() => {
     if (deliveryMethod === "envio" && !canUseShipping) {
@@ -878,6 +886,19 @@ export function CarritoTienda() {
     },
   });
 
+  const sendWhatsappCart = useMutation({
+    mutationFn: () => api.post<{ whatsapp_url: string }>("/cliente/carrito/whatsapp", {
+      entrega: deliveryMethod === "envio" ? "consultar_envio" : "retiro",
+      localidad: manualLocalidad.trim() || null,
+      notas: manualNotas.trim() || null,
+    }),
+    onSuccess: (data) => {
+      setMessage(null);
+      window.location.assign(data.whatsapp_url);
+    },
+    onError: (error: Error) => setMessage(error.message || "No se pudo preparar el pedido para WhatsApp."),
+  });
+
   const confirmCheckout = useMutation({
     mutationFn: () =>
       api.post<CheckoutConfirmResponse>("/cliente/checkout/confirm", {
@@ -977,6 +998,11 @@ export function CarritoTienda() {
       setMessage("Tu carrito esta vacio.");
       return;
     }
+    if (isWhatsappCatalog) {
+      setMessage(null);
+      sendWhatsappCart.mutate();
+      return;
+    }
     if (sucursales.length > 1 && !sucursalSeleccionada) {
       setMessage(deliveryMethod === "envio" ? "Selecciona una sucursal para preparar el pedido." : "Selecciona una sucursal para reservar stock.");
       return;
@@ -1016,7 +1042,7 @@ export function CarritoTienda() {
     confirmCheckout.mutate();
   }
 
-  if (confirmed) {
+  if (confirmed && !isWhatsappCatalog) {
     const estadoLabel = estadoPedidoLabel(confirmed.estado);
     const isShippingConfirmed = deliveryMethod === "envio" || Boolean(confirmed.envio);
     const confirmedReferenceLabel = hasRealOrder
@@ -1265,7 +1291,11 @@ export function CarritoTienda() {
       <div className="catalog-products-shell">
         <div className="catalog-header">
           <h1 className="catalog-title">Carrito tienda</h1>
-          <p className="catalog-subtitle">Revisa tu compra, elegi entrega y confirma el pago</p>
+          <p className="catalog-subtitle">
+            {isWhatsappCatalog
+              ? "Revisa tu seleccion y enviala por WhatsApp para confirmar stock, envio y total"
+              : "Revisa tu compra, elegi entrega y confirma el pago"}
+          </p>
         </div>
 
         {!user ? (
@@ -1283,7 +1313,9 @@ export function CarritoTienda() {
           <div className="catalog-canje-block store-cart-empty-state">
             <p className="store-cart-empty-title">Tu carrito esta vacio.</p>
             <p className="store-cart-empty-copy">
-              Cuando agregues productos, aqui vas a poder revisar la compra, elegir la entrega y confirmar el pago.
+              {isWhatsappCatalog
+                ? "Cuando agregues productos, aqui vas a poder enviarlos por WhatsApp para consultar disponibilidad."
+                : "Cuando agregues productos, aqui vas a poder revisar la compra, elegir la entrega y confirmar el pago."}
             </p>
             <div className="store-cart-empty-divider" aria-hidden="true" />
             <Link className="product-card-btn product-card-btn-canjear" to="/tienda">Ir a tienda</Link>
@@ -1351,7 +1383,7 @@ export function CarritoTienda() {
                           : money(item.subtotal_dinero)}
                       </p>
                     )}
-                    {item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1 ? (
+                    {!isWhatsappCatalog && (item.envio_gratis === true || Number(item.envio_gratis ?? 0) === 1) ? (
                       <p style={{ margin: "0.1rem 0 0", color: "#16633D", fontSize: "0.82rem", fontWeight: 800 }}>Envio gratis</p>
                     ) : null}
                   </div>
@@ -1392,8 +1424,8 @@ export function CarritoTienda() {
 
             <div className="catalog-confirm-branch-detail catalog-canje-block catalog-canje-summary">
               <p>Total de productos: <strong>{totalUnidades}</strong></p>
-              <p>Subtotal: <strong>{money(total)}</strong></p>
-              {deliveryMethod === "envio" ? (
+              {!isWhatsappCatalog ? <p>Subtotal: <strong>{money(total)}</strong></p> : null}
+              {!isWhatsappCatalog && deliveryMethod === "envio" ? (
                 <>
                   <p>
                     Envio:{" "}
@@ -1425,8 +1457,13 @@ export function CarritoTienda() {
                   ) : null}
                 </>
               ) : null}
-              <p>Total a pagar: <strong>{money(totalConEnvio)}</strong></p>
-              {(cartQuery.data?.resumen.total_puntos_ganados ?? 0) > 0 ? (
+              <p>{isWhatsappCatalog ? "Subtotal estimado" : "Total a pagar"}: <strong>{money(isWhatsappCatalog ? total : totalConEnvio)}</strong></p>
+              {isWhatsappCatalog ? (
+                <p className="catalog-confirm-hint">
+                  No se cobrara nada desde la pagina. La empresa confirmara disponibilidad, alcance y costo de envio, y el importe final por WhatsApp.
+                </p>
+              ) : null}
+              {!isWhatsappCatalog && (cartQuery.data?.resumen.total_puntos_ganados ?? 0) > 0 ? (
                 <p style={{ color: "#8B5A30", fontWeight: 700, marginTop: "0.2rem" }}>
                   Con esta compra ganás {cartQuery.data?.resumen.total_puntos_ganados} puntos cuando el pago sea aprobado.
                 </p>
@@ -1434,13 +1471,13 @@ export function CarritoTienda() {
             </div>
 
             <div className="catalog-confirm-field catalog-canje-pickup">
-              <label className="catalog-confirm-label">Forma de entrega</label>
+              <label className="catalog-confirm-label">{isWhatsappCatalog ? "Preferencia de entrega" : "Forma de entrega"}</label>
               <div className="checkout-delivery-segment" role="group" aria-label="Forma de entrega">
                 <button
                   type="button"
                   className={deliveryMethod === "retiro" ? "active" : ""}
                   onClick={() => setDeliveryMethod("retiro")}
-                  disabled={confirmCheckout.isPending}
+                  disabled={isWhatsappCatalog ? sendWhatsappCart.isPending : confirmCheckout.isPending}
                 >
                   Retiro
                 </button>
@@ -1448,19 +1485,49 @@ export function CarritoTienda() {
                   type="button"
                   className={deliveryMethod === "envio" ? "active" : ""}
                   onClick={() => setDeliveryMethod("envio")}
-                  disabled={confirmCheckout.isPending || !canUseShipping}
+                  disabled={(isWhatsappCatalog ? sendWhatsappCart.isPending : confirmCheckout.isPending) || (!isWhatsappCatalog && !canUseShipping)}
                 >
-                  Envio
+                  {isWhatsappCatalog ? "Consultar envio" : "Envio"}
                 </button>
               </div>
-              {!canUseShipping ? (
+              {!isWhatsappCatalog && !canUseShipping ? (
                 <p className="catalog-confirm-hint">
                   Hay productos que no permiten envio: {noEnviables.map((item) => item.nombre).join(", ")}.
                 </p>
               ) : null}
             </div>
 
-            <div className="catalog-confirm-field catalog-canje-pickup">
+            {isWhatsappCatalog ? (
+              <div className="catalog-confirm-field catalog-canje-pickup" style={{ display: "grid", gap: "0.75rem" }}>
+                {deliveryMethod === "envio" ? (
+                  <label className="catalog-confirm-label" htmlFor="carrito-whatsapp-localidad">
+                    Localidad o zona
+                    <input
+                      id="carrito-whatsapp-localidad"
+                      className="catalog-pickup-select"
+                      value={manualLocalidad}
+                      maxLength={120}
+                      onChange={(event) => setManualLocalidad(event.target.value)}
+                      placeholder="Ej.: Posadas, Garupa..."
+                    />
+                  </label>
+                ) : null}
+                <label className="catalog-confirm-label" htmlFor="carrito-whatsapp-notas">
+                  Aclaraciones (opcional)
+                  <textarea
+                    id="carrito-whatsapp-notas"
+                    className="catalog-pickup-select"
+                    value={manualNotas}
+                    maxLength={500}
+                    rows={3}
+                    onChange={(event) => setManualNotas(event.target.value)}
+                    placeholder="Horario, referencia o consulta para el vendedor"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            {!isWhatsappCatalog ? <div className="catalog-confirm-field catalog-canje-pickup">
               <label className="catalog-confirm-label" htmlFor="carrito-tienda-sucursal">
                 {deliveryMethod === "envio" ? "Sucursal de preparacion" : "Sucursal de retiro"}
               </label>
@@ -1474,9 +1541,9 @@ export function CarritoTienda() {
                 {sucursales.length > 1 ? <option value="">Selecciona una sucursal</option> : null}
                 {sucursales.map((sucursal) => <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>)}
               </select>
-            </div>
+            </div> : null}
 
-            {deliveryMethod === "envio" ? (
+            {!isWhatsappCatalog && deliveryMethod === "envio" ? (
               <div className="catalog-confirm-field catalog-canje-pickup">
                 <label className="catalog-confirm-label">Direccion de envio</label>
                 <AddressSelector
@@ -1506,7 +1573,7 @@ export function CarritoTienda() {
               </div>
             ) : null}
 
-            {paymentOptions.length ? (
+            {!isWhatsappCatalog && paymentOptions.length ? (
               <div className="catalog-confirm-field catalog-canje-pickup">
                 <label className="catalog-confirm-label" htmlFor="carrito-tienda-pago">Medio de pago</label>
                 <select
@@ -1546,11 +1613,13 @@ export function CarritoTienda() {
                 className="catalog-float-toast-btn-primary"
                 onClick={confirmar}
                 disabled={
-                  confirmCheckout.isPending ||
-                  (deliveryMethod === "envio" && (!selectedAddressId || shippingQuoteQuery.isFetching || Boolean(shippingQuoteQuery.error) || !shippingQuote?.disponible))
+                  (isWhatsappCatalog ? sendWhatsappCart.isPending : confirmCheckout.isPending) ||
+                  (!isWhatsappCatalog && deliveryMethod === "envio" && (!selectedAddressId || shippingQuoteQuery.isFetching || Boolean(shippingQuoteQuery.error) || !shippingQuote?.disponible))
                 }
               >
-                {confirmCheckout.isPending ? "Confirmando..." : "Confirmar compra"}
+                {isWhatsappCatalog
+                  ? sendWhatsappCart.isPending ? "Preparando WhatsApp..." : "Enviar pedido por WhatsApp"
+                  : confirmCheckout.isPending ? "Confirmando..." : "Confirmar compra"}
               </button>
               <Link className="catalog-float-toast-btn-secondary" to="/tienda">Seguir comprando</Link>
             </div>

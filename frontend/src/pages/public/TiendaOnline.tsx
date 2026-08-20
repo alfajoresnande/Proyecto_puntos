@@ -6,6 +6,7 @@ import { CatalogPagination } from "../../components/CatalogPagination";
 import { CATALOG_PRODUCTS_PER_PAGE } from "../../lib/catalogPagination";
 import { mediaUrl, mediaCardSrcSet, CARD_IMG_SIZES, dropSrcSetOnError } from "../../lib/apiBase";
 import { usePointsVisible } from "../../lib/pointsProgram";
+import { useSalesMode } from "../../lib/salesMode";
 import { useAuthStore } from "../../store/authStore";
 import { usePickupStore } from "../../store/pickupStore";
 import type { Producto } from "../../types";
@@ -175,6 +176,7 @@ function isCajaSabores(producto: Producto): boolean {
 export function TiendaOnline() {
   const user = useAuthStore((state) => state.user);
   const pointsVisible = usePointsVisible();
+  const { isWhatsappCatalog } = useSalesMode();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -203,10 +205,10 @@ export function TiendaOnline() {
   const setSucursalId = usePickupStore((state) => state.setSucursalRetiroId);
 
   const productosQuery = useQuery({
-    queryKey: ["productos", "venta", sucursalId],
+    queryKey: ["productos", "venta", isWhatsappCatalog ? "catalogo_whatsapp" : sucursalId],
     queryFn: () => {
       const qs = new URLSearchParams({ modo: "venta" });
-      if (sucursalId) qs.set("sucursal_id", sucursalId);
+      if (!isWhatsappCatalog && sucursalId) qs.set("sucursal_id", sucursalId);
       return api.get<Producto[]>(`/productos?${qs.toString()}`);
     },
     staleTime: 0,
@@ -218,6 +220,7 @@ export function TiendaOnline() {
   const sucursalesQuery = useQuery({
     queryKey: ["productos", "sucursales"],
     queryFn: () => api.get<SucursalRetiro[]>("/productos/sucursales"),
+    enabled: !isWhatsappCatalog,
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   });
@@ -262,11 +265,12 @@ export function TiendaOnline() {
   }, [productoUrlId, productos]);
 
   useEffect(() => {
+    if (isWhatsappCatalog) return;
     if (!sucursales.length) return;
     if (!sucursalId || !sucursales.some((sucursal) => String(sucursal.id) === sucursalId)) {
       setSucursalId(String(sucursales[0].id));
     }
-  }, [sucursalId, sucursales]);
+  }, [isWhatsappCatalog, setSucursalId, sucursalId, sucursales]);
 
   useEffect(() => {
     if (!productoModal) return;
@@ -522,7 +526,7 @@ export function TiendaOnline() {
   function ajustarSaborCaja(producto: Producto, saborId: number, delta: number) {
     const capacidad = cajaCapacidad(producto);
     const sabor = producto.sabores_disponibles?.find((item) => Number(item.id) === Number(saborId));
-    const disponible = Math.max(0, Number(sabor?.stock_disponible ?? 0));
+    const disponible = isWhatsappCatalog ? capacidad : Math.max(0, Number(sabor?.stock_disponible ?? 0));
     setSaboresCajaDraft((prev) => {
       const current = prev[producto.id] ?? {};
       const actual = Number(current[saborId] ?? 0);
@@ -660,7 +664,7 @@ export function TiendaOnline() {
       return;
     }
     if (isCajaSabores(producto)) {
-      if (!sucursalId) {
+      if (!isWhatsappCatalog && !sucursalId) {
         setToast("Selecciona una sucursal para validar stock de sabores.");
         return;
       }
@@ -671,24 +675,24 @@ export function TiendaOnline() {
       addMutation.mutate({
         productoId: producto.id,
         cantidad: 1,
-        sucursalId: Number(sucursalId),
+        sucursalId: isWhatsappCatalog ? null : Number(sucursalId),
         sabores: cajaSaboresPayload(producto),
       });
       return;
     }
-    if (producto.track_stock !== false && !sucursalId) {
+    if (!isWhatsappCatalog && producto.track_stock !== false && !sucursalId) {
       setToast("Selecciona una sucursal para validar stock.");
       return;
     }
     const disponible = productAvailableStock(producto);
-    if (producto.track_stock !== false && cantidad > disponible) {
+    if (!isWhatsappCatalog && producto.track_stock !== false && cantidad > disponible) {
       setToast(`Solo hay ${disponible} unidades disponibles en la sucursal seleccionada.`);
       return;
     }
     addMutation.mutate({
       productoId: producto.id,
       cantidad,
-      sucursalId: sucursalId ? Number(sucursalId) : null,
+      sucursalId: !isWhatsappCatalog && sucursalId ? Number(sucursalId) : null,
     });
   }
 
@@ -767,11 +771,15 @@ export function TiendaOnline() {
     <section className="catalog-page store-page store-page-isolated catalog-redemption-page">
       <div className="catalog-top-shell catalog-redemption-hero">
         <div className="catalog-header">
-          <h1 className="catalog-title">Tienda Online</h1>
-          <p className="catalog-subtitle">Compra productos con dinero y reserva para retiro en sucursal</p>
+          <h1 className="catalog-title">{isWhatsappCatalog ? "Catalogo de productos" : "Tienda Online"}</h1>
+          <p className="catalog-subtitle">
+            {isWhatsappCatalog
+              ? "Arma tu carrito y consulta disponibilidad, envio y pago por WhatsApp"
+              : "Compra productos con dinero y reserva para retiro en sucursal"}
+          </p>
         </div>
         <div className="catalog-redemption-account">
-          {user?.rol === "cliente" && pointsVisible ? (
+          {user?.rol === "cliente" && pointsVisible && !isWhatsappCatalog ? (
             <div className="catalog-user-banner">
               <div className="catalog-user-copy">
                 <span className="catalog-user-icon" aria-hidden="true">
@@ -794,7 +802,7 @@ export function TiendaOnline() {
             </div>
           ) : null}
 
-          <div className="catalog-redemption-branch-row">
+          {!isWhatsappCatalog ? <div className="catalog-redemption-branch-row">
             <label className="catalog-branch-select">
               <span>Sucursal de retiro</span>
               <select
@@ -809,7 +817,13 @@ export function TiendaOnline() {
                 ))}
               </select>
             </label>
-          </div>
+          </div> : (
+            <div className="catalog-redemption-branch-row">
+              <p style={{ margin: 0, color: "#7C5A40", fontWeight: 700 }}>
+                La disponibilidad se confirma personalmente antes de cobrar.
+              </p>
+            </div>
+          )}
           {user?.rol === "cliente" ? (
             <div className="catalog-redemption-account-actions">
               <Link className="catalog-float-toast-btn-secondary" to="/mis-pedidos">Mis pedidos</Link>
@@ -1202,7 +1216,7 @@ export function TiendaOnline() {
                           Llevas {eventbarPromo.requiredQuantity} y pagas {eventbarPromo.paidQuantity}
                         </p>
                       ) : null}
-                      {hasFreeShipping(producto) ? (
+                      {!isWhatsappCatalog && hasFreeShipping(producto) ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row product-card-free-shipping-row">
@@ -1224,7 +1238,7 @@ export function TiendaOnline() {
                           </div>
                         </>
                       ) : null}
-                      {pointsVisible && productPrice(producto) > 0 ? (
+                      {pointsVisible && !isWhatsappCatalog && productPrice(producto) > 0 ? (
                         <>
                           <div className="product-card-divider" />
                           <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
@@ -1458,7 +1472,7 @@ export function TiendaOnline() {
                     Llevas {productoModalEventbarPromo.requiredQuantity} y pagas {productoModalEventbarPromo.paidQuantity}
                   </p>
                 ) : null}
-                {hasFreeShipping(productoModal) ? (
+                {!isWhatsappCatalog && hasFreeShipping(productoModal) ? (
                   <>
                     <div className="product-card-divider" />
                     <div className="product-card-row product-card-free-shipping-row">
@@ -1480,7 +1494,7 @@ export function TiendaOnline() {
                     </div>
                   </>
                 ) : null}
-                {productPrice(productoModal) > 0 ? (
+                {pointsVisible && !isWhatsappCatalog && productPrice(productoModal) > 0 ? (
                   <>
                     <div className="product-card-divider" />
                     <div className="product-card-row" style={{ color: "#8B5A30", fontWeight: 700 }}>
@@ -1504,12 +1518,14 @@ export function TiendaOnline() {
                       <div className="box-flavor-list">
                         {(productoModal.sabores_disponibles ?? []).map((sabor) => {
                           const selected = cajaDraft(productoModal)[sabor.id] ?? 0;
-                          const disponible = Math.max(0, Number(sabor.stock_disponible ?? 0));
+                          const disponible = isWhatsappCatalog
+                            ? cajaCapacidad(productoModal)
+                            : Math.max(0, Number(sabor.stock_disponible ?? 0));
                           return (
                             <div key={sabor.id} className="box-flavor-row">
                               <div>
                                 <strong>{sabor.nombre}</strong>
-                                <span>{disponible > 0 ? `${disponible} disponibles` : "Sin stock"}</span>
+                                <span>{isWhatsappCatalog ? "Disponibilidad a confirmar" : disponible > 0 ? `${disponible} disponibles` : "Sin stock"}</span>
                               </div>
                               <div className="catalog-canje-item-qty">
                                 <button

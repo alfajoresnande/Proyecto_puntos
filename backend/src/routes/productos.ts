@@ -9,6 +9,7 @@ import {
   type EventbarSpecialDiscountConfig,
 } from "../services/customerPricing";
 import { getPurchaseQuantityLimit } from "../services/purchaseLimits";
+import { getSalesMode, SALES_MODE_WHATSAPP } from "../services/salesMode";
 import { normalizeSafeImageUrl, normalizeSafeNavigationUrl } from "../urlSafety";
 
 const router = Router();
@@ -92,6 +93,7 @@ router.get("/destacados", async (req, res) => {
 
     res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
 
+    const salesMode = await getSalesMode(pool);
     const [rowsRaw] = await pool.query(
       `SELECT id, nombre, descripcion, imagen_url, imagen_mobile_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
@@ -100,7 +102,7 @@ router.get("/destacados", async (req, res) => {
      WHERE activo = 1
        AND destacado_home = 1
        AND tipo_producto IN ('venta','mixto')
-       AND (track_stock = 0 OR stock_disponible > 0)
+       ${salesMode === SALES_MODE_WHATSAPP ? "" : "AND (track_stock = 0 OR stock_disponible > 0)"}
      ORDER BY nombre ASC
      LIMIT ?`,
       [fetchLimit],
@@ -212,6 +214,8 @@ router.get("/", async (req, res) => {
   const { categoria, max_puntos, modo } = req.query;
   const sucursalId = Number(req.query.sucursal_id ?? 0);
   const hasSucursalFilter = Number.isFinite(sucursalId) && sucursalId > 0;
+  const salesMode = await getSalesMode(pool);
+  const whatsappCatalog = salesMode === SALES_MODE_WHATSAPP;
 
   const conditions: string[] = ["activo = 1"];
   const params: (string | number)[] = [];
@@ -348,6 +352,7 @@ router.get("/", async (req, res) => {
   }
 
   const visibleRows = rows.filter((row) => {
+    if (whatsappCatalog) return row.configuracion_tipo !== "caja_sabores" || Number(row.capacidad_sabores ?? 0) > 0;
     if (row.configuracion_tipo === "caja_sabores") {
       const capacity = Number(row.capacidad_sabores ?? 0);
       const available = (flavorMap.get(row.id) ?? []).reduce(
@@ -444,27 +449,28 @@ router.get("/", async (req, res) => {
         ...promoFields,
         precio_puntos: row.precio_puntos,
         puntos_para_canjear: row.puntos_para_canjear,
-        stock_disponible: stockSucursal,
-        stock_reservado: stockReservadoSucursal,
+        modo_venta: salesMode,
+        stock_disponible: whatsappCatalog ? purchaseLimit : stockSucursal,
+        stock_reservado: whatsappCatalog ? 0 : stockReservadoSucursal,
         stock_total_disponible: Number(row.stock_disponible ?? 0),
         stock_total_reservado: Number(row.stock_reservado ?? 0),
         stock_sucursal_id: hasSucursalFilter ? sucursalId : null,
         inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
           sucursal_id: Number(item.sucursal_id),
           sucursal_nombre: item.sucursal_nombre,
-          stock_disponible: Number(item.stock_disponible ?? 0),
-          stock_reservado: Number(item.stock_reservado ?? 0),
+          stock_disponible: whatsappCatalog ? purchaseLimit : Number(item.stock_disponible ?? 0),
+          stock_reservado: whatsappCatalog ? 0 : Number(item.stock_reservado ?? 0),
         })),
         sabores_disponibles: (flavorMap.get(row.id) ?? []).map((item) => ({
           id: Number(item.id),
           nombre: item.nombre,
           descripcion: item.descripcion ?? null,
           activo: Boolean(item.activo),
-          stock_disponible: Number(item.stock_disponible ?? 0),
-          stock_reservado: Number(item.stock_reservado ?? 0),
+          stock_disponible: whatsappCatalog ? Math.max(1, Number(row.capacidad_sabores ?? 1)) : Number(item.stock_disponible ?? 0),
+          stock_reservado: whatsappCatalog ? 0 : Number(item.stock_reservado ?? 0),
         })),
         imagenes: imagenes.length > 0 ? imagenes : (mainImageUrl ? [mainImageUrl] : []),
-        track_stock: Boolean(row.track_stock),
+        track_stock: whatsappCatalog ? false : Boolean(row.track_stock),
         permite_envio: Boolean(row.permite_envio),
         envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
         permite_retiro_local: Boolean(row.permite_retiro_local),
@@ -472,6 +478,12 @@ router.get("/", async (req, res) => {
       };
     })
   );
+});
+
+router.get("/modo-venta", async (_req, res) => {
+  const modo = await getSalesMode(pool);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ modo, catalogo_whatsapp: modo === SALES_MODE_WHATSAPP });
 });
 
 // GET /productos/categorias — lista las categorías disponibles

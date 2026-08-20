@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import { pool, qOne, qAll, qRun, type Queryable } from "../db";
 import { requireAuth, requireRole } from "../auth";
@@ -69,9 +69,18 @@ import {
   ShippingZoneError,
   type ShippingQuote,
 } from "../services/shippingZones";
+import { getSalesMode, isWhatsappCatalogMode, SALES_MODE_WHATSAPP } from "../services/salesMode";
 
 const router = Router();
 router.use(requireAuth, requireRole("cliente"));
+
+async function rejectOnlinePaymentWhenManualMode(res: Response): Promise<boolean> {
+  if (!(await isWhatsappCatalogMode(pool))) return false;
+  res.status(409).json({
+    error: "Los pagos online para clientes estan desactivados. Coordina el total y el medio de pago por WhatsApp.",
+  });
+  return true;
+}
 
 type PerfilCanje = {
   id: number;
@@ -677,11 +686,13 @@ async function validateFlavorSelectionForProduct(
     sabores,
     cantidadCajas,
     sucursalId,
+    skipStock = false,
   }: {
     producto: ProductoCarritoDB;
     sabores: FlavorSelectionInput[];
     cantidadCajas: number;
     sucursalId?: number | null;
+    skipStock?: boolean;
   },
 ): Promise<ItemFlavorDetalle[]> {
   const isCajaSabores = producto.configuracion_tipo === "caja_sabores";
@@ -701,10 +712,8 @@ async function validateFlavorSelectionForProduct(
     throw new HttpError(400, `Selecciona exactamente ${capacidad} sabores para ${producto.nombre}.`);
   }
 
-  const sucursalSeleccionada = await resolveSucursalSeleccionada(conn, sucursalId ?? null);
-  if (!sucursalSeleccionada) {
-    throw new HttpError(400, "Selecciona una sucursal para validar stock de sabores.");
-  }
+  const sucursalSeleccionada = skipStock ? null : await resolveSucursalSeleccionada(conn, sucursalId ?? null);
+  if (!skipStock && !sucursalSeleccionada) throw new HttpError(400, "Selecciona una sucursal para validar stock de sabores.");
 
   const allowedRows = await qAll<{
     id: number;
@@ -714,13 +723,13 @@ async function validateFlavorSelectionForProduct(
   }>(
     conn,
     `SELECT s.id, s.nombre, s.activo,
-            COALESCE(i.stock_disponible, 0) AS stock_disponible
+            ${skipStock ? "0" : "COALESCE(i.stock_disponible, 0)"} AS stock_disponible
      FROM producto_sabores ps
      JOIN sabores s ON s.id = ps.sabor_id
-     LEFT JOIN inventario_sabor_sucursal i ON i.sabor_id = s.id AND i.sucursal_id = ?
+     ${skipStock ? "" : "LEFT JOIN inventario_sabor_sucursal i ON i.sabor_id = s.id AND i.sucursal_id = ?"}
      WHERE ps.producto_id = ? AND ps.activo = 1
      ORDER BY ps.orden ASC, s.nombre ASC`,
-    [sucursalSeleccionada.id, producto.id],
+    skipStock ? [producto.id] : [sucursalSeleccionada!.id, producto.id],
   );
   const allowed = new Map(allowedRows.map((row) => [Number(row.id), row]));
   const detalles: ItemFlavorDetalle[] = [];
@@ -731,7 +740,7 @@ async function validateFlavorSelectionForProduct(
     }
     const needed = item.cantidad * cantidadCajas;
     const available = Number(row.stock_disponible ?? 0);
-    if (available < needed) {
+    if (!skipStock && available < needed) {
       throw new HttpError(
         400,
         available > 0
@@ -1832,6 +1841,7 @@ router.get("/sucursales", async (_req, res) => {
 });
 
 router.get("/carrito", async (req, res) => {
+  const salesMode = await getSalesMode(pool);
   const rawItems = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
   const pricingProfile = await getActiveClientePricingProfile(pool, req.user!.id);
   const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
@@ -1854,6 +1864,7 @@ router.get("/carrito", async (req, res) => {
   const envioGratisMontoMinimo = await getFreeShippingMinimum(pool);
 
   res.json({
+    modo_venta: salesMode,
     items,
     resumen: {
       total_items: items.length,
@@ -1895,6 +1906,7 @@ router.post("/carrito/items", async (req, res) => {
     const pricingProfile = await getActiveClientePricingProfile(conn, usuarioId);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
+    const whatsappCatalog = await isWhatsappCatalogMode(conn);
     validateProductoForMode(producto, modo_compra);
     const configHash = buildFlavorConfigHash(producto_id, saboresSeleccionados);
 
@@ -1915,12 +1927,15 @@ router.post("/carrito/items", async (req, res) => {
       sabores: saboresSeleccionados,
       cantidadCajas: nuevaCantidad,
       sucursalId: sucursal_id ?? null,
+      skipStock: whatsappCatalog,
     });
-    await assertCartQuantityWithinStock(conn, {
-      producto,
-      cantidad: nuevaCantidad,
-      sucursalId: sucursal_id ?? null,
-    });
+    if (!whatsappCatalog) {
+      await assertCartQuantityWithinStock(conn, {
+        producto,
+        cantidad: nuevaCantidad,
+        sucursalId: sucursal_id ?? null,
+      });
+    }
 
     const precioDineroUnit = getPrecioDineroConResolver(producto, resolvePrice);
     const precioPuntosUnit = null;
@@ -2031,10 +2046,11 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const pricingProfile = await getActiveClientePricingProfile(conn, req.user!.id);
     const resolvePrice = await createPricingResolver(conn, { source: "web", profile: pricingProfile });
     const eventbarDiscount = await loadEventbarSpecialDiscountConfig(conn);
+    const whatsappCatalog = await isWhatsappCatalogMode(conn);
     validateProductoForMode(producto, item.modo_compra);
     const purchaseLimit = await getPurchaseQuantityLimit(conn, pricingProfile?.tipoCliente ?? "cliente");
     assertWithinPurchaseLimit(parsed.data.cantidad, purchaseLimit);
-    if (parsed.data.cantidad > Number(item.cantidad ?? 0)) {
+    if (!whatsappCatalog && parsed.data.cantidad > Number(item.cantidad ?? 0)) {
       await assertCartQuantityWithinStock(conn, {
         producto,
         cantidad: parsed.data.cantidad,
@@ -2132,6 +2148,86 @@ router.delete("/carrito/vaciar", async (req, res) => {
   } finally {
     conn.release();
   }
+});
+
+router.post("/carrito/whatsapp", async (req, res) => {
+  const schema = z.object({
+    entrega: z.enum(["retiro", "consultar_envio"]).default("retiro"),
+    localidad: z.string().trim().max(120).optional().nullable(),
+    notas: z.string().trim().max(500).optional().nullable(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+  if (!(await isWhatsappCatalogMode(pool))) {
+    res.status(409).json({ error: "El catalogo por WhatsApp no esta activo en este momento." });
+    return;
+  }
+
+  const items = (await getCarritoItems(pool, req.user!.id)).filter((item) => item.modo_compra === "dinero");
+  if (!items.length) {
+    res.status(400).json({ error: "Tu carrito esta vacio." });
+    return;
+  }
+
+  const pricingProfile = await getActiveClientePricingProfile(pool, req.user!.id);
+  const resolvePrice = await createPricingResolver(pool, { source: "web", profile: pricingProfile });
+  const eventbarDiscount = await loadEventbarSpecialDiscountConfig(pool);
+  const usuario = await qOne<{ nombre: string; telefono: string | null }>(
+    pool,
+    "SELECT nombre, telefono FROM usuarios WHERE id = ? LIMIT 1",
+    [req.user!.id],
+  );
+  const config = await qAll<{ clave: string; valor: string }>(
+    pool,
+    "SELECT clave, valor FROM configuracion WHERE clave IN ('whatsapp_pedidos_numero')",
+  );
+  const whatsappRaw = config.find((item) => item.clave === "whatsapp_pedidos_numero")?.valor ?? "5493794632610";
+  const whatsappNumber = whatsappRaw.replace(/\D/g, "");
+  if (whatsappNumber.length < 8 || whatsappNumber.length > 15) {
+    res.status(500).json({ error: "El numero de WhatsApp de pedidos no esta configurado correctamente." });
+    return;
+  }
+
+  let total = 0;
+  const itemLines: string[] = [];
+  for (const item of items) {
+    const producto = await getProductoForCart(pool, Number(item.producto_id));
+    validateProductoForMode(producto, "dinero");
+    const unitPrice = getPrecioDineroConResolver(producto, resolvePrice);
+    const subtotal = getSubtotalDineroConPromo(unitPrice, Number(item.cantidad), eventbarDiscount);
+    total = toMoney(total + subtotal);
+    itemLines.push(`- ${item.cantidad} x ${item.nombre} (${toMoney(subtotal).toLocaleString("es-AR", { style: "currency", currency: "ARS" })})`);
+    if (item.sabores?.length) {
+      itemLines.push(`  Sabores: ${item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(", ")}`);
+    }
+  }
+
+  const deliveryLine = parsed.data.entrega === "consultar_envio"
+    ? `Entrega: quiero consultar envio${parsed.data.localidad ? ` a ${parsed.data.localidad}` : ""}`
+    : "Entrega: retiro a coordinar";
+  const message = [
+    "Hola, quisiera consultar disponibilidad para este pedido:",
+    "",
+    ...itemLines,
+    "",
+    `Subtotal estimado (sin envio): ${total.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}`,
+    deliveryLine,
+    `Cliente: ${usuario?.nombre || `#${req.user!.id}`}`,
+    usuario?.telefono ? `Telefono: ${usuario.telefono}` : null,
+    parsed.data.notas ? `Notas: ${parsed.data.notas}` : null,
+    "",
+    "Quedo a la espera de la confirmacion de stock y del total final.",
+  ].filter((line): line is string => line !== null).join("\n");
+
+  res.json({
+    ok: true,
+    whatsapp_url: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
+    mensaje: message,
+    subtotal_estimado: total,
+  });
 });
 
 router.get("/checkout/shipping-quote", async (req, res) => {
@@ -2334,6 +2430,10 @@ router.post("/checkout/preview", async (req, res) => {
 });
 
 router.post("/checkout/confirm", async (req, res) => {
+  if ((await getSalesMode(pool)) === SALES_MODE_WHATSAPP) {
+    res.status(409).json({ error: "Las compras online estan desactivadas. Envia tu carrito por WhatsApp para confirmar stock y coordinar el pago." });
+    return;
+  }
   const schema = z.object({
     sucursal_id: z.number().int().positive().optional().nullable(),
     metodo_entrega: z.enum(["retiro", "envio"]).optional().default("retiro"),
@@ -2832,6 +2932,7 @@ router.post("/checkout/confirm", async (req, res) => {
 });
 
 router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
+  if (await rejectOnlinePaymentWhenManualMode(res)) return;
   let ordenId = 0;
   try {
     ordenId = parseCheckoutRouteParam(req.params.id);
@@ -3065,6 +3166,7 @@ router.post("/checkout/ordenes/:id/process-payment", async (req, res) => {
 });
 
 router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
+  if (await rejectOnlinePaymentWhenManualMode(res)) return;
   let ordenId = 0;
   try {
     ordenId = parseCheckoutRouteParam(req.params.id);
@@ -3319,6 +3421,7 @@ router.post("/checkout/ordenes/:id/change-payment-method", async (req, res) => {
 });
 
 router.get("/checkout/ordenes/:id/resume-payment", async (req, res) => {
+  if (await rejectOnlinePaymentWhenManualMode(res)) return;
   let ordenId = 0;
   try {
     ordenId = parseCheckoutRouteParam(req.params.id);
@@ -4012,6 +4115,10 @@ router.post("/checkout/mercadopago/confirm-return", async (req, res) => {
 });
 
 router.get("/checkout/payment-options", async (_req, res) => {
+  if ((await getSalesMode(pool)) === SALES_MODE_WHATSAPP) {
+    res.json({ options: [], default_option: null, modo_venta: SALES_MODE_WHATSAPP });
+    return;
+  }
   res.json({
     options: listPaymentOptions(),
     default_option: "mercadopago_brick",

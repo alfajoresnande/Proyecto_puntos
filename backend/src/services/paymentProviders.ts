@@ -328,7 +328,7 @@ async function createMercadoPagoPreferenceSession(input: PaymentSessionInput): P
     ],
     payer: {
       name: input.buyerName || `Cliente #${input.referenceId}`,
-      email: input.buyerEmail,
+      ...(input.buyerEmail.trim().includes("@") ? { email: input.buyerEmail.trim() } : {}),
     },
     back_urls: {
       success: paymentReturnUrl("PAYMENT_RETURN_SUCCESS_URL"),
@@ -538,6 +538,7 @@ export type MercadoPagoPaymentLookupResult = MercadoPagoApiPaymentResult & {
   externalReference: string | null;
   orderId: number | null;
   checkoutId: number | null;
+  manualChargeId: number | null;
 };
 
 export type MercadoPagoQrOrderLookupResult = MercadoPagoApiPaymentResult & {
@@ -594,7 +595,17 @@ function parseCheckoutIdFromReference(reference: string | null): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function parseMercadoPagoReference(reference: string | null): { kind: "orden" | "checkout"; id: number } | null {
+function parseManualChargeIdFromReference(reference: string | null): number | null {
+  if (!reference) return null;
+  const match = reference.match(/cobro[_-]?manual[_-]?(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function parseMercadoPagoReference(reference: string | null): { kind: "orden" | "checkout" | "cobro_manual"; id: number } | null {
+  const manualChargeId = parseManualChargeIdFromReference(reference);
+  if (manualChargeId) return { kind: "cobro_manual", id: manualChargeId };
   const checkoutId = parseCheckoutIdFromReference(reference);
   if (checkoutId) return { kind: "checkout", id: checkoutId };
   const orderId = parseOrderIdFromReference(reference);
@@ -615,6 +626,7 @@ function toMercadoPagoPaymentResult(payload: Record<string, unknown>): MercadoPa
     externalReference,
     orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
     checkoutId: parseCheckoutIdFromReference(directCheckoutId ?? externalReference),
+    manualChargeId: parseManualChargeIdFromReference(externalReference),
     payload,
   };
 }

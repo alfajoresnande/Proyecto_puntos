@@ -273,7 +273,7 @@ async function createMercadoPagoPreferenceSession(input) {
         ],
         payer: {
             name: input.buyerName || `Cliente #${input.referenceId}`,
-            email: input.buyerEmail,
+            ...(input.buyerEmail.trim().includes("@") ? { email: input.buyerEmail.trim() } : {}),
         },
         back_urls: {
             success: paymentReturnUrl("PAYMENT_RETURN_SUCCESS_URL"),
@@ -498,7 +498,19 @@ function parseCheckoutIdFromReference(reference) {
     const parsed = Number(match[1]);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
+function parseManualChargeIdFromReference(reference) {
+    if (!reference)
+        return null;
+    const match = reference.match(/cobro[_-]?manual[_-]?(\d+)/i);
+    if (!match)
+        return null;
+    const parsed = Number(match[1]);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 function parseMercadoPagoReference(reference) {
+    const manualChargeId = parseManualChargeIdFromReference(reference);
+    if (manualChargeId)
+        return { kind: "cobro_manual", id: manualChargeId };
     const checkoutId = parseCheckoutIdFromReference(reference);
     if (checkoutId)
         return { kind: "checkout", id: checkoutId };
@@ -519,6 +531,7 @@ function toMercadoPagoPaymentResult(payload) {
         externalReference,
         orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
         checkoutId: parseCheckoutIdFromReference(directCheckoutId ?? externalReference),
+        manualChargeId: parseManualChargeIdFromReference(externalReference),
         payload,
     };
 }

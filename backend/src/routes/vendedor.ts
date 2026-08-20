@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import QRCode from "qrcode";
 import { pool, qOne, qAll, qRun } from "../db";
 import { requireAuth, requireRole } from "../auth";
 import { emitRealtime } from "../realtime";
@@ -35,9 +36,143 @@ import {
   ShippingZoneError,
   updateShippingZone,
 } from "../services/shippingZones";
+import { createPaymentSession } from "../services/paymentProviders";
+import { requestRateLimit } from "../middleware/requestRateLimit";
 
 const router = Router();
 router.use(requireAuth, requireRole("vendedor", "admin", "superAdmin"));
+
+const cobroManualSchema = z.object({
+  monto: z.number().positive().max(999_999_999),
+  concepto: z.string().trim().min(3).max(180),
+  cliente_nombre: z.string().trim().max(160).optional().nullable(),
+  cliente_telefono: z.string().trim().max(40).optional().nullable(),
+});
+
+function normalizeWhatsAppNumber(value: string | null | undefined): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : null;
+}
+
+router.get("/cobros-manuales", async (_req, res) => {
+  const rows = await qAll<{
+    id: number;
+    monto: number;
+    moneda: string;
+    concepto: string;
+    cliente_nombre: string | null;
+    cliente_telefono: string | null;
+    estado: string;
+    preference_id: string | null;
+    provider_payment_id: string | null;
+    checkout_url: string | null;
+    error_mensaje: string | null;
+    creado_por: number;
+    creado_por_nombre: string;
+    approved_at: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    pool,
+    `SELECT cm.id, cm.monto, cm.moneda, cm.concepto, cm.cliente_nombre, cm.cliente_telefono,
+            cm.estado, cm.preference_id, cm.provider_payment_id, cm.checkout_url,
+            cm.error_mensaje, cm.creado_por, u.nombre AS creado_por_nombre,
+            cm.approved_at, cm.created_at, cm.updated_at
+     FROM cobros_manuales cm
+     JOIN usuarios u ON u.id = cm.creado_por
+     ORDER BY cm.created_at DESC, cm.id DESC
+     LIMIT 50`,
+  );
+  res.json(rows.map((row) => ({ ...row, id: Number(row.id), monto: Number(row.monto ?? 0) })));
+});
+
+router.post(
+  "/cobros-manuales",
+  requestRateLimit({
+    action: "crear_cobro_manual",
+    includeUser: true,
+    windows: [
+      { name: "diez_minutos", limit: 20, windowSeconds: 10 * 60 },
+      { name: "dia", limit: 100, windowSeconds: 24 * 60 * 60 },
+    ],
+  }),
+  async (req, res) => {
+  const parsed = cobroManualSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  const monto = Math.round((parsed.data.monto + Number.EPSILON) * 100) / 100;
+  const clienteNombre = parsed.data.cliente_nombre?.trim() || null;
+  const clienteTelefono = parsed.data.cliente_telefono?.trim() || null;
+  const inserted = await qRun(
+    pool,
+    `INSERT INTO cobros_manuales
+      (monto, moneda, concepto, cliente_nombre, cliente_telefono, estado, creado_por)
+     VALUES (?, 'ARS', ?, ?, ?, 'iniciado', ?)`,
+    [monto, parsed.data.concepto, clienteNombre, clienteTelefono, req.user!.id],
+  );
+  const cobroId = Number(inserted.insertId);
+
+  try {
+    const paymentSession = await createPaymentSession({
+      choice: { provider: "mercadopago", method: "wallet" },
+      referenceId: cobroId,
+      externalReference: `cobro_manual_${cobroId}`,
+      amount: monto,
+      currency: "ARS",
+      buyerName: clienteNombre || `Cobro manual #${cobroId}`,
+      buyerEmail: "",
+      description: parsed.data.concepto,
+    });
+    if (paymentSession.status !== "ready" || !paymentSession.checkoutUrl) {
+      throw new Error(paymentSession.message || "Mercado Pago no devolvio un enlace de pago.");
+    }
+
+    const qrImage = await QRCode.toDataURL(paymentSession.checkoutUrl, {
+      width: 360,
+      margin: 2,
+      errorCorrectionLevel: "M",
+    });
+    const whatsappNumber = normalizeWhatsAppNumber(clienteTelefono);
+    const paymentMessage = [
+      clienteNombre ? `Hola ${clienteNombre},` : "Hola,",
+      `te enviamos el cobro por ${monto.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}.`,
+      `Concepto: ${parsed.data.concepto}`,
+      `Pagar con Mercado Pago: ${paymentSession.checkoutUrl}`,
+    ].join("\n");
+    const whatsappUrl = `https://wa.me/${whatsappNumber ?? ""}?text=${encodeURIComponent(paymentMessage)}`;
+
+    await qRun(
+      pool,
+      `UPDATE cobros_manuales
+       SET preference_id = ?, checkout_url = ?, qr_image_data = ?, payload_json = ?, estado = 'iniciado', error_mensaje = NULL
+       WHERE id = ?`,
+      [paymentSession.preferenceId, paymentSession.checkoutUrl, qrImage, JSON.stringify(paymentSession.payload ?? {}), cobroId],
+    );
+    emitRealtime(["cobros-manuales"]);
+    res.status(201).json({
+      id: cobroId,
+      monto,
+      moneda: "ARS",
+      concepto: parsed.data.concepto,
+      cliente_nombre: clienteNombre,
+      cliente_telefono: clienteTelefono,
+      estado: "iniciado",
+      preference_id: paymentSession.preferenceId,
+      provider_payment_id: null,
+      checkout_url: paymentSession.checkoutUrl,
+      qr_image_data: qrImage,
+      whatsapp_url: whatsappUrl,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo generar el cobro de Mercado Pago.";
+    await qRun(pool, "UPDATE cobros_manuales SET estado = 'error', error_mensaje = ? WHERE id = ?", [message.slice(0, 500), cobroId]);
+    res.status(502).json({ error: message, cobro_id: cobroId });
+  }
+  },
+);
 
 function queueOrderReceiptEmail(orderId: number) {
   void sendOrderReceiptEmail(orderId).catch((err) => {

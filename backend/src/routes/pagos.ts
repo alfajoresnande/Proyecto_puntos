@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { Router } from "express";
-import { pool } from "../db";
+import { pool, qOne, qRun } from "../db";
 import { emitRealtime } from "../realtime";
 import { approvePaidOrder, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
 import { getMercadoPagoPayment, getMercadoPagoQrOrder } from "../services/paymentProviders";
@@ -39,6 +39,56 @@ function parseCheckoutIdFromReference(reference: string | null): number | null {
   if (!match) return null;
   const parsed = Number(match[1]);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseManualChargeIdFromReference(reference: string | null): number | null {
+  if (!reference) return null;
+  const match = reference.match(/cobro[_-]?manual[_-]?(\d+)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveManualChargeId(body: Record<string, unknown>, query: Record<string, unknown>): number | null {
+  const metadata = asRecord(body.metadata);
+  const data = asRecord(body.data);
+  const dataMetadata = asRecord(data.metadata);
+  const payment = asRecord(body.payment);
+  const paymentMetadata = asRecord(payment.metadata);
+  return parseManualChargeIdFromReference(firstString(
+    body.cobro_manual_id,
+    metadata.cobro_manual_id,
+    dataMetadata.cobro_manual_id,
+    paymentMetadata.cobro_manual_id,
+    body.external_reference,
+    metadata.external_reference,
+    data.external_reference,
+    payment.external_reference,
+    query.external_reference,
+  ));
+}
+
+function resolveTransactionAmount(payload: Record<string, unknown>): number | null {
+  const paymentLookup = asRecord(payload.payment_lookup);
+  const qrOrderLookup = asRecord(payload.qr_order_lookup);
+  const qrTransactions = asRecord(qrOrderLookup.transactions);
+  const qrPayments = Array.isArray(qrTransactions.payments) ? qrTransactions.payments : [];
+  const qrPayment = asRecord(qrPayments[0]);
+  const payment = asRecord(payload.payment);
+  const data = asRecord(payload.data);
+  const candidates = [
+    paymentLookup.transaction_amount,
+    qrOrderLookup.total_amount,
+    qrPayment.amount,
+    payment.transaction_amount,
+    data.transaction_amount,
+    payload.transaction_amount,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
 }
 
 function resolveOrderId(body: Record<string, unknown>, query: Record<string, unknown>): number | null {
@@ -155,7 +205,7 @@ function secureHexEquals(left: string, right: string): boolean {
 }
 
 function validateMercadoPagoWebhook(req: Parameters<typeof router.post>[1] extends (...args: infer T) => unknown ? T[0] : never): boolean {
-  if (!MERCADOPAGO_WEBHOOK_SECRET) return true;
+  if (!MERCADOPAGO_WEBHOOK_SECRET) return false;
 
   const signatureHeader = req.get("x-signature")?.trim() || "";
   const requestId = req.get("x-request-id")?.trim() || "";
@@ -179,30 +229,46 @@ function validateMercadoPagoWebhook(req: Parameters<typeof router.post>[1] exten
 
 router.post("/webhook/:proveedor", async (req, res) => {
   const proveedor = String(req.params.proveedor || "").trim().toLowerCase();
-  if (proveedor === "mercadopago" && !validateMercadoPagoWebhook(req)) {
-    recordSecurityEvent("pago_webhook_firma_invalida", req, {
-      proveedor,
-      hasSecret: Boolean(MERCADOPAGO_WEBHOOK_SECRET),
-    });
-    res.status(401).json({ error: "Firma del webhook de Mercado Pago invalida." });
-    return;
-  }
-
   const body = asRecord(req.body);
   const query = asRecord(req.query);
   let orderId = resolveOrderId(body, query);
   let checkoutId = resolveCheckoutId(body, query);
+  let manualChargeId = resolveManualChargeId(body, query);
   let providerPaymentId = resolveProviderPaymentId(body, query);
   let status = resolvePaymentStatus(body, query);
   let resolvedPayload: Record<string, unknown> = { body, query };
+  const isQrOrderNotification = Boolean(providerPaymentId?.toUpperCase().startsWith("ORD"));
 
-  if (proveedor === "mercadopago" && providerPaymentId && providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
+  if (proveedor === "mercadopago") {
+    const hasSignature = Boolean(req.get("x-signature")?.trim());
+    // Mercado Pago no firma las notificaciones de Orders QR. Solo se aceptan
+    // sin firma cuando el recurso es una order QR y luego se valida por API.
+    const signatureAccepted = hasSignature ? validateMercadoPagoWebhook(req) : isQrOrderNotification;
+    if (!signatureAccepted) {
+      recordSecurityEvent("pago_webhook_firma_invalida", req, {
+        proveedor,
+        hasSecret: Boolean(MERCADOPAGO_WEBHOOK_SECRET),
+        hasSignature,
+        providerPaymentId,
+      });
+      res.status(401).json({ error: "Firma del webhook de Mercado Pago invalida o ausente." });
+      return;
+    }
+    if (!providerPaymentId) {
+      recordSecurityEvent("pago_webhook_sin_payment_id", req, { proveedor });
+      res.status(400).json({ error: "La notificacion no incluye un identificador de pago verificable." });
+      return;
+    }
+  }
+
+  if (proveedor === "mercadopago" && providerPaymentId && isQrOrderNotification) {
     try {
       const order = await getMercadoPagoQrOrder(providerPaymentId);
-      orderId = orderId ?? order.orderId;
-      checkoutId = checkoutId ?? order.checkoutId;
+      orderId = order.orderId;
+      checkoutId = order.checkoutId;
+      manualChargeId = null;
       providerPaymentId = order.providerPaymentId ?? providerPaymentId;
-      status = status ?? resolvePaymentStatus(order.payload, {});
+      status = resolvePaymentStatus({ status: order.status }, {});
       resolvedPayload = {
         body,
         query,
@@ -214,16 +280,19 @@ router.post("/webhook/:proveedor", async (req, res) => {
         providerPaymentId,
         reason: error instanceof Error ? error.message : "lookup_error",
       });
+      res.status(502).json({ error: "No se pudo verificar la order QR con Mercado Pago." });
+      return;
     }
   }
 
-  if (proveedor === "mercadopago" && providerPaymentId && !providerPaymentId.toUpperCase().startsWith("ORD") && (!orderId || !status)) {
+  if (proveedor === "mercadopago" && providerPaymentId && !isQrOrderNotification) {
     try {
       const payment = await getMercadoPagoPayment(providerPaymentId);
-      orderId = orderId ?? payment.orderId;
-      checkoutId = checkoutId ?? payment.checkoutId;
+      orderId = payment.orderId;
+      checkoutId = payment.checkoutId;
+      manualChargeId = payment.manualChargeId;
       providerPaymentId = payment.providerPaymentId ?? providerPaymentId;
-      status = status ?? resolvePaymentStatus(payment.payload, {});
+      status = resolvePaymentStatus({ status: payment.status }, {});
       resolvedPayload = {
         body,
         query,
@@ -235,23 +304,81 @@ router.post("/webhook/:proveedor", async (req, res) => {
         providerPaymentId,
         reason: error instanceof Error ? error.message : "lookup_error",
       });
+      res.status(502).json({ error: "No se pudo verificar el pago con Mercado Pago." });
+      return;
     }
   }
 
-  if (!orderId && !checkoutId) {
+  if (!orderId && !checkoutId && !manualChargeId) {
     recordSecurityEvent("pago_webhook_sin_orden", req, { proveedor, providerPaymentId });
     res.status(202).json({ ok: true, ignored: true, reason: "referencia_no_identificada" });
     return;
   }
 
   if (!status) {
-    res.status(202).json({ ok: true, ignored: true, reason: "estado_no_accionable", orden_id: orderId, checkout_id: checkoutId });
+    res.status(202).json({ ok: true, ignored: true, reason: "estado_no_accionable", orden_id: orderId, checkout_id: checkoutId, cobro_manual_id: manualChargeId });
     return;
   }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if (manualChargeId) {
+      const cobro = await qOne<{ id: number; monto: number; estado: string }>(
+        conn,
+        "SELECT id, monto, estado FROM cobros_manuales WHERE id = ? FOR UPDATE",
+        [manualChargeId],
+      );
+      if (!cobro) throw new Error("Cobro manual inexistente.");
+      const paidAmount = resolveTransactionAmount(resolvedPayload);
+      if (status === "approved" && paidAmount === null) {
+        throw new Error("No se pudo verificar el importe aprobado con Mercado Pago.");
+      }
+      if (status === "approved" && paidAmount !== null && Math.abs(Number(cobro.monto) - paidAmount) > 0.009) {
+        recordSecurityEvent("cobro_manual_monto_invalido", req, {
+          cobroId: manualChargeId,
+          expectedAmount: Number(cobro.monto),
+          paidAmount,
+          providerPaymentId,
+        });
+        throw new Error("El importe informado por Mercado Pago no coincide con el cobro manual.");
+      }
+      if (cobro.estado === "aprobado" && status !== "approved") {
+        await conn.commit();
+        res.json({ ok: true, cobro_manual_id: manualChargeId, estado: "aprobado", ignored: true });
+        return;
+      }
+      const nextState = status === "approved" ? "aprobado" : status === "expired" ? "expirado" : "rechazado";
+      await qRun(
+        conn,
+        `UPDATE cobros_manuales
+         SET estado = ?, provider_payment_id = COALESCE(?, provider_payment_id), payload_json = ?,
+             approved_at = IF(? = 'aprobado', COALESCE(approved_at, CURRENT_TIMESTAMP), approved_at)
+         WHERE id = ?`,
+        [nextState, providerPaymentId, JSON.stringify(resolvedPayload), nextState, manualChargeId],
+      );
+      await conn.commit();
+      emitRealtime(["cobros-manuales"]);
+      res.json({ ok: true, cobro_manual_id: manualChargeId, estado: nextState });
+      return;
+    }
+    if (proveedor === "mercadopago" && status === "approved") {
+      const expected = orderId
+        ? await qOne<{ monto: number }>(conn, "SELECT total_dinero AS monto FROM ordenes WHERE id = ? FOR UPDATE", [orderId])
+        : await qOne<{ monto: number }>(conn, "SELECT total_dinero AS monto FROM checkout_pendientes WHERE id = ? FOR UPDATE", [Number(checkoutId)]);
+      if (!expected) throw new Error("No existe la compra asociada al pago aprobado.");
+      const paidAmount = resolveTransactionAmount(resolvedPayload);
+      if (paidAmount === null || Math.abs(Number(expected.monto) - paidAmount) > 0.009) {
+        recordSecurityEvent("pago_webhook_monto_invalido", req, {
+          orderId,
+          checkoutId,
+          expectedAmount: Number(expected.monto),
+          paidAmount,
+          providerPaymentId,
+        });
+        throw new Error("El importe aprobado por Mercado Pago no coincide con la compra.");
+      }
+    }
     const result = orderId
       ? (
         status === "approved"

@@ -5,6 +5,7 @@ const db_1 = require("../db");
 const auth_1 = require("../auth");
 const customerPricing_1 = require("../services/customerPricing");
 const purchaseLimits_1 = require("../services/purchaseLimits");
+const salesMode_1 = require("../services/salesMode");
 const urlSafety_1 = require("../urlSafety");
 const router = (0, express_1.Router)();
 const HOME_LOCATION_LINK_KEYS = [
@@ -74,6 +75,7 @@ router.get("/destacados", async (req, res) => {
         const limit = Number.isFinite(rawLimit) ? Math.min(24, Math.max(1, Math.floor(rawLimit))) : 12;
         const fetchLimit = Math.min(60, Math.max(limit * 3, limit));
         res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+        const salesMode = await (0, salesMode_1.getSalesMode)(db_1.pool);
         const [rowsRaw] = await db_1.pool.query(`SELECT id, nombre, descripcion, imagen_url, imagen_mobile_url, categoria,
             puntos_requeridos, puntos_acumulables, puntaje_al_comprar, tipo_producto,
             precio_dinero, precio_puntos, puntos_para_canjear, destacado_home, permite_envio, envio_gratis
@@ -81,7 +83,7 @@ router.get("/destacados", async (req, res) => {
      WHERE activo = 1
        AND destacado_home = 1
        AND tipo_producto IN ('venta','mixto')
-       AND (track_stock = 0 OR stock_disponible > 0)
+       ${salesMode === salesMode_1.SALES_MODE_WHATSAPP ? "" : "AND (track_stock = 0 OR stock_disponible > 0)"}
      ORDER BY nombre ASC
      LIMIT ?`, [fetchLimit]);
         const rows = rowsRaw;
@@ -163,6 +165,8 @@ router.get("/", async (req, res) => {
     const { categoria, max_puntos, modo } = req.query;
     const sucursalId = Number(req.query.sucursal_id ?? 0);
     const hasSucursalFilter = Number.isFinite(sucursalId) && sucursalId > 0;
+    const salesMode = await (0, salesMode_1.getSalesMode)(db_1.pool);
+    const whatsappCatalog = salesMode === salesMode_1.SALES_MODE_WHATSAPP;
     const conditions = ["activo = 1"];
     const params = [];
     if (categoria && typeof categoria === "string") {
@@ -243,6 +247,8 @@ router.get("/", async (req, res) => {
         flavorMap.set(flavor.producto_id, current);
     }
     const visibleRows = rows.filter((row) => {
+        if (whatsappCatalog)
+            return row.configuracion_tipo !== "caja_sabores" || Number(row.capacidad_sabores ?? 0) > 0;
         if (row.configuracion_tipo === "caja_sabores") {
             const capacity = Number(row.capacidad_sabores ?? 0);
             const available = (flavorMap.get(row.id) ?? []).reduce((acc, item) => acc + Math.max(0, Number(item.stock_disponible ?? 0)), 0);
@@ -316,33 +322,39 @@ router.get("/", async (req, res) => {
             ...promoFields,
             precio_puntos: row.precio_puntos,
             puntos_para_canjear: row.puntos_para_canjear,
-            stock_disponible: stockSucursal,
-            stock_reservado: stockReservadoSucursal,
+            modo_venta: salesMode,
+            stock_disponible: whatsappCatalog ? purchaseLimit : stockSucursal,
+            stock_reservado: whatsappCatalog ? 0 : stockReservadoSucursal,
             stock_total_disponible: Number(row.stock_disponible ?? 0),
             stock_total_reservado: Number(row.stock_reservado ?? 0),
             stock_sucursal_id: hasSucursalFilter ? sucursalId : null,
             inventario_sucursales: (inventoryMap.get(row.id) ?? []).map((item) => ({
                 sucursal_id: Number(item.sucursal_id),
                 sucursal_nombre: item.sucursal_nombre,
-                stock_disponible: Number(item.stock_disponible ?? 0),
-                stock_reservado: Number(item.stock_reservado ?? 0),
+                stock_disponible: whatsappCatalog ? purchaseLimit : Number(item.stock_disponible ?? 0),
+                stock_reservado: whatsappCatalog ? 0 : Number(item.stock_reservado ?? 0),
             })),
             sabores_disponibles: (flavorMap.get(row.id) ?? []).map((item) => ({
                 id: Number(item.id),
                 nombre: item.nombre,
                 descripcion: item.descripcion ?? null,
                 activo: Boolean(item.activo),
-                stock_disponible: Number(item.stock_disponible ?? 0),
-                stock_reservado: Number(item.stock_reservado ?? 0),
+                stock_disponible: whatsappCatalog ? Math.max(1, Number(row.capacidad_sabores ?? 1)) : Number(item.stock_disponible ?? 0),
+                stock_reservado: whatsappCatalog ? 0 : Number(item.stock_reservado ?? 0),
             })),
             imagenes: imagenes.length > 0 ? imagenes : (mainImageUrl ? [mainImageUrl] : []),
-            track_stock: Boolean(row.track_stock),
+            track_stock: whatsappCatalog ? false : Boolean(row.track_stock),
             permite_envio: Boolean(row.permite_envio),
             envio_gratis: Boolean(row.permite_envio) && Boolean(row.envio_gratis),
             permite_retiro_local: Boolean(row.permite_retiro_local),
             limite_compra: purchaseLimit,
         };
     }));
+});
+router.get("/modo-venta", async (_req, res) => {
+    const modo = await (0, salesMode_1.getSalesMode)(db_1.pool);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ modo, catalogo_whatsapp: modo === salesMode_1.SALES_MODE_WHATSAPP });
 });
 // GET /productos/categorias — lista las categorías disponibles
 router.get("/sucursales", async (_req, res) => {

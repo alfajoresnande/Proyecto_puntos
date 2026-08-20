@@ -90,6 +90,7 @@ export type Producto = {
   envio_gratis?: boolean;
   permite_retiro_local?: boolean;
   activo?: boolean;
+  modo_venta?: "ecommerce" | "catalogo_whatsapp";
 };
 
 export type AddressProvider = "manual" | "geoapify" | "google";

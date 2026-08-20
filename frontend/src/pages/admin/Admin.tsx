@@ -13,6 +13,7 @@ import {
 import { renderStaticPageMarkdown, stripPageImages } from "../../lib/pageContent";
 import { usePointsVisible } from "../../lib/pointsProgram";
 import { StaticPageTableOfContents } from "../../components/StaticPageTableOfContents";
+import { ManualPaymentGenerator } from "../../components/ManualPaymentGenerator";
 import { calculatePointsByAmount } from "../../lib/points";
 import { AdminVentasView, type AdminVentasViewKey } from "./views/AdminVentasView";
 import { AreaExplanation } from "./components/AreaExplanation";
@@ -717,6 +718,8 @@ type ConfiguracionDraft = {
   pedido_comprobante_leyenda: string;
   chatbot_activo: boolean;
   puntos_activo: boolean;
+  modo_venta: "ecommerce" | "catalogo_whatsapp";
+  whatsapp_pedidos_numero: string;
   eventbar_activo: boolean;
   eventbar_titulo: string;
   eventbar_subtitulo: string;
@@ -2086,6 +2089,8 @@ export function Admin() {
     pedido_comprobante_leyenda: "Este documento no es valido como factura.",
     chatbot_activo: true,
     puntos_activo: true,
+    modo_venta: "ecommerce",
+    whatsapp_pedidos_numero: "5493794632610",
     eventbar_activo: false,
     eventbar_titulo: "",
     eventbar_subtitulo: "",
@@ -2467,6 +2472,8 @@ export function Admin() {
       pedido_comprobante_leyenda: getConfig("pedido_comprobante_leyenda", "Este documento no es valido como factura."),
       chatbot_activo: isTruthyConfigValue(getConfig("chatbot_activo", "1")),
       puntos_activo: isTruthyConfigValue(getConfig("puntos_activo", "1")),
+      modo_venta: getConfig("modo_venta", "ecommerce") === "catalogo_whatsapp" ? "catalogo_whatsapp" : "ecommerce",
+      whatsapp_pedidos_numero: getConfig("whatsapp_pedidos_numero", "5493794632610"),
       eventbar_activo: isTruthyConfigValue(getConfig("eventbar_activo", "0")),
       eventbar_titulo: getConfig("eventbar_titulo", ""),
       eventbar_subtitulo: getConfig("eventbar_subtitulo", ""),
@@ -5222,6 +5229,7 @@ export function Admin() {
     const pedidoComprobanteLeyenda = configDraft.pedido_comprobante_leyenda.trim();
     const chatbotActivo = configDraft.chatbot_activo;
     const puntosActivo = configDraft.puntos_activo;
+    const whatsappPedidosNumero = configDraft.whatsapp_pedidos_numero.replace(/\D/g, "");
 
     if (!Number.isInteger(diasLimiteRetiro) || diasLimiteRetiro <= 0 || diasLimiteRetiro > 90) {
       setConfigErr("Los dias limite de retiro deben ser un numero entero entre 1 y 90.");
@@ -5283,6 +5291,10 @@ export function Admin() {
     }
     if (!pedidoComprobanteLeyenda) {
       setConfigErr("Completa la leyenda legal del comprobante.");
+      return;
+    }
+    if (isSuperAdmin && (whatsappPedidosNumero.length < 8 || whatsappPedidosNumero.length > 15)) {
+      setConfigErr("El WhatsApp de pedidos debe incluir codigo de pais y tener entre 8 y 15 digitos.");
       return;
     }
     setConfigBusy(true);
@@ -5373,21 +5385,36 @@ export function Admin() {
           valor: pedidoComprobanteLeyenda,
           descripcion: "Leyenda legal que se muestra al pie del comprobante de pedidos.",
         },
-        {
-          clave: "chatbot_activo",
-          valor: chatbotActivo ? "1" : "0",
-          descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
-        },
-        {
-          clave: "puntos_activo",
-          valor: puntosActivo ? "1" : "0",
-          descripcion: "Activa o desactiva el programa de puntos completo (acreditaciones, canjes y vencimientos).",
-        },
+        ...(isSuperAdmin ? [
+          {
+            clave: "chatbot_activo",
+            valor: chatbotActivo ? "1" : "0",
+            descripcion: "Activar o desactivar el asistente virtual de inteligencia artificial.",
+          },
+          {
+            clave: "puntos_activo",
+            valor: puntosActivo ? "1" : "0",
+            descripcion: "Activa o desactiva el programa de puntos completo (acreditaciones, canjes y vencimientos).",
+          },
+          {
+            clave: "modo_venta",
+            valor: configDraft.modo_venta,
+            descripcion: "Modo de venta activo: ecommerce o catalogo con coordinacion por WhatsApp.",
+          },
+          {
+            clave: "whatsapp_pedidos_numero",
+            valor: whatsappPedidosNumero,
+            descripcion: "Numero de WhatsApp para recibir pedidos, con codigo de pais y solo digitos.",
+          },
+        ] : []),
       ];
 
       await guardarConfiguracionItems(updates);
       // Refrescar el estado publico del programa de puntos en toda la app.
       await queryClient.invalidateQueries({ queryKey: ["layout", "puntos"] });
+      await queryClient.invalidateQueries({ queryKey: ["layout", "modo-venta"] });
+      await queryClient.invalidateQueries({ queryKey: ["productos"] });
+      await queryClient.invalidateQueries({ queryKey: ["carrito"] });
       setConfigMsg("Configuracion general actualizada.");
     } catch (error) {
       setConfigErr((error as Error).message);
@@ -5942,6 +5969,57 @@ export function Admin() {
 
               {isSuperAdmin && (
                 <>
+                  <div className="admin-section-header adm-config-header">
+                    <h2 className="admin-section-title">Modo de venta</h2>
+                  </div>
+                  <div className="admin-card admin-card-padded adm-config-card">
+                    <p className="adm-config-subtitle">
+                      Cambia entre el ecommerce completo y un catalogo sin control de stock ni pago para el cliente.
+                    </p>
+                    <div className="adm-form-grid" style={{ marginTop: "1rem" }}>
+                      <label className="adm-field">
+                        <span className="adm-label">Funcionamiento de la tienda</span>
+                        <select
+                          className="adm-input"
+                          value={configDraft.modo_venta}
+                          onChange={(event) => setConfigDraft((prev) => ({
+                            ...prev,
+                            modo_venta: event.target.value === "catalogo_whatsapp" ? "catalogo_whatsapp" : "ecommerce",
+                          }))}
+                          disabled={configBusy}
+                        >
+                          <option value="ecommerce">Ecommerce: stock, checkout y pago online</option>
+                          <option value="catalogo_whatsapp">Catalogo: pedido por WhatsApp</option>
+                        </select>
+                      </label>
+                      <label className="adm-field">
+                        <span className="adm-label">WhatsApp que recibe pedidos</span>
+                        <input
+                          className="adm-input"
+                          type="tel"
+                          value={configDraft.whatsapp_pedidos_numero}
+                          onChange={(event) => setConfigDraft((prev) => ({ ...prev, whatsapp_pedidos_numero: event.target.value }))}
+                          placeholder="54911..."
+                          disabled={configBusy}
+                        />
+                      </label>
+                    </div>
+                    <p className="adm-inline-tip" style={{ marginTop: "0.8rem" }}>
+                      En modo catalogo se muestran todos los productos activos aunque su stock sea cero. El cliente arma el carrito y lo envia por WhatsApp; no puede cotizar envio ni pagar desde la tienda. El personal confirma stock, zona de entrega y total, y luego genera el link desde la seccion Cobros.
+                      Para evitar cobros cruzados, el sistema no permite activarlo mientras haya links de pago online pendientes del ecommerce.
+                    </p>
+                    {configDraft.modo_venta === "ecommerce" ? (
+                      <p className="adm-inline-tip" style={{ marginTop: "0.6rem", color: "#9a3412" }}>
+                        Antes de volver al ecommerce revisa y actualiza el inventario: durante el modo catalogo las ventas coordinadas por WhatsApp no descuentan stock automaticamente.
+                      </p>
+                    ) : null}
+                    <div className="adm-actions" style={{ marginTop: "1rem" }}>
+                      <button className="adm-btn-primary adm-btn-inline" onClick={guardarConfiguracionGeneral} disabled={configBusy}>
+                        {configBusy ? "Guardando..." : "Guardar modo de venta"}
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="admin-section-header adm-config-header">
                     <h2 className="admin-section-title">Asistente Virtual IA</h2>
                   </div>
@@ -8875,6 +8953,9 @@ export function Admin() {
 
           {tab === "cobros" ? (
             <div style={{ display: "grid", gap: "1.5rem" }}>
+              <div className="admin-card admin-card-padded">
+                <ManualPaymentGenerator />
+              </div>
               <SectionTitle title="Costos de cobro" />
               <div className="admin-card admin-card-padded" style={{ display: "grid", gap: "0.85rem" }}>
                 <p className="adm-inline-tip" style={{ margin: 0 }}>

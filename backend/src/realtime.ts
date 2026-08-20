@@ -75,7 +75,11 @@ function getClientAuth(req: IncomingMessage): { role: RealtimeClientRole; userId
 const clients = new Set<RealtimeClient>();
 
 export function attachRealtimeServer(server: HttpServer, allowedOrigins: Set<string>) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: 64 * 1024,
+    perMessageDeflate: false,
+  });
 
   server.on("upgrade", (req, socket, head) => {
     if (!req.url?.startsWith("/api/realtime")) {

@@ -12,6 +12,7 @@ const zod_1 = require("zod");
 const auth_1 = require("../auth");
 const db_1 = require("../db");
 const uploadSecurity_1 = require("../uploadSecurity");
+const requestRateLimit_1 = require("../middleware/requestRateLimit");
 const paths_1 = require("../paths");
 const router = (0, express_1.Router)();
 const CV_UPLOAD_DIR = path_1.default.join(paths_1.BACKEND_ROOT, "private_uploads/postulaciones");
@@ -75,7 +76,13 @@ const postulacionSchema = zod_1.z.object({
     telefono: zod_1.z.string().trim().max(40).optional().nullable(),
     mensaje: zod_1.z.string().trim().min(5).max(1500),
 });
-router.post("/", cvUpload.single("cv"), async (req, res) => {
+router.post("/", (0, requestRateLimit_1.requestRateLimit)({
+    action: "postulacion_cv",
+    windows: [
+        { name: "hora", limit: 5, windowSeconds: 60 * 60 },
+        { name: "dia", limit: 15, windowSeconds: 24 * 60 * 60 },
+    ],
+}), cvUpload.single("cv"), async (req, res) => {
     const parsed = postulacionSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
         if (req.file?.path)

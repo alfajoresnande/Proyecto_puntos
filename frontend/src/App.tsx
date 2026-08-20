@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api";
 import { Footer } from "./components/Footer";
@@ -14,35 +14,35 @@ import { SeoRouteMeta } from "./components/SeoRouteMeta";
 import { scrollPageToTop } from "./lib/scrollTop";
 import { usePointsEnabled } from "./lib/pointsProgram";
 import { AppVersionChecker } from "./components/AppVersionChecker";
-import { Admin } from "./pages/admin/Admin";
-import { EnviosAdmin } from "./pages/admin/EnviosAdmin";
-import { SucursalesAdmin } from "./pages/admin/SucursalesAdmin";
-import { ForgotPassword } from "./pages/auth/ForgotPassword";
-import { Login } from "./pages/auth/Login";
-import { Registro } from "./pages/auth/Registro";
-import { ResetPassword } from "./pages/auth/ResetPassword";
-import { Cliente } from "./pages/cliente/Cliente";
-import { CarritoTienda } from "./pages/cliente/CarritoTienda";
-import { ConfirmarCanje } from "./pages/cliente/ConfirmarCanje";
-import { MisCanjes } from "./pages/cliente/MisCanjes";
-import { ComprobanteCanje } from "./pages/cliente/ComprobanteCanje";
-import { MisDirecciones } from "./pages/cliente/MisDirecciones";
-import { MisPedidos } from "./pages/cliente/MisPedidos";
-import { ComprobantePedido } from "./pages/cliente/ComprobantePedido";
-import { MiPerfil } from "./pages/cliente/MiPerfil";
-import { SoporteCliente } from "./pages/cliente/SoporteCliente";
-import { Catalogo } from "./pages/public/Catalogo";
-import { Home } from "./pages/public/Home";
-import { BotonArrepentimiento } from "./pages/public/BotonArrepentimiento";
-import { PoliticaPrivacidad } from "./pages/public/PoliticaPrivacidad";
-import { SobreNosotros } from "./pages/public/SobreNosotros";
-import { TiendaOnline } from "./pages/public/TiendaOnline";
-import { Terminos } from "./pages/public/Terminos";
-import { SoporteStaff } from "./pages/staff/SoporteStaff";
-import { ComprobantePedidoVendedor } from "./pages/vendedor/ComprobantePedidoVendedor";
-import { PedidosMapa } from "./pages/vendedor/PedidosMapa";
-import { Vendedor } from "./pages/vendedor/Vendedor";
-import { VendedorPedidos } from "./pages/vendedor/VendedorPedidos";
+const Admin = lazy(() => import("./pages/admin/Admin").then((module) => ({ default: module.Admin })));
+const EnviosAdmin = lazy(() => import("./pages/admin/EnviosAdmin").then((module) => ({ default: module.EnviosAdmin })));
+const SucursalesAdmin = lazy(() => import("./pages/admin/SucursalesAdmin").then((module) => ({ default: module.SucursalesAdmin })));
+const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword").then((module) => ({ default: module.ForgotPassword })));
+const Login = lazy(() => import("./pages/auth/Login").then((module) => ({ default: module.Login })));
+const Registro = lazy(() => import("./pages/auth/Registro").then((module) => ({ default: module.Registro })));
+const ResetPassword = lazy(() => import("./pages/auth/ResetPassword").then((module) => ({ default: module.ResetPassword })));
+const Cliente = lazy(() => import("./pages/cliente/Cliente").then((module) => ({ default: module.Cliente })));
+const CarritoTienda = lazy(() => import("./pages/cliente/CarritoTienda").then((module) => ({ default: module.CarritoTienda })));
+const ConfirmarCanje = lazy(() => import("./pages/cliente/ConfirmarCanje").then((module) => ({ default: module.ConfirmarCanje })));
+const MisCanjes = lazy(() => import("./pages/cliente/MisCanjes").then((module) => ({ default: module.MisCanjes })));
+const ComprobanteCanje = lazy(() => import("./pages/cliente/ComprobanteCanje").then((module) => ({ default: module.ComprobanteCanje })));
+const MisDirecciones = lazy(() => import("./pages/cliente/MisDirecciones").then((module) => ({ default: module.MisDirecciones })));
+const MisPedidos = lazy(() => import("./pages/cliente/MisPedidos").then((module) => ({ default: module.MisPedidos })));
+const ComprobantePedido = lazy(() => import("./pages/cliente/ComprobantePedido").then((module) => ({ default: module.ComprobantePedido })));
+const MiPerfil = lazy(() => import("./pages/cliente/MiPerfil").then((module) => ({ default: module.MiPerfil })));
+const SoporteCliente = lazy(() => import("./pages/cliente/SoporteCliente").then((module) => ({ default: module.SoporteCliente })));
+const Catalogo = lazy(() => import("./pages/public/Catalogo").then((module) => ({ default: module.Catalogo })));
+const Home = lazy(() => import("./pages/public/Home").then((module) => ({ default: module.Home })));
+const BotonArrepentimiento = lazy(() => import("./pages/public/BotonArrepentimiento").then((module) => ({ default: module.BotonArrepentimiento })));
+const PoliticaPrivacidad = lazy(() => import("./pages/public/PoliticaPrivacidad").then((module) => ({ default: module.PoliticaPrivacidad })));
+const SobreNosotros = lazy(() => import("./pages/public/SobreNosotros").then((module) => ({ default: module.SobreNosotros })));
+const TiendaOnline = lazy(() => import("./pages/public/TiendaOnline").then((module) => ({ default: module.TiendaOnline })));
+const Terminos = lazy(() => import("./pages/public/Terminos").then((module) => ({ default: module.Terminos })));
+const SoporteStaff = lazy(() => import("./pages/staff/SoporteStaff").then((module) => ({ default: module.SoporteStaff })));
+const ComprobantePedidoVendedor = lazy(() => import("./pages/vendedor/ComprobantePedidoVendedor").then((module) => ({ default: module.ComprobantePedidoVendedor })));
+const PedidosMapa = lazy(() => import("./pages/vendedor/PedidosMapa").then((module) => ({ default: module.PedidosMapa })));
+const Vendedor = lazy(() => import("./pages/vendedor/Vendedor").then((module) => ({ default: module.Vendedor })));
+const VendedorPedidos = lazy(() => import("./pages/vendedor/VendedorPedidos").then((module) => ({ default: module.VendedorPedidos })));
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -145,6 +145,18 @@ function PointsRoute({ children, to = "/tienda" }: { children: JSX.Element; to?:
   return children;
 }
 
+function RouteLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{ minHeight: "40vh", display: "grid", placeItems: "center", padding: "2rem" }}
+    >
+      Cargando...
+    </div>
+  );
+}
+
 export default function App() {
   const [chatbotEnabled, setChatbotEnabled] = useState<boolean | null>(null);
 
@@ -176,7 +188,8 @@ export default function App() {
       <div className="app-main">
         <ProfileCompletionBanner />
         <main>
-          <Routes>
+          <Suspense fallback={<RouteLoading />}>
+            <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/inicio" element={<Navigate to="/" replace />} />
             <Route path="/catalogo" element={<PointsRoute><Catalogo /></PointsRoute>} />
@@ -592,7 +605,8 @@ export default function App() {
             <Route path="/politica-privacidad" element={<PoliticaPrivacidad />} />
             <Route path="/boton-arrepentimiento" element={<BotonArrepentimiento />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </main>
         <Footer />
       </div>

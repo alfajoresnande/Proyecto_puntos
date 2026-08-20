@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const zod_1 = require("zod");
+const qrcode_1 = __importDefault(require("qrcode"));
 const db_1 = require("../db");
 const auth_1 = require("../auth");
 const realtime_1 = require("../realtime");
@@ -13,8 +17,103 @@ const email_1 = require("../services/email");
 const localSales_1 = require("../services/localSales");
 const supportNotifications_1 = require("../services/supportNotifications");
 const shippingZones_1 = require("../services/shippingZones");
+const paymentProviders_1 = require("../services/paymentProviders");
+const requestRateLimit_1 = require("../middleware/requestRateLimit");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("vendedor", "admin", "superAdmin"));
+const cobroManualSchema = zod_1.z.object({
+    monto: zod_1.z.number().positive().max(999_999_999),
+    concepto: zod_1.z.string().trim().min(3).max(180),
+    cliente_nombre: zod_1.z.string().trim().max(160).optional().nullable(),
+    cliente_telefono: zod_1.z.string().trim().max(40).optional().nullable(),
+});
+function normalizeWhatsAppNumber(value) {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    return digits.length >= 8 && digits.length <= 15 ? digits : null;
+}
+router.get("/cobros-manuales", async (_req, res) => {
+    const rows = await (0, db_1.qAll)(db_1.pool, `SELECT cm.id, cm.monto, cm.moneda, cm.concepto, cm.cliente_nombre, cm.cliente_telefono,
+            cm.estado, cm.preference_id, cm.provider_payment_id, cm.checkout_url,
+            cm.error_mensaje, cm.creado_por, u.nombre AS creado_por_nombre,
+            cm.approved_at, cm.created_at, cm.updated_at
+     FROM cobros_manuales cm
+     JOIN usuarios u ON u.id = cm.creado_por
+     ORDER BY cm.created_at DESC, cm.id DESC
+     LIMIT 50`);
+    res.json(rows.map((row) => ({ ...row, id: Number(row.id), monto: Number(row.monto ?? 0) })));
+});
+router.post("/cobros-manuales", (0, requestRateLimit_1.requestRateLimit)({
+    action: "crear_cobro_manual",
+    includeUser: true,
+    windows: [
+        { name: "diez_minutos", limit: 20, windowSeconds: 10 * 60 },
+        { name: "dia", limit: 100, windowSeconds: 24 * 60 * 60 },
+    ],
+}), async (req, res) => {
+    const parsed = cobroManualSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.errors[0].message });
+        return;
+    }
+    const monto = Math.round((parsed.data.monto + Number.EPSILON) * 100) / 100;
+    const clienteNombre = parsed.data.cliente_nombre?.trim() || null;
+    const clienteTelefono = parsed.data.cliente_telefono?.trim() || null;
+    const inserted = await (0, db_1.qRun)(db_1.pool, `INSERT INTO cobros_manuales
+      (monto, moneda, concepto, cliente_nombre, cliente_telefono, estado, creado_por)
+     VALUES (?, 'ARS', ?, ?, ?, 'iniciado', ?)`, [monto, parsed.data.concepto, clienteNombre, clienteTelefono, req.user.id]);
+    const cobroId = Number(inserted.insertId);
+    try {
+        const paymentSession = await (0, paymentProviders_1.createPaymentSession)({
+            choice: { provider: "mercadopago", method: "wallet" },
+            referenceId: cobroId,
+            externalReference: `cobro_manual_${cobroId}`,
+            amount: monto,
+            currency: "ARS",
+            buyerName: clienteNombre || `Cobro manual #${cobroId}`,
+            buyerEmail: "",
+            description: parsed.data.concepto,
+        });
+        if (paymentSession.status !== "ready" || !paymentSession.checkoutUrl) {
+            throw new Error(paymentSession.message || "Mercado Pago no devolvio un enlace de pago.");
+        }
+        const qrImage = await qrcode_1.default.toDataURL(paymentSession.checkoutUrl, {
+            width: 360,
+            margin: 2,
+            errorCorrectionLevel: "M",
+        });
+        const whatsappNumber = normalizeWhatsAppNumber(clienteTelefono);
+        const paymentMessage = [
+            clienteNombre ? `Hola ${clienteNombre},` : "Hola,",
+            `te enviamos el cobro por ${monto.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}.`,
+            `Concepto: ${parsed.data.concepto}`,
+            `Pagar con Mercado Pago: ${paymentSession.checkoutUrl}`,
+        ].join("\n");
+        const whatsappUrl = `https://wa.me/${whatsappNumber ?? ""}?text=${encodeURIComponent(paymentMessage)}`;
+        await (0, db_1.qRun)(db_1.pool, `UPDATE cobros_manuales
+       SET preference_id = ?, checkout_url = ?, qr_image_data = ?, payload_json = ?, estado = 'iniciado', error_mensaje = NULL
+       WHERE id = ?`, [paymentSession.preferenceId, paymentSession.checkoutUrl, qrImage, JSON.stringify(paymentSession.payload ?? {}), cobroId]);
+        (0, realtime_1.emitRealtime)(["cobros-manuales"]);
+        res.status(201).json({
+            id: cobroId,
+            monto,
+            moneda: "ARS",
+            concepto: parsed.data.concepto,
+            cliente_nombre: clienteNombre,
+            cliente_telefono: clienteTelefono,
+            estado: "iniciado",
+            preference_id: paymentSession.preferenceId,
+            provider_payment_id: null,
+            checkout_url: paymentSession.checkoutUrl,
+            qr_image_data: qrImage,
+            whatsapp_url: whatsappUrl,
+        });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo generar el cobro de Mercado Pago.";
+        await (0, db_1.qRun)(db_1.pool, "UPDATE cobros_manuales SET estado = 'error', error_mensaje = ? WHERE id = ?", [message.slice(0, 500), cobroId]);
+        res.status(502).json({ error: message, cobro_id: cobroId });
+    }
+});
 function queueOrderReceiptEmail(orderId) {
     void (0, email_1.sendOrderReceiptEmail)(orderId).catch((err) => {
         console.error(`[MAIL] Error enviando comprobante orden #${orderId}:`, err instanceof Error ? err.message : err);
