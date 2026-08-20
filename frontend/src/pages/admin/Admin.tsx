@@ -5207,9 +5207,15 @@ export function Admin() {
     await queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
   }
 
-  async function guardarModoVenta() {
+  async function guardarModoVenta(forzarAnulacionPendientes = false) {
     setSalesModeErr("");
     setSalesModeMsg("");
+    if (forzarAnulacionPendientes) {
+      const confirmed = window.confirm(
+        "Se anularan inmediatamente en Mercado Pago todos los links, QR y pagos pendientes del ecommerce. Esta accion no se puede deshacer. ¿Continuar y activar el catalogo por WhatsApp?",
+      );
+      if (!confirmed) return;
+    }
     const whatsappPedidosNumero = configDraft.whatsapp_pedidos_numero.replace(/\D/g, "");
     if (whatsappPedidosNumero.length < 8 || whatsappPedidosNumero.length > 15) {
       setSalesModeErr("El WhatsApp de pedidos debe incluir codigo de pais y tener entre 8 y 15 digitos.");
@@ -5222,9 +5228,10 @@ export function Admin() {
         valor: whatsappPedidosNumero,
         descripcion: "Numero de WhatsApp para recibir pedidos, con codigo de pais y solo digitos.",
       });
-      await api.put("/admin/configuracion/modo_venta", {
+      const modeResult = await api.put<{ recursos_mercadopago_anulados?: number }>("/admin/configuracion/modo_venta", {
         valor: configDraft.modo_venta,
         descripcion: "Modo de venta activo: ecommerce o catalogo con coordinacion por WhatsApp.",
+        forzar_anulacion_pendientes: forzarAnulacionPendientes,
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] }),
@@ -5235,7 +5242,7 @@ export function Admin() {
       await configuracionQuery.refetch();
       setSalesModeMsg(
         configDraft.modo_venta === "catalogo_whatsapp"
-          ? "Modo catalogo por WhatsApp activado. El checkout y los pagos online quedaron deshabilitados."
+          ? `Modo catalogo por WhatsApp activado. El checkout y los pagos online quedaron deshabilitados.${Number(modeResult.recursos_mercadopago_anulados ?? 0) > 0 ? ` Se anularon ${Number(modeResult.recursos_mercadopago_anulados)} recurso(s) en Mercado Pago.` : ""}`
           : "Modo ecommerce activado.",
       );
     } catch (error) {
@@ -6055,9 +6062,19 @@ export function Admin() {
                       </p>
                     ) : null}
                     <div className="adm-actions" style={{ marginTop: "1rem" }}>
-                      <button className="adm-btn-primary adm-btn-inline" onClick={guardarModoVenta} disabled={salesModeBusy}>
+                      <button className="adm-btn-primary adm-btn-inline" onClick={() => void guardarModoVenta(false)} disabled={salesModeBusy}>
                         {salesModeBusy ? "Guardando..." : "Guardar modo de venta"}
                       </button>
+                      {configDraft.modo_venta === "catalogo_whatsapp" ? (
+                        <button
+                          type="button"
+                          className="adm-btn-danger"
+                          onClick={() => void guardarModoVenta(true)}
+                          disabled={salesModeBusy}
+                        >
+                          Forzar cambio y anular pendientes
+                        </button>
+                      ) : null}
                     </div>
                     {salesModeErr ? <div className="adm-msg-err" style={{ marginTop: "0.8rem" }}>{salesModeErr}</div> : null}
                     {salesModeMsg ? <div className="adm-msg-ok" style={{ marginTop: "0.8rem" }}>{salesModeMsg}</div> : null}

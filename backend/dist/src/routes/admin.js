@@ -32,6 +32,7 @@ const email_1 = require("../services/email");
 const shippingZones_1 = require("../services/shippingZones");
 const appPresence_1 = require("../services/appPresence");
 const salesMode_1 = require("../services/salesMode");
+const paymentProviders_1 = require("../services/paymentProviders");
 const DEFAULT_INVITE_CODE_LENGTH = 9;
 const MIN_INVITE_CODE_LENGTH = 6;
 const MAX_INVITE_CODE_LENGTH = 20;
@@ -2874,6 +2875,7 @@ router.put("/configuracion/:clave", async (req, res) => {
         }
     }
     if (clave === "modo_venta" && String(valor) === salesMode_1.SALES_MODE_WHATSAPP) {
+        const forceCancellation = req.body?.forzar_anulacion_pendientes === true;
         const pending = await (0, db_1.qOne)(db_1.pool, `SELECT
          (SELECT COUNT(*)
           FROM checkout_pendientes cp
@@ -2890,11 +2892,61 @@ router.put("/configuracion/:clave", async (req, res) => {
             AND p.proveedor = 'mercadopago'
             AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
             AND o.estado IN ('borrador', 'pendiente_pago')) AS total`);
-        if (Number(pending?.total ?? 0) > 0) {
+        if (Number(pending?.total ?? 0) > 0 && !forceCancellation) {
             res.status(409).json({
                 error: `Hay ${Number(pending?.total)} pago(s) online pendiente(s). Cancelalos o espera su resolucion antes de activar el catalogo para no dejar links de cobro abiertos.`,
+                pagos_pendientes: Number(pending?.total),
+                permite_forzar: true,
             });
             return;
+        }
+        const cancellations = [];
+        if (forceCancellation && Number(pending?.total ?? 0) > 0) {
+            const pendingResources = await (0, db_1.qAll)(db_1.pool, `SELECT cp.provider_payment_id AS resource_id, cp.checkout_url
+         FROM checkout_pendientes cp
+         WHERE cp.estado = 'pendiente_pago'
+           AND cp.pago_estado = 'iniciado'
+           AND cp.proveedor = 'mercadopago'
+           AND (NULLIF(TRIM(cp.provider_payment_id), '') IS NOT NULL
+             OR NULLIF(TRIM(cp.checkout_url), '') IS NOT NULL)
+         UNION ALL
+         SELECT p.provider_payment_id AS resource_id, NULL AS checkout_url
+         FROM pagos p
+         JOIN ordenes o ON o.id = p.orden_id
+         WHERE p.estado = 'iniciado'
+           AND p.proveedor = 'mercadopago'
+           AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
+           AND o.estado IN ('borrador', 'pendiente_pago')`);
+            const uniqueResourceIds = new Set();
+            for (const resource of pendingResources) {
+                const resourceId = String(resource.resource_id ?? "").trim();
+                if (!resourceId && resource.checkout_url) {
+                    res.status(409).json({
+                        error: "Hay un link de Mercado Pago sin identificador de preferencia. Debe anularse manualmente antes de forzar el cambio.",
+                    });
+                    return;
+                }
+                if (resourceId)
+                    uniqueResourceIds.add(resourceId);
+            }
+            try {
+                for (const resourceId of uniqueResourceIds) {
+                    const result = await (0, paymentProviders_1.cancelMercadoPagoPendingResource)(resourceId);
+                    cancellations.push({ resourceId: result.resourceId, kind: result.kind, status: result.status });
+                }
+            }
+            catch (error) {
+                (0, securityMonitor_1.recordSecurityEvent)("sales_mode_force_cancel_failed", req, {
+                    pendingPayments: Number(pending?.total ?? 0),
+                    canceledResources: cancellations.length,
+                    reason: error instanceof Error ? error.message : "unknown",
+                });
+                res.status(409).json({
+                    error: `No se pudo anular todo en Mercado Pago y el modo no fue cambiado. ${error instanceof Error ? error.message : "Intenta nuevamente."}`,
+                    recursos_anulados: cancellations.length,
+                });
+                return;
+            }
         }
         const conn = await db_1.pool.getConnection();
         try {
@@ -2904,8 +2956,6 @@ router.put("/configuracion/:clave", async (req, res) => {
          WHERE estado = 'pendiente_pago'
            AND pago_estado = 'iniciado'
            AND proveedor = 'mercadopago'
-           AND NULLIF(TRIM(provider_payment_id), '') IS NULL
-           AND NULLIF(TRIM(checkout_url), '') IS NULL
          FOR UPDATE`);
             for (const checkout of abandonedCheckouts) {
                 await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
@@ -2919,7 +2969,6 @@ router.put("/configuracion/:clave", async (req, res) => {
          JOIN ordenes o ON o.id = p.orden_id
          WHERE p.estado = 'iniciado'
            AND p.proveedor = 'mercadopago'
-           AND NULLIF(TRIM(p.provider_payment_id), '') IS NULL
            AND o.estado IN ('borrador', 'pendiente_pago')`);
             for (const order of abandonedOrders) {
                 await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
@@ -2936,10 +2985,18 @@ router.put("/configuracion/:clave", async (req, res) => {
            valor = VALUES(valor),
            descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`, [clave, String(valor), typeof descripcion === "string" ? descripcion : null]);
             await conn.commit();
+            if (forceCancellation) {
+                (0, securityMonitor_1.recordSecurityEvent)("sales_mode_force_cancel_success", req, {
+                    pendingPayments: Number(pending?.total ?? 0),
+                    canceledResources: cancellations.length,
+                    expiredLocalAttempts: abandonedCheckouts.length + abandonedOrders.length,
+                });
+            }
             (0, realtime_1.emitRealtime)(["admin-config"]);
             res.json({
                 ok: true,
                 intentos_expirados: abandonedCheckouts.length + abandonedOrders.length,
+                recursos_mercadopago_anulados: cancellations.length,
             });
             return;
         }

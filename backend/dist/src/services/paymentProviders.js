@@ -6,6 +6,7 @@ exports.resolvePaymentChoice = resolvePaymentChoice;
 exports.parseMercadoPagoReference = parseMercadoPagoReference;
 exports.getMercadoPagoPayment = getMercadoPagoPayment;
 exports.getMercadoPagoQrOrder = getMercadoPagoQrOrder;
+exports.cancelMercadoPagoPendingResource = cancelMercadoPagoPendingResource;
 exports.processMercadoPagoApiPayment = processMercadoPagoApiPayment;
 exports.createPaymentSession = createPaymentSession;
 exports.isPaymentChoiceAvailable = isPaymentChoiceAvailable;
@@ -589,6 +590,98 @@ async function getMercadoPagoQrOrder(orderId) {
         paymentId: firstString(firstPayment.id),
         payload,
     };
+}
+async function mercadoPagoResourceRequest(path, init = {}) {
+    if (!MERCADOPAGO_ACCESS_TOKEN) {
+        throw new Error("Configura MERCADOPAGO_ACCESS_TOKEN para anular cobros pendientes de Mercado Pago.");
+    }
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${MERCADOPAGO_ACCESS_TOKEN}`);
+    if (init.body !== undefined)
+        headers.set("Content-Type", "application/json");
+    const response = await fetch(`${MERCADOPAGO_API_BASE}${path}`, { ...init, headers });
+    const payload = (await response.json().catch(() => ({})));
+    return { response, payload };
+}
+function resourceStatus(payload) {
+    return String(payload.status ?? "unknown").trim().toLowerCase();
+}
+function mercadoPagoCancellationError(label, resourceId, response, payload) {
+    return new Error(`Mercado Pago: no se pudo anular ${label} ${resourceId} (${mercadoPagoErrorDetail(payload, response.status)}).`);
+}
+async function cancelMercadoPagoPendingResource(rawResourceId) {
+    const resourceId = String(rawResourceId).trim();
+    if (!resourceId)
+        throw new Error("Identificador de Mercado Pago vacio.");
+    if (resourceId.toUpperCase().startsWith("ORD")) {
+        const lookup = await mercadoPagoResourceRequest(`/v1/orders/${encodeURIComponent(resourceId)}`);
+        if (lookup.response.status === 404) {
+            return { resourceId, kind: "qr_order", status: "not_found", payload: lookup.payload };
+        }
+        if (!lookup.response.ok)
+            throw mercadoPagoCancellationError("la order QR", resourceId, lookup.response, lookup.payload);
+        const currentStatus = resourceStatus(lookup.payload);
+        if (["canceled", "cancelled", "expired", "refunded"].includes(currentStatus)) {
+            return { resourceId, kind: "qr_order", status: currentStatus, payload: lookup.payload };
+        }
+        if (currentStatus !== "created") {
+            throw new Error(`La order QR ${resourceId} esta en estado ${currentStatus} y no puede anularse de forma segura.`);
+        }
+        const canceled = await mercadoPagoResourceRequest(`/v1/orders/${encodeURIComponent(resourceId)}/cancel`, {
+            method: "POST",
+            headers: { "X-Idempotency-Key": (0, crypto_1.randomUUID)() },
+        });
+        if (!canceled.response.ok) {
+            throw mercadoPagoCancellationError("la order QR", resourceId, canceled.response, canceled.payload);
+        }
+        return { resourceId, kind: "qr_order", status: resourceStatus(canceled.payload), payload: canceled.payload };
+    }
+    if (/^\d+$/.test(resourceId)) {
+        const lookup = await mercadoPagoResourceRequest(`/v1/payments/${encodeURIComponent(resourceId)}`);
+        if (lookup.response.status === 404) {
+            return { resourceId, kind: "payment", status: "not_found", payload: lookup.payload };
+        }
+        if (!lookup.response.ok)
+            throw mercadoPagoCancellationError("el pago", resourceId, lookup.response, lookup.payload);
+        const currentStatus = resourceStatus(lookup.payload);
+        if (["cancelled", "canceled", "rejected", "refunded", "charged_back"].includes(currentStatus)) {
+            return { resourceId, kind: "payment", status: currentStatus, payload: lookup.payload };
+        }
+        if (!["in_process", "pending", "authorized"].includes(currentStatus)) {
+            throw new Error(`El pago ${resourceId} esta en estado ${currentStatus} y no puede cancelarse de forma segura.`);
+        }
+        const canceled = await mercadoPagoResourceRequest(`/v1/payments/${encodeURIComponent(resourceId)}`, {
+            method: "PUT",
+            body: JSON.stringify({ status: "cancelled" }),
+        });
+        if (!canceled.response.ok) {
+            throw mercadoPagoCancellationError("el pago", resourceId, canceled.response, canceled.payload);
+        }
+        return { resourceId, kind: "payment", status: resourceStatus(canceled.payload), payload: canceled.payload };
+    }
+    const lookup = await mercadoPagoResourceRequest(`/checkout/preferences/${encodeURIComponent(resourceId)}`);
+    if (lookup.response.status === 404) {
+        return { resourceId, kind: "preference", status: "not_found", payload: lookup.payload };
+    }
+    if (!lookup.response.ok)
+        throw mercadoPagoCancellationError("la preferencia", resourceId, lookup.response, lookup.payload);
+    const expirationTime = Date.parse(String(lookup.payload.expiration_date_to ?? ""));
+    if (lookup.payload.preference_expired === true || (lookup.payload.expires === true && Number.isFinite(expirationTime) && expirationTime <= Date.now())) {
+        return { resourceId, kind: "preference", status: "expired", payload: lookup.payload };
+    }
+    const now = Date.now();
+    const expired = await mercadoPagoResourceRequest(`/checkout/preferences/${encodeURIComponent(resourceId)}`, {
+        method: "PUT",
+        body: JSON.stringify({
+            expires: true,
+            expiration_date_from: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
+            expiration_date_to: new Date(now + 1000).toISOString(),
+        }),
+    });
+    if (!expired.response.ok) {
+        throw mercadoPagoCancellationError("la preferencia", resourceId, expired.response, expired.payload);
+    }
+    return { resourceId, kind: "preference", status: "expired", payload: expired.payload };
 }
 async function processMercadoPagoApiPayment(input) {
     if (!MERCADOPAGO_ACCESS_TOKEN) {
