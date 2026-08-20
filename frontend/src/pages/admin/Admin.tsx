@@ -5207,15 +5207,9 @@ export function Admin() {
     await queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
   }
 
-  async function guardarModoVenta(forzarAnulacionPendientes = false) {
+  async function guardarModoVenta() {
     setSalesModeErr("");
     setSalesModeMsg("");
-    if (forzarAnulacionPendientes) {
-      const confirmed = window.confirm(
-        "Se anularan inmediatamente en Mercado Pago todos los links, QR y pagos pendientes del ecommerce. Esta accion no se puede deshacer. ¿Continuar y activar el catalogo por WhatsApp?",
-      );
-      if (!confirmed) return;
-    }
     const whatsappPedidosNumero = configDraft.whatsapp_pedidos_numero.replace(/\D/g, "");
     if (whatsappPedidosNumero.length < 8 || whatsappPedidosNumero.length > 15) {
       setSalesModeErr("El WhatsApp de pedidos debe incluir codigo de pais y tener entre 8 y 15 digitos.");
@@ -5231,7 +5225,7 @@ export function Admin() {
       const modeResult = await api.put<{ recursos_mercadopago_anulados?: number }>("/admin/configuracion/modo_venta", {
         valor: configDraft.modo_venta,
         descripcion: "Modo de venta activo: ecommerce o catalogo con coordinacion por WhatsApp.",
-        forzar_anulacion_pendientes: forzarAnulacionPendientes,
+        forzar_anulacion_pendientes: configDraft.modo_venta === "catalogo_whatsapp",
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] }),
@@ -6054,7 +6048,7 @@ export function Admin() {
                     </div>
                     <p className="adm-inline-tip" style={{ marginTop: "0.8rem" }}>
                       En modo catalogo se muestran todos los productos activos aunque su stock sea cero. El cliente arma el carrito y lo envia por WhatsApp; no puede cotizar envio ni pagar desde la tienda. El personal confirma stock, zona de entrega y total, y luego genera el link desde la seccion Cobros.
-                      Para evitar cobros cruzados, el sistema no permite activarlo mientras haya links de pago online pendientes del ecommerce.
+                      Al guardar este modo, el sistema anula automaticamente los links, QR y pagos pendientes del ecommerce para evitar cobros cruzados.
                     </p>
                     {configDraft.modo_venta === "ecommerce" ? (
                       <p className="adm-inline-tip" style={{ marginTop: "0.6rem", color: "#9a3412" }}>
@@ -6062,19 +6056,13 @@ export function Admin() {
                       </p>
                     ) : null}
                     <div className="adm-actions" style={{ marginTop: "1rem" }}>
-                      <button className="adm-btn-primary adm-btn-inline" onClick={() => void guardarModoVenta(false)} disabled={salesModeBusy}>
+                      <button
+                        className="adm-btn-primary adm-btn-inline"
+                        onClick={() => void guardarModoVenta()}
+                        disabled={salesModeBusy}
+                      >
                         {salesModeBusy ? "Guardando..." : "Guardar modo de venta"}
                       </button>
-                      {configDraft.modo_venta === "catalogo_whatsapp" ? (
-                        <button
-                          type="button"
-                          className="adm-btn-danger"
-                          onClick={() => void guardarModoVenta(true)}
-                          disabled={salesModeBusy}
-                        >
-                          Forzar cambio y anular pendientes
-                        </button>
-                      ) : null}
                     </div>
                     {salesModeErr ? <div className="adm-msg-err" style={{ marginTop: "0.8rem" }}>{salesModeErr}</div> : null}
                     {salesModeMsg ? <div className="adm-msg-ok" style={{ marginTop: "0.8rem" }}>{salesModeMsg}</div> : null}

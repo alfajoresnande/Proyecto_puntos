@@ -105,6 +105,84 @@ function parseJsonField(value: unknown): unknown {
   }
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function mercadoPagoResourceIdFromUrl(value: unknown): string | null {
+  const checkoutUrl = nonEmptyString(value);
+  if (!checkoutUrl) return null;
+
+  const keys = ["pref_id", "preference_id", "payment_id"];
+  try {
+    const parsed = new URL(checkoutUrl);
+    for (const key of keys) {
+      const resourceId = nonEmptyString(parsed.searchParams.get(key));
+      if (resourceId) return resourceId;
+    }
+
+    const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    for (const key of keys) {
+      const resourceId = nonEmptyString(hashParams.get(key));
+      if (resourceId) return resourceId;
+    }
+  } catch {
+    // Some old records may contain an incomplete URL. The fallback below still
+    // recovers the Mercado Pago identifier when its query parameter is present.
+  }
+
+  const match = checkoutUrl.match(/[?&#](?:pref_id|preference_id|payment_id)=([^&#]+)/i);
+  if (!match?.[1]) return null;
+  try {
+    return nonEmptyString(decodeURIComponent(match[1]));
+  } catch {
+    return nonEmptyString(match[1]);
+  }
+}
+
+function mercadoPagoResourceIdFromPayload(value: unknown): string | null {
+  const parsed = parseJsonField(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const payload = parsed as Record<string, unknown>;
+  const idKeys = [
+    "preference_id",
+    "preferenceId",
+    "provider_payment_id",
+    "providerPaymentId",
+    "payment_id",
+    "id",
+  ];
+
+  for (const key of idKeys) {
+    const resourceId = nonEmptyString(payload[key]);
+    if (resourceId) return resourceId;
+  }
+
+  // Older payloads were sometimes wrapped by the provider/client response.
+  for (const key of ["preference", "payment", "order", "data", "body", "response"]) {
+    const nested = payload[key];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+    const nestedRecord = nested as Record<string, unknown>;
+    for (const idKey of idKeys) {
+      const resourceId = nonEmptyString(nestedRecord[idKey]);
+      if (resourceId) return resourceId;
+    }
+  }
+  return null;
+}
+
+function resolveMercadoPagoResourceId(resource: {
+  resource_id: string | null;
+  checkout_url: string | null;
+  payload_json: unknown;
+}): string | null {
+  return nonEmptyString(resource.resource_id)
+    ?? mercadoPagoResourceIdFromUrl(resource.checkout_url)
+    ?? mercadoPagoResourceIdFromPayload(resource.payload_json);
+}
+
 function toDateOnly(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -3395,16 +3473,13 @@ router.put("/configuracion/:clave", async (req, res) => {
           FROM checkout_pendientes cp
           WHERE cp.estado = 'pendiente_pago'
             AND cp.pago_estado = 'iniciado'
-            AND cp.proveedor = 'mercadopago'
-            AND (NULLIF(TRIM(cp.provider_payment_id), '') IS NOT NULL
-              OR NULLIF(TRIM(cp.checkout_url), '') IS NOT NULL))
+            AND cp.proveedor = 'mercadopago')
          +
          (SELECT COUNT(*)
           FROM pagos p
           JOIN ordenes o ON o.id = p.orden_id
           WHERE p.estado = 'iniciado'
             AND p.proveedor = 'mercadopago'
-            AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
             AND o.estado IN ('borrador', 'pendiente_pago')) AS total`,
     );
     if (Number(pending?.total ?? 0) > 0 && !forceCancellation) {
@@ -3418,30 +3493,31 @@ router.put("/configuracion/:clave", async (req, res) => {
 
     const cancellations: Array<{ resourceId: string; kind: string; status: string }> = [];
     if (forceCancellation && Number(pending?.total ?? 0) > 0) {
-      const pendingResources = await qAll<{ resource_id: string | null; checkout_url: string | null }>(
+      const pendingResources = await qAll<{
+        resource_id: string | null;
+        checkout_url: string | null;
+        payload_json: unknown;
+      }>(
         pool,
-        `SELECT cp.provider_payment_id AS resource_id, cp.checkout_url
+        `SELECT cp.provider_payment_id AS resource_id, cp.checkout_url, cp.payload_json
          FROM checkout_pendientes cp
          WHERE cp.estado = 'pendiente_pago'
            AND cp.pago_estado = 'iniciado'
            AND cp.proveedor = 'mercadopago'
-           AND (NULLIF(TRIM(cp.provider_payment_id), '') IS NOT NULL
-             OR NULLIF(TRIM(cp.checkout_url), '') IS NOT NULL)
          UNION ALL
-         SELECT p.provider_payment_id AS resource_id, NULL AS checkout_url
+         SELECT p.provider_payment_id AS resource_id, p.checkout_url, p.payload_json
          FROM pagos p
          JOIN ordenes o ON o.id = p.orden_id
          WHERE p.estado = 'iniciado'
            AND p.proveedor = 'mercadopago'
-           AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
            AND o.estado IN ('borrador', 'pendiente_pago')`,
       );
       const uniqueResourceIds = new Set<string>();
       for (const resource of pendingResources) {
-        const resourceId = String(resource.resource_id ?? "").trim();
+        const resourceId = resolveMercadoPagoResourceId(resource);
         if (!resourceId && resource.checkout_url) {
           res.status(409).json({
-            error: "Hay un link de Mercado Pago sin identificador de preferencia. Debe anularse manualmente antes de forzar el cambio.",
+            error: "No se pudo identificar uno de los links antiguos de Mercado Pago para anularlo de forma segura. El modo de venta no fue cambiado.",
           });
           return;
         }
