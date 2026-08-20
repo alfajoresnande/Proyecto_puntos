@@ -23,6 +23,7 @@ const stock_1 = require("../services/stock");
 const points_1 = require("../services/points");
 const expirations_1 = require("../services/expirations");
 const orderLifecycle_1 = require("../services/orderLifecycle");
+const pendingCheckout_1 = require("../services/pendingCheckout");
 const cashRegister_1 = require("../services/cashRegister");
 const cashRegisterReports_1 = require("../services/cashRegisterReports");
 const localSales_1 = require("../services/localSales");
@@ -2878,19 +2879,76 @@ router.put("/configuracion/:clave", async (req, res) => {
           FROM checkout_pendientes cp
           WHERE cp.estado = 'pendiente_pago'
             AND cp.pago_estado = 'iniciado'
-            AND cp.proveedor = 'mercadopago')
+            AND cp.proveedor = 'mercadopago'
+            AND (NULLIF(TRIM(cp.provider_payment_id), '') IS NOT NULL
+              OR NULLIF(TRIM(cp.checkout_url), '') IS NOT NULL))
          +
          (SELECT COUNT(*)
           FROM pagos p
           JOIN ordenes o ON o.id = p.orden_id
           WHERE p.estado = 'iniciado'
             AND p.proveedor = 'mercadopago'
+            AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
             AND o.estado IN ('borrador', 'pendiente_pago')) AS total`);
         if (Number(pending?.total ?? 0) > 0) {
             res.status(409).json({
                 error: `Hay ${Number(pending?.total)} pago(s) online pendiente(s). Cancelalos o espera su resolucion antes de activar el catalogo para no dejar links de cobro abiertos.`,
             });
             return;
+        }
+        const conn = await db_1.pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const abandonedCheckouts = await (0, db_1.qAll)(conn, `SELECT id
+         FROM checkout_pendientes
+         WHERE estado = 'pendiente_pago'
+           AND pago_estado = 'iniciado'
+           AND proveedor = 'mercadopago'
+           AND NULLIF(TRIM(provider_payment_id), '') IS NULL
+           AND NULLIF(TRIM(checkout_url), '') IS NULL
+         FOR UPDATE`);
+            for (const checkout of abandonedCheckouts) {
+                await (0, pendingCheckout_1.rejectOrExpirePendingCheckout)(conn, {
+                    checkoutId: Number(checkout.id),
+                    nextState: "expirada",
+                    payload: { reason: "sales_mode_changed_to_whatsapp" },
+                });
+            }
+            const abandonedOrders = await (0, db_1.qAll)(conn, `SELECT DISTINCT o.id
+         FROM pagos p
+         JOIN ordenes o ON o.id = p.orden_id
+         WHERE p.estado = 'iniciado'
+           AND p.proveedor = 'mercadopago'
+           AND NULLIF(TRIM(p.provider_payment_id), '') IS NULL
+           AND o.estado IN ('borrador', 'pendiente_pago')`);
+            for (const order of abandonedOrders) {
+                await (0, orderLifecycle_1.rejectOrExpirePendingOrder)(conn, {
+                    orderId: Number(order.id),
+                    nextState: "expirada",
+                    provider: "mercadopago",
+                    payload: { reason: "sales_mode_changed_to_whatsapp" },
+                    creadoPor: req.user?.id ?? null,
+                });
+            }
+            await (0, db_1.qRun)(conn, `INSERT INTO configuracion (clave, valor, descripcion)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           valor = VALUES(valor),
+           descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`, [clave, String(valor), typeof descripcion === "string" ? descripcion : null]);
+            await conn.commit();
+            (0, realtime_1.emitRealtime)(["admin-config"]);
+            res.json({
+                ok: true,
+                intentos_expirados: abandonedCheckouts.length + abandonedOrders.length,
+            });
+            return;
+        }
+        catch (error) {
+            await conn.rollback();
+            throw error;
+        }
+        finally {
+            conn.release();
         }
     }
     await (0, db_1.qRun)(db_1.pool, `INSERT INTO configuracion (clave, valor, descripcion)

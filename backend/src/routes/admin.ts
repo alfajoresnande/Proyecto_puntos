@@ -35,6 +35,7 @@ import {
 } from "../services/points";
 import { runReservationExpirations } from "../services/expirations";
 import { approvePaidOrder, cancelOrderUrgently, rejectOrExpirePendingOrder } from "../services/orderLifecycle";
+import { rejectOrExpirePendingCheckout } from "../services/pendingCheckout";
 import {
   closeCajaSesion,
   closeStaleCajaSesiones,
@@ -3392,13 +3393,16 @@ router.put("/configuracion/:clave", async (req, res) => {
           FROM checkout_pendientes cp
           WHERE cp.estado = 'pendiente_pago'
             AND cp.pago_estado = 'iniciado'
-            AND cp.proveedor = 'mercadopago')
+            AND cp.proveedor = 'mercadopago'
+            AND (NULLIF(TRIM(cp.provider_payment_id), '') IS NOT NULL
+              OR NULLIF(TRIM(cp.checkout_url), '') IS NOT NULL))
          +
          (SELECT COUNT(*)
           FROM pagos p
           JOIN ordenes o ON o.id = p.orden_id
           WHERE p.estado = 'iniciado'
             AND p.proveedor = 'mercadopago'
+            AND NULLIF(TRIM(p.provider_payment_id), '') IS NOT NULL
             AND o.estado IN ('borrador', 'pendiente_pago')) AS total`,
     );
     if (Number(pending?.total ?? 0) > 0) {
@@ -3406,6 +3410,71 @@ router.put("/configuracion/:clave", async (req, res) => {
         error: `Hay ${Number(pending?.total)} pago(s) online pendiente(s). Cancelalos o espera su resolucion antes de activar el catalogo para no dejar links de cobro abiertos.`,
       });
       return;
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const abandonedCheckouts = await qAll<{ id: number }>(
+        conn,
+        `SELECT id
+         FROM checkout_pendientes
+         WHERE estado = 'pendiente_pago'
+           AND pago_estado = 'iniciado'
+           AND proveedor = 'mercadopago'
+           AND NULLIF(TRIM(provider_payment_id), '') IS NULL
+           AND NULLIF(TRIM(checkout_url), '') IS NULL
+         FOR UPDATE`,
+      );
+      for (const checkout of abandonedCheckouts) {
+        await rejectOrExpirePendingCheckout(conn, {
+          checkoutId: Number(checkout.id),
+          nextState: "expirada",
+          payload: { reason: "sales_mode_changed_to_whatsapp" },
+        });
+      }
+
+      const abandonedOrders = await qAll<{ id: number }>(
+        conn,
+        `SELECT DISTINCT o.id
+         FROM pagos p
+         JOIN ordenes o ON o.id = p.orden_id
+         WHERE p.estado = 'iniciado'
+           AND p.proveedor = 'mercadopago'
+           AND NULLIF(TRIM(p.provider_payment_id), '') IS NULL
+           AND o.estado IN ('borrador', 'pendiente_pago')`,
+      );
+      for (const order of abandonedOrders) {
+        await rejectOrExpirePendingOrder(conn, {
+          orderId: Number(order.id),
+          nextState: "expirada",
+          provider: "mercadopago",
+          payload: { reason: "sales_mode_changed_to_whatsapp" },
+          creadoPor: req.user?.id ?? null,
+        });
+      }
+
+      await qRun(
+        conn,
+        `INSERT INTO configuracion (clave, valor, descripcion)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           valor = VALUES(valor),
+           descripcion = COALESCE(NULLIF(VALUES(descripcion), ''), configuracion.descripcion)`,
+        [clave, String(valor), typeof descripcion === "string" ? descripcion : null],
+      );
+      await conn.commit();
+      emitRealtime(["admin-config"]);
+      res.json({
+        ok: true,
+        intentos_expirados: abandonedCheckouts.length + abandonedOrders.length,
+      });
+      return;
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
     }
   }
   await qRun(

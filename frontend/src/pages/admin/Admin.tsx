@@ -2049,6 +2049,9 @@ export function Admin() {
   const [configBusy, setConfigBusy] = useState(false);
   const [configMsg, setConfigMsg] = useState("");
   const [configErr, setConfigErr] = useState("");
+  const [salesModeBusy, setSalesModeBusy] = useState(false);
+  const [salesModeMsg, setSalesModeMsg] = useState("");
+  const [salesModeErr, setSalesModeErr] = useState("");
   const [eventbarMsg, setEventbarMsg] = useState("");
   const [eventbarErr, setEventbarErr] = useState("");
   const [webDiscountLoaded, setWebDiscountLoaded] = useState(false);
@@ -5204,6 +5207,44 @@ export function Admin() {
     await queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] });
   }
 
+  async function guardarModoVenta() {
+    setSalesModeErr("");
+    setSalesModeMsg("");
+    const whatsappPedidosNumero = configDraft.whatsapp_pedidos_numero.replace(/\D/g, "");
+    if (whatsappPedidosNumero.length < 8 || whatsappPedidosNumero.length > 15) {
+      setSalesModeErr("El WhatsApp de pedidos debe incluir codigo de pais y tener entre 8 y 15 digitos.");
+      return;
+    }
+
+    setSalesModeBusy(true);
+    try {
+      await api.put("/admin/configuracion/whatsapp_pedidos_numero", {
+        valor: whatsappPedidosNumero,
+        descripcion: "Numero de WhatsApp para recibir pedidos, con codigo de pais y solo digitos.",
+      });
+      await api.put("/admin/configuracion/modo_venta", {
+        valor: configDraft.modo_venta,
+        descripcion: "Modo de venta activo: ecommerce o catalogo con coordinacion por WhatsApp.",
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "configuracion"] }),
+        queryClient.invalidateQueries({ queryKey: ["layout", "modo-venta"] }),
+        queryClient.invalidateQueries({ queryKey: ["productos"] }),
+        queryClient.invalidateQueries({ queryKey: ["carrito"] }),
+      ]);
+      await configuracionQuery.refetch();
+      setSalesModeMsg(
+        configDraft.modo_venta === "catalogo_whatsapp"
+          ? "Modo catalogo por WhatsApp activado. El checkout y los pagos online quedaron deshabilitados."
+          : "Modo ecommerce activado.",
+      );
+    } catch (error) {
+      setSalesModeErr((error as Error).message);
+    } finally {
+      setSalesModeBusy(false);
+    }
+  }
+
   async function guardarConfiguracionGeneral() {
     setConfigErr("");
     setConfigMsg("");
@@ -5986,7 +6027,7 @@ export function Admin() {
                             ...prev,
                             modo_venta: event.target.value === "catalogo_whatsapp" ? "catalogo_whatsapp" : "ecommerce",
                           }))}
-                          disabled={configBusy}
+                          disabled={configBusy || salesModeBusy}
                         >
                           <option value="ecommerce">Ecommerce: stock, checkout y pago online</option>
                           <option value="catalogo_whatsapp">Catalogo: pedido por WhatsApp</option>
@@ -6000,7 +6041,7 @@ export function Admin() {
                           value={configDraft.whatsapp_pedidos_numero}
                           onChange={(event) => setConfigDraft((prev) => ({ ...prev, whatsapp_pedidos_numero: event.target.value }))}
                           placeholder="54911..."
-                          disabled={configBusy}
+                          disabled={configBusy || salesModeBusy}
                         />
                       </label>
                     </div>
@@ -6014,10 +6055,12 @@ export function Admin() {
                       </p>
                     ) : null}
                     <div className="adm-actions" style={{ marginTop: "1rem" }}>
-                      <button className="adm-btn-primary adm-btn-inline" onClick={guardarConfiguracionGeneral} disabled={configBusy}>
-                        {configBusy ? "Guardando..." : "Guardar modo de venta"}
+                      <button className="adm-btn-primary adm-btn-inline" onClick={guardarModoVenta} disabled={salesModeBusy}>
+                        {salesModeBusy ? "Guardando..." : "Guardar modo de venta"}
                       </button>
                     </div>
+                    {salesModeErr ? <div className="adm-msg-err" style={{ marginTop: "0.8rem" }}>{salesModeErr}</div> : null}
+                    {salesModeMsg ? <div className="adm-msg-ok" style={{ marginTop: "0.8rem" }}>{salesModeMsg}</div> : null}
                   </div>
 
                   <div className="admin-section-header adm-config-header">
