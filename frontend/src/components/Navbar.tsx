@@ -90,6 +90,7 @@ export function Navbar() {
   const adminPanelLabel = user?.rol === "superAdmin" ? "Panel SuperAdmin" : "Panel Admin";
   const shippingZonesPath = canSeeAdmin ? `${adminPanelPath}/envios` : "/vendedor/envios";
   const ordersMapPath = canSeeAdmin ? `${adminPanelPath}/mapa-pedidos` : "/vendedor/mapa-pedidos";
+  const paymentLinkPath = canSeeAdmin ? `${adminPanelPath}/cobros` : "/vendedor/ventas/cobros";
   const onlineCartQuery = useQuery({
     queryKey: ["cliente", "carrito-online"],
     queryFn: () => api.get<OnlineCartResponse>("/cliente/carrito"),
@@ -391,6 +392,7 @@ export function Navbar() {
                 {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
               </NavLink>
             ) : null}
+            {canSeeVendedor ? <NavLink to={paymentLinkPath} className={({ isActive }) => navClass(isActive)}>Generar link de cobro</NavLink> : null}
             {canSeeVendedor ? <NavLink to={ordersMapPath} className={({ isActive }) => navClass(isActive)}>Mapa pedidos</NavLink> : null}
             {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)}>Zonas de envio</NavLink> : null}
             {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)}>{adminPanelLabel}</NavLink> : null}
@@ -496,6 +498,13 @@ export function Navbar() {
                             Ventas y Pedidos
                           </Link>
                           <Link
+                            to={paymentLinkPath}
+                            className="navbar-user-dropdown-item"
+                            onClick={() => setUserMenuOpen(false)}
+                          >
+                            Generar link de cobro
+                          </Link>
+                          <Link
                             to={ordersMapPath}
                             className="navbar-user-dropdown-item"
                             onClick={() => setUserMenuOpen(false)}
@@ -593,6 +602,7 @@ export function Navbar() {
               {renderNavLabel("Ventas y Pedidos", staffOrdersAttentionCount)}
             </NavLink>
           ) : null}
+          {canSeeVendedor ? <NavLink to={paymentLinkPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Generar link de cobro</NavLink> : null}
           {canSeeVendedor ? <NavLink to={ordersMapPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Mapa pedidos</NavLink> : null}
           {canSeeVendedor ? <NavLink to={shippingZonesPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>Zonas de envio</NavLink> : null}
           {canSeeAdmin ? <NavLink to={adminPanelPath} className={({ isActive }) => navClass(isActive)} onClick={closeMenu}>{adminPanelLabel}</NavLink> : null}
@@ -626,6 +636,7 @@ export function Navbar() {
                     <Link to="/staff/soporte" className="navbar-link" onClick={closeMenu}>Mensajes</Link>
                     {pointsVisible ? <Link to="/vendedor" className="navbar-link" onClick={closeMenu}>Puntos y Canjes</Link> : null}
                     <Link to="/vendedor/ventas/pedidos" className="navbar-link" onClick={closeMenu}>Ventas y Pedidos</Link>
+                    <Link to={paymentLinkPath} className="navbar-link" onClick={closeMenu}>Generar link de cobro</Link>
                     <Link to={ordersMapPath} className="navbar-link" onClick={closeMenu}>Mapa pedidos</Link>
                     {user.rol === "vendedor" ? (
                       <Link to={shippingZonesPath} className="navbar-link" onClick={closeMenu}>Zonas de envio</Link>
