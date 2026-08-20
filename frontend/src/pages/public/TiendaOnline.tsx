@@ -1133,8 +1133,8 @@ export function TiendaOnline() {
           </div>
         ) : productosFiltrados.length === 0 ? (
           <div className="catalog-empty">
-            <h3>No hay productos de venta disponibles</h3>
-            <p>Cuando actives productos tipo venta o mixto van a aparecer aca.</p>
+            <h3>Por el momento no hay productos disponibles</h3>
+            <p>Estamos preparando el catálogo. Volvé a visitarnos pronto.</p>
           </div>
         ) : (
           <div className="catalog-grid">
