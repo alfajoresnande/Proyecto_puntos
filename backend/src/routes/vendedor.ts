@@ -36,7 +36,8 @@ import {
   ShippingZoneError,
   updateShippingZone,
 } from "../services/shippingZones";
-import { createPaymentSession } from "../services/paymentProviders";
+import { cancelMercadoPagoPendingResource, createPaymentSession } from "../services/paymentProviders";
+import { recordSecurityEvent } from "../securityMonitor";
 import { requestRateLimit } from "../middleware/requestRateLimit";
 
 const router = Router();
@@ -46,7 +47,15 @@ const cobroManualSchema = z.object({
   monto: z.number().positive().max(999_999_999),
   concepto: z.string().trim().min(3).max(180),
   cliente_nombre: z.string().trim().max(160).optional().nullable(),
-  cliente_telefono: z.string().trim().max(40).optional().nullable(),
+  cliente_telefono: z.string().trim().max(40).optional().nullable()
+    .transform((value) => value?.trim() || null)
+    .refine((value) => {
+      if (!value) return true;
+      if (!/^[0-9+()\-\s]+$/.test(value)) return false;
+      const digits = value.replace(/\D/g, "");
+      return digits.length >= 8 && digits.length <= 15;
+    }, "El WhatsApp solo puede contener numeros, espacios, +, guiones o parentesis, e incluir el codigo de pais.")
+    .transform((value) => value ? value.replace(/\D/g, "") : null),
 });
 
 function normalizeWhatsAppNumber(value: string | null | undefined): string | null {
@@ -54,7 +63,110 @@ function normalizeWhatsAppNumber(value: string | null | undefined): string | nul
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }
 
-router.get("/cobros-manuales", async (_req, res) => {
+function parseWhatsappOrderItems(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function buildManualChargeWhatsappUrl(input: {
+  clienteNombre: string | null;
+  clienteTelefono: string | null;
+  monto: number;
+  concepto: string;
+  checkoutUrl: string | null;
+}): string | null {
+  const whatsappNumber = normalizeWhatsAppNumber(input.clienteTelefono);
+  if (!whatsappNumber || !input.checkoutUrl) return null;
+  const paymentMessage = [
+    input.clienteNombre ? `Hola ${input.clienteNombre},` : "Hola,",
+    `te enviamos el cobro por ${input.monto.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}.`,
+    `Concepto: ${input.concepto}`,
+    `Pagar con Mercado Pago: ${input.checkoutUrl}`,
+  ].join("\n");
+  return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(paymentMessage)}`;
+}
+
+router.get("/pedidos-whatsapp", async (_req, res) => {
+  const rows = await qAll<{
+    id: number;
+    estado: "generado" | "contactado" | "cancelado";
+    entrega: "retiro" | "consultar_envio";
+    localidad: string | null;
+    notas: string | null;
+    moneda: string;
+    subtotal_estimado: number;
+    cliente_nombre: string;
+    cliente_telefono: string | null;
+    mensaje: string;
+    items_json: unknown;
+    created_at: string;
+    updated_at: string;
+  }>(
+    pool,
+    `SELECT id, estado, entrega, localidad, notas, moneda, subtotal_estimado,
+            cliente_nombre, cliente_telefono, mensaje, items_json, created_at, updated_at
+     FROM pedidos_whatsapp
+     ORDER BY created_at DESC, id DESC
+     LIMIT 100`,
+  );
+  res.json(rows.map((row) => {
+    const whatsappNumber = normalizeWhatsAppNumber(row.cliente_telefono);
+    const replyMessage = `Hola ${row.cliente_nombre}, te contactamos por tu Pedido web #${Number(row.id)}.`;
+    return {
+      ...row,
+      id: Number(row.id),
+      subtotal_estimado: Number(row.subtotal_estimado ?? 0),
+      items: parseWhatsappOrderItems(row.items_json),
+      whatsapp_cliente_url: whatsappNumber
+        ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(replyMessage)}`
+        : null,
+    };
+  }));
+});
+
+router.patch(
+  "/pedidos-whatsapp/:id/estado",
+  requestRateLimit({
+    action: "actualizar_pedido_whatsapp",
+    includeUser: true,
+    windows: [{ name: "diez_minutos", limit: 100, windowSeconds: 10 * 60 }],
+  }),
+  async (req, res) => {
+    const pedidoId = Number(req.params.id);
+    const parsed = z.object({
+      estado: z.enum(["generado", "contactado", "cancelado"]),
+    }).safeParse(req.body ?? {});
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      res.status(400).json({ error: "Pedido de WhatsApp invalido." });
+      return;
+    }
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.errors[0].message });
+      return;
+    }
+    const result = await qRun(
+      pool,
+      "UPDATE pedidos_whatsapp SET estado = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [parsed.data.estado, pedidoId],
+    );
+    if (!result.affectedRows) {
+      res.status(404).json({ error: "Pedido de WhatsApp no encontrado." });
+      return;
+    }
+    emitRealtime(["pedidos-whatsapp"]);
+    res.json({ ok: true, id: pedidoId, estado: parsed.data.estado });
+  },
+);
+
+router.get("/cobros-manuales", async (req, res) => {
+  const soloPropios = req.user?.rol === "vendedor";
+  const incluirOcultos = String(req.query.incluir_ocultos ?? "") === "1";
   const rows = await qAll<{
     id: number;
     monto: number;
@@ -66,7 +178,9 @@ router.get("/cobros-manuales", async (_req, res) => {
     preference_id: string | null;
     provider_payment_id: string | null;
     checkout_url: string | null;
+    qr_image_data: string | null;
     error_mensaje: string | null;
+    oculto: number;
     creado_por: number;
     creado_por_nombre: string;
     approved_at: string | null;
@@ -75,15 +189,33 @@ router.get("/cobros-manuales", async (_req, res) => {
   }>(
     pool,
     `SELECT cm.id, cm.monto, cm.moneda, cm.concepto, cm.cliente_nombre, cm.cliente_telefono,
-            cm.estado, cm.preference_id, cm.provider_payment_id, cm.checkout_url,
-            cm.error_mensaje, cm.creado_por, u.nombre AS creado_por_nombre,
+            cm.estado, cm.preference_id, cm.provider_payment_id, cm.checkout_url, cm.qr_image_data,
+            cm.error_mensaje, cm.oculto, cm.creado_por, u.nombre AS creado_por_nombre,
             cm.approved_at, cm.created_at, cm.updated_at
      FROM cobros_manuales cm
      JOIN usuarios u ON u.id = cm.creado_por
+     WHERE ${soloPropios ? "cm.creado_por = ?" : "1 = 1"}
+       ${incluirOcultos ? "" : "AND cm.oculto = 0"}
      ORDER BY cm.created_at DESC, cm.id DESC
      LIMIT 50`,
+    soloPropios ? [req.user!.id] : [],
   );
-  res.json(rows.map((row) => ({ ...row, id: Number(row.id), monto: Number(row.monto ?? 0) })));
+  res.json(rows.map((row) => {
+    const monto = Number(row.monto ?? 0);
+    return {
+      ...row,
+      id: Number(row.id),
+      monto,
+      oculto: Number(row.oculto ?? 0) === 1,
+      whatsapp_url: buildManualChargeWhatsappUrl({
+        clienteNombre: row.cliente_nombre,
+        clienteTelefono: row.cliente_telefono,
+        monto,
+        concepto: row.concepto,
+        checkoutUrl: row.checkout_url,
+      }),
+    };
+  }));
 });
 
 router.post(
@@ -105,7 +237,7 @@ router.post(
 
   const monto = Math.round((parsed.data.monto + Number.EPSILON) * 100) / 100;
   const clienteNombre = parsed.data.cliente_nombre?.trim() || null;
-  const clienteTelefono = parsed.data.cliente_telefono?.trim() || null;
+  const clienteTelefono = parsed.data.cliente_telefono;
   const inserted = await qRun(
     pool,
     `INSERT INTO cobros_manuales
@@ -135,14 +267,13 @@ router.post(
       margin: 2,
       errorCorrectionLevel: "M",
     });
-    const whatsappNumber = normalizeWhatsAppNumber(clienteTelefono);
-    const paymentMessage = [
-      clienteNombre ? `Hola ${clienteNombre},` : "Hola,",
-      `te enviamos el cobro por ${monto.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}.`,
-      `Concepto: ${parsed.data.concepto}`,
-      `Pagar con Mercado Pago: ${paymentSession.checkoutUrl}`,
-    ].join("\n");
-    const whatsappUrl = `https://wa.me/${whatsappNumber ?? ""}?text=${encodeURIComponent(paymentMessage)}`;
+    const whatsappUrl = buildManualChargeWhatsappUrl({
+      clienteNombre,
+      clienteTelefono,
+      monto,
+      concepto: parsed.data.concepto,
+      checkoutUrl: paymentSession.checkoutUrl,
+    });
 
     await qRun(
       pool,
@@ -173,6 +304,121 @@ router.post(
   }
   },
 );
+
+type CobroManualOperable = {
+  id: number;
+  estado: string;
+  monto: number;
+  creado_por: number;
+  oculto: number;
+  preference_id: string | null;
+  provider_payment_id: string | null;
+};
+
+/**
+ * Carga un cobro verificando permisos: el vendedor solo opera los que creo el,
+ * admin y superAdmin operan cualquiera. Devuelve null si no existe o no le
+ * corresponde, para responder siempre 404 y no filtrar cobros ajenos.
+ */
+async function findCobroOperable(cobroId: number, user: { id: number; rol: string }): Promise<CobroManualOperable | null> {
+  const cobro = await qOne<CobroManualOperable>(
+    pool,
+    `SELECT id, estado, monto, creado_por, oculto, preference_id, provider_payment_id
+     FROM cobros_manuales
+     WHERE id = ?
+     LIMIT 1`,
+    [cobroId],
+  );
+  if (!cobro) return null;
+  if (user.rol === "vendedor" && Number(cobro.creado_por) !== user.id) return null;
+  return cobro;
+}
+
+function parseCobroId(raw: string): number | null {
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+router.post("/cobros-manuales/:id/cancelar", async (req, res) => {
+  const cobroId = parseCobroId(req.params.id);
+  if (cobroId === null) {
+    res.status(400).json({ error: "Cobro invalido." });
+    return;
+  }
+
+  const cobro = await findCobroOperable(cobroId, req.user!);
+  if (!cobro) {
+    res.status(404).json({ error: "Cobro no encontrado." });
+    return;
+  }
+  if (cobro.estado === "aprobado") {
+    res.status(409).json({ error: "El cobro ya fue pagado. Si corresponde devolver el dinero, hacelo desde Mercado Pago." });
+    return;
+  }
+  if (cobro.estado === "cancelado") {
+    res.json({ ok: true, id: cobroId, estado: "cancelado", ya_estaba: true });
+    return;
+  }
+
+  // La anulacion en Mercado Pago va primero y fuera de transaccion: si el link
+  // sigue siendo cobrable no podemos marcarlo como cancelado en el panel, y
+  // mantener abierta una transaccion durante la llamada HTTP agotaria el pool.
+  const recurso = cobro.provider_payment_id || cobro.preference_id;
+  if (recurso) {
+    try {
+      await cancelMercadoPagoPendingResource(recurso);
+    } catch (error) {
+      const detalle = error instanceof Error ? error.message : "Error desconocido.";
+      recordSecurityEvent("cobro_manual_cancelacion_fallida", req, { cobroId, detalle });
+      res.status(502).json({ error: `No se pudo anular el link en Mercado Pago: ${detalle}` });
+      return;
+    }
+  }
+
+  // Condicional: si el webhook lo aprobo mientras anulabamos, no lo pisamos.
+  const updated = await qRun(
+    pool,
+    "UPDATE cobros_manuales SET estado = 'cancelado', error_mensaje = NULL WHERE id = ? AND estado <> 'aprobado'",
+    [cobroId],
+  );
+  if (!updated.affectedRows) {
+    res.status(409).json({ error: "El cobro se aprobo mientras se cancelaba. Revisalo en Mercado Pago." });
+    return;
+  }
+
+  recordSecurityEvent("cobro_manual_cancelado", req, { cobroId, monto: Number(cobro.monto) });
+  emitRealtime(["cobros-manuales"]);
+  res.json({ ok: true, id: cobroId, estado: "cancelado" });
+});
+
+router.post("/cobros-manuales/:id/visibilidad", async (req, res) => {
+  const cobroId = parseCobroId(req.params.id);
+  if (cobroId === null) {
+    res.status(400).json({ error: "Cobro invalido." });
+    return;
+  }
+  const parsed = z.object({ oculto: z.boolean() }).safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: "Indica si el cobro se oculta o se muestra." });
+    return;
+  }
+
+  const cobro = await findCobroOperable(cobroId, req.user!);
+  if (!cobro) {
+    res.status(404).json({ error: "Cobro no encontrado." });
+    return;
+  }
+  // Un cobro pendiente tiene el link vivo: esconderlo lo dejaria cobrable sin
+  // que nadie lo vea en el panel. Primero se cancela, despues se oculta.
+  if (parsed.data.oculto && cobro.estado === "iniciado") {
+    res.status(409).json({ error: "Cancela el cobro antes de ocultarlo: el link todavia puede cobrarse." });
+    return;
+  }
+
+  await qRun(pool, "UPDATE cobros_manuales SET oculto = ? WHERE id = ?", [parsed.data.oculto ? 1 : 0, cobroId]);
+  emitRealtime(["cobros-manuales"]);
+  res.json({ ok: true, id: cobroId, oculto: parsed.data.oculto });
+});
 
 function queueOrderReceiptEmail(orderId: number) {
   void sendOrderReceiptEmail(orderId).catch((err) => {

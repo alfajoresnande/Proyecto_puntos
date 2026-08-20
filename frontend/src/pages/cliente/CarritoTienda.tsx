@@ -887,14 +887,40 @@ export function CarritoTienda() {
   });
 
   const sendWhatsappCart = useMutation({
-    mutationFn: () => api.post<{ whatsapp_url: string }>("/cliente/carrito/whatsapp", {
+    mutationFn: () => api.post<{
+      whatsapp_url: string;
+      whatsapp_app_url?: string;
+      pedido_whatsapp_id: number;
+      carrito_vaciado: boolean;
+    }>("/cliente/carrito/whatsapp", {
       entrega: deliveryMethod === "envio" ? "consultar_envio" : "retiro",
       localidad: manualLocalidad.trim() || null,
       notas: manualNotas.trim() || null,
     }),
     onSuccess: (data) => {
       setMessage(null);
-      window.location.assign(data.whatsapp_url);
+      void queryClient.invalidateQueries({ queryKey: ["cliente", "carrito-online"] });
+      const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (!isMobileDevice || !data.whatsapp_app_url) {
+        window.location.assign(data.whatsapp_url);
+        return;
+      }
+
+      let fallbackTimer: number | null = null;
+      const cancelFallback = () => {
+        if (document.visibilityState !== "hidden" || fallbackTimer === null) return;
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+        document.removeEventListener("visibilitychange", cancelFallback);
+      };
+      document.addEventListener("visibilitychange", cancelFallback);
+      fallbackTimer = window.setTimeout(() => {
+        fallbackTimer = null;
+        document.removeEventListener("visibilitychange", cancelFallback);
+        if (document.visibilityState === "visible") window.location.assign(data.whatsapp_url);
+      }, 1_500);
+      window.location.assign(data.whatsapp_app_url);
     },
     onError: (error: Error) => setMessage(error.message || "No se pudo preparar el pedido para WhatsApp."),
   });

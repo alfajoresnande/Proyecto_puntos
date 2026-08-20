@@ -671,6 +671,7 @@ async function ensureGlobalConfigurationSchema() {
       qr_image_data MEDIUMTEXT NULL,
       payload_json JSON NULL,
       error_mensaje VARCHAR(500) NULL,
+      oculto TINYINT(1) NOT NULL DEFAULT 0,
       creado_por INT NOT NULL,
       approved_at DATETIME NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -680,9 +681,25 @@ async function ensureGlobalConfigurationSchema() {
         ON DELETE RESTRICT,
       INDEX idx_cobros_manuales_estado_created_at (estado, created_at),
       INDEX idx_cobros_manuales_preference_id (preference_id),
-      INDEX idx_cobros_manuales_provider_payment_id (provider_payment_id)
+      INDEX idx_cobros_manuales_provider_payment_id (provider_payment_id),
+      INDEX idx_cobros_manuales_oculto_created_at (oculto, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
+
+  // Bases existentes: la columna se agrega sin tocar los cobros ya registrados.
+  const [ocultoRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cobros_manuales' AND COLUMN_NAME = 'oculto'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!ocultoRows.length) {
+    await pool.query(
+      "ALTER TABLE cobros_manuales ADD COLUMN oculto TINYINT(1) NOT NULL DEFAULT 0 AFTER error_mensaje"
+    );
+    await pool.query(
+      "ALTER TABLE cobros_manuales ADD INDEX idx_cobros_manuales_oculto_created_at (oculto, created_at)"
+    );
+  }
 }
 
 async function ensureCategoriasSchema() {
@@ -1203,6 +1220,35 @@ async function ensureOrderCoreSchema() {
       INDEX idx_checkout_pendientes_provider_payment (provider_payment_id),
       INDEX idx_checkout_pendientes_orden (orden_id)
     )`
+  );
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS pedidos_whatsapp (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      usuario_id INT NULL,
+      carrito_id BIGINT UNSIGNED NULL,
+      estado ENUM('generado','contactado','cancelado') NOT NULL DEFAULT 'generado',
+      entrega ENUM('retiro','consultar_envio') NOT NULL DEFAULT 'retiro',
+      localidad VARCHAR(120) NULL,
+      notas VARCHAR(500) NULL,
+      moneda VARCHAR(8) NOT NULL DEFAULT 'ARS',
+      subtotal_estimado DECIMAL(10,2) NOT NULL DEFAULT 0,
+      cliente_nombre VARCHAR(160) NOT NULL,
+      cliente_telefono VARCHAR(40) NULL,
+      whatsapp_numero VARCHAR(20) NOT NULL,
+      mensaje TEXT NOT NULL,
+      items_json JSON NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_pedidos_whatsapp_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+        ON DELETE SET NULL,
+      CONSTRAINT fk_pedidos_whatsapp_carrito
+        FOREIGN KEY (carrito_id) REFERENCES carritos(id)
+        ON DELETE SET NULL,
+      INDEX idx_pedidos_whatsapp_usuario_fecha (usuario_id, created_at),
+      INDEX idx_pedidos_whatsapp_estado_fecha (estado, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
   await pool.query(

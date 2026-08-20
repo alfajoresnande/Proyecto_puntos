@@ -1,0 +1,235 @@
+/*
+ * Panel de links de cobro — tratamiento plano.
+ *
+ * Todo cuelga de .cobros-panel a proposito: el resto del panel de vendedor
+ * sigue usando ios-input / ios-btn-secondary (redondeados). No agregar reglas
+ * sueltas fuera del scope ni tocar los tokens globales de styles.css.
+ */
+
+.cobros-panel {
+  --cp-tinta: #3D1A02;
+  --cp-suave: #7C5A40;
+  --cp-tenue: #93826F;
+  --cp-linea: #E2D5C4;
+  --cp-linea-fina: #EFE6DA;
+  --cp-acento: #D4621A;
+  --cp-marron: #6B3E26;
+  --cp-ok: #2F7D50;
+  --cp-pend: #B7791F;
+  --cp-err: #B42318;
+
+  display: grid;
+  gap: 1.75rem;
+  color: var(--cp-tinta);
+}
+
+.cobros-panel h2,
+.cobros-panel h3 {
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.cobros-panel h2 { font-size: 1.15rem; font-weight: 800; }
+.cobros-panel h3 { font-size: 1rem; font-weight: 700; }
+.cobros-panel p { margin: 0; }
+
+.cobros-panel .cp-lbl {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  font-weight: 700;
+  color: var(--cp-suave);
+}
+
+.cobros-panel .cp-ayuda {
+  font-size: 0.88rem;
+  color: var(--cp-suave);
+  max-width: 64ch;
+}
+
+/* ---- Campos: subrayado, sin caja ---- */
+.cobros-panel .cp-campo { display: block; }
+.cobros-panel .cp-campo .cp-lbl { margin-bottom: 0.3rem; }
+
+.cobros-panel .cp-campo input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--cp-tinta);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--cp-linea);
+  border-radius: 0;
+  padding: 0.35rem 0;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.cobros-panel .cp-campo input:focus { border-bottom-color: var(--cp-acento); }
+.cobros-panel .cp-campo input::placeholder { color: var(--cp-tenue); }
+
+/* ---- Importe: el unico dato que cuesta plata si sale mal ---- */
+.cobros-panel .cp-imp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  border-bottom: 1px solid var(--cp-linea);
+  transition: border-color 0.15s ease;
+}
+.cobros-panel .cp-imp-row:focus-within { border-bottom-color: var(--cp-acento); }
+.cobros-panel .cp-imp-row .cp-peso {
+  font-size: 1.55rem;
+  font-weight: 600;
+  color: var(--cp-tenue);
+}
+.cobros-panel .cp-imp-row input {
+  border-bottom: none;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0 0.25rem;
+}
+
+.cobros-panel .cp-eco {
+  font-size: 0.85rem;
+  color: var(--cp-suave);
+  margin-top: 0.4rem;
+  min-height: 1.4em;
+}
+.cobros-panel .cp-eco.cp-eco-ok { color: var(--cp-ok); }
+.cobros-panel .cp-eco.cp-eco-err { color: var(--cp-err); }
+
+.cobros-panel .cp-grupo { display: grid; gap: 1.1rem; }
+.cobros-panel .cp-grupo > .cp-lbl { color: var(--cp-tinta); }
+
+/* ---- Botones ---- */
+.cobros-panel .cp-btn {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--cp-marron);
+  color: #FFF8F1;
+  border: 1px solid var(--cp-marron);
+  border-radius: 3px;
+  padding: 0.6rem 1.2rem;
+  justify-self: start;
+  transition: opacity 0.15s ease;
+}
+.cobros-panel .cp-btn:hover:not(:disabled) { opacity: 0.85; }
+.cobros-panel .cp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Acciones como texto: dejan de competir con el monto */
+.cobros-panel .cp-acc {
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  color: var(--cp-marron);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+.cobros-panel .cp-acc:hover:not(:disabled) { border-bottom-color: currentColor; }
+.cobros-panel .cp-acc:disabled { opacity: 0.4; cursor: not-allowed; }
+.cobros-panel .cp-acc.cp-acc-baja { color: var(--cp-suave); }
+
+.cobros-panel :focus-visible { outline: 2px solid var(--cp-acento); outline-offset: 3px; }
+
+/* ---- Lista ---- */
+.cobros-panel .cp-lista { display: grid; }
+.cobros-panel .cp-fila {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--cp-linea-fina);
+}
+.cobros-panel .cp-fila:first-child { border-top: 1px solid var(--cp-linea-fina); }
+
+.cobros-panel .cp-fila-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.cobros-panel .cp-monto {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.cobros-panel .cp-estado {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-left: 0.6rem;
+}
+.cobros-panel .cp-estado::before {
+  content: "· ";
+  color: var(--cp-tenue);
+  font-weight: 400;
+}
+.cobros-panel .cp-e-pend { color: var(--cp-pend); }
+.cobros-panel .cp-e-pago { color: var(--cp-ok); }
+.cobros-panel .cp-e-off { color: var(--cp-tenue); }
+.cobros-panel .cp-e-err { color: var(--cp-err); }
+
+.cobros-panel .cp-meta {
+  font-size: 0.82rem;
+  color: var(--cp-suave);
+  margin-top: 0.15rem;
+}
+.cobros-panel .cp-acciones {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.cobros-panel .cp-detalle {
+  margin-top: 0.9rem;
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.cobros-panel .cp-detalle img {
+  width: 128px;
+  height: 128px;
+  border-radius: 0;
+  flex: none;
+}
+.cobros-panel .cp-url {
+  font-size: 0.8rem;
+  color: var(--cp-suave);
+  overflow-wrap: anywhere;
+  margin-bottom: 0.7rem;
+}
+
+.cobros-panel .cp-alerta { font-size: 0.88rem; color: var(--cp-err); }
+.cobros-panel .cp-oculta { opacity: 0.55; }
+
+.cobros-panel .cp-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--cp-linea);
+}
+.cobros-panel .cp-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+  color: var(--cp-suave);
+  cursor: pointer;
+}
+.cobros-panel .cp-check input { accent-color: var(--cp-acento); cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cobros-panel *,
+  .cobros-panel *::before { transition: none !important; }
+}

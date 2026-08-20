@@ -291,8 +291,9 @@ router.post("/webhook/:proveedor", async (req, res) => {
             const nextState = status === "approved" ? "aprobado" : status === "expired" ? "expirado" : "rechazado";
             await (0, db_1.qRun)(conn, `UPDATE cobros_manuales
          SET estado = ?, provider_payment_id = COALESCE(?, provider_payment_id), payload_json = ?,
-             approved_at = IF(? = 'aprobado', COALESCE(approved_at, CURRENT_TIMESTAMP), approved_at)
-         WHERE id = ?`, [nextState, providerPaymentId, JSON.stringify(resolvedPayload), nextState, manualChargeId]);
+             approved_at = IF(? = 'aprobado', COALESCE(approved_at, CURRENT_TIMESTAMP), approved_at),
+             oculto = IF(? = 'aprobado', 0, oculto)
+         WHERE id = ?`, [nextState, providerPaymentId, JSON.stringify(resolvedPayload), nextState, nextState, manualChargeId]);
             await conn.commit();
             (0, realtime_1.emitRealtime)(["cobros-manuales"]);
             res.json({ ok: true, cobro_manual_id: manualChargeId, estado: nextState });

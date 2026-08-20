@@ -1,3 +1,4 @@
+import "express-async-errors";
 import "dotenv/config";
 import http from "http";
 import path from "path";

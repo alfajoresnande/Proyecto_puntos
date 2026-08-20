@@ -21,6 +21,7 @@ const purchaseLimits_1 = require("../services/purchaseLimits");
 const userAddresses_1 = require("../services/userAddresses");
 const shippingZones_1 = require("../services/shippingZones");
 const salesMode_1 = require("../services/salesMode");
+const requestRateLimit_1 = require("../middleware/requestRateLimit");
 const router = (0, express_1.Router)();
 router.use(auth_1.requireAuth, (0, auth_1.requireRole)("cliente"));
 async function rejectOnlinePaymentWhenManualMode(res) {
@@ -285,7 +286,8 @@ async function ensureActiveCart(conn, usuarioId) {
      FROM carritos
      WHERE usuario_id = ? AND estado = 'activo'
      ORDER BY updated_at DESC, id DESC
-     LIMIT 1`, [usuarioId]);
+     LIMIT 1
+     FOR UPDATE`, [usuarioId]);
     if (existing?.id)
         return Number(existing.id);
     const created = await (0, db_1.qRun)(conn, "INSERT INTO carritos (usuario_id, estado) VALUES (?, 'activo')", [usuarioId]);
@@ -298,6 +300,21 @@ async function getActiveCartId(conn, usuarioId) {
      ORDER BY updated_at DESC, id DESC
      LIMIT 1`, [usuarioId]);
     return existing?.id ? Number(existing.id) : null;
+}
+async function lockActiveCartForItem(conn, usuarioId, itemId) {
+    const candidate = await (0, db_1.qOne)(conn, `SELECT ci.carrito_id
+     FROM carrito_items ci
+     JOIN carritos c ON c.id = ci.carrito_id
+     WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
+     LIMIT 1`, [itemId, usuarioId]);
+    if (!candidate?.carrito_id)
+        return null;
+    const locked = await (0, db_1.qOne)(conn, `SELECT id
+     FROM carritos
+     WHERE id = ? AND usuario_id = ? AND estado = 'activo'
+     LIMIT 1
+     FOR UPDATE`, [Number(candidate.carrito_id), usuarioId]);
+    return locked?.id ? Number(locked.id) : null;
 }
 async function getProductoForCart(conn, productoId) {
     const producto = await (0, db_1.qOne)(conn, `SELECT id, nombre, categoria, activo, tipo_producto, configuracion_tipo, capacidad_sabores, precio_dinero,
@@ -426,7 +443,7 @@ async function assertCartQuantityWithinStock(conn, { producto, cantidad, sucursa
             : `No hay stock disponible de ${producto.nombre} en la sucursal seleccionada.`);
     }
 }
-async function getCarritoItems(conn, usuarioId) {
+async function getCarritoItems(conn, usuarioId, { forUpdate = false } = {}) {
     const rows = await (0, db_1.qAll)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.cantidad, ci.modo_compra, ci.config_hash,
             ci.precio_dinero_unit, ci.precio_puntos_unit, ci.puntaje_al_comprar_unitario, ci.subtotal_dinero, ci.subtotal_puntos,
             p.nombre, p.tipo_producto, p.configuracion_tipo, p.capacidad_sabores, p.imagen_url, p.track_stock, p.permite_envio, p.envio_gratis
@@ -434,7 +451,8 @@ async function getCarritoItems(conn, usuarioId) {
      JOIN carritos c ON c.id = ci.carrito_id
      JOIN productos p ON p.id = ci.producto_id
      WHERE c.usuario_id = ? AND c.estado = 'activo'
-     ORDER BY ci.created_at ASC, ci.id ASC`, [usuarioId]);
+     ORDER BY ci.created_at ASC, ci.id ASC
+     ${forUpdate ? "FOR UPDATE" : ""}`, [usuarioId]);
     const flavorMap = new Map();
     if (rows.length) {
         const ids = rows.map((row) => Number(row.id));
@@ -442,7 +460,8 @@ async function getCarritoItems(conn, usuarioId) {
         const flavorRows = await (0, db_1.qAll)(conn, `SELECT carrito_item_id, sabor_id, sabor_nombre, cantidad
        FROM carrito_item_sabores
        WHERE carrito_item_id IN (${placeholders})
-       ORDER BY carrito_item_id ASC, id ASC`, ids);
+       ORDER BY carrito_item_id ASC, id ASC
+       ${forUpdate ? "FOR UPDATE" : ""}`, ids);
         for (const flavor of flavorRows) {
             const current = flavorMap.get(Number(flavor.carrito_item_id)) ?? [];
             current.push({
@@ -1367,12 +1386,18 @@ router.patch("/carrito/items/:itemId", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        const carritoId = await lockActiveCartForItem(conn, req.user.id, itemId);
+        if (!carritoId) {
+            await conn.rollback();
+            res.status(404).json({ error: "Item de carrito no encontrado." });
+            return;
+        }
         const item = await (0, db_1.qOne)(conn, `SELECT ci.id, ci.carrito_id, ci.producto_id, ci.modo_compra, ci.cantidad, ci.config_hash, p.configuracion_tipo
        FROM carrito_items ci
-       JOIN carritos c ON c.id = ci.carrito_id
        JOIN productos p ON p.id = ci.producto_id
-       WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
-       LIMIT 1`, [itemId, req.user.id]);
+       WHERE ci.id = ? AND ci.carrito_id = ?
+       LIMIT 1
+       FOR UPDATE`, [itemId, carritoId]);
         if (!item) {
             await conn.rollback();
             res.status(404).json({ error: "Item de carrito no encontrado." });
@@ -1432,11 +1457,17 @@ router.delete("/carrito/items/:itemId", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
+        const carritoId = await lockActiveCartForItem(conn, req.user.id, itemId);
+        if (!carritoId) {
+            await conn.rollback();
+            res.status(404).json({ error: "Item de carrito no encontrado." });
+            return;
+        }
         const item = await (0, db_1.qOne)(conn, `SELECT ci.carrito_id
        FROM carrito_items ci
-       JOIN carritos c ON c.id = ci.carrito_id
-       WHERE ci.id = ? AND c.usuario_id = ? AND c.estado = 'activo'
-       LIMIT 1`, [itemId, req.user.id]);
+       WHERE ci.id = ? AND ci.carrito_id = ?
+       LIMIT 1
+       FOR UPDATE`, [itemId, carritoId]);
         if (!item) {
             await conn.rollback();
             res.status(404).json({ error: "Item de carrito no encontrado." });
@@ -1460,7 +1491,12 @@ router.delete("/carrito/vaciar", async (req, res) => {
     const conn = await db_1.pool.getConnection();
     try {
         await conn.beginTransaction();
-        const carrito = await (0, db_1.qOne)(conn, "SELECT id FROM carritos WHERE usuario_id = ? AND estado = 'activo' LIMIT 1", [usuarioId]);
+        const carrito = await (0, db_1.qOne)(conn, `SELECT id
+       FROM carritos
+       WHERE usuario_id = ? AND estado = 'activo'
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`, [usuarioId]);
         if (carrito) {
             await (0, db_1.qRun)(conn, "DELETE FROM carrito_items WHERE carrito_id = ?", [carrito.id]);
             await (0, db_1.qRun)(conn, "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carrito.id]);
@@ -1476,7 +1512,14 @@ router.delete("/carrito/vaciar", async (req, res) => {
         conn.release();
     }
 });
-router.post("/carrito/whatsapp", async (req, res) => {
+router.post("/carrito/whatsapp", (0, requestRateLimit_1.requestRateLimit)({
+    action: "crear_pedido_whatsapp",
+    includeUser: true,
+    windows: [
+        { name: "diez_minutos", limit: 10, windowSeconds: 10 * 60 },
+        { name: "dia", limit: 50, windowSeconds: 24 * 60 * 60 },
+    ],
+}), async (req, res) => {
     const schema = zod_1.z.object({
         entrega: zod_1.z.enum(["retiro", "consultar_envio"]).default("retiro"),
         localidad: zod_1.z.string().trim().max(120).optional().nullable(),
@@ -1487,61 +1530,134 @@ router.post("/carrito/whatsapp", async (req, res) => {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
-    if (!(await (0, salesMode_1.isWhatsappCatalogMode)(db_1.pool))) {
-        res.status(409).json({ error: "El catalogo por WhatsApp no esta activo en este momento." });
-        return;
-    }
-    const items = (await getCarritoItems(db_1.pool, req.user.id)).filter((item) => item.modo_compra === "dinero");
-    if (!items.length) {
-        res.status(400).json({ error: "Tu carrito esta vacio." });
-        return;
-    }
-    const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, req.user.id);
-    const resolvePrice = await (0, customerPricing_1.createPricingResolver)(db_1.pool, { source: "web", profile: pricingProfile });
-    const eventbarDiscount = await (0, customerPricing_1.loadEventbarSpecialDiscountConfig)(db_1.pool);
-    const usuario = await (0, db_1.qOne)(db_1.pool, "SELECT nombre, telefono FROM usuarios WHERE id = ? LIMIT 1", [req.user.id]);
-    const config = await (0, db_1.qAll)(db_1.pool, "SELECT clave, valor FROM configuracion WHERE clave IN ('whatsapp_pedidos_numero')");
-    const whatsappRaw = config.find((item) => item.clave === "whatsapp_pedidos_numero")?.valor ?? "5493794632610";
-    const whatsappNumber = whatsappRaw.replace(/\D/g, "");
-    if (whatsappNumber.length < 8 || whatsappNumber.length > 15) {
-        res.status(500).json({ error: "El numero de WhatsApp de pedidos no esta configurado correctamente." });
-        return;
-    }
-    let total = 0;
-    const itemLines = [];
-    for (const item of items) {
-        const producto = await getProductoForCart(db_1.pool, Number(item.producto_id));
-        validateProductoForMode(producto, "dinero");
-        const unitPrice = getPrecioDineroConResolver(producto, resolvePrice);
-        const subtotal = getSubtotalDineroConPromo(unitPrice, Number(item.cantidad), eventbarDiscount);
-        total = toMoney(total + subtotal);
-        itemLines.push(`- ${item.cantidad} x ${item.nombre} (${toMoney(subtotal).toLocaleString("es-AR", { style: "currency", currency: "ARS" })})`);
-        if (item.sabores?.length) {
-            itemLines.push(`  Sabores: ${item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(", ")}`);
+    const usuarioId = req.user.id;
+    const conn = await db_1.pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        if (!(await (0, salesMode_1.isWhatsappCatalogMode)(conn))) {
+            throw new HttpError(409, "El catalogo por WhatsApp no esta activo en este momento.");
         }
+        const carrito = await (0, db_1.qOne)(conn, `SELECT id
+       FROM carritos
+       WHERE usuario_id = ? AND estado = 'activo'
+       ORDER BY updated_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`, [usuarioId]);
+        if (!carrito?.id)
+            throw new HttpError(400, "Tu carrito esta vacio.");
+        const carritoId = Number(carrito.id);
+        const items = (await getCarritoItems(conn, usuarioId, { forUpdate: true })).filter((item) => item.modo_compra === "dinero" && Number(item.carrito_id) === carritoId);
+        if (!items.length)
+            throw new HttpError(400, "Tu carrito esta vacio.");
+        const pricingProfile = await (0, customerPricing_1.getActiveClientePricingProfile)(conn, usuarioId);
+        const resolvePrice = await (0, customerPricing_1.createPricingResolver)(conn, { source: "web", profile: pricingProfile });
+        const eventbarDiscount = await (0, customerPricing_1.loadEventbarSpecialDiscountConfig)(conn);
+        const usuario = await (0, db_1.qOne)(conn, "SELECT nombre, telefono FROM usuarios WHERE id = ? LIMIT 1", [usuarioId]);
+        const config = await (0, db_1.qAll)(conn, "SELECT clave, valor FROM configuracion WHERE clave IN ('whatsapp_pedidos_numero')");
+        const whatsappRaw = config.find((item) => item.clave === "whatsapp_pedidos_numero")?.valor ?? "5493794632610";
+        const whatsappNumber = whatsappRaw.replace(/\D/g, "");
+        if (whatsappNumber.length < 8 || whatsappNumber.length > 15) {
+            throw new HttpError(500, "El numero de WhatsApp de pedidos no esta configurado correctamente.");
+        }
+        let total = 0;
+        const itemMessageGroups = [];
+        const itemsSnapshot = [];
+        for (const item of items) {
+            const producto = await getProductoForCart(conn, Number(item.producto_id));
+            validateProductoForMode(producto, "dinero");
+            const unitPrice = getPrecioDineroConResolver(producto, resolvePrice);
+            const subtotal = getSubtotalDineroConPromo(unitPrice, Number(item.cantidad), eventbarDiscount);
+            total = toMoney(total + subtotal);
+            const itemMessageLines = [
+                `- ${item.cantidad} x ${item.nombre} (${toMoney(subtotal).toLocaleString("es-AR", { style: "currency", currency: "ARS" })})`,
+            ];
+            if (item.sabores?.length) {
+                itemMessageLines.push(`  Sabores: ${item.sabores.map((sabor) => `${sabor.nombre} x${sabor.cantidad}`).join(", ")}`);
+            }
+            itemMessageGroups.push(itemMessageLines.join("\n"));
+            itemsSnapshot.push({
+                producto_id: Number(item.producto_id),
+                nombre: item.nombre,
+                cantidad: Number(item.cantidad),
+                precio_unitario: toMoney(unitPrice),
+                subtotal: toMoney(subtotal),
+                sabores: item.sabores ?? [],
+            });
+        }
+        const clienteNombre = usuario?.nombre || `Cliente #${usuarioId}`;
+        const deliveryLine = parsed.data.entrega === "consultar_envio"
+            ? `Entrega: quiero consultar envio${parsed.data.localidad ? ` a ${parsed.data.localidad}` : ""}`
+            : "Entrega: retiro a coordinar";
+        const created = await (0, db_1.qRun)(conn, `INSERT INTO pedidos_whatsapp (
+         usuario_id, carrito_id, entrega, localidad, notas, moneda, subtotal_estimado,
+         cliente_nombre, cliente_telefono, whatsapp_numero, mensaje, items_json
+       ) VALUES (?, ?, ?, ?, ?, 'ARS', ?, ?, ?, ?, '', ?)`, [
+            usuarioId,
+            carritoId,
+            parsed.data.entrega,
+            parsed.data.localidad ?? null,
+            parsed.data.notas ?? null,
+            total,
+            clienteNombre,
+            usuario?.telefono ?? null,
+            whatsappNumber,
+            JSON.stringify(itemsSnapshot),
+        ]);
+        const pedidoWhatsappId = Number(created.insertId);
+        const buildWhatsappMessage = (groups, omittedItems) => [
+            `Hola, quisiera consultar disponibilidad para el Pedido web #${pedidoWhatsappId}:`,
+            "",
+            ...groups,
+            omittedItems > 0
+                ? `... y ${omittedItems} producto(s) mas. El detalle completo esta guardado como Pedido web #${pedidoWhatsappId}.`
+                : null,
+            "",
+            `Subtotal estimado (sin envio): ${total.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}`,
+            deliveryLine,
+            `Cliente: ${clienteNombre}`,
+            usuario?.telefono ? `Telefono: ${usuario.telefono}` : null,
+            parsed.data.notas ? `Notas: ${parsed.data.notas}` : null,
+            "",
+            "Quedo a la espera de la confirmacion de stock y del total final.",
+        ].filter((line) => line !== null).join("\n");
+        const includedGroups = [...itemMessageGroups];
+        let omittedItems = 0;
+        let message = buildWhatsappMessage(includedGroups, omittedItems);
+        while (encodeURIComponent(message).length > 1_800 && includedGroups.length > 0) {
+            includedGroups.pop();
+            omittedItems += 1;
+            message = buildWhatsappMessage(includedGroups, omittedItems);
+        }
+        await (0, db_1.qRun)(conn, "UPDATE pedidos_whatsapp SET mensaje = ? WHERE id = ?", [message, pedidoWhatsappId]);
+        await (0, db_1.qRun)(conn, "DELETE FROM carrito_items WHERE carrito_id = ? AND modo_compra = 'dinero'", [carritoId]);
+        const remainingItems = await (0, db_1.qOne)(conn, "SELECT COUNT(*) AS total FROM carrito_items WHERE carrito_id = ?", [carritoId]);
+        await (0, db_1.qRun)(conn, Number(remainingItems?.total ?? 0) > 0
+            ? "UPDATE carritos SET updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            : "UPDATE carritos SET estado = 'convertido', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [carritoId]);
+        await conn.commit();
+        res.json({
+            ok: true,
+            pedido_whatsapp_id: pedidoWhatsappId,
+            carrito_vaciado: true,
+            whatsapp_app_url: `whatsapp://send?phone=${whatsappNumber}&text=${encodeURIComponent(message)}`,
+            whatsapp_url: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
+            mensaje: message,
+            subtotal_estimado: total,
+        });
     }
-    const deliveryLine = parsed.data.entrega === "consultar_envio"
-        ? `Entrega: quiero consultar envio${parsed.data.localidad ? ` a ${parsed.data.localidad}` : ""}`
-        : "Entrega: retiro a coordinar";
-    const message = [
-        "Hola, quisiera consultar disponibilidad para este pedido:",
-        "",
-        ...itemLines,
-        "",
-        `Subtotal estimado (sin envio): ${total.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}`,
-        deliveryLine,
-        `Cliente: ${usuario?.nombre || `#${req.user.id}`}`,
-        usuario?.telefono ? `Telefono: ${usuario.telefono}` : null,
-        parsed.data.notas ? `Notas: ${parsed.data.notas}` : null,
-        "",
-        "Quedo a la espera de la confirmacion de stock y del total final.",
-    ].filter((line) => line !== null).join("\n");
-    res.json({
-        ok: true,
-        whatsapp_url: `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`,
-        mensaje: message,
-        subtotal_estimado: total,
-    });
+    catch (error) {
+        await conn.rollback();
+        if (error instanceof HttpError) {
+            res.status(error.status).json({ error: error.message });
+            return;
+        }
+        console.error("No se pudo guardar el pedido de WhatsApp:", error);
+        res.status(500).json({ error: "No se pudo guardar el pedido para WhatsApp. Intenta nuevamente." });
+        return;
+    }
+    finally {
+        conn.release();
+    }
 });
 router.get("/checkout/shipping-quote", async (req, res) => {
     const direccionId = Number(req.query.direccion_id ?? 0);
