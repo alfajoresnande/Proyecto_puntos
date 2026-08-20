@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api";
 import { formatBuenosAiresDateTime } from "../lib/dateTime";
 import { WhatsappOrdersPanel } from "./WhatsappOrdersPanel";
+import { useToast } from "./ToastProvider";
 import "../styles/cobros-panel.css";
 
 type ManualCharge = {
@@ -95,6 +96,7 @@ function ChargeShareActions({
 
 export function ManualPaymentGenerator() {
   const queryClient = useQueryClient();
+  const { showToast, confirmToast } = useToast();
   const [monto, setMonto] = useState("");
   const [concepto, setConcepto] = useState("Pedido confirmado por WhatsApp");
   const [clienteNombre, setClienteNombre] = useState("");
@@ -128,6 +130,11 @@ export function ManualPaymentGenerator() {
       setLatestCharge(charge);
       setCopiedChargeId(null);
       setCopyError("");
+      showToast({
+        tone: "success",
+        title: `Link listo por ${formatMoney(charge.monto)}`,
+        message: `Cobro #${charge.id} · ya podes copiarlo o mandarlo por WhatsApp.`,
+      });
       await refreshHistory();
     },
   });
@@ -138,9 +145,17 @@ export function ManualPaymentGenerator() {
       setActionError("");
       // La tarjeta de arriba quedaria ofreciendo un link que ya no cobra.
       setLatestCharge((current) => (current?.id === chargeId ? null : current));
+      showToast({
+        tone: "success",
+        title: `Cobro #${chargeId} cancelado`,
+        message: "El link ya no puede cobrarse.",
+      });
       await refreshHistory();
     },
-    onError: (error: Error) => setActionError(error.message || "No se pudo cancelar el cobro."),
+    onError: (error: Error) => {
+      setActionError(error.message || "No se pudo cancelar el cobro.");
+      showToast({ tone: "danger", title: "No se pudo cancelar", message: error.message });
+    },
   });
 
   const visibilityMutation = useMutation({
@@ -151,10 +166,20 @@ export function ManualPaymentGenerator() {
       if (variables.oculto) {
         setExpandedChargeId(null);
         setLatestCharge((current) => (current?.id === variables.chargeId ? null : current));
+        showToast({
+          tone: "info",
+          title: `Cobro #${variables.chargeId} oculto`,
+          message: 'No se borro: esta en "Ver ocultos".',
+          actionLabel: "Deshacer",
+          onAction: () => visibilityMutation.mutate({ chargeId: variables.chargeId, oculto: false }),
+        });
       }
       await refreshHistory();
     },
-    onError: (error: Error) => setActionError(error.message || "No se pudo cambiar la visibilidad del cobro."),
+    onError: (error: Error) => {
+      setActionError(error.message || "No se pudo cambiar la visibilidad del cobro.");
+      showToast({ tone: "danger", title: "No se pudo ocultar", message: error.message });
+    },
   });
 
   const canCreate = Number.isFinite(amountNumber) && amountNumber > 0 && concepto.trim().length >= 3;
@@ -175,22 +200,30 @@ export function ManualPaymentGenerator() {
 
   function confirmAndCreate() {
     if (!canCreate) return;
-    const accepted = window.confirm(`Vas a generar un link de Mercado Pago por ${formatMoney(amountNumber)}. ¿Confirmas el importe?`);
-    if (accepted) createMutation.mutate();
+    confirmToast({
+      tone: "warning",
+      title: `Generar cobro por ${formatMoney(amountNumber)}`,
+      message: "Revisa el importe: el link se le manda al cliente tal cual.",
+      confirmLabel: "Generar",
+      cancelLabel: "Volver",
+      onConfirm: () => createMutation.mutate(),
+    });
   }
 
   function confirmCancel(charge: ManualCharge) {
-    const accepted = window.confirm(
-      `¿Cancelar el cobro #${charge.id} por ${formatMoney(charge.monto)}?\n\nEl link y el QR dejan de funcionar para el cliente.`,
-    );
-    if (accepted) cancelMutation.mutate(charge.id);
+    confirmToast({
+      tone: "danger",
+      title: `Cancelar el cobro #${charge.id}`,
+      message: `${formatMoney(charge.monto)} · El link y el QR dejan de funcionar para el cliente.`,
+      confirmLabel: "Cancelar el cobro",
+      cancelLabel: "Volver",
+      onConfirm: () => cancelMutation.mutate(charge.id),
+    });
   }
 
-  function confirmHide(charge: ManualCharge) {
-    const accepted = window.confirm(
-      `¿Ocultar el cobro #${charge.id} de la lista?\n\nNo se borra: podes volver a verlo marcando "Ver ocultos".`,
-    );
-    if (accepted) visibilityMutation.mutate({ chargeId: charge.id, oculto: true });
+  // Ocultar es reversible, asi que no pregunta: se hace y se ofrece deshacer.
+  function hideCharge(charge: ManualCharge) {
+    visibilityMutation.mutate({ chargeId: charge.id, oculto: true });
   }
 
   async function copyPaymentLink(charge: ManualCharge) {
@@ -345,7 +378,7 @@ export function ManualPaymentGenerator() {
                           className="cp-acc cp-acc-baja"
                           disabled={busy || pendiente}
                           title={pendiente ? "Cancela el cobro antes de ocultarlo: el link todavia puede cobrarse." : undefined}
-                          onClick={() => confirmHide(charge)}
+                          onClick={() => hideCharge(charge)}
                         >
                           {busy ? "Ocultando..." : "Ocultar"}
                         </button>
