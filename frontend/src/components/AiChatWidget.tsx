@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { usePointsVisible } from "../lib/pointsProgram";
 import { isInternalNavigationPath, normalizeSafeNavigationUrl } from "../lib/urlSafety";
 import { useAuthStore } from "../store/authStore";
 import type { Rol, User } from "../types";
@@ -45,7 +46,7 @@ function getCurrentPath(): string {
   return typeof window === "undefined" ? "/" : window.location.pathname;
 }
 
-function getDynamicGreeting(user: User | null): string {
+function getDynamicGreeting(user: User | null, pointsVisible: boolean): string {
   let timeGreeting = "¡Hola!";
   try {
     const formatter = new Intl.DateTimeFormat("es-AR", {
@@ -67,18 +68,19 @@ function getDynamicGreeting(user: User | null): string {
   }
 
   if (!user) {
-    return `${timeGreeting} Bienvenido a Ñandé. Te sugiero [iniciar sesión](/login) o [registrarte](/registro) para poder comprar y acumular puntos. ¿En qué te puedo ayudar hoy?`;
+    const beneficio = pointsVisible ? "comprar y acumular puntos" : "comprar";
+    return `${timeGreeting} Bienvenido a Ñandé. Te sugiero [iniciar sesión](/login) o [registrarte](/registro) para poder ${beneficio}. ¿En qué te puedo ayudar hoy?`;
   }
 
   const faltanDatos = !user.dni || !user.telefono || !user.localidad;
   if (faltanDatos && user.rol === "cliente") {
-    return `${timeGreeting} **${user.nombre}**. Noté que te faltan algunos datos en tu perfil. Te recomiendo [completarlos aquí](/perfil) para poder realizar tus pedidos sin problemas. ¿En qué te ayudo hoy?`;
+    return `${timeGreeting} **${user.nombre}**. Noté que te faltan algunos datos en tu perfil. Te recomiendo [completarlos aquí](/mi-perfil) para poder realizar tus pedidos sin problemas. ¿En qué te ayudo hoy?`;
   }
 
   return `${timeGreeting} **${user.nombre}**. ¿En qué te puedo ayudar hoy?`;
 }
 
-function getTooltipGreeting(user: User | null): string {
+function getTooltipGreeting(user: User | null, pointsVisible: boolean): string {
   let timeGreeting = "¡Hola!";
   try {
     const formatter = new Intl.DateTimeFormat("es-AR", {
@@ -100,7 +102,9 @@ function getTooltipGreeting(user: User | null): string {
   }
 
   if (!user) {
-    return `${timeGreeting} ¿Te ayudo a iniciar sesión para sumar puntos? ✨`;
+    return pointsVisible
+      ? `${timeGreeting} ¿Te ayudo a iniciar sesión para sumar puntos? ✨`
+      : `${timeGreeting} ¿Te ayudo a iniciar sesión? ✨`;
   }
 
   const faltanDatos = !user.dni || !user.telefono || !user.localidad;
@@ -164,6 +168,9 @@ function parseMessageContent(content: string) {
 
 export function AiChatWidget() {
   const user = useAuthStore((state) => state.user);
+  // Con el programa de puntos apagado el chat no los nombra en ningun lado:
+  // ni en el saludo, ni en el tooltip, ni en las preguntas sugeridas.
+  const pointsVisible = usePointsVisible();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -193,7 +200,7 @@ export function AiChatWidget() {
 
   useEffect(() => {
     setMessages((prev) => {
-      const greeting = getDynamicGreeting(user);
+      const greeting = getDynamicGreeting(user, pointsVisible);
       if (prev.length === 0) {
         return [{ id: createMessageId(), role: "assistant", content: greeting }];
       }
@@ -204,7 +211,7 @@ export function AiChatWidget() {
     });
   }, [user]);
 
-  const initialGreeting = messages[0]?.content || getDynamicGreeting(user);
+  const initialGreeting = messages[0]?.content || getDynamicGreeting(user, pointsVisible);
   const isInitialConversation = messages.length <= 1 && messages[0]?.role === "assistant" && !isSending;
   const firstName = user?.nombre?.trim().split(/\s+/)[0] || "";
   const mobileGreetingName = firstName ? `, ${firstName}` : "";
@@ -222,7 +229,7 @@ export function AiChatWidget() {
   }, [isOpen]);
 
   function resetConversation() {
-    setMessages([{ id: createMessageId(), role: "assistant", content: getDynamicGreeting(user) }]);
+    setMessages([{ id: createMessageId(), role: "assistant", content: getDynamicGreeting(user, pointsVisible) }]);
     setInput("");
   }
 
@@ -341,11 +348,10 @@ export function AiChatWidget() {
 
           {isInitialConversation ? (
             <div className="ai-chat-mobile-suggestions">
-              {[
-                "Quiero consultar mis puntos",
-                "Necesito ayuda con un pedido",
-                "Como funcionan los canjes",
-              ].map((suggestion) => (
+              {(pointsVisible
+                ? ["Quiero consultar mis puntos", "Necesito ayuda con un pedido", "Como funcionan los canjes"]
+                : ["Que productos tienen", "Necesito ayuda con un pedido", "Como son los envios"]
+              ).map((suggestion) => (
                 <button key={suggestion} type="button" onClick={() => setInput(suggestion)}>
                   <span className="ai-chat-mobile-suggestion-icon" aria-hidden="true" />
                   <span>{suggestion}</span>
@@ -381,7 +387,7 @@ export function AiChatWidget() {
       {showTooltip && !isOpen ? (
         <div className="ai-chat-tooltip" onClick={() => setIsOpen(true)}>
           <div className="ai-chat-tooltip-bubble">
-            {getTooltipGreeting(user)}
+            {getTooltipGreeting(user, pointsVisible)}
           </div>
           <button
             type="button"

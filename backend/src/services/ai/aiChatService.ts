@@ -225,7 +225,7 @@ async function buildMessages(input: AiChatServiceInput): Promise<Groq.Chat.ChatC
     {
       role: "system",
       content: [
-        buildSystemPrompt({ pointsEnabled, whatsappCatalogMode }),
+        buildSystemPrompt({ pointsEnabled, whatsappCatalogMode, userRole }),
         pointsProgramContext,
         envioGratisContext,
         productsContext,

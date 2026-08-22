@@ -141,7 +141,7 @@ async function buildMessages(input) {
         {
             role: "system",
             content: [
-                (0, aiSystemPrompt_1.buildSystemPrompt)({ pointsEnabled, whatsappCatalogMode }),
+                (0, aiSystemPrompt_1.buildSystemPrompt)({ pointsEnabled, whatsappCatalogMode, userRole }),
                 pointsProgramContext,
                 envioGratisContext,
                 productsContext,
