@@ -18,17 +18,39 @@ El `server.js` de la raíz arranca `backend/dist/src/server.js`. Si tocás algo
 en `backend/src/`, tenés que correr `npm run build --prefix backend` y
 **commitear el `dist`**, o el cambio no llega a producción.
 
-**2. Los archivos del `dist` aparecen como modificados sin estarlo.**
+**2. Toda dependencia nueva del backend va TAMBIEN en el `package.json` de la raíz.**
+Hostinger arranca el backend desde el `server.js` de la raíz, así que Node
+resuelve los módulos en el `node_modules` **raíz**. Una dependencia que solo
+está en `backend/package.json` no se instala en producción y el server no
+levanta: `Cannot find module '<x>'` en loop y 503. Por eso el `package.json`
+de la raíz duplica las dependencias de runtime del backend (`express`,
+`mysql2`, `sharp`, `qrcode`, `express-async-errors`...). Ya rompió producción
+dos veces: `qrcode` y `express-async-errors`.
+
+**3. Los archivos del `dist` aparecen como modificados sin estarlo.**
 Es ruido de CRLF vs LF. Verificá con `git diff --numstat` antes de asumir
 que hay cambios reales.
 
-**3. Levantar la app localmente requiere MySQL corriendo.**
+**4. Levantar la app localmente requiere MySQL corriendo.**
 Si no está, el backend queda colgado sin error claro y `curl` a `:4000` da
 connection refused. **No pierdas tiempo depurándolo**: verificá con
 typecheck, tests y tests unitarios de los servicios. La verificación real
 se hace en producción.
 
-**4. No hay CI ni husky.** El único punto de control es `npm run build`.
+**5. No hay CI ni husky.** El único punto de control es `npm run build`.
+
+**6. El contenido de `paginas_contenido` se guarda CRUDO y solo se sanitiza
+en el navegador.**
+`PUT /api/admin/paginas/:slug` únicamente valida que sea un string no vacío.
+La limpieza (DOMPurify, en `frontend/src/lib/pageContent.ts`) ocurre recién
+al renderizar, dentro del navegador del visitante. Eso alcanza mientras los
+únicos consumidores sean los que ya existen. **Si vas a convertir ese
+contenido en HTML desde Node — prerender SEO, un email, un export — DOMPurify
+no está en ese camino y estarías escribiendo XSS almacenado a disco.** El
+riesgo concreto es `frontend/scripts/generate-seo-assets.mjs`, que ya escribe
+`.html` reales en el build y es el candidato natural a que alguien le meta el
+contenido de las páginas para SEO. Si pasa: sanitizá del lado del servidor
+antes de guardar, no solo al mostrar.
 
 ## Comandos
 
@@ -56,6 +78,22 @@ ventas locales, `orderLifecycle`, `pendingCheckout` y los backfills.
 **Subida de imágenes:** un solo endpoint, `POST /api/admin/productos/upload`
 en `admin.ts`. Orden obligatorio: multer → `verifyUploadedImageFile()`
 (magic bytes, es una propiedad de seguridad) → recién ahí `sharp`.
+
+**URLs que terminan en un `href`, un `to` o un `window.open()`:** pasan
+siempre por `normalizeSafeNavigationUrl()`, que existe duplicado a propósito
+en `backend/src/urlSafety.ts` y `frontend/src/lib/urlSafety.ts` (si tocás uno,
+tocá el otro). React 18 **no** bloquea `href="javascript:..."`, solo avisa por
+consola, así que cualquier URL que venga de la base, de la API o del chatbot
+es no confiable. Ojo con `value.startsWith("/")` como chequeo de "es interna":
+`//evil.com` lo pasa. `<img src>` no es vector — no ejecuta `javascript:`.
+
+**Dos orígenes distintos:** el frontend lo sirve Apache en
+`alfajorescorrentinos.com` y el backend Node corre en `nandengineer.shop`.
+Por eso hay CORS, y por eso el CSP de helmet en `server.ts` **no** protege las
+páginas que el usuario navega: esas llevan sus cabeceras en
+`frontend/public/.htaccess`. Si agregás un servicio externo (un SDK, una API,
+un dominio de imágenes), va en las dos listas: `ALLOWED_ORIGINS`/CORS del
+backend si te llama a vos, y el CSP del `.htaccess` si lo carga el navegador.
 
 ## Imágenes (ya optimizado, rama `optimize-images`)
 
@@ -89,3 +127,11 @@ programa en backend (bloquear sumas en `registrarMovimientoPuntos`,
 permitiendo `ajuste`/`vencimiento_puntos`/`devolucion_canje` para que las
 devoluciones sigan cuadrando) y lo oculte en frontend (navbar, rutas
 `/catalogo` `/mis-canjes` `/carrito-canjes`, saldo, productos de canje).
+
+**Activar el CSP.** En `frontend/public/.htaccess` está como
+`Content-Security-Policy-Report-Only`: el navegador avisa por consola pero no
+bloquea. Es a propósito, porque el SDK de Mercado Pago carga subrecursos que
+no se pueden enumerar leyendo el código y una lista incompleta rompe el
+checkout. Para activarlo: recorrer el sitio (login con Google, catálogo,
+mapas, un checkout completo con MP), revisar la consola, agregar los dominios
+que falten y recién ahí sacarle el sufijo `-Report-Only` a la cabecera.

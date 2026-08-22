@@ -18,3 +18,54 @@
 <FilesMatch "\.(png|jpe?g|webp|gif|svg|ico|woff2?)$">
     Header set Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
 </FilesMatch>
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Cabeceras de seguridad
+#
+# El backend ya manda las suyas con helmet (server.ts), pero eso solo cubre
+# las respuestas de nandengineer.shop. Las páginas que el usuario realmente
+# navega las sirve Apache desde este dominio, y hasta acá no llegaba ninguna.
+# ═══════════════════════════════════════════════════════════════════════════
+
+<IfModule mod_headers.c>
+    # No adivines el tipo de archivo por el contenido: si digo que es una
+    # imagen, tratalo como imagen aunque adentro haya HTML.
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Clickjacking: nadie puede meter este sitio en un iframe. Lo mismo dice
+    # frame-ancestors en el CSP; este es el equivalente para navegadores viejos.
+    Header always set X-Frame-Options "DENY"
+
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # La app no usa ninguna de estas APIs. Apagarlas evita que un script
+    # inyectado pida permisos en nombre del sitio. "payment" queda fuera de
+    # la lista a propósito: lo puede necesitar el brick de Mercado Pago.
+    Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), usb=(), magnetometer=()"
+
+    # ── CSP ────────────────────────────────────────────────────────────────
+    # Está en modo Report-Only: el navegador NO bloquea nada, solo avisa por
+    # consola lo que habría bloqueado. Es a propósito — el SDK de Mercado
+    # Pago carga subrecursos que no se pueden enumerar leyendo el código, y
+    # una lista incompleta rompe el checkout de una tienda en producción.
+    #
+    # PARA ACTIVARLO: abrí el sitio, hacé login con Google, entrá al catálogo,
+    # los mapas y un checkout completo con MP. Mirá la consola del navegador.
+    # Si no aparece ningún "Content Security Policy" en rojo, borrá el sufijo
+    # "-Report-Only" del nombre de la cabecera de abajo y ya queda bloqueando
+    # de verdad. Si aparece alguno, agregá ese dominio a la directiva que
+    # menciona el mensaje y volvé a probar.
+    Header always set Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://accounts.google.com https://sdk.mercadopago.com https://*.mercadopago.com https://*.mlstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://nandengineer.shop https://maps.geoapify.com https://via.placeholder.com https://*.mlstatic.com https://*.mercadopago.com; font-src 'self' data:; connect-src 'self' https://nandengineer.shop wss://nandengineer.shop https://api.geoapify.com https://accounts.google.com https://api.mercadopago.com https://*.mercadopago.com https://*.mercadolibre.com; frame-src https://accounts.google.com https://www.openstreetmap.org https://*.mercadopago.com https://*.mercadolibre.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+</IfModule>
+
+# Sin listado de directorios: entrar a /assets/ no debe devolver el índice
+# de archivos.
+Options -Indexes
+
+# Nada que empiece con punto se sirve nunca. Si algún deploy copia por error
+# un .env o un .git al webroot, queda inaccesible igual.
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+</IfModule>
