@@ -72,9 +72,21 @@ function routeOutputPath(routePath) {
   return path.join(distDir, `${fileName}.html`);
 }
 
-function renderRouteHtml(routeConfig) {
+// El preload del hero vive en index.html, que es de donde estas rutas clonan
+// el <head>. Pero hero.webp (226KB) solo lo usa Home.tsx: en /tienda,
+// /catalogo o /terminos se descarga entero para nunca mostrarse, y el
+// navegador lo avisa por consola ("preloaded but not used"). Se saca de todas
+// las rutas menos "/", que es la unica donde el hero es el LCP.
+const HERO_PRELOAD_PATTERN =
+  /[ \t]*(?:<!--[^>]*?-->\s*\n)?[ \t]*<link\s+rel="preload"[^>]*href="\/hero\.webp"[^>]*>[ \t]*\n?/i;
+
+function stripHeroPreload(html) {
+  return html.replace(HERO_PRELOAD_PATTERN, "");
+}
+
+function renderRouteHtml(routePath, routeConfig) {
   const url = canonicalUrl(routeConfig);
-  let html = baseHtml;
+  let html = routePath === "/" ? baseHtml : stripHeroPreload(baseHtml);
 
   html = setTitle(html, routeConfig.title);
   html = setMetaName(html, "description", routeConfig.description);
@@ -110,7 +122,7 @@ function renderRobots() {
 for (const [routePath, routeConfig] of Object.entries(publicRoutes)) {
   const outputPath = routeOutputPath(routePath);
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, renderRouteHtml(routeConfig), "utf8");
+  await writeFile(outputPath, renderRouteHtml(routePath, routeConfig), "utf8");
 }
 
 await writeFile(path.join(distDir, "sitemap.xml"), renderSitemap(), "utf8");
