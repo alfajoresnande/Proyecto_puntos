@@ -250,6 +250,9 @@ async function answerAiChat(input) {
                 temperature: 0.3,
                 max_tokens: (0, groqClients_1.getAiChatMaxOutputTokens)(),
                 stream: false,
+                ...((0, groqClients_1.modelSupportsReasoningEffort)(model)
+                    ? { reasoning_effort: (0, groqClients_1.getAiChatReasoningEffort)() }
+                    : {}),
             });
             const answer = completion.choices[0]?.message?.content?.trim();
             (0, aiRouter_1.recordAiProviderSuccess)(candidate);

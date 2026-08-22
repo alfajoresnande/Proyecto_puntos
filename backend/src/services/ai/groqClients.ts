@@ -58,10 +58,31 @@ export function getConfiguredGroqClients(): GroqClientDescriptor[] {
   return configuredGroqClients;
 }
 
+// Groq apago llama-3.1-8b-instant el 16/08/2026 y recomienda gpt-oss-20b
+// como reemplazo. Si vuelve a pasar lo mismo, la lista viva de modelos esta
+// en https://console.groq.com/docs/models y se puede pisar con GROQ_MODEL
+// sin tocar el codigo ni redeployar.
 export function getGroqModel(): string {
-  return process.env.GROQ_MODEL?.trim() || "llama-3.1-8b-instant";
+  return process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-20b";
 }
 
+// gpt-oss razona antes de responder y esos tokens salen del mismo presupuesto
+// que la respuesta: con el tope viejo de 350 el modelo gastaba el budget
+// pensando y devolvia content vacio (o sea, fallback en cada pregunta).
 export function getAiChatMaxOutputTokens(): number {
-  return readIntegerEnv("AI_CHAT_MAX_OUTPUT_TOKENS", 350, 80, 800);
+  return readIntegerEnv("AI_CHAT_MAX_OUTPUT_TOKENS", 700, 80, 1600);
+}
+
+// "low" mantiene el razonamiento corto: es un chat de catalogo, no necesita
+// cadena de pensamiento larga, y el free tier son 8000 tokens por minuto.
+export function getAiChatReasoningEffort(): "none" | "low" | "medium" | "high" {
+  const value = process.env.AI_CHAT_REASONING_EFFORT?.trim().toLowerCase();
+  if (value === "none" || value === "low" || value === "medium" || value === "high") return value;
+  return "low";
+}
+
+// reasoning_effort solo lo aceptan los modelos de razonamiento: mandarselo a
+// otro modelo es un 400. Se aplica solo cuando el id lo justifica.
+export function modelSupportsReasoningEffort(model: string): boolean {
+  return /gpt-oss|qwen|deepseek-r1/i.test(model);
 }

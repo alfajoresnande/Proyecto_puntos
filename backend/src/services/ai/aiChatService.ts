@@ -1,6 +1,12 @@
 import type { Groq } from "groq-sdk";
 import { AI_CHAT_FALLBACK_ANSWER, AI_SYSTEM_PROMPT } from "./aiSystemPrompt";
-import { getAiChatMaxOutputTokens, getGroqModel, type AiPublicProvider } from "./groqClients";
+import {
+  getAiChatMaxOutputTokens,
+  getAiChatReasoningEffort,
+  getGroqModel,
+  modelSupportsReasoningEffort,
+  type AiPublicProvider,
+} from "./groqClients";
 import {
   getAiProviderCandidates,
   getGroqErrorStatus,
@@ -341,6 +347,9 @@ export async function answerAiChat(input: AiChatServiceInput): Promise<AiChatRes
         temperature: 0.3,
         max_tokens: getAiChatMaxOutputTokens(),
         stream: false,
+        ...(modelSupportsReasoningEffort(model)
+          ? { reasoning_effort: getAiChatReasoningEffort() }
+          : {}),
       });
 
       const answer = completion.choices[0]?.message?.content?.trim();

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getConfiguredGroqClients = getConfiguredGroqClients;
 exports.getGroqModel = getGroqModel;
 exports.getAiChatMaxOutputTokens = getAiChatMaxOutputTokens;
+exports.getAiChatReasoningEffort = getAiChatReasoningEffort;
+exports.modelSupportsReasoningEffort = modelSupportsReasoningEffort;
 const groq_sdk_1 = __importDefault(require("groq-sdk"));
 const GROQ_KEY_CONFIGS = [
     { slot: "primary", publicProvider: "primary", envVarName: "GROQ_API_KEY_PRIMARY" },
@@ -45,9 +47,29 @@ const configuredGroqClients = GROQ_KEY_CONFIGS.flatMap((config) => {
 function getConfiguredGroqClients() {
     return configuredGroqClients;
 }
+// Groq apago llama-3.1-8b-instant el 16/08/2026 y recomienda gpt-oss-20b
+// como reemplazo. Si vuelve a pasar lo mismo, la lista viva de modelos esta
+// en https://console.groq.com/docs/models y se puede pisar con GROQ_MODEL
+// sin tocar el codigo ni redeployar.
 function getGroqModel() {
-    return process.env.GROQ_MODEL?.trim() || "llama-3.1-8b-instant";
+    return process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-20b";
 }
+// gpt-oss razona antes de responder y esos tokens salen del mismo presupuesto
+// que la respuesta: con el tope viejo de 350 el modelo gastaba el budget
+// pensando y devolvia content vacio (o sea, fallback en cada pregunta).
 function getAiChatMaxOutputTokens() {
-    return readIntegerEnv("AI_CHAT_MAX_OUTPUT_TOKENS", 350, 80, 800);
+    return readIntegerEnv("AI_CHAT_MAX_OUTPUT_TOKENS", 700, 80, 1600);
+}
+// "low" mantiene el razonamiento corto: es un chat de catalogo, no necesita
+// cadena de pensamiento larga, y el free tier son 8000 tokens por minuto.
+function getAiChatReasoningEffort() {
+    const value = process.env.AI_CHAT_REASONING_EFFORT?.trim().toLowerCase();
+    if (value === "none" || value === "low" || value === "medium" || value === "high")
+        return value;
+    return "low";
+}
+// reasoning_effort solo lo aceptan los modelos de razonamiento: mandarselo a
+// otro modelo es un 400. Se aplica solo cuando el id lo justifica.
+function modelSupportsReasoningEffort(model) {
+    return /gpt-oss|qwen|deepseek-r1/i.test(model);
 }

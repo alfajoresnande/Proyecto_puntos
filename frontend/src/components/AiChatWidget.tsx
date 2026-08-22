@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { isInternalNavigationPath, normalizeSafeNavigationUrl } from "../lib/urlSafety";
 import { useAuthStore } from "../store/authStore";
 import type { Rol, User } from "../types";
 
@@ -120,12 +121,25 @@ function parseMessageContent(content: string) {
       const match = part.match(/\[(.*?)\]\((.*?)\)/);
       if (match) {
         const text = match[1];
-        const url = match[2];
-        if (url.startsWith("/")) {
+        // El nombre y la descripcion de los productos van textuales al prompt
+        // del modelo, asi que la URL que sale aca es contenido no confiable:
+        // sin este filtro, un "[Oferta](javascript:...)" es XSS almacenado.
+        const url = normalizeSafeNavigationUrl(match[2]);
+        if (!url) {
+          return <span key={index}>{text}</span>;
+        }
+        if (isInternalNavigationPath(url)) {
           return (
             <Link key={index} to={url} className="ai-chat-link">
               {text}
             </Link>
+          );
+        }
+        if (url.startsWith("#")) {
+          return (
+            <a key={index} href={url} className="ai-chat-link">
+              {text}
+            </a>
           );
         }
         return (
