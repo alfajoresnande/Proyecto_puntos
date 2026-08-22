@@ -149,3 +149,10 @@ no se pueden enumerar leyendo el código y una lista incompleta rompe el
 checkout. Para activarlo: recorrer el sitio (login con Google, catálogo,
 mapas, un checkout completo con MP), revisar la consola, agregar los dominios
 que falten y recién ahí sacarle el sufijo `-Report-Only` a la clave.
+
+Estado al 22/08/2026: verificado sin violaciones en home, tienda, catálogo y
+términos. **Las reglas de Mercado Pago siguen SIN PROBAR**, porque las ventas
+online están apagadas por el superAdmin y el SDK nunca se carga. El día que
+se reactiven las ventas, hacé un pago de prueba con la consola abierta ANTES
+de confiar: si el CSP ya está en modo bloqueante y a MP le falta un dominio,
+el checkout falla en silencio para los clientes.
