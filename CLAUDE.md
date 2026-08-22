@@ -7,9 +7,15 @@ Roles: `cliente`, `vendedor`, `admin`, `superAdmin`.
 
 - **Backend:** Express + TypeScript + **MySQL** (`mysql2`), puerto 4000
 - **Frontend:** Vite + React 18 + TypeScript, puerto 5173
-- **Producción:** frontend estático servido por **Apache** (ver `frontend/public/.htaccess`); backend Node aparte
+- **Producción:** frontend en **Vercel** (`alfajorescorrentinos.com`, config en
+  `frontend/vercel.json`); backend Node aparte en **`nandengineer.shop`**
 
 > El `README.md` dice SQLite / `better-sqlite3`. **Está desactualizado** — es MySQL. No te guíes por él.
+>
+> `frontend/public/.htaccess` es de la época de Apache/Hostinger. Vercel lo
+> ignora: si tocás cabeceras, redirects o rewrites, el archivo que manda es
+> `frontend/vercel.json`. Verificado el 22/08/2026 leyendo las respuestas de
+> producción (`server: Vercel`).
 
 ## Trampas que cuestan tiempo si no las sabés
 
@@ -87,13 +93,21 @@ consola, así que cualquier URL que venga de la base, de la API o del chatbot
 es no confiable. Ojo con `value.startsWith("/")` como chequeo de "es interna":
 `//evil.com` lo pasa. `<img src>` no es vector — no ejecuta `javascript:`.
 
-**Dos orígenes distintos:** el frontend lo sirve Apache en
+**Dos orígenes distintos:** el frontend lo sirve Vercel en
 `alfajorescorrentinos.com` y el backend Node corre en `nandengineer.shop`.
 Por eso hay CORS, y por eso el CSP de helmet en `server.ts` **no** protege las
-páginas que el usuario navega: esas llevan sus cabeceras en
-`frontend/public/.htaccess`. Si agregás un servicio externo (un SDK, una API,
-un dominio de imágenes), va en las dos listas: `ALLOWED_ORIGINS`/CORS del
-backend si te llama a vos, y el CSP del `.htaccess` si lo carga el navegador.
+páginas que el usuario navega: esas llevan sus cabeceras en el bloque
+`headers` de `frontend/vercel.json`. Si agregás un servicio externo (un SDK,
+una API, un dominio de imágenes), va en las dos listas: `ALLOWED_ORIGINS`/CORS
+del backend si te llama a vos, y el CSP de `vercel.json` si lo carga el
+navegador.
+
+Ojo con una trampa de `vercel.json`: tiene rewrites de `/api/*` y `/uploads/*`
+hacia `nandengineer.shop`, pero **el build no los usa** — se compila con
+`VITE_API_BASE_URL=https://nandengineer.shop`, así que el navegador pega
+directo al backend, cross-origin. Los rewrites están ahí sin efecto. Si algún
+día vaciás esa variable para pasar por el proxy, el CSP se puede achicar a
+`connect-src 'self'`.
 
 ## Imágenes (ya optimizado, rama `optimize-images`)
 
@@ -128,10 +142,10 @@ permitiendo `ajuste`/`vencimiento_puntos`/`devolucion_canje` para que las
 devoluciones sigan cuadrando) y lo oculte en frontend (navbar, rutas
 `/catalogo` `/mis-canjes` `/carrito-canjes`, saldo, productos de canje).
 
-**Activar el CSP.** En `frontend/public/.htaccess` está como
+**Activar el CSP.** En el bloque `headers` de `frontend/vercel.json` está como
 `Content-Security-Policy-Report-Only`: el navegador avisa por consola pero no
 bloquea. Es a propósito, porque el SDK de Mercado Pago carga subrecursos que
 no se pueden enumerar leyendo el código y una lista incompleta rompe el
 checkout. Para activarlo: recorrer el sitio (login con Google, catálogo,
 mapas, un checkout completo con MP), revisar la consola, agregar los dominios
-que falten y recién ahí sacarle el sufijo `-Report-Only` a la cabecera.
+que falten y recién ahí sacarle el sufijo `-Report-Only` a la clave.
