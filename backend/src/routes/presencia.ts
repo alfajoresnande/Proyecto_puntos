@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { getAuthPayload } from "../auth";
+import { getVerifiedUser } from "../auth";
 import { getClientIp, getOrCreateDeviceId } from "../services/authIdentity";
 import { recordAppPresence } from "../services/appPresence";
+import { requestRateLimit } from "../middleware/requestRateLimit";
 
 const router = Router();
 
@@ -22,7 +23,18 @@ function isStaffPath(path: string): boolean {
   return path.startsWith("/admin") || path.startsWith("/superadmin") || path.startsWith("/vendedor") || path.startsWith("/staff");
 }
 
-router.post("/heartbeat", async (req, res, next) => {
+// Escritura publica sin autenticacion: cada request sin cookie genera una
+// identidad de visitante nueva, asi que sin limite la tabla crece sin techo.
+// El tope es holgado para no cortar el heartbeat legitimo de la app.
+const heartbeatRateLimit = requestRateLimit({
+  action: "presencia_heartbeat",
+  windows: [
+    { name: "presencia_min", limit: 60, windowSeconds: 60 },
+    { name: "presencia_hora", limit: 900, windowSeconds: 3600 },
+  ],
+});
+
+router.post("/heartbeat", heartbeatRateLimit, async (req, res, next) => {
   const parsed = heartbeatSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0].message });
@@ -30,7 +42,7 @@ router.post("/heartbeat", async (req, res, next) => {
   }
 
   try {
-    const auth = getAuthPayload(req);
+    const auth = await getVerifiedUser(req);
     const path = parsed.data.path.trim() || "/";
     if (isStaffRole(auth?.rol) || isStaffPath(path)) {
       res.status(204).end();

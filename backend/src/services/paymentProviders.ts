@@ -539,6 +539,12 @@ export type MercadoPagoPaymentLookupResult = MercadoPagoApiPaymentResult & {
   orderId: number | null;
   checkoutId: number | null;
   manualChargeId: number | null;
+  /** Importe cobrado segun Mercado Pago. Nunca segun el body del webhook. */
+  amount: number | null;
+  currency: string | null;
+  /** Cuenta vendedora que recibio el pago, para comprobar que es la nuestra. */
+  collectorId: string | null;
+  liveMode: boolean | null;
 };
 
 export type MercadoPagoQrOrderLookupResult = MercadoPagoApiPaymentResult & {
@@ -546,6 +552,10 @@ export type MercadoPagoQrOrderLookupResult = MercadoPagoApiPaymentResult & {
   orderId: number | null;
   checkoutId: number | null;
   paymentId: string | null;
+  amount: number | null;
+  currency: string | null;
+  collectorId: string | null;
+  liveMode: boolean | null;
 };
 
 export type MercadoPagoPendingResourceCancellation = {
@@ -620,11 +630,26 @@ export function parseMercadoPagoReference(reference: string | null): { kind: "or
   return null;
 }
 
+function normalizeCurrency(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim().toUpperCase();
+  }
+  return null;
+}
+
+function normalizeLiveMode(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+
 function toMercadoPagoPaymentResult(payload: Record<string, unknown>): MercadoPagoPaymentLookupResult {
   const metadata = asRecord(payload.metadata);
   const externalReference = firstString(payload.external_reference, metadata.external_reference);
   const directOrderId = firstString(metadata.order_id, payload.order_id);
   const directCheckoutId = firstString(metadata.checkout_id, payload.checkout_id);
+  const collector = asRecord(payload.collector);
   return {
     providerPaymentId:
       typeof payload.id === "string" || typeof payload.id === "number" ? String(payload.id) : null,
@@ -634,6 +659,10 @@ function toMercadoPagoPaymentResult(payload: Record<string, unknown>): MercadoPa
     orderId: parseOrderIdFromReference(directOrderId ?? externalReference),
     checkoutId: parseCheckoutIdFromReference(directCheckoutId ?? externalReference),
     manualChargeId: parseManualChargeIdFromReference(externalReference),
+    amount: firstPositiveNumber(payload.transaction_amount, asRecord(payload.transaction_details).total_paid_amount),
+    currency: normalizeCurrency(payload.currency_id),
+    collectorId: firstString(payload.collector_id, collector.id),
+    liveMode: normalizeLiveMode(payload.live_mode),
     payload,
   };
 }
@@ -691,6 +720,8 @@ export async function getMercadoPagoQrOrder(orderId: string | number): Promise<M
   const payments = Array.isArray(transactions.payments) ? transactions.payments : [];
   const firstPayment = asRecord(payments[0]);
   const externalReference = firstString(payload.external_reference);
+  const config = asRecord(payload.config);
+  const qrConfig = asRecord(config.qr);
   return {
     providerPaymentId: firstString(payload.id),
     status: typeof payload.status === "string" ? payload.status : "unknown",
@@ -699,6 +730,10 @@ export async function getMercadoPagoQrOrder(orderId: string | number): Promise<M
     orderId: parseOrderIdFromReference(externalReference),
     checkoutId: parseCheckoutIdFromReference(externalReference),
     paymentId: firstString(firstPayment.id),
+    amount: firstPositiveNumber(payload.total_amount, transactions.total_amount, firstPayment.amount),
+    currency: normalizeCurrency(payload.currency, firstPayment.currency),
+    collectorId: firstString(payload.collector_id, qrConfig.external_pos_id, config.external_pos_id),
+    liveMode: normalizeLiveMode(payload.live_mode),
     payload,
   };
 }

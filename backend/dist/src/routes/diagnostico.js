@@ -20,14 +20,15 @@ function secureEquals(value, expected) {
         return false;
     return (0, crypto_1.timingSafeEqual)(current, target);
 }
-function hasDiagnosticsAccess(req) {
+async function hasDiagnosticsAccess(req) {
     // Por defecto el diagnostico es publico para facilitar puesta en marcha.
     // Si queres protegerlo, define DIAGNOSTICO_REQUIRE_AUTH=true.
     if (!isEnabled(process.env.DIAGNOSTICO_REQUIRE_AUTH))
         return true;
     if (isEnabled(process.env.DIAGNOSTICO_PUBLIC))
         return true;
-    const auth = (0, auth_1.getAuthPayload)(req);
+    // Rol verificado contra la base, no el que traiga un JWT viejo.
+    const auth = await (0, auth_1.getVerifiedUser)(req);
     if (auth?.rol === "admin" || auth?.rol === "superAdmin")
         return true;
     const expectedToken = (process.env.DIAGNOSTICO_TOKEN || "").trim();
@@ -66,7 +67,7 @@ async function checkDbStatus() {
     }
 }
 router.get("/", async (req, res) => {
-    if (!hasDiagnosticsAccess(req)) {
+    if (!(await hasDiagnosticsAccess(req))) {
         (0, securityMonitor_1.recordSecurityEvent)("diagnostico_acceso_denegado", req);
         res.status(403).json({ error: "No autorizado" });
         return;
@@ -87,7 +88,7 @@ router.get("/", async (req, res) => {
     res.json(payload);
 });
 router.get("/db", async (req, res) => {
-    if (!hasDiagnosticsAccess(req)) {
+    if (!(await hasDiagnosticsAccess(req))) {
         (0, securityMonitor_1.recordSecurityEvent)("diagnostico_db_acceso_denegado", req);
         res.status(403).json({ error: "No autorizado" });
         return;
@@ -108,7 +109,7 @@ router.post("/access-denied", async (req, res) => {
             .filter((value) => ALLOWED_ROLES.has(value))
             .slice(0, 10)
         : [];
-    const payload = (0, auth_1.getAuthPayload)(req);
+    const payload = await (0, auth_1.getVerifiedUser)(req);
     let actor;
     if (payload) {
         const usuario = await (0, db_1.qOne)(db_1.pool, "SELECT id, nombre, email, rol FROM usuarios WHERE id = ? LIMIT 1", [payload.id]);

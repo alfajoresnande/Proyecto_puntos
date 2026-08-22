@@ -24,6 +24,17 @@ import presenciaRoutes from "./routes/presencia";
 import aiChatRoutes from "./routes/aiChat.routes";
 import layoutRoutes from "./routes/layout";
 import { recordSecurityEvent } from "./securityMonitor";
+import { authCookiePolicy } from "./auth";
+import {
+  CSRF_HEADER_NAME,
+  csrfSessionBinding,
+  emitCsrfToken,
+  readCsrfCookie,
+  setCsrfCookie,
+  verifyCsrfToken,
+} from "./csrf";
+import { readTokenFromCookies } from "./authCookie";
+import { buildReadinessReport } from "./readiness";
 import { attachRealtimeServer } from "./realtime";
 import { startReservationExpirationWorker } from "./services/expirations";
 import fs from "fs";
@@ -34,11 +45,40 @@ import { checkImageProcessingAvailable } from "./services/imageVariants";
 
 const app = express();
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const DEFAULT_FRONTEND_ORIGINS = [
-  "http://localhost:5173",
+const IS_PRODUCTION = (process.env.NODE_ENV || "").trim().toLowerCase() === "production";
+
+// SEC-06: `http://localhost:5173` estaba en la lista incluso en produccion, o
+// sea que una app local podia hacer peticiones con credenciales contra la API
+// de produccion. Ahora los origenes loopback solo se confian en desarrollo.
+const PRODUCTION_FRONTEND_ORIGINS = [
   "https://alfajorescorrentinos.com",
   "https://www.alfajorescorrentinos.com",
-].join(",");
+];
+const DEVELOPMENT_FRONTEND_ORIGINS = ["http://localhost:5173"];
+const DEFAULT_FRONTEND_ORIGINS = (
+  IS_PRODUCTION ? PRODUCTION_FRONTEND_ORIGINS : [...DEVELOPMENT_FRONTEND_ORIGINS, ...PRODUCTION_FRONTEND_ORIGINS]
+).join(",");
+
+function isLoopbackOrigin(origin: string): boolean {
+  const normalized = toOrigin(origin);
+  if (!normalized) return false;
+  const hostname = new URL(normalized).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
+/** En produccion se descarta cualquier origen loopback venga de donde venga. */
+function dropLoopbackInProduction(origins: string[]): string[] {
+  if (!IS_PRODUCTION) return origins;
+  const kept: string[] = [];
+  for (const origin of origins) {
+    if (isLoopbackOrigin(origin)) {
+      console.warn(`[cors] Origen loopback ignorado en produccion: ${origin}`);
+      continue;
+    }
+    kept.push(origin);
+  }
+  return kept;
+}
 
 function parseOrigins(raw: string | undefined, fallback: string): string[] {
   const origins = (raw ?? fallback)
@@ -101,18 +141,19 @@ function addWebAliases(origins: string[]): string[] {
 }
 
 function buildAllowedOrigins() {
-  return new Set(
-    addWebAliases(
-      addLoopbackAliases([
-        ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
-        ...parseOrigins(process.env.FRONTEND_URL, ""),
-        ...parseOrigins(process.env.CORS_ALLOWED_ORIGINS, ""),
-        ...parseOrigins(process.env.ALLOWED_ORIGINS, ""),
-        ...parseOrigins(process.env.ALLOWED_FRONTEND_ORIGINS, ""),
-      ])
-    )
-  );
+  const declared = [
+    ...parseOrigins(DEFAULT_FRONTEND_ORIGINS, ""),
+    ...parseOrigins(process.env.FRONTEND_URL, ""),
+    ...parseOrigins(process.env.CORS_ALLOWED_ORIGINS, ""),
+    ...parseOrigins(process.env.ALLOWED_ORIGINS, ""),
+    ...parseOrigins(process.env.ALLOWED_FRONTEND_ORIGINS, ""),
+  ];
+  // Los alias loopback (localhost <-> 127.0.0.1) solo tienen sentido en dev.
+  const expanded = IS_PRODUCTION ? declared : addLoopbackAliases(declared);
+  return new Set(addWebAliases(dropLoopbackInProduction(expanded)));
 }
+
+let readinessDegradedLogged = false;
 
 const allowedOrigins = buildAllowedOrigins();
 const allowedOriginsList = [...allowedOrigins];
@@ -121,31 +162,63 @@ const isAllowedOrigin = (origin: string | undefined) => {
   return !!normalized && allowedOrigins.has(normalized);
 };
 const trustedCsrfOrigins = new Set(
-  addLoopbackAliases([
-    ...allowedOriginsList,
-    ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, ""),
-  ])
+  dropLoopbackInProduction(
+    IS_PRODUCTION
+      ? [...allowedOriginsList, ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, "")]
+      : addLoopbackAliases([...allowedOriginsList, ...parseOrigins(process.env.CSRF_TRUSTED_ORIGINS, "")]),
+  ),
 );
 
+const CSRF_SECRET = process.env.CSRF_SECRET?.trim() || process.env.JWT_SECRET || "";
+
+/** Ata el token CSRF a la sesion actual del navegador. */
+function bindingForRequest(req: Request): string {
+  const sessionToken = readTokenFromCookies(req.headers.cookie, authCookiePolicy);
+  return csrfSessionBinding(sessionToken, CSRF_SECRET);
+}
+
+function issueCsrfToken(req: Request, res: Response): string {
+  const token = emitCsrfToken(bindingForRequest(req), { secret: CSRF_SECRET });
+  setCsrfCookie(res, token, { secure: authCookiePolicy.secure, sameSite: authCookiePolicy.sameSite });
+  return token;
+}
+
+/**
+ * CSRF: double-submit firmado con HMAC y ligado a la sesion (SEC-07).
+ *
+ * Antes solo se comprobaba que el header midiera >= 16 caracteres, asi que
+ * cualquier valor inventado pasaba. Ahora el token lo emite el servidor,
+ * lleva firma propia y solo vale para la sesion que lo pidio.
+ *
+ * Se conserva la validacion estricta de Origin y de Fetch Metadata: son
+ * capas independientes, no sustitutas.
+ */
 function csrfProtection(req: Request, res: Response, next: NextFunction) {
   if (SAFE_METHODS.has(req.method.toUpperCase())) {
+    // En una peticion segura se aprovecha para sembrar la cookie del
+    // double-submit, pero solo si falta o dejo de ser valida para esta sesion.
+    // Rotarla en cada GET haria fallar los POST que ya estan en vuelo.
+    const binding = bindingForRequest(req);
+    const actual = readCsrfCookie(req);
+    if (verifyCsrfToken(actual, actual, binding, { secret: CSRF_SECRET }).ok) {
+      res.locals.csrfToken = actual;
+    } else {
+      // Se deja en res.locals para que GET /api/csrf devuelva EXACTAMENTE el
+      // mismo valor y no emita una segunda cookie distinta.
+      res.locals.csrfToken = issueCsrfToken(req, res);
+    }
     next();
     return;
   }
 
+  // Excepcion de webhooks: SOLO vale porque esa ruta se autentica con la firma
+  // propia del proveedor (ver routes/pagos.ts). Sin esa firma no habria motivo
+  // para eximirla.
   if (req.path.startsWith("/pagos/webhook/")) {
     next();
     return;
   }
 
-  const csrfToken = req.get("x-csrf-token")?.trim() || "";
-  if (csrfToken.length < 16) {
-    recordSecurityEvent("csrf_token_faltante_o_invalido", req);
-    res.status(403).json({ error: "CSRF token faltante o invalido" });
-    return;
-  }
-
-  // Validate browser origin when present. Non-browser clients usually omit it.
   const originHeader = req.get("origin");
   const refererHeader = req.get("referer");
   const requestOrigin = toOrigin(originHeader) ?? toOrigin(refererHeader);
@@ -155,12 +228,19 @@ function csrfProtection(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  // Browser hint: reject cross-site mutation requests only when the origin
-  // was not explicitly trusted above.
   const fetchSite = (req.get("sec-fetch-site") || "").toLowerCase();
   if (fetchSite === "cross-site" && !requestOrigin) {
     recordSecurityEvent("csrf_bloqueado_sitio_cruzado", req, { fetchSite });
     res.status(403).json({ error: "Solicitud bloqueada por politica CSRF" });
+    return;
+  }
+
+  const resultado = verifyCsrfToken(req.get(CSRF_HEADER_NAME), readCsrfCookie(req), bindingForRequest(req), {
+    secret: CSRF_SECRET,
+  });
+  if (!resultado.ok) {
+    recordSecurityEvent("csrf_token_faltante_o_invalido", req, { reason: resultado.reason });
+    res.status(403).json({ error: "CSRF token faltante o invalido" });
     return;
   }
 
@@ -282,7 +362,39 @@ app.get("/", (_req, res) => {
   res.redirect(302, "/diagnostico");
 });
 
+// Liveness: solo dice que el proceso responde. No mira dependencias.
 app.get("/api/health", (_req, res) => res.json({ ok: true, ts: new Date() }));
+app.get("/api/live", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
+// Readiness: 503 si MySQL no responde. Sin base no hay autenticacion, ni rate
+// limiting, ni persistencia de eventos de seguridad: la instancia no puede
+// anunciarse lista (SEC-05).
+app.get("/api/ready", async (_req, res) => {
+  const report = await buildReadinessReport();
+  if (!report.ready) {
+    if (!readinessDegradedLogged) {
+      readinessDegradedLogged = true;
+      console.error("[readiness] La instancia NO esta lista: MySQL no responde.", report.checks.db);
+    }
+    res.status(503).json(report);
+    return;
+  }
+  if (readinessDegradedLogged) {
+    readinessDegradedLogged = false;
+    console.log("[readiness] MySQL volvio a responder. Instancia lista.");
+  }
+  res.json(report);
+});
+
+/**
+ * Emite el token CSRF. El frontend lo pide una vez y despues lo reenvia en
+ * el header; la cookie del double-submit se setea aca.
+ */
+app.get("/api/csrf", (req, res) => {
+  // csrfProtection ya sembro o valido la cookie en este mismo request.
+  const token = (res.locals.csrfToken as string | undefined) || issueCsrfToken(req, res);
+  res.json({ token });
+});
 app.use("/diagnostico", diagnosticoRoutes);
 app.use("/api/diagnostico", diagnosticoRoutes);
 

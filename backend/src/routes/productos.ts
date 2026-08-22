@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { pool } from "../db";
-import { getAuthPayload } from "../auth";
+import { getVerifiedUser } from "../auth";
 import {
   createPricingResolver,
   getActiveClientePricingProfile,
@@ -131,7 +131,7 @@ router.get("/destacados", async (req, res) => {
       return;
     }
 
-    const auth = getAuthPayload(req);
+    const auth = await getVerifiedUser(req);
     const pricingProfile = auth?.rol === "cliente"
       ? await getActiveClientePricingProfile(pool, auth.id)
       : null;
@@ -298,7 +298,7 @@ router.get("/", async (req, res) => {
     return;
   }
 
-  const auth = getAuthPayload(req);
+  const auth = await getVerifiedUser(req);
   const pricingProfile = auth?.rol === "cliente"
     ? await getActiveClientePricingProfile(pool, auth.id)
     : null;

@@ -1,12 +1,14 @@
 import { Router } from "express";
-import { getAuthPayload } from "../auth";
+import { getVerifiedUser } from "../auth";
 import { postAiChat } from "../controllers/aiChat.controller";
 import { pool, qOne } from "../db";
 
 const router = Router();
 
-router.use((req, _res, next) => {
-  const payload = getAuthPayload(req);
+router.use(async (req, _res, next) => {
+  // Estado verificado contra la base: un token de una cuenta desactivada o
+  // degradada no arrastra su rol viejo al chat.
+  const payload = await getVerifiedUser(req);
   if (payload) req.user = payload;
   next();
 });

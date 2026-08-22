@@ -1886,7 +1886,6 @@ export function Admin() {
   const { showToast, confirmToast } = useToast();
   const adminContentRef = useRef<HTMLDivElement | null>(null);
   const user = useAuthStore((state) => state.user);
-  const token = useAuthStore((state) => state.token);
   const isSuperAdmin = user?.rol === "superAdmin";
   const panelBasePath = isSuperAdmin ? "/superadmin" : "/admin";
   const isSuperAdminPanel = location.pathname.startsWith("/superadmin");
@@ -4145,11 +4144,9 @@ export function Admin() {
       if (formato === "html") {
         window.open(apiUrl(`/api/admin/ventas/export?${params.toString()}`), "_blank", "noopener,noreferrer");
       } else {
-        const headers = new Headers();
-        if (token) headers.set("Authorization", `Bearer ${token}`);
+        // SEC-03: la sesion va en la cookie HttpOnly, no en un header Bearer.
         const response = await fetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
           credentials: "include",
-          headers,
         });
         if (!response.ok) {
           const body = await response.json().catch(() => null) as { error?: string } | null;
@@ -4193,11 +4190,8 @@ export function Admin() {
         sucursal_id: String(sucursalId),
         fecha,
       });
-      const headers = new Headers();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
       const response = await fetch(apiUrl(`/api/admin/caja/export?${params.toString()}`), {
         credentials: "include",
-        headers,
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
@@ -4226,11 +4220,8 @@ export function Admin() {
     setErrMsg("");
     setOkMsg("");
     try {
-      const headers = new Headers();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
       const response = await fetch(apiUrl(`/api/postulaciones/admin/${postulacion.id}/cv`), {
         credentials: "include",
-        headers,
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { error?: string } | null;

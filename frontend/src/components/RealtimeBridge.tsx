@@ -33,15 +33,17 @@ type StaffOrderAlert = {
 const ADMIN_ALERT_ORDER_IDS_KEY = "admin_alert_known_ordenes_v1";
 const VENDEDOR_ALERT_ORDER_IDS_KEY = "vendedor_alert_known_ordenes_v1";
 
-function getRealtimeUrl(token: string | null): string {
+/**
+ * SEC-03: el JWT ya no viaja en la query del WebSocket. Esa URL termina en los
+ * logs de cualquier proxy intermedio. El upgrade se autentica con la cookie
+ * HttpOnly, que el navegador manda sola.
+ */
+function getRealtimeUrl(): string {
   const base = API_BASE_URL || window.location.origin;
   const url = new URL(base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/api/realtime";
   url.search = "";
-  if (token) {
-    url.searchParams.set("token", token);
-  }
   return url.toString();
 }
 
@@ -153,7 +155,6 @@ export function RealtimeBridge() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const token = useAuthStore((state) => state.token);
   const userRole = useAuthStore((state) => state.user?.rol);
   const isRestoringSession = useAuthStore((state) => state.isRestoringSession);
   const hasRestoredSession = useAuthStore((state) => state.hasRestoredSession);
@@ -364,7 +365,7 @@ export function RealtimeBridge() {
 
     function connect() {
       if (navigator.onLine === false) return;
-      socket = new WebSocket(getRealtimeUrl(token));
+      socket = new WebSocket(getRealtimeUrl());
 
       socket.addEventListener("open", () => {
         retryCountRef.current = 0;
@@ -411,7 +412,9 @@ export function RealtimeBridge() {
       topicsBufferRef.current.clear();
       socket?.close();
     };
-  }, [hasRestoredSession, isRestoringSession, queryClient, restoreSession, syncStaffOrderAlerts, token]);
+  // `userRole` reemplaza al token como disparador de reconexion: cuando
+  // cambia la sesion hay que rehacer el upgrade para que el server relea la cookie.
+  }, [hasRestoredSession, isRestoringSession, queryClient, restoreSession, syncStaffOrderAlerts, userRole]);
 
   return null;
 }

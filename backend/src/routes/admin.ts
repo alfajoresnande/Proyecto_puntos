@@ -868,10 +868,13 @@ router.put("/usuarios/:id", async (req, res) => {
   }
 
   try {
+    // token_version + 1: un cambio de rol invalida al instante los JWT que
+    // todavia llevan el rol anterior (SEC-04).
     const { affectedRows } = await qRun(
       pool,
        `UPDATE usuarios
-       SET nombre = ?, email = ?, rol = ?, tipo_cliente = ?, descuento_porcentaje = ?, dni = ?, telefono = ?, fecha_nacimiento = ?, localidad = ?, provincia = ?
+       SET nombre = ?, email = ?, rol = ?, tipo_cliente = ?, descuento_porcentaje = ?, dni = ?, telefono = ?, fecha_nacimiento = ?, localidad = ?, provincia = ?,
+           token_version = token_version + 1
         WHERE id = ?`,
       [
         nombre.trim(),
@@ -910,7 +913,12 @@ router.patch("/usuarios/:id/activo", async (req, res) => {
   }
   if (typeof activo !== "boolean") { res.status(400).json({ error: "activo debe ser boolean" }); return; }
   if (!(await ensureCanManageUser(req, res, id))) return;
-  const { affectedRows } = await qRun(pool, "UPDATE usuarios SET activo = ? WHERE id = ?", [activo ? 1 : 0, id]);
+  // Desactivar una cuenta corta sus sesiones en el acto, no cuando expire el JWT.
+  const { affectedRows } = await qRun(
+    pool,
+    "UPDATE usuarios SET activo = ?, token_version = token_version + 1 WHERE id = ?",
+    [activo ? 1 : 0, id],
+  );
   if (affectedRows === 0) {
     res.status(404).json({ error: "Usuario no encontrado" });
     return;

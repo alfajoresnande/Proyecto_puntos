@@ -1173,27 +1173,15 @@ Para consultas sobre privacidad, puedes comunicarte por los canales oficiales pu
 ON DUPLICATE KEY UPDATE slug = slug;
 
 -- ============================================================
--- SEED: administradores iniciales (produccion)
--- NandeAlfajoresCorrentinos1@protonmail.com / Nande_2026_Alfajores1
--- NandeAlfajoresCorrentinos2@protonmail.com / Nande_2026_Alfajores2
+-- SEED: administradores iniciales
+--
+-- NO va ninguna credencial en este archivo. El schema esta en Git y
+-- cualquiera con acceso al repositorio (o a su historial) veria la clave.
+--
+-- La primera cuenta administrativa se crea con el bootstrap de un solo uso:
+--
+--   ADMIN_BOOTSTRAP_EMAIL=... ADMIN_BOOTSTRAP_PASSWORD=... --     npm run admin:bootstrap --prefix backend
+--
+-- Detalle en docs/seguridad-credenciales.md. El script no crea nada si ya
+-- existe algun usuario con rol admin o superAdmin.
 -- ============================================================
-INSERT INTO usuarios (nombre, email, email_verificado, email_verificado_at, password_hash, rol, activo) VALUES
-(
-    'Administrador 1',
-    'NandeAlfajoresCorrentinos1@protonmail.com',
-    1,
-    NOW(),
-    '$2a$10$414cDd/a/On5MvCZCWQ9uuaAFOgv3zPboxokQt2Dya6XQU2VN.rN.',
-    'admin',
-    1
-),
-(
-    'Administrador 2',
-    'NandeAlfajoresCorrentinos2@protonmail.com',
-    1,
-    NOW(),
-    '$2a$10$vO0.sc08ZUwx/zcSgLevjeiwLEnzZqT4IuAwBeGsdEccKX73CTBuu',
-    'admin',
-    1
-)
-ON DUPLICATE KEY UPDATE email = email;

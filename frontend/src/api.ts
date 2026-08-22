@@ -1,4 +1,4 @@
-import { getCsrfToken } from "./lib/csrf";
+import { getCsrfToken, refreshCsrfToken } from "./lib/csrf";
 import { createApiError } from "./lib/rateLimitError";
 import { apiUrl } from "./lib/apiBase";
 import { useAuthStore } from "./store/authStore";
@@ -57,22 +57,10 @@ function buildFetchFailureMessage(path: string, error: unknown): string {
   return "No se pudo completar la solicitud por un problema de conexión inesperado.";
 }
 
-// Lee el token primero del store de Zustand. Si no hay (race condition de
-// hidratación al inicializar), cae a leer directo de localStorage. Esto blinda
-// el caso donde main.tsx dispara llamadas antes que persist termine de hidratar.
-function getStoredToken(): string | null {
-  const fromStore = useAuthStore.getState().token;
-  if (fromStore) return fromStore;
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: { token?: unknown } };
-    if (typeof parsed?.state?.token === "string") return parsed.state.token;
-  } catch {
-    // ignore
-  }
-  return null;
-}
+// SEC-03: ya no hay token en el navegador. La sesión viaja exclusivamente en
+// la cookie `__Host-auth_token`, que es HttpOnly y por lo tanto invisible para
+// este código (y para cualquier XSS o dependencia comprometida). Todas las
+// peticiones van con `credentials: "include"`.
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const isAuthPath = path.startsWith("/auth/");
@@ -80,24 +68,38 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const formDataBody = isFormData(options.body);
   const method = (options.method || "GET").toUpperCase();
 
-  const headers = new Headers(options.headers);
-  if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
-  if (!SAFE_METHODS.has(method)) headers.set("X-CSRF-Token", getCsrfToken());
+  const isMutation = !SAFE_METHODS.has(method);
+  const serializedBody =
+    hasBody && !formDataBody && typeof options.body === "object"
+      ? JSON.stringify(options.body)
+      : (options.body as BodyInit | null | undefined);
 
-  const token = getStoredToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  let response: Response;
-  try {
-    response = await fetch(apiUrl(`/api${path}`), {
+  const send = async (csrfToken: string): Promise<Response> => {
+    const headers = new Headers(options.headers);
+    if (hasBody && !formDataBody) headers.set("Content-Type", "application/json");
+    if (isMutation) headers.set("X-CSRF-Token", csrfToken);
+    return fetch(apiUrl(`/api${path}`), {
       ...options,
       credentials: "include",
       headers,
-      body:
-        hasBody && !formDataBody && typeof options.body === "object"
-          ? JSON.stringify(options.body)
-          : (options.body as BodyInit | null | undefined),
+      body: serializedBody,
     });
+  };
+
+  let response: Response;
+  try {
+    response = await send(getCsrfToken());
+
+    // El token CSRF está atado a la sesión: justo después de iniciar o cerrar
+    // sesión el que teníamos deja de valer. Se pide uno nuevo y se reintenta
+    // una sola vez.
+    if (isMutation && response.status === 403) {
+      const body403 = await response.clone().json().catch(() => null);
+      if (typeof (body403 as { error?: unknown } | null)?.error === "string" &&
+          (body403 as { error: string }).error.toLowerCase().includes("csrf")) {
+        response = await send(await refreshCsrfToken());
+      }
+    }
   } catch (error) {
     throw new Error(buildFetchFailureMessage(path, error));
   }
@@ -112,14 +114,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       throw createApiError(body, "Credenciales invalidas.");
     }
 
-    // Auto-logout SOLO si efectivamente enviamos un token y el server lo rechazó.
+    // Auto-logout SOLO si el store creía tener sesión y el server la rechazó.
     // Si no había token (caso edge: store no hidratado, llamada prematura, etc.)
     // no destruimos la sesión persistida — solo lanzamos el error y dejamos que
     // ProtectedRoute / restoreSession resuelvan el flujo.
     //
     // Tampoco hacemos window.location.assign(): el hard reload destruye la
     // sesión recién guardada antes de que React lea el localStorage hidratado.
-    if (token) {
+    if (useAuthStore.getState().user) {
       useAuthStore.getState().logout();
     }
 

@@ -1,29 +1,63 @@
 import crypto from "crypto";
 import net from "net";
 import { Request, Response } from "express";
+import { resolveCookiePolicy } from "../authCookie";
+
+const authCookiePolicy = resolveCookiePolicy();
 
 const DEVICE_COOKIE_NAME = "device_id";
 const DEVICE_COOKIE_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 const DEVICE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const BASIC_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function loadDeviceCookieSecret(): string {
+const DEVICE_SECRET_INFO = "nande/device-id-cookie/v1";
+
+let deviceSecretWarned = false;
+
+/**
+ * Clave para firmar `device_id`, SEPARADA de JWT_SECRET (SEC-09).
+ *
+ * Si no hay DEVICE_COOKIE_SECRET propia, se deriva una con HKDF a partir de
+ * JWT_SECRET en vez de reutilizarlo tal cual: la clave resultante es distinta
+ * y no permite reusar firmas entre los dos usos. No se aborta el arranque
+ * porque una cookie de device_id invalida solo reinicia contadores de rate
+ * limiting, no rompe la sesion.
+ */
+function loadDeviceCookieSecret(): Buffer {
   const explicit = process.env.DEVICE_COOKIE_SECRET?.trim();
-  if (explicit) return explicit;
+  if (explicit) return Buffer.from(explicit, "utf8");
 
   const jwtSecret = process.env.JWT_SECRET?.trim();
-  if (jwtSecret) return jwtSecret;
+  if (jwtSecret) {
+    if (!deviceSecretWarned) {
+      deviceSecretWarned = true;
+      console.warn(
+        "[auth] DEVICE_COOKIE_SECRET no configurado: se deriva una clave propia desde JWT_SECRET. " +
+          "Configura DEVICE_COOKIE_SECRET con un valor aleatorio distinto para separar las claves.",
+      );
+    }
+    return Buffer.from(
+      crypto.hkdfSync("sha256", Buffer.from(jwtSecret, "utf8"), Buffer.alloc(0), Buffer.from(DEVICE_SECRET_INFO), 32),
+    );
+  }
 
   if ((process.env.NODE_ENV || "").toLowerCase() === "production") {
     throw new Error("DEVICE_COOKIE_SECRET no configurado para firmar device_id.");
   }
 
-  return "dev-device-cookie-secret-change-me";
+  return Buffer.from("dev-device-cookie-secret-change-me", "utf8");
+}
+
+let cachedDeviceSecret: Buffer | null = null;
+
+function deviceCookieSecret(): Buffer {
+  if (!cachedDeviceSecret) cachedDeviceSecret = loadDeviceCookieSecret();
+  return cachedDeviceSecret;
 }
 
 function signDeviceId(deviceId: string): string {
   return crypto
-    .createHmac("sha256", loadDeviceCookieSecret())
+    .createHmac("sha256", deviceCookieSecret())
     .update(deviceId)
     .digest("hex");
 }
@@ -68,10 +102,12 @@ export function getOrCreateDeviceId(req: Request, res: Response): string {
 
   const deviceId = crypto.randomUUID();
   const value = `${deviceId}.${signDeviceId(deviceId)}`;
+  // Misma politica de Secure/SameSite que la cookie de sesion, para que en un
+  // despliegue cross-site el navegador tampoco descarte esta.
   res.cookie(DEVICE_COOKIE_NAME, value, {
     httpOnly: true,
-    secure: (process.env.NODE_ENV || "").toLowerCase() === "production",
-    sameSite: "lax",
+    secure: authCookiePolicy.secure,
+    sameSite: authCookiePolicy.sameSite,
     path: "/",
     maxAge: DEVICE_COOKIE_MAX_AGE_MS,
   });

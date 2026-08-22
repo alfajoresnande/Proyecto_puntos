@@ -5,8 +5,10 @@ const auth_1 = require("../auth");
 const aiChat_controller_1 = require("../controllers/aiChat.controller");
 const db_1 = require("../db");
 const router = (0, express_1.Router)();
-router.use((req, _res, next) => {
-    const payload = (0, auth_1.getAuthPayload)(req);
+router.use(async (req, _res, next) => {
+    // Estado verificado contra la base: un token de una cuenta desactivada o
+    // degradada no arrastra su rol viejo al chat.
+    const payload = await (0, auth_1.getVerifiedUser)(req);
     if (payload)
         req.user = payload;
     next();

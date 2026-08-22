@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import { Router } from "express";
-import { getAuthPayload } from "../auth";
+import { getVerifiedUser } from "../auth";
 import { pool, qOne } from "../db";
 import { recordSecurityEvent } from "../securityMonitor";
 
@@ -20,14 +20,15 @@ function secureEquals(value: string, expected: string): boolean {
   return timingSafeEqual(current, target);
 }
 
-function hasDiagnosticsAccess(req: Parameters<typeof getAuthPayload>[0]): boolean {
+async function hasDiagnosticsAccess(req: Parameters<typeof getVerifiedUser>[0]): Promise<boolean> {
   // Por defecto el diagnostico es publico para facilitar puesta en marcha.
   // Si queres protegerlo, define DIAGNOSTICO_REQUIRE_AUTH=true.
   if (!isEnabled(process.env.DIAGNOSTICO_REQUIRE_AUTH)) return true;
 
   if (isEnabled(process.env.DIAGNOSTICO_PUBLIC)) return true;
 
-  const auth = getAuthPayload(req);
+  // Rol verificado contra la base, no el que traiga un JWT viejo.
+  const auth = await getVerifiedUser(req);
   if (auth?.rol === "admin" || auth?.rol === "superAdmin") return true;
 
   const expectedToken = (process.env.DIAGNOSTICO_TOKEN || "").trim();
@@ -73,7 +74,7 @@ async function checkDbStatus(): Promise<DbStatus> {
 }
 
 router.get("/", async (req, res) => {
-  if (!hasDiagnosticsAccess(req)) {
+  if (!(await hasDiagnosticsAccess(req))) {
     recordSecurityEvent("diagnostico_acceso_denegado", req);
     res.status(403).json({ error: "No autorizado" });
     return;
@@ -98,7 +99,7 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/db", async (req, res) => {
-  if (!hasDiagnosticsAccess(req)) {
+  if (!(await hasDiagnosticsAccess(req))) {
     recordSecurityEvent("diagnostico_db_acceso_denegado", req);
     res.status(403).json({ error: "No autorizado" });
     return;
@@ -122,7 +123,7 @@ router.post("/access-denied", async (req, res) => {
         .slice(0, 10)
     : [];
 
-  const payload = getAuthPayload(req);
+  const payload = await getVerifiedUser(req);
   let actor: Record<string, unknown>;
 
   if (payload) {

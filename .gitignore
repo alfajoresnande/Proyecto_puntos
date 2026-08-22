@@ -1,4 +1,5 @@
 node_modules
+.agents/
 .env
 .claude
 frontend/node_modules
@@ -17,4 +18,6 @@ backend/yarn.lock
 .env.*
 backend/.env
 backend/.env.*
+# Plantillas sin secretos: estas si van al repo.
 !backend/.env.example
+!.env.docker.example

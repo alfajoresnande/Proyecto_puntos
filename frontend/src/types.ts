@@ -20,7 +20,8 @@ export type User = {
 
 export type AuthResponse = {
   user: User;
-  token?: string;
+  // SEC-03: el backend ya NO devuelve el JWT en el JSON. La sesion vive solo
+  // en la cookie HttpOnly `__Host-auth_token`.
 };
 
 export type RegisterResponse = {

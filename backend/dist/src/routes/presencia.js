@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const auth_1 = require("../auth");
 const authIdentity_1 = require("../services/authIdentity");
 const appPresence_1 = require("../services/appPresence");
+const requestRateLimit_1 = require("../middleware/requestRateLimit");
 const router = (0, express_1.Router)();
 const heartbeatSchema = zod_1.z.object({
     session_id: zod_1.z.string().trim().min(8).max(80),
@@ -19,14 +20,24 @@ function isStaffRole(role) {
 function isStaffPath(path) {
     return path.startsWith("/admin") || path.startsWith("/superadmin") || path.startsWith("/vendedor") || path.startsWith("/staff");
 }
-router.post("/heartbeat", async (req, res, next) => {
+// Escritura publica sin autenticacion: cada request sin cookie genera una
+// identidad de visitante nueva, asi que sin limite la tabla crece sin techo.
+// El tope es holgado para no cortar el heartbeat legitimo de la app.
+const heartbeatRateLimit = (0, requestRateLimit_1.requestRateLimit)({
+    action: "presencia_heartbeat",
+    windows: [
+        { name: "presencia_min", limit: 60, windowSeconds: 60 },
+        { name: "presencia_hora", limit: 900, windowSeconds: 3600 },
+    ],
+});
+router.post("/heartbeat", heartbeatRateLimit, async (req, res, next) => {
     const parsed = heartbeatSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.errors[0].message });
         return;
     }
     try {
-        const auth = (0, auth_1.getAuthPayload)(req);
+        const auth = await (0, auth_1.getVerifiedUser)(req);
         const path = parsed.data.path.trim() || "/";
         if (isStaffRole(auth?.rol) || isStaffPath(path)) {
             res.status(204).end();

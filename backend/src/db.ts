@@ -1606,6 +1606,64 @@ async function ensureSaboresSchema() {
   }
 }
 
+/**
+ * Idempotencia y trazabilidad de los webhooks de pago.
+ *
+ * Cada notificacion verificada deja una fila con clave unica
+ * (proveedor, recurso, estado). Un replay de la misma notificacion choca con
+ * la unique key y se descarta sin volver a tocar ordenes, stock ni puntos.
+ */
+async function ensurePagoWebhookEventosSchema() {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS pago_webhook_eventos (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      proveedor VARCHAR(40) NOT NULL,
+      recurso_id VARCHAR(120) NOT NULL,
+      estado VARCHAR(40) NOT NULL,
+      referencia_tipo VARCHAR(20) NULL,
+      referencia_id INT UNSIGNED NULL,
+      importe DECIMAL(12,2) NULL,
+      moneda VARCHAR(10) NULL,
+      procesado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_pago_webhook_evento (proveedor, recurso_id, estado),
+      INDEX idx_pago_webhook_referencia (referencia_tipo, referencia_id),
+      INDEX idx_pago_webhook_procesado (procesado_en)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+}
+
+/**
+ * Revocacion de sesiones (SEC-04).
+ *
+ * - `usuarios.token_version` invalida TODOS los JWT de un usuario al cambiar
+ *   contrasena, rol o estado activo.
+ * - `sesiones_revocadas` invalida un unico JWT por su `jti`, para que el
+ *   logout cierre solo el dispositivo actual y no todas las sesiones.
+ */
+async function ensureSessionRevocationSchema() {
+  const [tokenVersionRows] = await pool.query(
+    `SELECT 1 FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'usuarios' AND COLUMN_NAME = 'token_version'
+     LIMIT 1`
+  ) as [any[], any[]];
+  if (!tokenVersionRows.length) {
+    await pool.query(
+      "ALTER TABLE usuarios ADD COLUMN token_version INT UNSIGNED NOT NULL DEFAULT 0"
+    );
+  }
+
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS sesiones_revocadas (
+      jti CHAR(36) PRIMARY KEY,
+      usuario_id INT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      revocado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_sesiones_revocadas_expira (expires_at),
+      INDEX idx_sesiones_revocadas_usuario (usuario_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+}
+
 async function ensurePagosCheckoutSchema() {
   const [methodRows] = await pool.query(
     `SELECT 1 FROM information_schema.COLUMNS
@@ -2434,6 +2492,16 @@ pool
       await ensurePagosCheckoutSchema();
     } catch (err: any) {
       console.error("⚠️  Migración columnas de pagos checkout:", err.message);
+    }
+    try {
+      await ensurePagoWebhookEventosSchema();
+    } catch (err: any) {
+      console.error("Migracion idempotencia de webhooks de pago:", err.message);
+    }
+    try {
+      await ensureSessionRevocationSchema();
+    } catch (err: any) {
+      console.error("Migracion revocacion de sesiones:", err.message);
     }
     try {
       await ensureSupportInboxSchema();

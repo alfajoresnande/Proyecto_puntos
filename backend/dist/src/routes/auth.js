@@ -11,6 +11,7 @@ const zod_1 = require("zod");
 const db_1 = require("../db");
 const points_1 = require("../services/points");
 const auth_1 = require("../auth");
+const sessionRevocation_1 = require("../services/sessionRevocation");
 const securityMonitor_1 = require("../securityMonitor");
 const email_1 = require("../services/email");
 const authIdentity_1 = require("../services/authIdentity");
@@ -150,8 +151,23 @@ function isValidInviteCode(code, length) {
     return new RegExp(`^[A-Z0-9]{${length}}$`).test(code);
 }
 function publicUser(user) {
-    const { password_hash, activo, google_id, email_verificado, email_verificado_at, ...safeUser } = user;
+    const { password_hash, activo, google_id, email_verificado, email_verificado_at, token_version, ...safeUser } = user;
     return safeUser;
+}
+/**
+ * Emite la sesion: firma el JWT con la `token_version` vigente y lo deja SOLO
+ * en la cookie HttpOnly. El token ya no viaja en el JSON de respuesta (SEC-03),
+ * asi que ningun JavaScript de la pagina puede leerlo.
+ */
+async function emitirSesion(res, safeUser) {
+    const fila = await (0, db_1.qOne)(db_1.pool, "SELECT token_version FROM usuarios WHERE id = ? LIMIT 1", [safeUser.id]);
+    const token = (0, auth_1.signToken)({
+        id: safeUser.id,
+        email: safeUser.email,
+        rol: safeUser.rol,
+        tv: Number(fila?.token_version ?? 0),
+    });
+    (0, auth_1.setAuthCookie)(res, token);
 }
 async function createEmailVerificationCode(conn, input) {
     const ttlMinutes = parseEmailVerificationTtlMinutes();
@@ -575,9 +591,8 @@ async function confirmRegisterWithCode(req, res) {
          FROM usuarios
          WHERE id = ?`, [nuevoId]);
             const safeUser = publicUser(verifiedUser);
-            const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-            (0, auth_1.setAuthCookie)(res, token);
-            res.json({ user: safeUser, token });
+            await emitirSesion(res, safeUser);
+            res.json({ user: safeUser });
             return;
         }
         const user = await (0, db_1.qOne)(conn, `SELECT id, nombre, email, rol, dni, telefono, fecha_nacimiento, localidad, provincia,
@@ -594,9 +609,8 @@ async function confirmRegisterWithCode(req, res) {
         if (user.email_verificado) {
             await conn.commit();
             const safeUser = publicUser(user);
-            const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-            (0, auth_1.setAuthCookie)(res, token);
-            res.json({ user: safeUser, token });
+            await emitirSesion(res, safeUser);
+            res.json({ user: safeUser });
             return;
         }
         const verification = await (0, db_1.qOne)(conn, `SELECT id, codigo_hash, expires_at, attempts
@@ -627,9 +641,8 @@ async function confirmRegisterWithCode(req, res) {
        FROM usuarios
        WHERE id = ?`, [user.id]);
         const safeUser = publicUser(verifiedUser);
-        const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-        (0, auth_1.setAuthCookie)(res, token);
-        res.json({ user: safeUser, token });
+        await emitirSesion(res, safeUser);
+        res.json({ user: safeUser });
     }
     catch (err) {
         await conn.rollback();
@@ -719,9 +732,8 @@ router.post("/login", async (req, res) => {
         return;
     }
     const safeUser = publicUser(user);
-    const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-    (0, auth_1.setAuthCookie)(res, token);
-    res.json({ user: safeUser, token });
+    await emitirSesion(res, safeUser);
+    res.json({ user: safeUser });
 });
 router.post("/google", async (req, res) => {
     const schema = zod_1.z.object({
@@ -826,9 +838,8 @@ router.post("/google", async (req, res) => {
         }
         await conn.commit();
         const safeUser = publicUser(user);
-        const token = (0, auth_1.signToken)({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-        (0, auth_1.setAuthCookie)(res, token);
-        res.json({ user: safeUser, token });
+        await emitirSesion(res, safeUser);
+        res.json({ user: safeUser });
     }
     catch (err) {
         await conn.rollback();
@@ -839,7 +850,7 @@ router.post("/google", async (req, res) => {
     }
 });
 router.get("/me", async (req, res) => {
-    const auth = (0, auth_1.getAuthPayload)(req);
+    const auth = await (0, auth_1.getVerifiedUser)(req);
     if (!auth) {
         (0, auth_1.clearAuthCookie)(res);
         res.json({ user: null });
@@ -877,7 +888,20 @@ router.get("/me", async (req, res) => {
     }
     res.json({ user: publicUser(user) });
 });
-router.post("/logout", (_req, res) => {
+router.post("/logout", async (req, res) => {
+    // Se revoca solo el jti de este dispositivo: subir token_version cerraria
+    // la sesion en todos los demas, que no es lo que pide un logout.
+    const auth = await (0, auth_1.getVerifiedUser)(req);
+    if (auth?.jti) {
+        const expiraEn = auth.exp ? new Date(auth.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        try {
+            await (0, sessionRevocation_1.revocarJti)(auth.jti, auth.id, expiraEn);
+        }
+        catch (error) {
+            // Si la base no responde igual se borra la cookie; el token expira solo.
+            console.error("[auth] No se pudo registrar la revocacion de sesion:", error instanceof Error ? error.message : error);
+        }
+    }
     (0, auth_1.clearAuthCookie)(res);
     res.json({ ok: true });
 });
@@ -994,7 +1018,11 @@ router.post("/reset-password", async (req, res) => {
             return;
         }
         const newHash = await bcryptjs_1.default.hash(new_password, 10);
-        await (0, db_1.qRun)(conn, "UPDATE usuarios SET password_hash = ? WHERE id = ?", [newHash, row.usuario_id]);
+        // Cambiar la contrasena invalida todas las sesiones vivas de la cuenta.
+        await (0, db_1.qRun)(conn, "UPDATE usuarios SET password_hash = ?, token_version = token_version + 1 WHERE id = ?", [
+            newHash,
+            row.usuario_id,
+        ]);
         await (0, db_1.qRun)(conn, "UPDATE password_reset_tokens SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL", [row.usuario_id]);
         await conn.commit();
         res.json({ ok: true, message: "Contrasena actualizada correctamente" });
@@ -1055,8 +1083,15 @@ router.post("/change-password", auth_1.requireAuth, async (req, res) => {
     if (!changeAllowed)
         return;
     const newHash = await bcryptjs_1.default.hash(parsed.data.new_password, 10);
-    await (0, db_1.qRun)(db_1.pool, "UPDATE usuarios SET password_hash = ? WHERE id = ?", [newHash, auth.id]);
+    // token_version + 1 corta todas las sesiones abiertas (incluida esta).
+    await (0, db_1.qRun)(db_1.pool, "UPDATE usuarios SET password_hash = ?, token_version = token_version + 1 WHERE id = ?", [
+        newHash,
+        auth.id,
+    ]);
     await (0, db_1.qRun)(db_1.pool, "UPDATE password_reset_tokens SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL", [auth.id]);
+    // Se reemite la cookie del dispositivo actual para no expulsar a quien
+    // acaba de cambiar su propia clave; el resto de los dispositivos quedan fuera.
+    await emitirSesion(res, { id: auth.id, email: auth.email, rol: auth.rol });
     (0, securityMonitor_1.recordSecurityEvent)("password_change_ok", req, {
         userId: auth.id,
         ip,

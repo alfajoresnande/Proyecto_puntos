@@ -1,18 +1,21 @@
 /**
- * Tests para el fix de sesión en iOS Safari.
+ * Sesión en el cliente: resiliencia (iOS Safari) + modelo cookie-only.
  *
- * Problema original: iOS bloquea cookies cross-domain (Vercel → Hostinger) por ITP.
+ * Historia: iOS bloquea cookies cross-site (ITP), y el arreglo de entonces fue
+ * duplicar el JWT en localStorage y mandarlo como Bearer. Eso resolvía iOS pero
+ * dejaba el token al alcance de cualquier XSS o dependencia comprometida
+ * (SEC-03 de la auditoría OWASP).
  *
- * Bugs identificados y corregidos:
- * 1. Race condition Zustand v5: restoreSession llamado antes de que el store se hidrate
- *    desde localStorage → get().token devuelve null → /me sin Bearer → sesión borrada.
- *    Fix: leer localStorage directamente como fallback.
+ * Ahora la sesión vive SOLO en la cookie HttpOnly `__Host-auth_token`. Estos
+ * tests cubren las dos cosas a la vez:
  *
- * 2. restoreSession borraba el token ante CUALQUIER falla (red, timeout, 5xx).
- *    Fix: solo borrar cuando el servidor confirma explícitamente que no hay sesión (200 + user: null).
+ *  1. Que no quede ningún rastro del token en el navegador (sin localStorage,
+ *     sin Zustand persistido, sin header Bearer).
+ *  2. Que se conserve la resiliencia que motivó aquel arreglo: un error de red
+ *     o un 5xx NO deben borrar la sesión; solo un 200 con `user: null` la borra.
  *
- * 3. Token no almacenado si el backend no retornaba { token } en el body del login.
- *    Fix: backend ahora incluye token en todas las respuestas de auth.
+ * Nota de despliegue: con la API en otro dominio registrable, la cookie exige
+ * `SameSite=None; Secure` (ver docs/seguridad-cookies-sesion.md).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +30,9 @@ vi.mock("../lib/apiBase", () => ({
 }));
 
 vi.mock("../lib/csrf", () => ({
-  getCsrfToken: () => "mock-csrf-token-16chars",
+  getCsrfToken: () => "nonce.9999999999.firma",
+  refreshCsrfToken: () => Promise.resolve("nonce-nuevo.9999999999.firma"),
+  purgeLegacyBrowserTokens: () => undefined,
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,18 +61,12 @@ function stubFetch(body: unknown, status = 200) {
   return vi.fn().mockResolvedValue(response);
 }
 
-function capturedFetchHeaders(): Headers {
-  const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-  return calls[0][1].headers as Headers;
+function fetchCall(index = 0) {
+  return (global.fetch as ReturnType<typeof vi.fn>).mock.calls[index];
 }
 
-function capturedFetchPlainHeaders(): Record<string, string> {
-  const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
-  return calls[0][1].headers as Record<string, string>;
-}
-
-function writeTokenToLocalStorage(token: string) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { user: mockUser, token } }));
+function capturedFetchHeaders(index = 0): Headers {
+  return fetchCall(index)[1].headers as Headers;
 }
 
 // ── Reset entre tests ─────────────────────────────────────────────────────────
@@ -75,7 +74,6 @@ function writeTokenToLocalStorage(token: string) {
 beforeEach(() => {
   useAuthStore.setState({
     user: null,
-    token: null,
     isRestoringSession: false,
     hasRestoredSession: false,
   });
@@ -83,19 +81,209 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-// ── 1. Token almacenado después de autenticación ──────────────────────────────
+// ── 1. SEC-03: el token no toca el navegador ─────────────────────────────────
 
-describe("authStore — token almacenado después de autenticación", () => {
-  it("login() guarda el token del body de respuesta del backend", async () => {
-    global.fetch = stubFetch({ user: mockUser, token: "jwt.login.token" });
+describe("SEC-03 — el JWT no existe en el navegador", () => {
+  it("el store no expone ninguna propiedad `token`", async () => {
+    global.fetch = stubFetch({ user: mockUser });
 
     await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
 
-    expect(useAuthStore.getState().token).toBe("jwt.login.token");
+    expect(useAuthStore.getState()).not.toHaveProperty("token");
     expect(useAuthStore.getState().user).toEqual(mockUser);
   });
 
-  it("register() deja la sesion vacia hasta verificar el correo", async () => {
+  it("login() no persiste ningún token en localStorage", async () => {
+    global.fetch = stubFetch({ user: mockUser });
+
+    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
+
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(persisted).not.toContain("token");
+    expect(JSON.parse(persisted).state).toEqual({ user: mockUser });
+  });
+
+  it("ignora un `token` que el backend mandara por error en el JSON", async () => {
+    global.fetch = stubFetch({ user: mockUser, token: "jwt.que.no.deberia.venir" });
+
+    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
+
+    expect(localStorage.getItem(STORAGE_KEY) ?? "").not.toContain("jwt.que.no.deberia.venir");
+    expect(JSON.stringify(useAuthStore.getState())).not.toContain("jwt.que.no.deberia.venir");
+  });
+
+  it("api.get() no manda header Authorization", async () => {
+    global.fetch = stubFetch({ data: "ok" });
+
+    await api.get("/cliente/perfil");
+
+    expect(capturedFetchHeaders().get("Authorization")).toBeNull();
+  });
+
+  it("api.post() no manda header Authorization pero sí el CSRF", async () => {
+    global.fetch = stubFetch({ ok: true });
+
+    await api.post("/cliente/algo", { valor: 1 });
+
+    const headers = capturedFetchHeaders();
+    expect(headers.get("Authorization")).toBeNull();
+    expect(headers.get("X-CSRF-Token")).toBe("nonce.9999999999.firma");
+  });
+
+  it("restoreSession() no manda header Authorization", async () => {
+    global.fetch = stubFetch({ user: mockUser });
+
+    await useAuthStore.getState().restoreSession();
+
+    const headers = (fetchCall()[1].headers ?? {}) as Record<string, string>;
+    expect(headers["Authorization"]).toBeUndefined();
+  });
+
+  it("un token viejo en localStorage ya no se usa para autenticar", async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ state: { user: mockUser, token: "jwt.viejo" } }));
+    global.fetch = stubFetch({ user: mockUser });
+
+    await api.get("/cliente/perfil");
+
+    const headers = capturedFetchHeaders();
+    expect(headers.get("Authorization")).toBeNull();
+  });
+});
+
+// ── 2. Todo va con cookies ───────────────────────────────────────────────────
+
+describe("la sesión viaja en la cookie", () => {
+  it("api usa credentials:include", async () => {
+    global.fetch = stubFetch({ data: "ok" });
+    await api.get("/cliente/perfil");
+    expect(fetchCall()[1].credentials).toBe("include");
+  });
+
+  it("restoreSession usa credentials:include", async () => {
+    global.fetch = stubFetch({ user: mockUser });
+    await useAuthStore.getState().restoreSession();
+    expect(fetchCall()[1].credentials).toBe("include");
+  });
+
+  it("login usa credentials:include", async () => {
+    global.fetch = stubFetch({ user: mockUser });
+    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
+    expect(fetchCall()[1].credentials).toBe("include");
+  });
+
+  it("logout usa credentials:include y no manda token", () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = stubFetch({ ok: true });
+
+    useAuthStore.getState().logout();
+
+    expect(useAuthStore.getState().user).toBeNull();
+    const headers = (fetchCall()[1].headers ?? {}) as Record<string, string>;
+    expect(headers["Authorization"]).toBeUndefined();
+    expect(fetchCall()[1].credentials).toBe("include");
+  });
+});
+
+// ── 3. SEC-07: reintento cuando el token CSRF quedó viejo ────────────────────
+
+describe("SEC-07 — reintento con token CSRF nuevo", () => {
+  it("un 403 de CSRF dispara un refresco y un único reintento", async () => {
+    const rechazo = {
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: "CSRF token faltante o invalido" }),
+      clone() {
+        return { json: () => Promise.resolve({ error: "CSRF token faltante o invalido" }) };
+      },
+    };
+    const aceptado = {
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ ok: true }),
+      clone() {
+        return { json: () => Promise.resolve({ ok: true }) };
+      },
+    };
+    global.fetch = vi.fn().mockResolvedValueOnce(rechazo).mockResolvedValueOnce(aceptado);
+
+    await api.post("/cliente/algo", { valor: 1 });
+
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+    expect(capturedFetchHeaders(0).get("X-CSRF-Token")).toBe("nonce.9999999999.firma");
+    expect(capturedFetchHeaders(1).get("X-CSRF-Token")).toBe("nonce-nuevo.9999999999.firma");
+  });
+
+  it("un 403 que NO es de CSRF no se reintenta", async () => {
+    global.fetch = stubFetch({ error: "No autorizado" }, 403);
+
+    await expect(api.post("/admin/algo", { valor: 1 })).rejects.toThrow();
+
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+});
+
+// ── 4. Resiliencia iOS: no borrar la sesión ante fallos ──────────────────────
+
+describe("restoreSession() — protección ante fallos de red (fix iOS)", () => {
+  it("error de red: NO borra la sesión (evita logout permanente con mala señal)", async () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+    expect(useAuthStore.getState().isRestoringSession).toBe(false);
+    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
+  });
+
+  it("error de red con user null: sigue null (no se inventa sesión)", async () => {
+    useAuthStore.setState({ user: null });
+    global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
+  });
+
+  it("error de servidor (500): NO borra la sesión", async () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = stubFetch({ error: "Internal Server Error" }, 500);
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+  });
+
+  it("servidor caído (503, readiness): NO borra la sesión", async () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = stubFetch("Service Unavailable", 503);
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+  });
+
+  it("servidor dice user:null (200 OK) → SÍ borra la sesión", async () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = stubFetch({ user: null }, 200);
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+
+  it("restaura el usuario cuando la cookie es válida", async () => {
+    global.fetch = stubFetch({ user: mockUser });
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().user).toEqual(mockUser);
+    expect(useAuthStore.getState().isRestoringSession).toBe(false);
+    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
+  });
+
+  it("register() deja la sesión vacía hasta verificar el correo", async () => {
     global.fetch = stubFetch({
       ok: true,
       email: "test@test.com",
@@ -110,252 +298,35 @@ describe("authStore — token almacenado después de autenticación", () => {
       accepted_terms: true,
     });
 
-    expect(useAuthStore.getState().token).toBeNull();
-    expect(useAuthStore.getState().user).toBeNull();
-  });
-
-  it("loginWithGoogle() guarda el token del body de respuesta del backend", async () => {
-    global.fetch = stubFetch({ user: mockUser, token: "jwt.google.token" });
-
-    await useAuthStore.getState().loginWithGoogle("google-credential-xyz");
-
-    expect(useAuthStore.getState().token).toBe("jwt.google.token");
-  });
-
-  it("logout() borra user y token del store", () => {
-    useAuthStore.setState({ token: "token.a.borrar", user: mockUser });
-    global.fetch = stubFetch({ ok: true });
-
-    useAuthStore.getState().logout();
-
-    expect(useAuthStore.getState().token).toBeNull();
-    expect(useAuthStore.getState().user).toBeNull();
-  });
-
-  it("login() sin token en la respuesta no rompe (token queda null)", async () => {
-    global.fetch = stubFetch({ user: mockUser }); // backend viejo sin token
-
-    await useAuthStore.getState().login({ email: "test@test.com", password: "pass123456789" });
-
-    expect(useAuthStore.getState().token).toBeNull();
-    expect(useAuthStore.getState().user).toEqual(mockUser);
-  });
-});
-
-// ── 2. restoreSession — fix race condition Zustand v5 ────────────────────────
-
-describe("authStore.restoreSession() — fix race condition Zustand v5", () => {
-  it("usa el token de localStorage aunque get().token sea null (store no hidratado)", async () => {
-    // beforeEach ya dejó: store.token = null, localStorage = vacío.
-    // Escribimos el token directamente en localStorage (simula sesión previa guardada)
-    // SIN llamar setState después, porque eso triggerearía persist a sobreescribir localStorage.
-    writeTokenToLocalStorage("token.en.localstorage");
-    // store.token = null, localStorage = { state: { token: "token.en.localstorage" } }
-
-    global.fetch = stubFetch({ user: mockUser });
-
-    await useAuthStore.getState().restoreSession();
-
-    const headers = capturedFetchPlainHeaders();
-    expect(headers["Authorization"]).toBe("Bearer token.en.localstorage");
-    expect(useAuthStore.getState().user).toEqual(mockUser);
-  });
-
-  it("usa el token del store si ya está disponible (caso normal)", async () => {
-    useAuthStore.setState({ token: "token.en.store" });
-    global.fetch = stubFetch({ user: mockUser });
-
-    await useAuthStore.getState().restoreSession();
-
-    const headers = capturedFetchPlainHeaders();
-    expect(headers["Authorization"]).toBe("Bearer token.en.store");
-  });
-
-  it("sin token en store ni localStorage, no envía Authorization header", async () => {
-    useAuthStore.setState({ token: null });
-    global.fetch = stubFetch({ user: null });
-
-    await useAuthStore.getState().restoreSession();
-
-    const headers = capturedFetchPlainHeaders();
-    expect(headers["Authorization"]).toBeUndefined();
-  });
-});
-
-// ── 3. restoreSession — NO borrar sesión ante errores de red/servidor ─────────
-
-describe("authStore.restoreSession() — protección ante fallos de red (fix iOS)", () => {
-  it("error de red: NO borra el token (evita logout permanente en iOS con mala señal)", async () => {
-    useAuthStore.setState({ token: "token.persistido", user: mockUser });
-    global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-
-    await useAuthStore.getState().restoreSession();
-
-    // Token y user se preservan — el usuario no queda deslogueado permanentemente
-    expect(useAuthStore.getState().token).toBe("token.persistido");
-    expect(useAuthStore.getState().user).toEqual(mockUser);
-    expect(useAuthStore.getState().isRestoringSession).toBe(false);
-    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
-  });
-
-  it("error de red: cuando user era null, sigue null (no se inventa sesión)", async () => {
-    useAuthStore.setState({ token: null, user: null });
-    global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-
-    await useAuthStore.getState().restoreSession();
-
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(useAuthStore.getState().token).toBeNull();
-    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
-  });
-
-  it("error de servidor (500): NO borra el token", async () => {
-    useAuthStore.setState({ token: "token.valido", user: mockUser });
-    global.fetch = stubFetch({ error: "Internal Server Error" }, 500);
-
-    await useAuthStore.getState().restoreSession();
-
-    expect(useAuthStore.getState().token).toBe("token.valido");
-    expect(useAuthStore.getState().user).toEqual(mockUser);
-  });
-
-  it("servidor caído (503): NO borra el token", async () => {
-    useAuthStore.setState({ token: "token.valido", user: mockUser });
-    global.fetch = stubFetch("Service Unavailable", 503);
-
-    await useAuthStore.getState().restoreSession();
-
-    expect(useAuthStore.getState().token).toBe("token.valido");
-  });
-
-  it("servidor dice user:null (200 OK) → SÍ borra token (token expirado/inválido)", async () => {
-    useAuthStore.setState({ token: "token.expirado", user: mockUser });
-    global.fetch = stubFetch({ user: null }, 200);
-
-    await useAuthStore.getState().restoreSession();
-
-    expect(useAuthStore.getState().token).toBeNull();
     expect(useAuthStore.getState().user).toBeNull();
   });
 });
 
-// ── 4. restoreSession — comportamiento correcto en flujo normal ───────────────
-
-describe("authStore.restoreSession() — flujo feliz", () => {
-  it("restaura el usuario cuando el token es válido", async () => {
-    useAuthStore.setState({ token: "valid.token" });
-    global.fetch = stubFetch({ user: mockUser });
-
-    await useAuthStore.getState().restoreSession();
-
-    expect(useAuthStore.getState().user).toEqual(mockUser);
-    expect(useAuthStore.getState().isRestoringSession).toBe(false);
-    expect(useAuthStore.getState().hasRestoredSession).toBe(true);
-  });
-
-  it("envía credentials:include para mantener compatibilidad con cookies en otros browsers", async () => {
-    useAuthStore.setState({ token: "some.token" });
-    global.fetch = stubFetch({ user: mockUser });
-
-    await useAuthStore.getState().restoreSession();
-
-    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(call[1].credentials).toBe("include");
-  });
-});
-
-// ── 5. api.ts — Authorization header en todos los requests ───────────────────
-
-describe("api — Authorization: Bearer en requests (fix cross-domain iOS)", () => {
-  it("api.get() incluye Bearer token cuando hay token en el store", async () => {
-    useAuthStore.setState({ token: "api.bearer.token" });
-    global.fetch = stubFetch({ data: "ok" });
-
-    await api.get("/cliente/perfil");
-
-    expect(capturedFetchHeaders().get("Authorization")).toBe("Bearer api.bearer.token");
-  });
-
-  it("api.post() incluye Bearer token en requests con body", async () => {
-    useAuthStore.setState({ token: "api.post.token" });
-    global.fetch = stubFetch({ ok: true });
-
-    await api.post("/cliente/algo", { valor: 1 });
-
-    expect(capturedFetchHeaders().get("Authorization")).toBe("Bearer api.post.token");
-  });
-
-  it("api.get() NO incluye Authorization cuando no hay token", async () => {
-    useAuthStore.setState({ token: null });
-    global.fetch = stubFetch({ data: "ok" });
-
-    await api.get("/cliente/perfil");
-
-    expect(capturedFetchHeaders().get("Authorization")).toBeNull();
-  });
-
-  it("api sigue enviando credentials:include para no romper cookies en otros browsers", async () => {
-    useAuthStore.setState({ token: "some.token" });
-    global.fetch = stubFetch({ data: "ok" });
-
-    await api.get("/cliente/perfil");
-
-    const call = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(call[1].credentials).toBe("include");
-  });
-
-  it("api.post() lleva X-CSRF-Token además del Bearer", async () => {
-    useAuthStore.setState({ token: "csrf.test.token" });
-    global.fetch = stubFetch({ ok: true });
-
-    await api.post("/cliente/algo", { valor: 1 });
-
-    const headers = capturedFetchHeaders();
-    expect(headers.get("X-CSRF-Token")).toBe("mock-csrf-token-16chars");
-    expect(headers.get("Authorization")).toBe("Bearer csrf.test.token");
-  });
-
-  it("api lee token de localStorage como fallback si no está en el store (race condition)", async () => {
-    useAuthStore.setState({ token: null });
-    writeTokenToLocalStorage("token.solo.en.localstorage");
-    global.fetch = stubFetch({ data: "ok" });
-
-    await api.get("/cliente/perfil");
-
-    expect(capturedFetchHeaders().get("Authorization")).toBe("Bearer token.solo.en.localstorage");
-  });
-});
-
-// ── 6. api.ts — manejo defensivo de 401 (fix iOS auto-logout) ─────────────────
+// ── 5. Manejo defensivo de 401 ───────────────────────────────────────────────
 
 describe("api — manejo defensivo de 401 (evita auto-logout agresivo)", () => {
-  it("401 con token enviado → ejecuta logout (token rechazado por el server)", async () => {
-    useAuthStore.setState({ token: "token.invalido", user: mockUser });
-    global.fetch = stubFetch({ error: "Token invalido" }, 401);
+  it("401 con sesión en el store → ejecuta logout", async () => {
+    useAuthStore.setState({ user: mockUser });
+    global.fetch = stubFetch({ error: "Sesion expirada. Inicia sesion nuevamente." }, 401);
 
     await expect(api.get("/cliente/perfil")).rejects.toThrow();
 
     expect(useAuthStore.getState().user).toBeNull();
-    expect(useAuthStore.getState().token).toBeNull();
   });
 
-  it("401 SIN token enviado → NO ejecuta logout (preserva sesión persistida)", async () => {
-    // Simula: store no hidratado (token null), localStorage también vacío,
-    // pero por algún motivo se hace una llamada que devuelve 401.
-    useAuthStore.setState({ token: null, user: mockUser });
+  it("401 sin sesión en el store → no hace nada raro", async () => {
+    useAuthStore.setState({ user: null });
     global.fetch = stubFetch({ error: "Token requerido" }, 401);
 
     await expect(api.get("/cliente/perfil")).rejects.toThrow();
 
-    // Sesión preservada — no se destruye sin razón
-    expect(useAuthStore.getState().user).toEqual(mockUser);
+    expect(useAuthStore.getState().user).toBeNull();
   });
 
   it("401 NO hace window.location.assign (evita hard reload)", async () => {
-    useAuthStore.setState({ token: "token.invalido", user: mockUser });
+    useAuthStore.setState({ user: mockUser });
     global.fetch = stubFetch({ error: "expired" }, 401);
 
-    // Spy sobre window.location.assign
     const assignSpy = vi.fn();
     Object.defineProperty(window, "location", {
       value: { ...window.location, assign: assignSpy, pathname: "/cliente" },
@@ -370,7 +341,6 @@ describe("api — manejo defensivo de 401 (evita auto-logout agresivo)", () => {
 
 describe("api — mensajes mas claros ante fallos de red", () => {
   it("transforma Failed to fetch en un error mas accionable", async () => {
-    useAuthStore.setState({ token: "token.valido" });
     global.fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
 
     await expect(api.post("/admin/productos", { nombre: "Test" })).rejects.toThrow(

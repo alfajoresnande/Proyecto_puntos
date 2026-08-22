@@ -91,7 +91,7 @@ router.get("/destacados", async (req, res) => {
             res.json([]);
             return;
         }
-        const auth = (0, auth_1.getAuthPayload)(req);
+        const auth = await (0, auth_1.getVerifiedUser)(req);
         const pricingProfile = auth?.rol === "cliente"
             ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
             : null;
@@ -211,7 +211,7 @@ router.get("/", async (req, res) => {
         res.json([]);
         return;
     }
-    const auth = (0, auth_1.getAuthPayload)(req);
+    const auth = await (0, auth_1.getVerifiedUser)(req);
     const pricingProfile = auth?.rol === "cliente"
         ? await (0, customerPricing_1.getActiveClientePricingProfile)(db_1.pool, auth.id)
         : null;

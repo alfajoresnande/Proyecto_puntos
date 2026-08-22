@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "http";
 import { WebSocket, WebSocketServer } from "ws";
-import jwt from "jsonwebtoken";
-import { JWT_SECRET, type TokenPayload } from "./auth";
+import { authCookiePolicy, verifyToken, type TokenPayload } from "./auth";
+import { readTokenFromCookies } from "./authCookie";
 
 type RealtimeClientRole = TokenPayload["rol"] | "guest";
 
@@ -27,35 +27,14 @@ function getOriginFromRequest(req: IncomingMessage): string | null {
   }
 }
 
-function parseCookieHeader(header: string | string[] | undefined): Record<string, string> {
-  const raw = Array.isArray(header) ? header.join(";") : header;
-  if (!raw) return {};
-  return raw.split(";").reduce<Record<string, string>>((acc, pair) => {
-    const idx = pair.indexOf("=");
-    if (idx <= 0) return acc;
-    const key = pair.slice(0, idx).trim();
-    if (!key) return acc;
-    const value = pair.slice(idx + 1).trim();
-    acc[key] = decodeURIComponent(value);
-    return acc;
-  }, {});
-}
-
+/**
+ * El token del WebSocket sale SOLO de la cookie HttpOnly (SEC-03).
+ *
+ * Antes se aceptaba `?token=<JWT>` en la URL del upgrade: esa URL termina en
+ * los logs de cualquier proxy u observabilidad que haya en el camino.
+ */
 function getTokenFromUpgrade(req: IncomingMessage): string | null {
-  const host = req.headers.host ?? "localhost";
-  const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-  const url = new URL(req.url ?? "/", `${protocol}://${host}`);
-  const tokenFromQuery = url.searchParams.get("token");
-  if (tokenFromQuery) return tokenFromQuery;
-
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
-
-  const authCookieName = process.env.AUTH_COOKIE_NAME || "auth_token";
-  const cookies = parseCookieHeader(req.headers.cookie);
-  return cookies[authCookieName] || null;
+  return readTokenFromCookies(req.headers.cookie, authCookiePolicy);
 }
 
 function getClientAuth(req: IncomingMessage): { role: RealtimeClientRole; userId: number | null } {
@@ -64,12 +43,11 @@ function getClientAuth(req: IncomingMessage): { role: RealtimeClientRole; userId
     return { role: "guest", userId: null };
   }
 
-  try {
-    const payload = jwt.verify(token, JWT_SECRET) as TokenPayload;
-    return { role: payload.rol, userId: payload.id };
-  } catch {
+  const payload: TokenPayload | null = verifyToken(token);
+  if (!payload) {
     return { role: "guest", userId: null };
   }
+  return { role: payload.rol, userId: payload.id };
 }
 
 const clients = new Set<RealtimeClient>();

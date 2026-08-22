@@ -2,7 +2,8 @@ import crypto from "crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { pool, qRun } from "../db";
-import { getAuthPayload } from "../auth";
+import { getVerifiedUser } from "../auth";
+import { requestRateLimit } from "../middleware/requestRateLimit";
 import { emitRealtime } from "../realtime";
 
 const router = Router();
@@ -15,7 +16,17 @@ const arrepentimientoSchema = z.object({
   mensaje: z.string().trim().min(10, "El mensaje es demasiado corto.").max(2000, "El mensaje es demasiado largo."),
 });
 
-router.post("/", async (req, res) => {
+// Formulario publico sin autenticacion: sin limite, cualquiera puede inundar
+// `arrepentimiento_solicitudes` y la bandeja del staff.
+const solicitudRateLimit = requestRateLimit({
+  action: "arrepentimiento_solicitud",
+  windows: [
+    { name: "arrepentimiento_min", limit: 5, windowSeconds: 60 },
+    { name: "arrepentimiento_dia", limit: 30, windowSeconds: 86400 },
+  ],
+});
+
+router.post("/", solicitudRateLimit, async (req, res) => {
   const parsed = arrepentimientoSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Datos invalidos." });
@@ -24,7 +35,7 @@ router.post("/", async (req, res) => {
 
   const codigoTramite = crypto.randomUUID().split("-").join("").slice(0, 12).toUpperCase();
   const userAgent = req.get("user-agent")?.trim().slice(0, 255) || null;
-  const authUser = getAuthPayload(req);
+  const authUser = await getVerifiedUser(req);
   const usuarioId = authUser?.rol === "cliente" ? authUser.id : null;
 
   await qRun(

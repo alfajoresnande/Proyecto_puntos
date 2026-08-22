@@ -1,5 +1,16 @@
 version: '3.9'
 
+# ──────────────────────────────────────────────────────────────
+#  Entorno de DESARROLLO local. No usar tal cual en produccion.
+#
+#  Las contrasenas ya NO tienen valor por defecto: hay que definirlas
+#  en un archivo `.env` junto a este compose. Copiar `.env.docker.example`
+#  y completar. Si falta alguna, Docker Compose aborta.
+#
+#  Los puertos publicados quedan atados a 127.0.0.1: la base y phpMyAdmin
+#  no se exponen a la red local ni a internet.
+# ──────────────────────────────────────────────────────────────
+
 services:
 
   # ──────────────────────────────────────────
@@ -12,41 +23,48 @@ services:
     container_name: nande_mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      # `:?` hace fallar el `docker compose up` si la variable no esta definida.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defini MYSQL_ROOT_PASSWORD en .env}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-nande_puntos}
-      MYSQL_USER: ${MYSQL_USER:-nande_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-nande_password}
+      MYSQL_USER: ${MYSQL_USER:?Defini MYSQL_USER en .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Defini MYSQL_PASSWORD en .env}
     ports:
-      - "${MYSQL_HOST_PORT:-3307}:3306"
+      # Solo loopback: nadie fuera de esta maquina llega a la base.
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     networks:
       - nande_network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      # La clave se toma del entorno del contenedor, no se repite en el compose.
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # ──────────────────────────────────────────
-  #  phpMyAdmin
-  #  Panel web para gestionar la base de datos
-  #  Acceder en: http://localhost:8080
-  #  Usuario: nande_user / nande_password
-  #  (o root / rootpassword para acceso total)
+  #  phpMyAdmin — SOLO desarrollo
+  #  Acceder en: http://127.0.0.1:8080
+  #  Credenciales: las de tu .env (no hay defaults)
+  #
+  #  Arranca solo con el perfil `tools` para que no se levante por
+  #  descuido:  docker compose --profile tools up
   # ──────────────────────────────────────────
   phpmyadmin:
-    image: phpmyadmin:latest
+    # Version fijada: `latest` rompe la reproducibilidad y puede traer
+    # un cambio de imagen sin aviso.
+    image: phpmyadmin:5.2.2-apache
     container_name: nande_phpmyadmin
+    profiles: ["tools"]
     restart: unless-stopped
     environment:
       PMA_HOST: mysql
       PMA_PORT: 3306
-      PMA_USER: ${MYSQL_USER:-nande_user}
-      PMA_PASSWORD: ${MYSQL_PASSWORD:-nande_password}
+      PMA_USER: ${MYSQL_USER:?Defini MYSQL_USER en .env}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:?Defini MYSQL_PASSWORD en .env}
     ports:
-      - "${PMA_PORT:-8080}:80"
+      - "127.0.0.1:${PMA_PORT:-8080}:80"
     depends_on:
       mysql:
         condition: service_healthy

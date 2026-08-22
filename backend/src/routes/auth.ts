@@ -5,7 +5,8 @@ import { OAuth2Client } from "google-auth-library";
 import { z } from "zod";
 import { pool, qOne, qRun, type Queryable } from "../db";
 import { isPointsProgramEnabled, recalcularSaldoPuntosUsuario, registrarMovimientoPuntos } from "../services/points";
-import { clearAuthCookie, getAuthPayload, requireAuth, setAuthCookie, signToken } from "../auth";
+import { clearAuthCookie, getVerifiedUser, requireAuth, setAuthCookie, signToken, type Rol } from "../auth";
+import { revocarJti } from "../services/sessionRevocation";
 import { recordSecurityEvent } from "../securityMonitor";
 import { sendEmailVerificationCode, sendPasswordResetEmail } from "../services/email";
 import { getClientIp, getOrCreateDeviceId, hashIdentifier, normalizeEmail } from "../services/authIdentity";
@@ -191,8 +192,28 @@ function isValidInviteCode(code: string, length: number): boolean {
 }
 
 function publicUser(user: any) {
-  const { password_hash, activo, google_id, email_verificado, email_verificado_at, ...safeUser } = user;
+  const { password_hash, activo, google_id, email_verificado, email_verificado_at, token_version, ...safeUser } = user;
   return safeUser;
+}
+
+/**
+ * Emite la sesion: firma el JWT con la `token_version` vigente y lo deja SOLO
+ * en la cookie HttpOnly. El token ya no viaja en el JSON de respuesta (SEC-03),
+ * asi que ningun JavaScript de la pagina puede leerlo.
+ */
+async function emitirSesion(res: Response, safeUser: { id: number; email: string; rol: Rol }): Promise<void> {
+  const fila = await qOne<{ token_version: number | null }>(
+    pool,
+    "SELECT token_version FROM usuarios WHERE id = ? LIMIT 1",
+    [safeUser.id],
+  );
+  const token = signToken({
+    id: safeUser.id,
+    email: safeUser.email,
+    rol: safeUser.rol,
+    tv: Number(fila?.token_version ?? 0),
+  });
+  setAuthCookie(res, token);
 }
 
 async function createEmailVerificationCode(
@@ -758,9 +779,8 @@ async function confirmRegisterWithCode(req: Request, res: Response) {
       );
 
       const safeUser = publicUser(verifiedUser);
-      const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-      setAuthCookie(res, token);
-      res.json({ user: safeUser, token });
+      await emitirSesion(res, safeUser);
+      res.json({ user: safeUser });
       return;
     }
 
@@ -783,9 +803,8 @@ async function confirmRegisterWithCode(req: Request, res: Response) {
     if (user.email_verificado) {
       await conn.commit();
       const safeUser = publicUser(user);
-      const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-      setAuthCookie(res, token);
-      res.json({ user: safeUser, token });
+      await emitirSesion(res, safeUser);
+      res.json({ user: safeUser });
       return;
     }
 
@@ -834,9 +853,8 @@ async function confirmRegisterWithCode(req: Request, res: Response) {
     );
 
     const safeUser = publicUser(verifiedUser);
-    const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-    setAuthCookie(res, token);
-    res.json({ user: safeUser, token });
+    await emitirSesion(res, safeUser);
+    res.json({ user: safeUser });
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -944,9 +962,8 @@ router.post("/login", async (req, res) => {
   }
 
   const safeUser = publicUser(user);
-  const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-  setAuthCookie(res, token);
-  res.json({ user: safeUser, token });
+  await emitirSesion(res, safeUser);
+  res.json({ user: safeUser });
 });
 
 router.post("/google", async (req, res) => {
@@ -1091,9 +1108,8 @@ router.post("/google", async (req, res) => {
     await conn.commit();
 
     const safeUser = publicUser(user);
-    const token = signToken({ id: safeUser.id, email: safeUser.email, rol: safeUser.rol });
-    setAuthCookie(res, token);
-    res.json({ user: safeUser, token });
+    await emitirSesion(res, safeUser);
+    res.json({ user: safeUser });
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -1103,7 +1119,7 @@ router.post("/google", async (req, res) => {
 });
 
 router.get("/me", async (req, res) => {
-  const auth = getAuthPayload(req);
+  const auth = await getVerifiedUser(req);
   if (!auth) {
     clearAuthCookie(res);
     res.json({ user: null });
@@ -1149,7 +1165,19 @@ router.get("/me", async (req, res) => {
   res.json({ user: publicUser(user) });
 });
 
-router.post("/logout", (_req, res) => {
+router.post("/logout", async (req, res) => {
+  // Se revoca solo el jti de este dispositivo: subir token_version cerraria
+  // la sesion en todos los demas, que no es lo que pide un logout.
+  const auth = await getVerifiedUser(req);
+  if (auth?.jti) {
+    const expiraEn = auth.exp ? new Date(auth.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    try {
+      await revocarJti(auth.jti, auth.id, expiraEn);
+    } catch (error) {
+      // Si la base no responde igual se borra la cookie; el token expira solo.
+      console.error("[auth] No se pudo registrar la revocacion de sesion:", error instanceof Error ? error.message : error);
+    }
+  }
   clearAuthCookie(res);
   res.json({ ok: true });
 });
@@ -1317,7 +1345,11 @@ router.post("/reset-password", async (req, res) => {
     }
 
     const newHash = await bcrypt.hash(new_password, 10);
-    await qRun(conn, "UPDATE usuarios SET password_hash = ? WHERE id = ?", [newHash, row.usuario_id]);
+    // Cambiar la contrasena invalida todas las sesiones vivas de la cuenta.
+    await qRun(conn, "UPDATE usuarios SET password_hash = ?, token_version = token_version + 1 WHERE id = ?", [
+      newHash,
+      row.usuario_id,
+    ]);
 
     await qRun(conn,
       "UPDATE password_reset_tokens SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL",
@@ -1400,8 +1432,15 @@ router.post("/change-password", requireAuth, async (req, res) => {
   if (!changeAllowed) return;
 
   const newHash = await bcrypt.hash(parsed.data.new_password, 10);
-  await qRun(pool, "UPDATE usuarios SET password_hash = ? WHERE id = ?", [newHash, auth.id]);
+  // token_version + 1 corta todas las sesiones abiertas (incluida esta).
+  await qRun(pool, "UPDATE usuarios SET password_hash = ?, token_version = token_version + 1 WHERE id = ?", [
+    newHash,
+    auth.id,
+  ]);
   await qRun(pool, "UPDATE password_reset_tokens SET used_at = NOW() WHERE usuario_id = ? AND used_at IS NULL", [auth.id]);
+  // Se reemite la cookie del dispositivo actual para no expulsar a quien
+  // acaba de cambiar su propia clave; el resto de los dispositivos quedan fuera.
+  await emitirSesion(res, { id: auth.id, email: auth.email, rol: auth.rol });
 
   recordSecurityEvent("password_change_ok", req, {
     userId: auth.id,

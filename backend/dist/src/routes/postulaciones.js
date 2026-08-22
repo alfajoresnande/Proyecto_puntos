@@ -159,6 +159,10 @@ router.get("/admin/:id/cv", auth_1.requireAuth, (0, auth_1.requireRole)("admin",
         return;
     }
     res.setHeader("X-Content-Type-Options", "nosniff");
+    // Tipo generico a proposito (SEC-08): el CV es un archivo subido por un
+    // tercero y no se ha analizado con antivirus. Se entrega como descarga
+    // opaca para que el navegador no intente abrirlo ni interpretarlo.
+    res.setHeader("Content-Type", "application/octet-stream");
     res.download(resolvedPath, sanitizeDownloadName(row.archivo_original), (error) => {
         if (error && !res.headersSent) {
             res.status(404).json({ error: "No se pudo descargar el CV desde el servidor." });

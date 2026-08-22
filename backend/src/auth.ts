@@ -1,16 +1,35 @@
+import { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
 import { Request, Response, NextFunction } from "express";
+import {
+  applyAuthCookie,
+  clearAuthCookies,
+  readTokenFromCookies,
+  resolveCookiePolicy,
+  validarPoliticaCookie,
+  type CookiePolicy,
+} from "./authCookie";
 
 export type Rol = "cliente" | "vendedor" | "admin" | "superAdmin";
+
 export interface TokenPayload {
   id: number;
   rol: Rol;
   email: string;
+  /** Version de sesion del usuario. Ver services/sessionRevocation.ts. */
+  tv?: number;
+  jti?: string;
+  iss?: string;
+  aud?: string;
+  exp?: number;
 }
 
 const WEAK_SECRETS = new Set(["dev-secret-cambialo", "cambia-esto-en-produccion"]);
 const MIN_SECRET_LENGTH = 64;
-const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || "auth_token";
+
+const JWT_ALGORITHM = "HS256" as const;
+export const JWT_ISSUER = (process.env.JWT_ISSUER || "nande-puntos-api").trim();
+export const JWT_AUDIENCE = (process.env.JWT_AUDIENCE || "nande-puntos-web").trim();
 
 function loadJwtSecret(): string {
   const value = process.env.JWT_SECRET;
@@ -28,91 +47,74 @@ function loadJwtSecret(): string {
   return value;
 }
 
-function normalizeSameSite(raw: string | undefined): "lax" | "strict" | "none" {
-  const value = (raw || "lax").trim().toLowerCase();
-  if (value === "strict" || value === "none") return value;
-  return "lax";
-}
-
-function shouldUseSecureCookies(): boolean {
-  const raw = process.env.AUTH_COOKIE_SECURE;
-  if (raw !== undefined) {
-    return ["1", "true", "yes", "on"].includes(raw.trim().toLowerCase());
-  }
-  return process.env.NODE_ENV === "production";
-}
-
-function parseCookieHeader(header: string | undefined): Record<string, string> {
-  if (!header) return {};
-  const pairs = header.split(";");
-  const out: Record<string, string> = {};
-  for (const pair of pairs) {
-    const idx = pair.indexOf("=");
-    if (idx <= 0) continue;
-    const key = pair.slice(0, idx).trim();
-    if (!key) continue;
-    const rawValue = pair.slice(idx + 1).trim();
-    try {
-      out[key] = decodeURIComponent(rawValue);
-    } catch {
-      out[key] = rawValue;
-    }
-  }
-  return out;
-}
-
-function getTokenFromRequest(req: Request): string | null {
-  const header = req.headers.authorization;
-  if (header?.startsWith("Bearer ")) {
-    return header.slice(7);
-  }
-
-  const cookies = parseCookieHeader(req.headers.cookie);
-  return cookies[AUTH_COOKIE_NAME] || null;
-}
-
 export const JWT_SECRET = loadJwtSecret();
 
-export function signToken(payload: TokenPayload): string {
-  const expiresIn =
-    payload.rol === "admin" || payload.rol === "superAdmin" || payload.rol === "vendedor" ? "1d" : "7d";
-  return jwt.sign(payload, JWT_SECRET, { expiresIn });
+export const authCookiePolicy: CookiePolicy = resolveCookiePolicy();
+
+/**
+ * En produccion no se arranca con cookies inseguras: una cookie de sesion sin
+ * `Secure` viaja en claro y anula todo lo demas (SEC-09).
+ */
+const problemasCookie = validarPoliticaCookie(authCookiePolicy);
+if (problemasCookie.length) {
+  const detalle = problemasCookie.map((p) => `- ${p.message}`).join("\n");
+  throw new Error(`Configuracion de cookies de sesion invalida:\n${detalle}`);
 }
 
+/**
+ * El token ya NO se acepta por header Authorization desde el navegador.
+ * Solo se lee de la cookie HttpOnly, que es lo que el JavaScript de la
+ * pagina no puede tocar (SEC-03).
+ */
+function getTokenFromRequest(req: Request): string | null {
+  return readTokenFromCookies(req.headers.cookie, authCookiePolicy);
+}
+
+/** TTL corto para staff; el cliente mantiene una sesion mas larga. */
+function tokenTtl(rol: Rol): "8h" | "7d" {
+  return rol === "admin" || rol === "superAdmin" || rol === "vendedor" ? "8h" : "7d";
+}
+
+export function signToken(payload: TokenPayload): string {
+  const { id, rol, email, tv } = payload;
+  return jwt.sign({ id, rol, email, tv: tv ?? 0 }, JWT_SECRET, {
+    algorithm: JWT_ALGORITHM,
+    expiresIn: tokenTtl(rol),
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+    jwtid: randomUUID(),
+  });
+}
+
+/**
+ * Verifica firma y claims del JWT. NO comprueba estado en base: para eso esta
+ * `requireAuth` / `resolveVerifiedUser`, que consultan rol, activo y
+ * token_version actuales.
+ */
 export function getAuthPayload(req: Request): TokenPayload | null {
   const token = getTokenFromRequest(req);
   if (!token) return null;
+  return verifyToken(token);
+}
+
+export function verifyToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as TokenPayload;
+    return jwt.verify(token, JWT_SECRET, {
+      algorithms: [JWT_ALGORITHM],
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    }) as TokenPayload;
   } catch {
     return null;
   }
 }
 
 export function setAuthCookie(res: Response, token: string) {
-  const sameSite = normalizeSameSite(process.env.AUTH_COOKIE_SAMESITE);
-  const secure = shouldUseSecureCookies();
-  const maxAgeMs = process.env.AUTH_COOKIE_MAX_AGE_MS ? Number(process.env.AUTH_COOKIE_MAX_AGE_MS) : 7 * 24 * 60 * 60 * 1000;
-
-  res.cookie(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure,
-    sameSite,
-    path: "/",
-    maxAge: Number.isFinite(maxAgeMs) ? maxAgeMs : 24 * 60 * 60 * 1000,
-  });
+  applyAuthCookie(res, token, authCookiePolicy);
 }
 
 export function clearAuthCookie(res: Response) {
-  const sameSite = normalizeSameSite(process.env.AUTH_COOKIE_SAMESITE);
-  const secure = shouldUseSecureCookies();
-
-  res.clearCookie(AUTH_COOKIE_NAME, {
-    httpOnly: true,
-    secure,
-    sameSite,
-    path: "/",
-  });
+  clearAuthCookies(res, authCookiePolicy);
 }
 
 declare global {
@@ -123,12 +125,69 @@ declare global {
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export type ResultadoAutenticacion =
+  | { ok: true; user: TokenPayload }
+  | { ok: false; status: 401 | 403; error: string };
+
+/**
+ * Autenticacion completa: firma valida + cuenta vigente en base.
+ *
+ * El rol que queda en `req.user` sale SIEMPRE de la base, nunca del JWT: un
+ * token viejo de un usuario degradado no puede seguir actuando como admin.
+ */
+export async function resolveVerifiedUser(req: Request): Promise<ResultadoAutenticacion> {
   const payload = getAuthPayload(req);
   if (!payload) {
-    return res.status(401).json({ error: "Token requerido" });
+    return { ok: false, status: 401, error: "Token requerido" };
   }
-  req.user = payload;
+
+  // Import diferido: sessionRevocation depende de db.ts y db.ts no debe
+  // cargarse al importar auth.ts (los tests unitarios lo agradecen).
+  const { cargarCuentaVigente, estaRevocadoElJti } = await import("./services/sessionRevocation");
+
+  const cuenta = await cargarCuentaVigente(payload.id);
+  if (!cuenta) {
+    return { ok: false, status: 401, error: "Sesion invalida" };
+  }
+  if (!cuenta.activo) {
+    return { ok: false, status: 403, error: "Cuenta deshabilitada" };
+  }
+  if (Number(payload.tv ?? 0) !== cuenta.tokenVersion) {
+    return { ok: false, status: 401, error: "Sesion expirada. Inicia sesion nuevamente." };
+  }
+  if (payload.jti && (await estaRevocadoElJti(payload.jti))) {
+    return { ok: false, status: 401, error: "Sesion cerrada" };
+  }
+
+  return {
+    ok: true,
+    user: {
+      id: cuenta.id,
+      email: cuenta.email,
+      rol: cuenta.rol,
+      tv: cuenta.tokenVersion,
+      jti: payload.jti,
+      exp: payload.exp,
+    },
+  };
+}
+
+/**
+ * Version opcional: devuelve el usuario verificado o null, sin responder.
+ * Para rutas publicas que ajustan su salida si hay sesion.
+ */
+export async function getVerifiedUser(req: Request): Promise<TokenPayload | null> {
+  const resultado = await resolveVerifiedUser(req);
+  return resultado.ok ? resultado.user : null;
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const resultado = await resolveVerifiedUser(req);
+  if (!resultado.ok) {
+    if (resultado.status === 401) clearAuthCookie(res);
+    return res.status(resultado.status).json({ error: resultado.error });
+  }
+  req.user = resultado.user;
   next();
 }
 
