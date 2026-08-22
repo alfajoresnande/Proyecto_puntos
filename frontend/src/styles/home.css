@@ -752,19 +752,14 @@
   will-change: transform;
 }
 
-/* Pausar al pasar el mouse solo tiene sentido con un mouse de verdad: al
-   sacarlo, el carrusel arranca solo. En tactil el navegador deja el :hover
-   "pegado" despues del toque hasta que tocas en otro lado, asi que la cinta
-   quedaba congelada y parecia un bug. La media query lo deja fuera del
-   tactil; ahi el carrusel no para nunca. */
-@media (hover: hover) and (pointer: fine) {
-  .home-products-carousel:hover .home-products-grid.is-animated {
-    animation-play-state: paused;
-  }
-}
+/* La cinta NO se detiene al apuntar ni al tocar, en ningun dispositivo: la
+   card se agranda y el carrusel sigue corriendo por detras.
+   Antes pausaba con :hover, y en tactil el navegador deja ese estado "pegado"
+   despues del toque hasta que tocas en otro lado, asi que quedaba congelada y
+   parecia un bug.
 
-/* El foco por teclado si pausa en cualquier dispositivo: si estas tabulando
-   por las cards, que se muevan solas hace imposible activarlas. */
+   Unica excepcion, el foco por teclado: si estas tabulando por las cards, que
+   se muevan solas hace imposible activarlas. */
 .home-products-carousel:focus-within .home-products-grid.is-animated {
   animation-play-state: paused;
 }
