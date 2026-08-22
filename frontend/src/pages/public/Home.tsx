@@ -83,6 +83,13 @@ export function Home() {
   const pointsVisible = usePointsVisible();
   const { mode: salesMode, isWhatsappCatalog } = useSalesMode();
   const cvFileInputRef = useRef<HTMLInputElement | null>(null);
+  // Carrusel: la cinta nunca frena, pero la card que estas mirando se queda
+  // quieta. Como todas las cards se mueven con un unico transform del
+  // contenedor, hay que contrarrestar ese desplazamiento en la card activa,
+  // cuadro a cuadro. Con CSS solo no se puede: el `-50%` de la cinta es
+  // relativo al ancho de la cinta, no al de la card.
+  const carouselGridRef = useRef<HTMLDivElement | null>(null);
+  const pinFrameRef = useRef<number | null>(null);
   const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
     nombre: "",
@@ -217,6 +224,61 @@ export function Home() {
   const productosDestacadosCarousel = useMemo(() => {
     return productosCarouselSource.length > 1 ? [...productosCarouselSource, ...productosCarouselSource] : productosCarouselSource;
   }, [productosCarouselSource]);
+
+  /** Desplazamiento horizontal actual de la cinta, en px. */
+  function readGridShift(): number {
+    const grid = carouselGridRef.current;
+    if (!grid) return 0;
+    const raw = getComputedStyle(grid).transform;
+    if (!raw || raw === "none") return 0;
+    try {
+      return new DOMMatrixReadOnly(raw).m41;
+    } catch {
+      return 0;
+    }
+  }
+
+  function releaseCard(card: HTMLElement) {
+    if (pinFrameRef.current !== null) {
+      cancelAnimationFrame(pinFrameRef.current);
+      pinFrameRef.current = null;
+    }
+    card.style.transform = "";
+    card.style.transition = "";
+  }
+
+  function pinCard(card: HTMLElement) {
+    if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+    // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
+    // quedaria arrastrandose detras del cursor.
+    card.style.transition = "none";
+
+    let anchor = readGridShift();
+    let previous = anchor;
+    let offset = 0;
+
+    const step = () => {
+      const current = readGridShift();
+      // La cinta siempre corre hacia la izquierda; si el valor crece es que
+      // el bucle volvio al principio y la card salto con el. Se re-ancla
+      // sobre la posicion ANTERIOR: asi la compensacion absorbe el salto y
+      // la card no se mueve en pantalla. Anclar sobre `current` la disparaba
+      // el ancho del salto entero.
+      if (current > previous) anchor = previous + offset;
+      offset = anchor - current;
+      previous = current;
+      card.style.transform = `translate3d(${offset}px, -6px, 0) scale(1.035)`;
+      pinFrameRef.current = requestAnimationFrame(step);
+    };
+
+    step();
+  }
+
+  useEffect(() => {
+    return () => {
+      if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+    };
+  }, []);
 
   const heroImage = "/hero.webp";
   const locationGalleryBase: LocationImage[] = HOME_LOCATION_GALLERY_BASE.slice(0, 1).concat([
@@ -459,13 +521,23 @@ export function Home() {
 
             {productosCarouselSource.length > 0 ? (
               <div className="home-products-carousel" aria-label={selectedCategoria || "Productos destacados"} key={selectedCategoria}>
-                <div className={`home-products-grid${productosCarouselSource.length > 1 ? " is-animated" : ""}`}>
+                <div
+                  ref={carouselGridRef}
+                  className={`home-products-grid${productosCarouselSource.length > 1 ? " is-animated" : ""}`}
+                >
                   {productosDestacadosCarousel.map((producto, index) => {
                     const isDuplicate = index >= productosCarouselSource.length;
                     const duplicateTabIndex = isDuplicate ? -1 : undefined;
 
                     return (
-                      <article key={`${producto.id}-${index}`} className="home-product-card" aria-hidden={isDuplicate || undefined}>
+                      <article
+                        key={`${producto.id}-${index}`}
+                        className="home-product-card"
+                        aria-hidden={isDuplicate || undefined}
+                        onPointerEnter={(event) => pinCard(event.currentTarget)}
+                        onPointerLeave={(event) => releaseCard(event.currentTarget)}
+                        onPointerCancel={(event) => releaseCard(event.currentTarget)}
+                      >
                     <div className="home-product-media">
                       <img
                         src={productImage(producto)}
