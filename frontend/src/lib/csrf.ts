@@ -29,9 +29,21 @@ export function readCsrfCookie(): string {
   return "";
 }
 
+/**
+ * Último token emitido por el servidor.
+ *
+ * Hace falta porque `readCsrfCookie()` NO puede funcionar en este despliegue:
+ * la cookie `csrf_token` la setea `nandengineer.shop` y el front corre en
+ * `alfajorescorrentinos.com`. Un dominio no lee las cookies de otro, así que
+ * ahí la cookie siempre viene vacía y toda petición que dependiera de ella
+ * se comía un 403. Se conserva la lectura de cookie como respaldo para un
+ * despliegue de mismo origen.
+ */
+let cachedToken = "";
+
 /** Compatibilidad: el resto del código sigue llamando a `getCsrfToken()`. */
 export function getCsrfToken(): string {
-  return readCsrfCookie();
+  return cachedToken || readCsrfCookie();
 }
 
 let inFlight: Promise<string> | null = null;
@@ -46,11 +58,13 @@ export async function refreshCsrfToken(): Promise<string> {
   inFlight = (async () => {
     try {
       const response = await fetch(apiUrl("/api/csrf"), { method: "GET", credentials: "include" });
-      if (!response.ok) return readCsrfCookie();
+      if (!response.ok) return (cachedToken = readCsrfCookie());
       const body = (await response.json().catch(() => null)) as { token?: string } | null;
-      return body?.token || readCsrfCookie();
+      // Se guarda en memoria: es el unico lugar del que `getCsrfToken()` puede
+      // leerlo cuando el backend vive en otro dominio.
+      return (cachedToken = body?.token || readCsrfCookie());
     } catch {
-      return readCsrfCookie();
+      return (cachedToken = readCsrfCookie());
     } finally {
       inFlight = null;
     }

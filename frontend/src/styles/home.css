@@ -778,6 +778,11 @@
 
 .home-product-card {
   position: relative;
+  /* Encierra los z-index de adentro (el badge de categoria tiene z-index: 2)
+     para que no compitan contra las cards vecinas. Sin esto, el badge de la
+     card de atras empataba con el z-index de la card levantada y ganaba por
+     orden del DOM, apareciendo encima de la que estas mirando. */
+  isolation: isolate;
   overflow: hidden;
   flex: 0 0 var(--home-featured-card-width);
   border-radius: 12px;
@@ -786,7 +791,10 @@
   box-shadow: 0 10px 28px rgba(67, 38, 20, 0.12);
   display: flex;
   flex-direction: column;
-  min-height: 524px;
+  /* Sin alto fijo. La cinta ya usa align-items: stretch, asi que todas las
+     cards igualan a la mas alta y los botones siguen alineados entre si; con
+     el min-height de 524px el sobrante se acumulaba entre el precio y los
+     botones, que quedan abajo por su margin-top: auto. */
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -800,7 +808,7 @@
   box-shadow: 0 22px 44px rgba(67, 38, 20, 0.26);
   border-color: #d8b98f;
   /* Por encima de las vecinas, si no la sombra queda por debajo. */
-  z-index: 2;
+  z-index: 3;
 }
 
 .home-product-media {
