@@ -125,6 +125,16 @@ for (const [routePath, routeConfig] of Object.entries(publicRoutes)) {
   await writeFile(outputPath, renderRouteHtml(routePath, routeConfig), "utf8");
 }
 
+// Shell para las rutas que NO son publicas (/login, /carrito, /mis-pedidos,
+// /admin...). Las sirve el rewrite comodin de vercel.json, que antes apuntaba
+// a index.html y por eso arrastraba el preload del hero a paginas que nunca lo
+// muestran. Ademas lleva el noindex que SeoRouteMeta ya aplica del lado del
+// cliente para esas rutas: aca queda en el HTML, antes de que corra el JS.
+// Si renombras este archivo, actualiza el rewrite "/(.*)"  de vercel.json o
+// toda la navegacion profunda del sitio devuelve 404.
+const appShellHtml = setMetaName(stripHeroPreload(baseHtml), "robots", seoConfig.defaultRobots);
+await writeFile(path.join(distDir, "app.html"), appShellHtml, "utf8");
+
 await writeFile(path.join(distDir, "sitemap.xml"), renderSitemap(), "utf8");
 await writeFile(path.join(distDir, "robots.txt"), renderRobots(), "utf8");
 
