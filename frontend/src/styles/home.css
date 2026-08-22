@@ -113,6 +113,20 @@
   .home-hero-scroll-hint {
     animation: none;
   }
+
+  /* Una cinta que no para nunca es de los casos que esta preferencia existe
+     para atajar. Se queda quieta y se navega con el scroll horizontal. */
+  .home-products-grid.is-animated {
+    animation: none;
+  }
+
+  .home-products-carousel {
+    overflow-x: auto;
+  }
+
+  .home-product-card {
+    transition: none;
+  }
 }
 
 .home-hero-image {
@@ -716,7 +730,10 @@
   max-width: 1490px;
   margin: 0 auto;
   overflow: hidden;
-  padding: 0.2rem 0.35rem 0.7rem;
+  /* El overflow hidden lo pide la cinta para recortar a los costados, pero
+     tambien recorta arriba y abajo. Este padding es el lugar donde la card
+     destacada crece sin que se le corte la sombra. */
+  padding: 1rem 0.35rem 1.5rem;
   mask-image: linear-gradient(90deg, transparent 0, #000 2.25rem, #000 calc(100% - 2.25rem), transparent 100%);
 }
 
@@ -735,9 +752,20 @@
   will-change: transform;
 }
 
-.home-products-carousel:hover .home-products-grid.is-animated,
-.home-products-carousel:focus-within .home-products-grid.is-animated,
-.home-products-carousel:active .home-products-grid.is-animated {
+/* Pausar al pasar el mouse solo tiene sentido con un mouse de verdad: al
+   sacarlo, el carrusel arranca solo. En tactil el navegador deja el :hover
+   "pegado" despues del toque hasta que tocas en otro lado, asi que la cinta
+   quedaba congelada y parecia un bug. La media query lo deja fuera del
+   tactil; ahi el carrusel no para nunca. */
+@media (hover: hover) and (pointer: fine) {
+  .home-products-carousel:hover .home-products-grid.is-animated {
+    animation-play-state: paused;
+  }
+}
+
+/* El foco por teclado si pausa en cualquier dispositivo: si estas tabulando
+   por las cards, que se muevan solas hace imposible activarlas. */
+.home-products-carousel:focus-within .home-products-grid.is-animated {
   animation-play-state: paused;
 }
 
@@ -767,9 +795,17 @@
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.home-product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px rgba(67, 38, 20, 0.16);
+/* La card sobre la que estas se adelanta, y el carrusel puede seguir
+   moviendose detras. En tactil el selector que importa es :active: dura
+   mientras tenes el dedo apoyado, que es justo cuando queres mirarla. */
+.home-product-card:hover,
+.home-product-card:focus-within,
+.home-product-card:active {
+  transform: translateY(-6px) scale(1.035);
+  box-shadow: 0 22px 44px rgba(67, 38, 20, 0.26);
+  border-color: #d8b98f;
+  /* Por encima de las vecinas, si no la sombra queda por debajo. */
+  z-index: 2;
 }
 
 .home-product-media {
