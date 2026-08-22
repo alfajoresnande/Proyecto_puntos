@@ -7,6 +7,7 @@ const aiRouter_1 = require("./aiRouter");
 const aiUsageLimiter_1 = require("./aiUsageLimiter");
 const db_1 = require("../../db");
 const points_1 = require("../points");
+const salesMode_1 = require("../salesMode");
 function readBooleanEnv(name, fallback) {
     const value = process.env[name]?.trim().toLowerCase();
     if (!value)
@@ -125,15 +126,28 @@ async function buildMessages(input) {
     const currentPath = sanitizePromptValue(input.context?.currentPath, "desconocida");
     const userRole = input.context?.userRole ?? "anonimo";
     const message = input.message.trim().slice(0, 500);
+    // Los dos interruptores que cambian de que puede hablar el bot. Se leen en
+    // cada pedido a proposito: el superAdmin los cambia sin reiniciar el server.
+    const [pointsEnabled, whatsappCatalogMode] = await Promise.all([
+        (0, points_1.isPointsProgramEnabled)(db_1.pool).catch(() => true),
+        (0, salesMode_1.isWhatsappCatalogMode)(db_1.pool).catch(() => false),
+    ]);
     const [productsContext, envioGratisContext, pointsProgramContext] = await Promise.all([
         getProductsContext(),
         getEnvioGratisContext(),
-        getPointsProgramContext(),
+        pointsEnabled ? getPointsProgramContext() : Promise.resolve(""),
     ]);
     return [
         {
             role: "system",
-            content: `${aiSystemPrompt_1.AI_SYSTEM_PROMPT}\n\n${pointsProgramContext}\n\n${envioGratisContext}\n\n${productsContext}`
+            content: [
+                (0, aiSystemPrompt_1.buildSystemPrompt)({ pointsEnabled, whatsappCatalogMode }),
+                pointsProgramContext,
+                envioGratisContext,
+                productsContext,
+            ]
+                .filter(Boolean)
+                .join("\n\n"),
         },
         {
             role: "user",

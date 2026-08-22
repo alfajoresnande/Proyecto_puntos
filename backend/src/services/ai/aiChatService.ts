@@ -1,5 +1,5 @@
 import type { Groq } from "groq-sdk";
-import { AI_CHAT_FALLBACK_ANSWER, AI_SYSTEM_PROMPT } from "./aiSystemPrompt";
+import { AI_CHAT_FALLBACK_ANSWER, buildSystemPrompt } from "./aiSystemPrompt";
 import {
   getAiChatMaxOutputTokens,
   getAiChatReasoningEffort,
@@ -16,6 +16,7 @@ import {
 import { checkAndConsumeAiUsage } from "./aiUsageLimiter";
 import { pool, qOne, qAll } from "../../db";
 import { getPointsProgramConfig, isPointsProgramEnabled } from "../points";
+import { isWhatsappCatalogMode } from "../salesMode";
 
 export type AiChatUserRole = "cliente" | "vendedor" | "admin" | "superadmin" | "anonimo";
 
@@ -207,16 +208,30 @@ async function buildMessages(input: AiChatServiceInput): Promise<Groq.Chat.ChatC
   const userRole = input.context?.userRole ?? "anonimo";
   const message = input.message.trim().slice(0, 500);
   
+  // Los dos interruptores que cambian de que puede hablar el bot. Se leen en
+  // cada pedido a proposito: el superAdmin los cambia sin reiniciar el server.
+  const [pointsEnabled, whatsappCatalogMode] = await Promise.all([
+    isPointsProgramEnabled(pool).catch(() => true),
+    isWhatsappCatalogMode(pool).catch(() => false),
+  ]);
+
   const [productsContext, envioGratisContext, pointsProgramContext] = await Promise.all([
     getProductsContext(),
     getEnvioGratisContext(),
-    getPointsProgramContext(),
+    pointsEnabled ? getPointsProgramContext() : Promise.resolve(""),
   ]);
 
   return [
-    { 
-      role: "system", 
-      content: `${AI_SYSTEM_PROMPT}\n\n${pointsProgramContext}\n\n${envioGratisContext}\n\n${productsContext}` 
+    {
+      role: "system",
+      content: [
+        buildSystemPrompt({ pointsEnabled, whatsappCatalogMode }),
+        pointsProgramContext,
+        envioGratisContext,
+        productsContext,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     },
     {
       role: "user",
