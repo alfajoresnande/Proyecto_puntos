@@ -89,7 +89,7 @@ export function Home() {
   // cuadro a cuadro. Con CSS solo no se puede: el `-50%` de la cinta es
   // relativo al ancho de la cinta, no al de la card.
   const carouselGridRef = useRef<HTMLDivElement | null>(null);
-  const pinFrameRef = useRef<number | null>(null);
+  const pinAnimationRef = useRef<Animation | null>(null);
   const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
     nombre: "",
@@ -225,58 +225,71 @@ export function Home() {
     return productosCarouselSource.length > 1 ? [...productosCarouselSource, ...productosCarouselSource] : productosCarouselSource;
   }, [productosCarouselSource]);
 
-  /** Desplazamiento horizontal actual de la cinta, en px. */
-  function readGridShift(): number {
+  /** Levantada y adelantada, desplazada `x` px para compensar la cinta. */
+  const LIFTED_TRANSFORM = (x: number) => `translate3d(${x}px, -6px, 0) scale(1.035)`;
+
+  /** La animacion de la cinta, para poder copiarle el reloj. */
+  function readTrackAnimation(): Animation | null {
+    const grid = carouselGridRef.current;
+    if (!grid?.getAnimations) return null;
+    return grid.getAnimations().find((a) => a.playState === "running") ?? null;
+  }
+
+  /**
+   * Cuanto recorre la cinta en una vuelta, en px.
+   *
+   * Tiene que dar exactamente lo mismo que el keyframe
+   * `translate3d(calc(-50% - (gap / 2)), 0, 0)`: ese -50% es la mitad del
+   * ancho de la cinta.
+   */
+  function readTrackDistance(): number {
     const grid = carouselGridRef.current;
     if (!grid) return 0;
-    const raw = getComputedStyle(grid).transform;
-    if (!raw || raw === "none") return 0;
-    try {
-      return new DOMMatrixReadOnly(raw).m41;
-    } catch {
-      return 0;
-    }
+    const gap = Number.parseFloat(getComputedStyle(grid).columnGap || "0") || 0;
+    return grid.offsetWidth / 2 + gap / 2;
   }
 
   function releaseCard(card: HTMLElement) {
-    if (pinFrameRef.current !== null) {
-      cancelAnimationFrame(pinFrameRef.current);
-      pinFrameRef.current = null;
-    }
+    pinAnimationRef.current?.cancel();
+    pinAnimationRef.current = null;
     card.style.transform = "";
-    card.style.transition = "";
   }
 
   function pinCard(card: HTMLElement) {
-    if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
-    // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
-    // quedaria arrastrandose detras del cursor.
-    card.style.transition = "none";
+    pinAnimationRef.current?.cancel();
 
-    let anchor = readGridShift();
-    let previous = anchor;
-    let offset = 0;
+    const track = readTrackAnimation();
+    const distance = readTrackDistance();
 
-    const step = () => {
-      const current = readGridShift();
-      // La cinta siempre corre hacia la izquierda; si el valor crece es que
-      // el bucle volvio al principio y la card salto con el. Se re-ancla
-      // sobre la posicion ANTERIOR: asi la compensacion absorbe el salto y
-      // la card no se mueve en pantalla. Anclar sobre `current` la disparaba
-      // el ancho del salto entero.
-      if (current > previous) anchor = previous + offset;
-      offset = anchor - current;
-      previous = current;
-      card.style.transform = `translate3d(${offset}px, -6px, 0) scale(1.035)`;
-      pinFrameRef.current = requestAnimationFrame(step);
-    };
+    // Un solo producto: la cinta no se mueve, alcanza con levantarla.
+    if (!track || !distance || !card.animate) {
+      card.style.transform = LIFTED_TRANSFORM(0);
+      return;
+    }
 
-    step();
+    // Se contra-anima con el MISMO reloj que la cinta, en vez de corregir la
+    // posicion cuadro a cuadro desde JS. La cinta corre en el compositor, asi
+    // que cualquier correccion por JS llega un cuadro tarde y se ve temblar.
+    // Como las dos animaciones tienen igual duracion y fase, y una desplaza
+    // justo lo contrario de la otra, se cancelan exactas: la card queda
+    // quieta de verdad. El reinicio del bucle tambien se resuelve solo,
+    // porque las dos vuelven al principio en el mismo instante.
+    const timing = track.effect?.getTiming();
+    const pin = card.animate(
+      [{ transform: LIFTED_TRANSFORM(0) }, { transform: LIFTED_TRANSFORM(distance) }],
+      {
+        duration: Number(timing?.duration) || 38000,
+        iterations: Infinity,
+        easing: "linear",
+      },
+    );
+    pin.currentTime = track.currentTime ?? 0;
+    pinAnimationRef.current = pin;
   }
 
   useEffect(() => {
     return () => {
-      if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+      pinAnimationRef.current?.cancel();
     };
   }, []);
 
