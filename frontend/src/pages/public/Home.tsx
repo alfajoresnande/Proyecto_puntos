@@ -238,17 +238,24 @@ export function Home() {
     }
   }
 
+  /** Enciende o apaga el velo que oscurece la cinta detras de la card. */
+  function setCarouselDimmed(dimmed: boolean) {
+    carouselGridRef.current?.parentElement?.classList.toggle("has-pinned-card", dimmed);
+  }
+
   function releaseCard(card: HTMLElement) {
     if (pinFrameRef.current !== null) {
       cancelAnimationFrame(pinFrameRef.current);
       pinFrameRef.current = null;
     }
+    setCarouselDimmed(false);
     card.style.transform = "";
     card.style.transition = "";
   }
 
   function pinCard(card: HTMLElement) {
     if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+    setCarouselDimmed(true);
     // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
     // quedaria arrastrandose detras del cursor.
     card.style.transition = "none";
@@ -267,7 +274,9 @@ export function Home() {
       if (current > previous) anchor = previous + offset;
       offset = anchor - current;
       previous = current;
-      card.style.transform = `translate3d(${offset}px, -6px, 0) scale(1.035)`;
+      // Mismos valores que la regla :hover de home.css. Si cambian alla,
+      // cambian aca: este transform en linea la pisa mientras esta sostenida.
+      card.style.transform = `translate3d(${offset}px, -8px, 0) scale(1.045)`;
       pinFrameRef.current = requestAnimationFrame(step);
     };
 

@@ -729,6 +729,8 @@
   width: 100%;
   max-width: 1490px;
   margin: 0 auto;
+  /* Ancla para el velo de profundidad de abajo. */
+  position: relative;
   overflow: hidden;
   /* El overflow hidden lo pide la cinta para recortar a los costados, pero
      tambien recorta arriba y abajo. Este padding es el lugar donde la card
@@ -762,6 +764,35 @@
    se muevan solas hace imposible activarlas. */
 .home-products-carousel:focus-within .home-products-grid.is-animated {
   animation-play-state: paused;
+}
+
+/* Velo que oscurece apenas la cinta mientras hay una card levantada.
+   Se cuela entre medio: por encima de las cards normales (z-index auto) y por
+   debajo de la levantada (z-index 3). Eso es lo que termina de vender que una
+   flota adelante y el resto pasa por atras.
+   La clase la pone y la saca el mismo JS que fija la card, en pinCard() y
+   releaseCard() de Home.tsx. Se probo con `:has()` y no sirve: el selector
+   matchea en el DOM pero la regla no sobrevive al build, asi que el velo
+   nunca se encendia. */
+.home-products-carousel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(45, 18, 0, 0.16);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.home-products-carousel.has-pinned-card::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-products-carousel::after {
+    transition: none;
+  }
 }
 
 @keyframes home-products-marquee {
@@ -805,16 +836,20 @@
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-/* La card sobre la que estas se adelanta, y el carrusel puede seguir
-   moviendose detras. En tactil el selector que importa es :active: dura
-   mientras tenes el dedo apoyado, que es justo cuando queres mirarla. */
+/* La card sobre la que estas se despega del plano y el resto de la cinta le
+   pasa por detras. La sombra es grande y difusa a proposito: es lo que hace
+   leer el cruce como profundidad y no como que las cards chocan.
+   En tactil el selector que importa es :active: dura mientras tenes el dedo
+   apoyado, que es justo cuando queres mirarla. */
 .home-product-card:hover,
 .home-product-card:focus-within,
 .home-product-card:active {
-  transform: translateY(-6px) scale(1.035);
-  box-shadow: 0 22px 44px rgba(67, 38, 20, 0.26);
+  transform: translateY(-8px) scale(1.045);
+  box-shadow:
+    0 6px 12px rgba(67, 38, 20, 0.18),
+    0 28px 60px rgba(67, 38, 20, 0.34);
   border-color: #d8b98f;
-  /* Por encima de las vecinas, si no la sombra queda por debajo. */
+  /* Por encima de las vecinas Y de la sombra de fondo (que va en z-index 2). */
   z-index: 3;
 }
 
