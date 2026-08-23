@@ -729,8 +729,6 @@
   width: 100%;
   max-width: 1490px;
   margin: 0 auto;
-  /* Ancla para el velo de profundidad de abajo. */
-  position: relative;
   overflow: hidden;
   /* El overflow hidden lo pide la cinta para recortar a los costados, pero
      tambien recorta arriba y abajo. Este padding es el lugar donde la card
@@ -764,35 +762,6 @@
    se muevan solas hace imposible activarlas. */
 .home-products-carousel:focus-within .home-products-grid.is-animated {
   animation-play-state: paused;
-}
-
-/* Velo que oscurece apenas la cinta mientras hay una card levantada.
-   Se cuela entre medio: por encima de las cards normales (z-index auto) y por
-   debajo de la levantada (z-index 3). Eso es lo que termina de vender que una
-   flota adelante y el resto pasa por atras.
-   La clase la pone y la saca el mismo JS que fija la card, en pinCard() y
-   releaseCard() de Home.tsx. Se probo con `:has()` y no sirve: el selector
-   matchea en el DOM pero la regla no sobrevive al build, asi que el velo
-   nunca se encendia. */
-.home-products-carousel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  background: rgba(45, 18, 0, 0.16);
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-
-.home-products-carousel.has-pinned-card::after {
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .home-products-carousel::after {
-    transition: none;
-  }
 }
 
 @keyframes home-products-marquee {

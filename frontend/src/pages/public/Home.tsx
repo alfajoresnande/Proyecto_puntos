@@ -238,27 +238,26 @@ export function Home() {
     }
   }
 
-  /** Enciende o apaga el velo que oscurece la cinta detras de la card. */
-  function setCarouselDimmed(dimmed: boolean) {
-    carouselGridRef.current?.parentElement?.classList.toggle("has-pinned-card", dimmed);
-  }
-
   function releaseCard(card: HTMLElement) {
     if (pinFrameRef.current !== null) {
       cancelAnimationFrame(pinFrameRef.current);
       pinFrameRef.current = null;
     }
-    setCarouselDimmed(false);
     card.style.transform = "";
     card.style.transition = "";
+    card.style.willChange = "";
   }
 
   function pinCard(card: HTMLElement) {
     if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
-    setCarouselDimmed(true);
     // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
     // quedaria arrastrandose detras del cursor.
     card.style.transition = "none";
+    // Sin esto, en el celular la card se reescala en cada cuadro: el navegador
+    // vuelve a rasterizar la imagen una y otra vez, se ve vibrar y la foto
+    // tarda en aparecer. `will-change` la sube a su propia capa una sola vez y
+    // el movimiento pasa a ser una operacion barata de composicion.
+    card.style.willChange = "transform";
 
     let anchor = readGridShift();
     let previous = anchor;
