@@ -264,6 +264,17 @@ export function Home() {
     let offset = 0;
 
     const step = () => {
+      // Salida obligatoria. Si la card dejo de estar en el documento no hay a
+      // quien mover: pasa al cambiar de categoria (el carrusel se recrea por
+      // su `key`) o cuando React Query refresca la lista con una card
+      // sostenida. Ahi `pointerleave` nunca llega y `releaseCard` no corre,
+      // asi que sin este corte el bucle quedaba vivo para siempre sobre un
+      // nodo huerfano, forzando un recalculo de estilos en cada cuadro.
+      if (!card.isConnected || !carouselGridRef.current) {
+        pinFrameRef.current = null;
+        return;
+      }
+
       const current = readGridShift();
       // La cinta siempre corre hacia la izquierda; si el valor crece es que
       // el bucle volvio al principio y la card salto con el. Se re-ancla
