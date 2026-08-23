@@ -783,6 +783,13 @@
      card de atras empataba con el z-index de la card levantada y ganaba por
      orden del DOM, apareciendo encima de la que estas mirando. */
   isolation: isolate;
+  /* Con el dedo apoyado, el navegador tiende a interpretar la pulsacion larga
+     como seleccion de texto o menu contextual, y ahi cancela el puntero: la
+     card se soltaba sola a los pocos segundos. `pan-y` deja pasar el scroll
+     vertical de la pagina pero no los gestos horizontales. */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-touch-callout: none;
   overflow: hidden;
   flex: 0 0 var(--home-featured-card-width);
   border-radius: 12px;

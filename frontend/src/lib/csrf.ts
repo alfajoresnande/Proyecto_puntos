@@ -72,6 +72,36 @@ export async function refreshCsrfToken(): Promise<string> {
   return inFlight;
 }
 
+/** El token, pidiéndolo si todavía no llegó. */
+export async function ensureCsrfToken(): Promise<string> {
+  return cachedToken || refreshCsrfToken();
+}
+
+/**
+ * `fetch` para peticiones que mutan, con el header CSRF puesto.
+ *
+ * Resuelve los dos motivos por los que un `fetch` a mano se come un 403:
+ *
+ *  1. Sale antes de que el token haya llegado. `getCsrfToken()` es síncrono y
+ *     al arrancar la app todavía no hay nada; acá se espera.
+ *  2. El token está atado a la sesión, así que al iniciar o cerrar sesión el
+ *     anterior deja de valer. Ante un 403 se pide uno nuevo y se reintenta
+ *     una sola vez, igual que hace `api()`.
+ *
+ * Todo lo que mande `X-CSRF-Token` con su propio `fetch` debería usar esto.
+ */
+export async function csrfFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const enviar = (token: string) => {
+    const headers = new Headers(init.headers);
+    headers.set("X-CSRF-Token", token);
+    return fetch(url, { ...init, credentials: "include", headers });
+  };
+
+  const response = await enviar(await ensureCsrfToken());
+  if (response.status !== 403) return response;
+  return enviar(await refreshCsrfToken());
+}
+
 /**
  * Migración del cliente: retira los restos del esquema anterior. El JWT vivía
  * en `nande-auth.state.token` y el pseudo-token CSRF en `nande.csrf.token`.

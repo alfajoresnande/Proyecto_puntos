@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import { useToast } from "../../components/ToastProvider";
 import { apiUrl, mediaUrl } from "../../lib/apiBase";
-import { getCsrfToken } from "../../lib/csrf";
+import { csrfFetch } from "../../lib/csrf";
 import { formatBuenosAiresDate, formatBuenosAiresDateTime, getBuenosAiresDateStamp } from "../../lib/dateTime";
 import {
   getLocalSaleQuickProductImage,
@@ -4145,7 +4145,7 @@ export function Admin() {
         window.open(apiUrl(`/api/admin/ventas/export?${params.toString()}`), "_blank", "noopener,noreferrer");
       } else {
         // SEC-03: la sesion va en la cookie HttpOnly, no en un header Bearer.
-        const response = await fetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
+        const response = await csrfFetch(apiUrl(`/api/admin/ventas/export?${params.toString()}`), {
           credentials: "include",
         });
         if (!response.ok) {
@@ -4190,7 +4190,7 @@ export function Admin() {
         sucursal_id: String(sucursalId),
         fecha,
       });
-      const response = await fetch(apiUrl(`/api/admin/caja/export?${params.toString()}`), {
+      const response = await csrfFetch(apiUrl(`/api/admin/caja/export?${params.toString()}`), {
         credentials: "include",
       });
       if (!response.ok) {
@@ -4220,7 +4220,7 @@ export function Admin() {
     setErrMsg("");
     setOkMsg("");
     try {
-      const response = await fetch(apiUrl(`/api/postulaciones/admin/${postulacion.id}/cv`), {
+      const response = await csrfFetch(apiUrl(`/api/postulaciones/admin/${postulacion.id}/cv`), {
         credentials: "include",
       });
       if (!response.ok) {
@@ -5150,11 +5150,10 @@ export function Admin() {
     setBackupBusy(true);
 
     try {
-      const response = await fetch(apiUrl("/api/admin/backup/full"), {
+      const response = await csrfFetch(apiUrl("/api/admin/backup/full"), {
         method: "POST",
         credentials: "include",
-        headers: {
-          "X-CSRF-Token": getCsrfToken(),
+        headers: {
         },
       });
 

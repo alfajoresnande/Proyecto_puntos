@@ -1,7 +1,7 @@
 ﻿import { useEffect } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { apiUrl } from "../lib/apiBase";
-import { getCsrfToken } from "../lib/csrf";
+import { csrfFetch } from "../lib/csrf";
 import { defaultRouteForRole } from "../lib/auth";
 import { useAuthStore } from "../store/authStore";
 import type { Rol } from "../types";
@@ -20,12 +20,11 @@ type BlockedRouteRedirectProps = {
 };
 
 function reportAccessDeniedAttempt(attemptedPath: string, requiredRoles: Rol[]): void {
-  void fetch(apiUrl("/api/diagnostico/access-denied"), {
+  void csrfFetch(apiUrl("/api/diagnostico/access-denied"), {
     method: "POST",
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": getCsrfToken(),
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       attempted_path: attemptedPath,

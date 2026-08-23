@@ -535,6 +535,24 @@ export function Home() {
                         className="home-product-card"
                         aria-hidden={isDuplicate || undefined}
                         onPointerEnter={(event) => pinCard(event.currentTarget)}
+                        onPointerDown={(event) => {
+                          // Capturar el puntero hace que la card siga recibiendo
+                          // los eventos de ese dedo hasta que lo levantes, aunque
+                          // el navegador quiera interpretar el gesto como otra
+                          // cosa. Sin esto soltaba sola a los ~3 segundos.
+                          try {
+                            event.currentTarget.setPointerCapture(event.pointerId);
+                          } catch {
+                            // Puntero ya liberado por el navegador: no pasa nada.
+                          }
+                          pinCard(event.currentTarget);
+                        }}
+                        onPointerUp={(event) => {
+                          // Con el dedo, soltar es el final. Con el mouse no:
+                          // un click no debe soltar la card si el cursor sigue
+                          // encima; de eso se ocupa onPointerLeave.
+                          if (event.pointerType !== "mouse") releaseCard(event.currentTarget);
+                        }}
                         onPointerLeave={(event) => releaseCard(event.currentTarget)}
                         onPointerCancel={(event) => releaseCard(event.currentTarget)}
                       >

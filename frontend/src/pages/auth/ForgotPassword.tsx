@@ -2,16 +2,15 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiUrl } from "../../lib/apiBase";
-import { getCsrfToken } from "../../lib/csrf";
+import { csrfFetch } from "../../lib/csrf";
 import { createApiError, useRetryAfterCooldown } from "../../lib/rateLimitError";
 
 async function requestPasswordReset(email: string): Promise<{ message: string }> {
-  const res = await fetch(apiUrl("/api/auth/forgot-password"), {
+  const res = await csrfFetch(apiUrl("/api/auth/forgot-password"), {
     method: "POST",
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": getCsrfToken(),
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ email }),
   });

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { apiUrl } from "../lib/apiBase";
-import { getCsrfToken } from "../lib/csrf";
+import { csrfFetch } from "../lib/csrf";
 import { useAuthStore } from "../store/authStore";
 
 const HEARTBEAT_INTERVAL_MS = 30 * 60 * 1000;
@@ -51,13 +51,12 @@ function sendPresenceHeartbeat(sessionId: string, path: string, identityKey: str
   lastHeartbeatFingerprint = fingerprint;
   lastHeartbeatAt = now;
 
-  void fetch(apiUrl("/api/presencia/heartbeat"), {
+  void csrfFetch(apiUrl("/api/presencia/heartbeat"), {
     method: "POST",
     credentials: "include",
     keepalive,
     headers: {
       "Content-Type": "application/json",
-      "X-CSRF-Token": getCsrfToken(),
     },
     body: JSON.stringify({
       session_id: sessionId,
