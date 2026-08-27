@@ -249,6 +249,7 @@ export function Home() {
       cancelAnimationFrame(pinFrameRef.current);
       pinFrameRef.current = null;
     }
+    if (carouselGridRef.current) carouselGridRef.current.style.animationPlayState = "";
     card.style.transform = "";
     card.style.transition = "";
     card.style.willChange = "";
@@ -256,6 +257,16 @@ export function Home() {
 
   function pinCard(card: HTMLElement) {
     if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+
+    // La cinta se detiene mientras la card esta fijada. Es lo que elimina el
+    // temblor de raiz: la correccion de posicion se calcula en JS y siempre
+    // llega un cuadro despues que la cinta, que se anima en el compositor. Con
+    // la cinta quieta no hay nada que compensar y no hay desfase posible.
+    // Se reanuda sola en releaseCard, atada al cierre explicito (la X o un
+    // toque afuera), asi que no puede quedarse trabada como pasaba cuando
+    // dependia del :hover pegajoso del tactil.
+    if (carouselGridRef.current) carouselGridRef.current.style.animationPlayState = "paused";
+
     // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
     // quedaria arrastrandose detras del cursor.
     card.style.transition = "none";
