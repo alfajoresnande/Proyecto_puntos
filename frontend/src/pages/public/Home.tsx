@@ -89,7 +89,8 @@ export function Home() {
   // cuadro a cuadro. Con CSS solo no se puede: el `-50%` de la cinta es
   // relativo al ancho de la cinta, no al de la card.
   const carouselGridRef = useRef<HTMLDivElement | null>(null);
-  const pinFrameRef = useRef<number | null>(null);
+  const pinAnimationRef = useRef<Animation | null>(null);
+  const pinnedElementRef = useRef<HTMLElement | null>(null);
   /**
    * Card fijada con el dedo. Con mouse alcanza el hover, pero en tactil no:
    * si hay que mantener apretado no queda dedo libre para tocar "Agregar al
@@ -231,77 +232,70 @@ export function Home() {
     return productosCarouselSource.length > 1 ? [...productosCarouselSource, ...productosCarouselSource] : productosCarouselSource;
   }, [productosCarouselSource]);
 
-  /** Desplazamiento horizontal actual de la cinta, en px. */
-  function readGridShift(): number {
-    const grid = carouselGridRef.current;
-    if (!grid) return 0;
-    const raw = getComputedStyle(grid).transform;
-    if (!raw || raw === "none") return 0;
-    try {
-      return new DOMMatrixReadOnly(raw).m41;
-    } catch {
-      return 0;
-    }
+  /** Levantada y adelantada, corrida `x` px para compensar la cinta. */
+  function liftedTransform(x: number): string {
+    return `translate3d(${x}px, -8px, 0) scale(1.045)`;
   }
 
   function releaseCard(card: HTMLElement) {
-    if (pinFrameRef.current !== null) {
-      cancelAnimationFrame(pinFrameRef.current);
-      pinFrameRef.current = null;
-    }
+    pinAnimationRef.current?.cancel();
+    pinAnimationRef.current = null;
+    pinnedElementRef.current = null;
     card.style.transform = "";
-    card.style.transition = "";
     card.style.willChange = "";
   }
 
+  /**
+   * Mantiene quieta la card mientras la cinta sigue corriendo.
+   *
+   * Se le da su PROPIA animacion, que recorre exactamente lo mismo que la
+   * cinta en la misma duracion, arrancada en el mismo punto del ciclo. Las dos
+   * se desplazan igual en sentidos opuestos, asi que se cancelan; y las dos
+   * las mueve el compositor con el mismo reloj.
+   *
+   * Antes se corregia la posicion cuadro a cuadro desde JS y se veia vibrar:
+   * la cinta corre en el compositor, asi que cualquier correccion calculada en
+   * el hilo principal llega un cuadro tarde y la card parece forcejear por
+   * volver a su lugar. Aca no queda nada que perseguir.
+   *
+   * El reinicio del bucle tambien se resuelve solo: las dos animaciones
+   * vuelven al principio en el mismo instante.
+   */
   function pinCard(card: HTMLElement) {
-    if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
-    // La transicion de 0.18s pelearia contra el ajuste por cuadro y la card
-    // quedaria arrastrandose detras del cursor.
-    card.style.transition = "none";
-    // Sin esto, en el celular la card se reescala en cada cuadro: el navegador
-    // vuelve a rasterizar la imagen una y otra vez, se ve vibrar y la foto
-    // tarda en aparecer. `will-change` la sube a su propia capa una sola vez y
-    // el movimiento pasa a ser una operacion barata de composicion.
+    // Idempotente. Cancelar y recrear deja un cuadro sin transform, y en ese
+    // cuadro la card vuelve de golpe a su lugar en la cinta: eso es el
+    // parpadeo que aparecio la vez anterior.
+    if (pinnedElementRef.current === card && pinAnimationRef.current) return;
+
+    pinAnimationRef.current?.cancel();
+    pinnedElementRef.current = card;
     card.style.willChange = "transform";
 
-    let anchor = readGridShift();
-    let previous = anchor;
-    let offset = 0;
+    const grid = carouselGridRef.current;
+    const track = grid?.getAnimations?.().find((animation) => animation.playState === "running") ?? null;
+    // Tiene que dar lo mismo que el keyframe `calc(-50% - (gap / 2))`: ese
+    // -50% es la mitad del ancho de la cinta.
+    const gap = grid ? Number.parseFloat(getComputedStyle(grid).columnGap || "0") || 0 : 0;
+    const distance = grid ? grid.offsetWidth / 2 + gap / 2 : 0;
+    const duration = Number(track?.effect?.getTiming().duration) || 0;
 
-    const step = () => {
-      // Salida obligatoria. Si la card dejo de estar en el documento no hay a
-      // quien mover: pasa al cambiar de categoria (el carrusel se recrea por
-      // su `key`) o cuando React Query refresca la lista con una card
-      // sostenida. Ahi `pointerleave` nunca llega y `releaseCard` no corre,
-      // asi que sin este corte el bucle quedaba vivo para siempre sobre un
-      // nodo huerfano, forzando un recalculo de estilos en cada cuadro.
-      if (!card.isConnected || !carouselGridRef.current) {
-        pinFrameRef.current = null;
-        return;
-      }
+    // Sin cinta en movimiento (un solo producto) alcanza con levantarla.
+    if (!track || !duration || !Number.isFinite(distance) || distance <= 0 || !card.animate) {
+      card.style.transform = liftedTransform(0);
+      return;
+    }
 
-      const current = readGridShift();
-      // La cinta siempre corre hacia la izquierda; si el valor crece es que
-      // el bucle volvio al principio y la card salto con el. Se re-ancla
-      // sobre la posicion ANTERIOR: asi la compensacion absorbe el salto y
-      // la card no se mueve en pantalla. Anclar sobre `current` la disparaba
-      // el ancho del salto entero.
-      if (current > previous) anchor = previous + offset;
-      offset = anchor - current;
-      previous = current;
-      // Mismos valores que la regla :hover de home.css. Si cambian alla,
-      // cambian aca: este transform en linea la pisa mientras esta sostenida.
-      card.style.transform = `translate3d(${offset}px, -8px, 0) scale(1.045)`;
-      pinFrameRef.current = requestAnimationFrame(step);
-    };
-
-    step();
+    const pin = card.animate(
+      [{ transform: liftedTransform(0) }, { transform: liftedTransform(distance) }],
+      { duration, iterations: Infinity, easing: "linear" },
+    );
+    pin.currentTime = track.currentTime ?? 0;
+    pinAnimationRef.current = pin;
   }
 
   useEffect(() => {
     return () => {
-      if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
+      pinAnimationRef.current?.cancel();
     };
   }, []);
 
