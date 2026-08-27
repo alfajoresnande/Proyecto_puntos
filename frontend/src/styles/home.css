@@ -822,6 +822,28 @@
   z-index: 3;
 }
 
+/* Cierre de la card fijada con el dedo. Va sobre el badge de categoria, en la
+   esquina opuesta, y por encima de todo el contenido de la card. */
+.home-product-unpin {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 4;
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 999px;
+  background: rgba(45, 18, 0, 0.72);
+  color: #fff8f0;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  /* Que el toque no se lo coma la card y vuelva a fijarla. */
+  touch-action: manipulation;
+}
+
 .home-product-media {
   position: relative;
   height: auto;

@@ -90,6 +90,12 @@ export function Home() {
   // relativo al ancho de la cinta, no al de la card.
   const carouselGridRef = useRef<HTMLDivElement | null>(null);
   const pinFrameRef = useRef<number | null>(null);
+  /**
+   * Card fijada con el dedo. Con mouse alcanza el hover, pero en tactil no:
+   * si hay que mantener apretado no queda dedo libre para tocar "Agregar al
+   * carrito". Se toca una vez y queda fija hasta que la cierren.
+   */
+  const [pinnedCardKey, setPinnedCardKey] = useState<string | null>(null);
   const shouldShowCvSection = !user || user.rol === "cliente";
   const [cvForm, setCvForm] = useState({
     nombre: "",
@@ -298,6 +304,36 @@ export function Home() {
       if (pinFrameRef.current !== null) cancelAnimationFrame(pinFrameRef.current);
     };
   }, []);
+
+  // Fija la card tocada y la suelta al cambiar de card o al cerrarla.
+  useEffect(() => {
+    if (!pinnedCardKey) return;
+    const card = carouselGridRef.current?.querySelector<HTMLElement>(
+      `[data-card-key="${CSS.escape(pinnedCardKey)}"]`,
+    );
+    if (!card) return;
+    pinCard(card);
+    return () => releaseCard(card);
+  }, [pinnedCardKey]);
+
+  // Tocar fuera de la card la devuelve a la cinta.
+  useEffect(() => {
+    if (!pinnedCardKey) return;
+    function handleOutside(event: PointerEvent) {
+      const card = carouselGridRef.current?.querySelector<HTMLElement>(
+        `[data-card-key="${CSS.escape(pinnedCardKey as string)}"]`,
+      );
+      if (card && !card.contains(event.target as Node)) setPinnedCardKey(null);
+    }
+    document.addEventListener("pointerdown", handleOutside);
+    return () => document.removeEventListener("pointerdown", handleOutside);
+  }, [pinnedCardKey]);
+
+  // Al cambiar de categoria el carrusel se recrea entero: la card fijada ya
+  // no existe y su clave quedaria apuntando a la nada.
+  useEffect(() => {
+    setPinnedCardKey(null);
+  }, [selectedCategoria]);
 
   const heroImage = "/hero.webp";
   const locationGalleryBase: LocationImage[] = HOME_LOCATION_GALLERY_BASE.slice(0, 1).concat([
@@ -547,34 +583,39 @@ export function Home() {
                   {productosDestacadosCarousel.map((producto, index) => {
                     const isDuplicate = index >= productosCarouselSource.length;
                     const duplicateTabIndex = isDuplicate ? -1 : undefined;
+                    const cardKey = `${producto.id}-${index}`;
+                    const isPinned = pinnedCardKey === cardKey;
 
                     return (
                       <article
                         key={`${producto.id}-${index}`}
                         className="home-product-card"
                         aria-hidden={isDuplicate || undefined}
-                        onPointerEnter={(event) => pinCard(event.currentTarget)}
-                        onPointerDown={(event) => {
-                          // Capturar el puntero hace que la card siga recibiendo
-                          // los eventos de ese dedo hasta que lo levantes, aunque
-                          // el navegador quiera interpretar el gesto como otra
-                          // cosa. Sin esto soltaba sola a los ~3 segundos.
-                          try {
-                            event.currentTarget.setPointerCapture(event.pointerId);
-                          } catch {
-                            // Puntero ya liberado por el navegador: no pasa nada.
-                          }
-                          pinCard(event.currentTarget);
+                        data-card-key={cardKey}
+                        // Mouse: alcanza con apuntar, y se suelta al salir.
+                        onPointerEnter={(event) => {
+                          if (event.pointerType === "mouse" && !pinnedCardKey) pinCard(event.currentTarget);
                         }}
+                        onPointerLeave={(event) => {
+                          if (event.pointerType === "mouse" && !pinnedCardKey) releaseCard(event.currentTarget);
+                        }}
+                        // Dedo: un toque la fija y ahi se queda. No se suelta al
+                        // levantar el dedo, asi queda libre para usar los botones.
                         onPointerUp={(event) => {
-                          // Con el dedo, soltar es el final. Con el mouse no:
-                          // un click no debe soltar la card si el cursor sigue
-                          // encima; de eso se ocupa onPointerLeave.
-                          if (event.pointerType !== "mouse") releaseCard(event.currentTarget);
+                          if (event.pointerType === "mouse" || isDuplicate) return;
+                          setPinnedCardKey(cardKey);
                         }}
-                        onPointerLeave={(event) => releaseCard(event.currentTarget)}
-                        onPointerCancel={(event) => releaseCard(event.currentTarget)}
                       >
+                    {isPinned ? (
+                      <button
+                        type="button"
+                        className="home-product-unpin"
+                        aria-label={`Devolver ${producto.nombre} al carrusel`}
+                        onClick={() => setPinnedCardKey(null)}
+                      >
+                        <span aria-hidden="true">✕</span>
+                      </button>
+                    ) : null}
                     <div className="home-product-media">
                       <img
                         src={productImage(producto)}
